@@ -9,7 +9,11 @@ import { getDb } from "@/lib/db/client";
 import { actions } from "@/lib/db/schema";
 import type { RejectActionInput } from "@/lib/validations/actions";
 
-export async function rejectAction(actionId: string, input: RejectActionInput) {
+export async function rejectAction(
+  actionId: string,
+  input: RejectActionInput,
+  ownerUserId: string,
+) {
   const db = getDb();
 
   return db.transaction(async (tx) => {
@@ -19,7 +23,7 @@ export async function rejectAction(actionId: string, input: RejectActionInput) {
         status: actions.status,
       })
       .from(actions)
-      .where(eq(actions.id, actionId))
+      .where(and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)))
       .limit(1);
 
     if (!existingAction) {
@@ -38,6 +42,7 @@ export async function rejectAction(actionId: string, input: RejectActionInput) {
       .where(
         and(
           eq(actions.id, actionId),
+          eq(actions.ownerUserId, ownerUserId),
           eq(actions.status, existingAction.status),
         ),
       )

@@ -6,6 +6,7 @@ import { actions } from "@/lib/db/schema";
 import type { ActionStatus } from "@/lib/utils/status";
 
 interface ListActionsOptions {
+  ownerUserId: string;
   status?: ActionStatus;
   limit: number;
   cursor?: string;
@@ -13,7 +14,7 @@ interface ListActionsOptions {
 
 export async function listActions(options: ListActionsOptions) {
   const db = getDb();
-  const conditions = [];
+  const conditions = [eq(actions.ownerUserId, options.ownerUserId)];
 
   if (options.status) {
     conditions.push(eq(actions.status, options.status));

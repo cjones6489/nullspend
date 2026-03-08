@@ -12,6 +12,7 @@ import type { ApproveActionInput } from "@/lib/validations/actions";
 export async function approveAction(
   actionId: string,
   input: ApproveActionInput,
+  ownerUserId: string,
 ) {
   const db = getDb();
 
@@ -22,7 +23,7 @@ export async function approveAction(
         status: actions.status,
       })
       .from(actions)
-      .where(eq(actions.id, actionId))
+      .where(and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)))
       .limit(1);
 
     if (!existingAction) {
@@ -41,6 +42,7 @@ export async function approveAction(
       .where(
         and(
           eq(actions.id, actionId),
+          eq(actions.ownerUserId, ownerUserId),
           eq(actions.status, existingAction.status),
         ),
       )

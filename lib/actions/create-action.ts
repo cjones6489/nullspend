@@ -11,11 +11,16 @@ function pickMetadataField(
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-export async function createAction(input: CreateActionInput) {
+export async function createAction(
+  input: CreateActionInput,
+  ownerUserId: string,
+) {
   const db = getDb();
   const [createdAction] = await db
     .insert(actions)
     .values({
+      ownerUserId,
+      // agentId is caller-supplied display metadata, not an auth boundary.
       agentId: input.agentId,
       actionType: input.actionType,
       status: "pending",

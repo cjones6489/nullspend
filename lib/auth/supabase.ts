@@ -1,17 +1,10 @@
-import { createBrowserClient, createServerClient } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import type { CookieOptions } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 
 import { SupabaseEnvError } from "@/lib/auth/errors";
-
-export function createBrowserSupabaseClient(): SupabaseClient {
-  return createBrowserClient(
-    getSupabaseUrl(),
-    getSupabasePublishableKey(),
-  );
-}
 
 export function getSupabaseUrl(): string {
   const value = process.env.NEXT_PUBLIC_SUPABASE_URL;

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { rejectAction } from "@/lib/actions/reject-action";
-import { assertSession, resolveApprovalActor } from "@/lib/auth/session";
+import {
+  assertSession,
+  resolveApprovalActor,
+  resolveSessionUserId,
+} from "@/lib/auth/session";
 import {
   actionIdParamsSchema,
   mutateActionResponseSchema,
@@ -14,10 +18,11 @@ export async function POST(
 ) {
   try {
     await assertSession();
+    const ownerUserId = await resolveSessionUserId();
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
     const rejectedBy = await resolveApprovalActor();
-    const action = await rejectAction(id, { rejectedBy });
+    const action = await rejectAction(id, { rejectedBy }, ownerUserId);
 
     return NextResponse.json(mutateActionResponseSchema.parse(action));
   } catch (error) {

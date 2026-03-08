@@ -13,10 +13,10 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await assertApiKeyOrSession(request);
+    const ownerUserId = await assertApiKeyOrSession(request);
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
-    const action = await getAction(id);
+    const action = await getAction(id, ownerUserId);
 
     return NextResponse.json(actionRecordSchema.parse(action));
   } catch (error) {

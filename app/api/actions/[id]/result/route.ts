@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { markResult } from "@/lib/actions/mark-result";
-import { assertApiKey } from "@/lib/auth/api-key";
+import {
+  assertApiKeyWithIdentity,
+  resolveDevFallbackApiKeyUserId,
+} from "@/lib/auth/api-key";
 import {
   actionIdParamsSchema,
   markResultInputSchema,
@@ -18,12 +21,13 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    assertApiKey(request);
+    const identity = await assertApiKeyWithIdentity(request);
+    const ownerUserId = identity?.userId ?? resolveDevFallbackApiKeyUserId();
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
     const body = await readJsonBody(request);
     const input = markResultInputSchema.parse(body);
-    const action = await markResult(id, input);
+    const action = await markResult(id, input, ownerUserId);
 
     return NextResponse.json(mutateActionResponseSchema.parse(action));
   } catch (error) {

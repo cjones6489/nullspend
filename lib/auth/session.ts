@@ -8,7 +8,7 @@ function canUseDevelopmentFallback(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-function getDevActor(): string | undefined {
+export function getDevActor(): string | undefined {
   return process.env.AGENTSEAM_DEV_ACTOR;
 }
 
@@ -44,6 +44,40 @@ export async function assertSession(): Promise<void> {
 
   if (canUseDevelopmentFallback() && getDevActor()) {
     return;
+  }
+
+  throw new AuthenticationRequiredError(
+    "A valid session is required.",
+  );
+}
+
+export async function resolveSessionUserId(): Promise<string> {
+  try {
+    const userId = await getCurrentUserId();
+
+    if (userId) {
+      return userId;
+    }
+  } catch (error) {
+    if (!(error instanceof SupabaseEnvError)) {
+      throw error;
+    }
+
+    if (canUseDevelopmentFallback()) {
+      const devActor = getDevActor();
+      if (devActor) {
+        return devActor;
+      }
+    }
+
+    throw error;
+  }
+
+  if (canUseDevelopmentFallback()) {
+    const devActor = getDevActor();
+    if (devActor) {
+      return devActor;
+    }
   }
 
   throw new AuthenticationRequiredError(

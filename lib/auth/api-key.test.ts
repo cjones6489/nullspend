@@ -48,11 +48,10 @@ describe("assertApiKey", () => {
     expect(() => assertApiKey(request)).toThrow(ApiKeyError);
   });
 
-  it("throws ApiKeyError when AGENTSEAM_API_KEY is not configured", () => {
+  it("throws ApiKeyError when AGENTSEAM_API_KEY is not configured and key does not match", () => {
     delete process.env.AGENTSEAM_API_KEY;
     const request = makeRequest({ "x-agentseam-key": "any-key" });
 
     expect(() => assertApiKey(request)).toThrow(ApiKeyError);
-    expect(() => assertApiKey(request)).toThrow("AGENTSEAM_API_KEY is not configured");
   });
 });

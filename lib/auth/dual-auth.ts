@@ -1,11 +1,15 @@
-import { API_KEY_HEADER, assertApiKey } from "@/lib/auth/api-key";
-import { assertSession } from "@/lib/auth/session";
+import {
+  API_KEY_HEADER,
+  assertApiKeyWithIdentity,
+  resolveDevFallbackApiKeyUserId,
+} from "@/lib/auth/api-key";
+import { resolveSessionUserId } from "@/lib/auth/session";
 
-export async function assertApiKeyOrSession(request: Request): Promise<void> {
+export async function assertApiKeyOrSession(request: Request): Promise<string> {
   if (request.headers.has(API_KEY_HEADER)) {
-    assertApiKey(request);
-    return;
+    const identity = await assertApiKeyWithIdentity(request);
+    return identity?.userId ?? resolveDevFallbackApiKeyUserId();
   }
 
-  await assertSession();
+  return resolveSessionUserId();
 }
