@@ -48,8 +48,14 @@ interface StatusBadgeProps {
   className?: string;
 }
 
+const fallbackConfig = {
+  label: "Unknown",
+  dot: "bg-zinc-500",
+  className: "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+};
+
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-  const config = statusConfig[status];
+  const config = statusConfig[status] ?? fallbackConfig;
 
   return (
     <Badge

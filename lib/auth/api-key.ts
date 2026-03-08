@@ -90,7 +90,7 @@ export async function assertApiKeyWithIdentity(
 export function resolveDevFallbackApiKeyUserId(): string {
   const devActor = getDevActor();
 
-  if (process.env.NODE_ENV !== "production" && devActor) {
+  if (process.env.NODE_ENV === "development" && devActor) {
     return devActor;
   }
 

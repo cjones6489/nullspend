@@ -26,7 +26,10 @@ async function main() {
 
   const transport = new StdioServerTransport();
 
+  let isShuttingDown = false;
   async function shutdown() {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
     shutdownController.abort();
     try {
       await mcpServer.close();

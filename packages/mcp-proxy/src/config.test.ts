@@ -1,0 +1,187 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { loadConfig, ConfigError } from "./config.js";
+
+const REQUIRED_ENV = {
+  AGENTSEAM_URL: "http://127.0.0.1:3000",
+  AGENTSEAM_API_KEY: "ask_test123",
+  UPSTREAM_COMMAND: "node",
+};
+
+describe("loadConfig", () => {
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+    for (const key of Object.keys(process.env)) {
+      if (
+        key.startsWith("AGENTSEAM_") ||
+        key.startsWith("UPSTREAM_") ||
+        key === "GATED_TOOLS" ||
+        key === "PASSTHROUGH_TOOLS" ||
+        key === "APPROVAL_TIMEOUT_SECONDS"
+      ) {
+        delete process.env[key];
+      }
+    }
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("throws ConfigError when required vars are missing", () => {
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("AGENTSEAM_URL");
+  });
+
+  it("throws ConfigError listing all missing vars", () => {
+    process.env.AGENTSEAM_URL = "http://test.com";
+    try {
+      loadConfig();
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConfigError);
+      expect((err as ConfigError).message).toContain("AGENTSEAM_API_KEY");
+      expect((err as ConfigError).message).toContain("UPSTREAM_COMMAND");
+    }
+  });
+
+  it("returns config with defaults when only required vars are set", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    const config = loadConfig();
+
+    expect(config.agentseamUrl).toBe("http://127.0.0.1:3000");
+    expect(config.agentseamApiKey).toBe("ask_test123");
+    expect(config.upstreamCommand).toBe("node");
+    expect(config.upstreamArgs).toEqual([]);
+    expect(config.upstreamEnv).toEqual({});
+    expect(config.gatedTools).toBe("*");
+    expect(config.passthroughTools).toEqual(new Set());
+    expect(config.agentId).toBe("mcp-proxy");
+    expect(config.approvalTimeoutSeconds).toBe(300);
+  });
+
+  it("parses UPSTREAM_ARGS as JSON array", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.UPSTREAM_ARGS = '["server.js", "--port", "8080"]';
+    const config = loadConfig();
+    expect(config.upstreamArgs).toEqual(["server.js", "--port", "8080"]);
+  });
+
+  it("defaults UPSTREAM_ARGS to [] when not set", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    const config = loadConfig();
+    expect(config.upstreamArgs).toEqual([]);
+  });
+
+  it("throws ConfigError when UPSTREAM_ARGS is invalid JSON", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.UPSTREAM_ARGS = "not-json";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("UPSTREAM_ARGS is not valid JSON");
+  });
+
+  it("throws ConfigError when UPSTREAM_ARGS is not an array", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.UPSTREAM_ARGS = '{"key": "value"}';
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("JSON array");
+  });
+
+  it("parses UPSTREAM_ENV as JSON object", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.UPSTREAM_ENV = '{"DB_HOST": "localhost", "DB_PORT": "5432"}';
+    const config = loadConfig();
+    expect(config.upstreamEnv).toEqual({ DB_HOST: "localhost", DB_PORT: "5432" });
+  });
+
+  it("stores raw UPSTREAM_ENV without merging process.env", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.UPSTREAM_ENV = '{"CUSTOM_VAR": "value"}';
+    const config = loadConfig();
+    expect(config.upstreamEnv).toEqual({ CUSTOM_VAR: "value" });
+    expect(config.upstreamEnv).not.toHaveProperty("PATH");
+  });
+
+  it("throws ConfigError when UPSTREAM_ENV is not an object", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.UPSTREAM_ENV = '["not", "object"]';
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("JSON object");
+  });
+
+  it("parses GATED_TOOLS as specific tool set", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.GATED_TOOLS = "run_query, delete_file, send_email";
+    const config = loadConfig();
+    expect(config.gatedTools).toEqual(new Set(["run_query", "delete_file", "send_email"]));
+  });
+
+  it("treats GATED_TOOLS=* as wildcard", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.GATED_TOOLS = "*";
+    const config = loadConfig();
+    expect(config.gatedTools).toBe("*");
+  });
+
+  it("defaults GATED_TOOLS to * when not set", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    const config = loadConfig();
+    expect(config.gatedTools).toBe("*");
+  });
+
+  it("parses PASSTHROUGH_TOOLS into a set", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.PASSTHROUGH_TOOLS = "read_file, list_directory";
+    const config = loadConfig();
+    expect(config.passthroughTools).toEqual(new Set(["read_file", "list_directory"]));
+  });
+
+  it("parses custom AGENTSEAM_AGENT_ID", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.AGENTSEAM_AGENT_ID = "my-proxy";
+    const config = loadConfig();
+    expect(config.agentId).toBe("my-proxy");
+  });
+
+  it("parses custom APPROVAL_TIMEOUT_SECONDS", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.APPROVAL_TIMEOUT_SECONDS = "60";
+    const config = loadConfig();
+    expect(config.approvalTimeoutSeconds).toBe(60);
+  });
+
+  it("throws ConfigError when APPROVAL_TIMEOUT_SECONDS is invalid", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.APPROVAL_TIMEOUT_SECONDS = "abc";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("positive number");
+  });
+
+  it("throws ConfigError when APPROVAL_TIMEOUT_SECONDS is zero", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.APPROVAL_TIMEOUT_SECONDS = "0";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("positive number");
+  });
+
+  it("throws ConfigError when APPROVAL_TIMEOUT_SECONDS is negative", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.APPROVAL_TIMEOUT_SECONDS = "-10";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("positive number");
+  });
+
+  it("treats GATED_TOOLS='' (empty string) as gate nothing", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.GATED_TOOLS = "";
+    const config = loadConfig();
+    expect(config.gatedTools).toEqual(new Set());
+  });
+
+  it("treats GATED_TOOLS with only whitespace as gate nothing", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.GATED_TOOLS = "  ";
+    const config = loadConfig();
+    expect(config.gatedTools).toEqual(new Set());
+  });
+});

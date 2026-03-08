@@ -38,6 +38,8 @@ export interface AgentSeamConfig {
   apiKey: string;
   /** Custom fetch implementation (defaults to globalThis.fetch). */
   fetch?: typeof globalThis.fetch;
+  /** Per-request timeout in milliseconds. Default: 30000 (30s). Set to 0 to disable. */
+  requestTimeoutMs?: number;
 }
 
 // ---------------------------------------------------------------------------

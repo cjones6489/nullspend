@@ -91,16 +91,17 @@ export default function HistoryPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="h-8 max-w-[220px] border-border/50 bg-secondary/50 text-xs placeholder:text-muted-foreground/50"
+          aria-label="Filter by agent or action type"
         />
       </div>
 
-      {isLoading && <LoadingSkeleton />}
-
-      {error && (
+      {error ? (
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
           Failed to load actions. Please try again.
         </div>
-      )}
+      ) : isLoading ? (
+        <LoadingSkeleton />
+      ) : null}
 
       {data && filtered.length === 0 && <EmptyState hasSearch={!!search.trim()} />}
 

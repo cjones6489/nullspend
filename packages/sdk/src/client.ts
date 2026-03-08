@@ -12,12 +12,14 @@ import type {
 
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const API_KEY_HEADER = "x-agentseam-key";
 
 export class AgentSeam {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly _fetch: typeof globalThis.fetch;
+  private readonly requestTimeoutMs: number;
 
   constructor(config: AgentSeamConfig) {
     if (!config.baseUrl) throw new AgentSeamError("baseUrl is required");
@@ -26,6 +28,7 @@ export class AgentSeam {
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
     this.apiKey = config.apiKey;
     this._fetch = config.fetch ?? globalThis.fetch.bind(globalThis);
+    this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   // -------------------------------------------------------------------------
@@ -115,7 +118,11 @@ export class AgentSeam {
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await this.markResult(id, { status: "failed", errorMessage: message });
+      try {
+        await this.markResult(id, { status: "failed", errorMessage: message });
+      } catch {
+        // Best-effort: don't shadow the original execute error
+      }
       throw err;
     }
   }
@@ -140,11 +147,23 @@ export class AgentSeam {
       headers["Content-Type"] = "application/json";
     }
 
-    const response = await this._fetch(url, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    let response: Response;
+    try {
+      const fetchOptions: RequestInit = {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      };
+
+      if (this.requestTimeoutMs > 0) {
+        fetchOptions.signal = AbortSignal.timeout(this.requestTimeoutMs);
+      }
+
+      response = await this._fetch(url, fetchOptions);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new AgentSeamError(`${method} ${path} network error: ${msg}`);
+    }
 
     if (!response.ok) {
       let detail: string;
@@ -161,7 +180,14 @@ export class AgentSeam {
       );
     }
 
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new AgentSeamError(
+        `${method} ${path} returned invalid JSON`,
+        response.status,
+      );
+    }
   }
 }
 

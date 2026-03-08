@@ -8,7 +8,7 @@ import { createServerSupabaseClient } from "@/lib/auth/supabase";
 
 function canUseDevelopmentFallback(): boolean {
   return (
-    process.env.NODE_ENV !== "production" &&
+    process.env.NODE_ENV === "development" &&
     !!process.env.AGENTSEAM_DEV_ACTOR
   );
 }

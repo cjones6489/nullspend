@@ -157,6 +157,7 @@ function KeyRow({
         <Dialog open={revokeOpen} onOpenChange={setRevokeOpen}>
           <DialogTrigger
             className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
+            aria-label={`Revoke API key "${apiKey.name}"`}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </DialogTrigger>
@@ -269,6 +270,7 @@ function CreateKeyDialog({
                   type="button"
                   onClick={handleCopy}
                   className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="Copy API key to clipboard"
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </button>

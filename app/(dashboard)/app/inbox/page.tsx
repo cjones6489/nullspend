@@ -59,13 +59,13 @@ export default function InboxPage() {
         </TabsList>
       </Tabs>
 
-      {isLoading && <LoadingSkeleton />}
-
-      {error && (
+      {error ? (
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
           Failed to load actions. Please try again.
         </div>
-      )}
+      ) : isLoading ? (
+        <LoadingSkeleton />
+      ) : null}
 
       {data && data.data.length === 0 && <EmptyState status={activeTab} />}
 

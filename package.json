@@ -14,6 +14,9 @@
     "sdk:test": "pnpm --filter @agentseam/sdk test",
     "mcp:build": "pnpm --filter @agentseam/mcp-server build",
     "mcp:test": "pnpm --filter @agentseam/mcp-server test",
+    "mcp-proxy:build": "pnpm --filter @agentseam/mcp-proxy build",
+    "mcp-proxy:test": "pnpm --filter @agentseam/mcp-proxy test",
+    "e2e": "tsx scripts/e2e-smoke.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
@@ -47,6 +50,7 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.1.6",
     "tailwindcss": "^4.2.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
     "vitest": "^4.0.18"

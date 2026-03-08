@@ -1,8 +1,10 @@
 import {
+  index,
   jsonb,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -17,7 +19,10 @@ export const apiKeys = pgTable("api_keys", {
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
-});
+}, (table) => [
+  uniqueIndex("api_keys_key_hash_idx").on(table.keyHash),
+  index("api_keys_user_id_idx").on(table.userId),
+]);
 
 export type ApiKeyRow = typeof apiKeys.$inferSelect;
 export type NewApiKeyRow = typeof apiKeys.$inferInsert;
@@ -41,7 +46,10 @@ export const actions = pgTable("actions", {
   errorMessage: text("error_message"),
   environment: text("environment"),
   sourceFramework: text("source_framework"),
-});
+}, (table) => [
+  index("actions_owner_status_created_idx").on(table.ownerUserId, table.status, table.createdAt),
+  index("actions_owner_created_idx").on(table.ownerUserId, table.createdAt),
+]);
 
 export type ActionRow = typeof actions.$inferSelect;
 export type NewActionRow = typeof actions.$inferInsert;

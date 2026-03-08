@@ -346,6 +346,33 @@ describe("proposeAndWait", () => {
     expect(body.errorMessage).toBe("SMTP timeout");
   });
 
+  it("preserves original error when markResult(failed) also fails", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      // markResult(failed) also fails
+      .mockResolvedValueOnce(jsonResponse({ error: "server down" }, 500));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn().mockRejectedValue(new Error("original execute error"));
+
+    await expect(
+      client.proposeAndWait({
+        agentId: "agent-1",
+        actionType: "send_email",
+        payload: {},
+        execute,
+        pollIntervalMs: 10,
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow("original execute error");
+  });
+
   it("handles primitive return values from execute", async () => {
     const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
     const approved = mockAction({ id: "act-1", status: "approved" });
@@ -372,5 +399,40 @@ describe("proposeAndWait", () => {
     // Primitive gets wrapped as { value: 42 } for the API
     const resultBody = JSON.parse(fetchFn.mock.calls[3][1].body);
     expect(resultBody.result).toEqual({ value: 42 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Network & parse error wrapping
+// ---------------------------------------------------------------------------
+
+describe("request error wrapping", () => {
+  it("wraps network errors in AgentSeamError", async () => {
+    const fetchFn = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    const client = createClient(fetchFn);
+
+    const error = await client
+      .getAction("act-1")
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(AgentSeamError);
+    expect((error as AgentSeamError).message).toContain("network error");
+    expect((error as AgentSeamError).message).toContain("fetch failed");
+    expect((error as AgentSeamError).statusCode).toBeUndefined();
+  });
+
+  it("wraps invalid 2xx JSON in AgentSeamError", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response("not json", { status: 200 }),
+    );
+    const client = createClient(fetchFn);
+
+    const error = await client
+      .getAction("act-1")
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(AgentSeamError);
+    expect((error as AgentSeamError).message).toContain("invalid JSON");
+    expect((error as AgentSeamError).statusCode).toBe(200);
   });
 });
