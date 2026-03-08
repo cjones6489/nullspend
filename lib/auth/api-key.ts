@@ -57,7 +57,7 @@ async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
   await db
     .update(apiKeys)
     .set({ lastUsedAt: new Date() })
-    .where(eq(apiKeys.id, row.id))
+    .where(eq(apiKeys.id, row.id));
 
   return { userId: row.userId, keyId: row.id };
 }
