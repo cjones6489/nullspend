@@ -1,0 +1,24 @@
+---
+description: Testing expectations for AgentSeam features and flows
+globs: "**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx"
+alwaysApply: false
+---
+
+# Testing Expectations
+
+- Test behavior that proves the approval loop works.
+- Favor small, focused tests close to the logic they cover.
+- Cover state transitions, validation failures, approval vs rejection paths, and execution result handling.
+- Prefer deterministic tests over broad mocked integration theater.
+
+## v1 Priorities
+
+- API routes: request validation, happy path, rejected input
+- Action helpers: valid and invalid state transitions
+- UI: pending, approved, rejected, executed, failed, and empty states where practical
+- SDK: approved continues, rejected blocks, failed execution logs and rethrows
+
+## Quality Bar
+
+- Add tests for new branching logic and action-state behavior.
+- Avoid shipping critical flow changes without a direct test of the affected path.

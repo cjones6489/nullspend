@@ -1,0 +1,37 @@
+---
+description: Frontend design direction for AgentSeam dashboards and product UI
+globs: "app/**/*.tsx,components/**/*.tsx,app/**/*.css,styles/**/*.css"
+alwaysApply: false
+---
+
+# AgentSeam Frontend Design
+
+Design for trust, clarity, and operator confidence.
+
+## Visual Direction
+
+- Build interfaces that feel like a high-trust operations dashboard, not a flashy AI landing page.
+- Prefer strong hierarchy, generous whitespace, and obvious primary actions.
+- Use restrained depth: borders, soft shadows, muted layering.
+- Keep payloads and technical data readable with monospace treatments where useful.
+
+## Use
+
+- shadcn/ui primitives and Tailwind utilities
+- Clean tables, cards, dialogs, badges, tabs, and toasts
+- Status colors that are clear but not loud
+- Very obvious approve and reject affordances
+
+## Avoid
+
+- Generic AI SaaS aesthetics: purple gradients, neon glows, glassmorphism everywhere
+- Over-rounded cards, cluttered KPI walls, or decorative noise
+- Equal visual weight on every element
+- Placeholder lorem ipsum or vague labels
+
+## Interaction Guidance
+
+- Approval actions should be easy to scan and hard to misclick.
+- Pending states should feel actionable; executed and rejected states should feel settled.
+- Favor one strong layout idea over many scattered flourishes.
+- If a page is design-heavy, propose 2 concise visual directions before implementing.

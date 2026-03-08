@@ -1,0 +1,31 @@
+---
+description: Next.js and React patterns for AgentSeam app code
+globs: "app/**/*.tsx,components/**/*.ts,components/**/*.tsx"
+alwaysApply: false
+---
+
+# React and Next.js Patterns
+
+## Defaults
+
+- Use the Next.js App Router.
+- Default to Server Components; add `'use client'` only for interactivity, browser APIs, or client hooks.
+- Keep route files thin and move reusable logic into `lib/` or focused components.
+
+## Data and State
+
+- Prefer server-side data fetching where it keeps code simpler.
+- Use TanStack Query for interactive client-side fetching and mutation flows.
+- Do not use `useEffect` for data loading when a server component or query hook is the better fit.
+
+## UI Structure
+
+- Prefer small, focused components with one concern each.
+- Reuse shadcn/ui primitives before inventing custom base components.
+- Keep loading, empty, and error states explicit for data-driven views.
+
+## Type Safety
+
+- Use explicit types at boundaries and shared helpers.
+- Share Zod schemas across route handlers and client consumers when it meaningfully reduces drift.
+- Avoid `any`, silent failures, and hidden coercions.

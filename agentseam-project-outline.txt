@@ -1,0 +1,1121 @@
+````markdown
+# AgentSeam — Project Brief
+
+## One-line summary
+
+AgentSeam is a lightweight approval layer for AI agent actions.
+
+It sits between an agent and any risky side effect, such as sending an email, making an HTTP POST request, writing to a database, running a shell command, or deleting a file. Instead of letting the action execute immediately, AgentSeam turns it into a proposed action, shows it in an approval inbox, waits for approval or rejection, and then either executes or blocks the action.
+
+The goal for v1 is not to build a giant governance platform. The goal is to build the smallest useful developer tool that proves this loop works.
+
+---
+
+## Product framing
+
+### Problem
+
+AI agents are getting better at reasoning and tool use, but developers still do not trust them to freely touch real systems.
+
+Examples:
+- sending outbound emails
+- updating CRM records
+- charging cards
+- deleting files
+- executing shell commands
+- posting to APIs
+- writing to databases
+
+Today, developers usually handle this in ad hoc ways:
+- console prompts
+- commented-out tool calls
+- custom approval logic
+- framework-specific middleware
+- Slack messages and manual review hacks
+
+That works for one-off prototypes, but it becomes messy quickly.
+
+### Solution
+
+AgentSeam provides:
+- a dead-simple approval inbox
+- a tiny SDK/wrapper
+- a backend that stores pending actions
+- a clean pause-and-resume approval flow
+- logs and action history
+- optional signed receipts later
+
+### Core user promise
+
+Wrap risky agent actions in minutes, preview them in a dashboard, approve or reject them, and keep a clean log of what happened.
+
+---
+
+## v1 product scope
+
+### Core loop
+
+1. An agent wants to perform a risky action.
+2. The developer has wrapped that action using AgentSeam.
+3. AgentSeam creates a pending action in the backend.
+4. The action appears in the dashboard.
+5. A human approves or rejects it.
+6. If approved, the original function executes.
+7. If rejected, the function does not execute.
+8. The result is logged.
+
+### v1 supported action types
+
+Start small. Only support a few obvious risky actions:
+- `send_email`
+- `http_post`
+- `http_delete`
+- `shell_command`
+- `db_write`
+- `file_write`
+- `file_delete`
+
+Do not try to support every framework and every tool on day one.
+
+---
+
+## Product constraints
+
+### What this is
+- a developer tool
+- a control layer
+- an approval inbox for risky agent actions
+- a small, testable project
+
+### What this is not
+- a full enterprise governance suite
+- a full observability platform
+- a full security platform
+- a workflow orchestration engine
+- a broad compliance platform
+
+---
+
+## Recommended tech stack
+
+Use a fast, modern, low-friction stack:
+
+- **Next.js App Router + React + TypeScript**
+- **Tailwind CSS**
+- **shadcn/ui**
+- **Supabase** for Postgres, Auth, and optional Realtime
+- **Drizzle ORM**
+- **TanStack Query**
+- **Zod** for validation
+- **pnpm** for package management
+- **Turborepo** only if needed later. Skip it at first if it slows you down.
+
+This stack is a strong default for a fast-moving React app in 2026. Next.js documents the App Router as the newer router, React’s docs show React 19.2 as current, Tailwind’s official upgrade guide covers v4, and shadcn/ui’s current docs include the latest CLI flow. :contentReference[oaicite:0]{index=0}
+
+### My recommendation
+For v1, keep everything in **one Next.js app** unless you absolutely need separate packages.
+
+Do **not** over-engineer the monorepo on day one.
+
+---
+
+## Suggested architecture
+
+### High-level architecture
+
+```text
+Agent Runtime
+    ↓
+AgentSeam SDK / Wrapper
+    ↓
+AgentSeam Backend API
+    ↓
+Database
+    ↓
+Approval Dashboard
+````
+
+### More detailed architecture
+
+```text
+┌──────────────────────────────┐
+│      Agent Application       │
+│ Python / TS / MCP / custom   │
+└──────────────┬───────────────┘
+               │
+               │ wrapped risky action
+               ▼
+┌──────────────────────────────┐
+│      AgentSeam SDK Layer     │
+│ propose_action()             │
+│ wait_for_decision()          │
+└──────────────┬───────────────┘
+               │
+               │ HTTPS
+               ▼
+┌──────────────────────────────┐
+│     Next.js API / Backend    │
+│ POST /api/actions            │
+│ GET  /api/actions/:id        │
+│ POST /api/actions/:id/approve│
+│ POST /api/actions/:id/reject │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│       Supabase Postgres      │
+│ actions / approvals / logs   │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│        AgentSeam UI          │
+│ inbox / detail / history     │
+└──────────────────────────────┘
+```
+
+---
+
+## Mental model
+
+AgentSeam is not the agent and not the tool.
+
+AgentSeam is the checkpoint between the agent and the real world.
+
+Without AgentSeam:
+
+```text
+Agent → risky action executes immediately
+```
+
+With AgentSeam:
+
+```text
+Agent → proposed action → approval decision → execute or block
+```
+
+---
+
+## Core abstractions
+
+### 1. Proposed Action
+
+A proposed action is a risky action that has not executed yet.
+
+Example shape:
+
+```ts
+type ActionStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "executing"
+  | "executed"
+  | "failed"
+  | "expired"
+
+type ProposedAction = {
+  id: string
+  agentId: string
+  actionType: string
+  status: ActionStatus
+  payload: Record<string, unknown>
+  metadata?: Record<string, unknown>
+  createdAt: string
+  approvedAt?: string | null
+  rejectedAt?: string | null
+  executedAt?: string | null
+  approvedBy?: string | null
+  rejectedBy?: string | null
+  result?: Record<string, unknown> | null
+  errorMessage?: string | null
+}
+```
+
+### 2. Risky Action Wrapper
+
+A wrapper is a helper that intercepts a function before it performs a side effect.
+
+Examples:
+
+* wrap `sendEmail()`
+* wrap `fetch()` for POST/DELETE
+* wrap `db.insert()`
+* wrap `subprocess.run()`
+* wrap `fs.writeFile()`
+
+### 3. Approval Inbox
+
+A dashboard that shows pending actions and allows:
+
+* approve
+* reject
+* inspect payload
+* inspect logs
+* later: approve once, auto-approve, rules, receipts
+
+---
+
+## Data model
+
+### Table: `users`
+
+Use Supabase Auth for user accounts.
+
+You may optionally mirror lightweight user profile fields in your own table later.
+
+### Table: `actions`
+
+```sql
+id                uuid primary key
+agent_id          text not null
+action_type       text not null
+status            text not null
+payload_json      jsonb not null
+metadata_json     jsonb
+created_at        timestamptz not null default now()
+approved_at       timestamptz
+rejected_at       timestamptz
+executed_at       timestamptz
+expired_at        timestamptz
+approved_by       text
+rejected_by       text
+result_json       jsonb
+error_message     text
+environment       text
+source_framework  text
+```
+
+### Optional table: `action_events`
+
+Useful if you want a real event timeline.
+
+```sql
+id                uuid primary key
+action_id         uuid not null references actions(id)
+event_type        text not null
+event_payload     jsonb
+created_at        timestamptz not null default now()
+actor_id          text
+```
+
+Example event types:
+
+* `created`
+* `approved`
+* `rejected`
+* `execution_started`
+* `execution_succeeded`
+* `execution_failed`
+
+### Optional later table: `receipts`
+
+This is where your original signing idea can plug in.
+
+```sql
+id                uuid primary key
+action_id         uuid not null references actions(id)
+event_type        text not null
+hash              text not null
+previous_hash     text
+signature         text not null
+created_at        timestamptz not null default now()
+```
+
+Do **not** build receipts first. Add them after the core loop works.
+
+---
+
+## API design
+
+Keep the API dead simple.
+
+### Create action
+
+`POST /api/actions`
+
+Request:
+
+```json
+{
+  "agentId": "sales-agent-1",
+  "actionType": "send_email",
+  "payload": {
+    "to": "sarah@example.com",
+    "subject": "Follow up",
+    "body": "Hi Sarah..."
+  },
+  "metadata": {
+    "environment": "dev",
+    "sourceFramework": "custom-python"
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "id": "act_123",
+  "status": "pending"
+}
+```
+
+### Get action by id
+
+`GET /api/actions/:id`
+
+Response:
+
+```json
+{
+  "id": "act_123",
+  "status": "approved",
+  "approvedBy": "chris@example.com"
+}
+```
+
+### Approve action
+
+`POST /api/actions/:id/approve`
+
+Request:
+
+```json
+{
+  "approvedBy": "user_123"
+}
+```
+
+### Reject action
+
+`POST /api/actions/:id/reject`
+
+Request:
+
+```json
+{
+  "rejectedBy": "user_123",
+  "reason": "Looks incorrect"
+}
+```
+
+### List actions
+
+`GET /api/actions?status=pending`
+
+### Mark execution result
+
+`POST /api/actions/:id/result`
+
+Request:
+
+```json
+{
+  "status": "executed",
+  "result": {
+    "message": "Email sent successfully"
+  }
+}
+```
+
+Or:
+
+```json
+{
+  "status": "failed",
+  "errorMessage": "SMTP timeout"
+}
+```
+
+---
+
+## State machine
+
+Use a clear action state machine.
+
+```text
+pending
+  ├─ approve → approved
+  ├─ reject  → rejected
+  └─ timeout → expired
+
+approved
+  └─ begin execution → executing
+
+executing
+  ├─ success → executed
+  └─ error   → failed
+```
+
+This should be explicit in code.
+
+---
+
+## SDK design
+
+### Goal
+
+The SDK should be tiny.
+
+It should not try to be a full framework.
+
+### Core helper
+
+A simple helper could look like this:
+
+```ts
+await proposeAndWait({
+  agentId: "sales-agent-1",
+  actionType: "http_post",
+  payload: { url, body },
+  execute: async () => {
+    return await fetch(url, {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+  }
+})
+```
+
+### TypeScript sketch
+
+```ts
+type ProposeOptions<T> = {
+  agentId: string
+  actionType: string
+  payload: Record<string, unknown>
+  metadata?: Record<string, unknown>
+  execute: () => Promise<T>
+  pollIntervalMs?: number
+  timeoutMs?: number
+}
+
+async function proposeAndWait<T>(opts: ProposeOptions<T>): Promise<T> {
+  const action = await createAction({
+    agentId: opts.agentId,
+    actionType: opts.actionType,
+    payload: opts.payload,
+    metadata: opts.metadata,
+  })
+
+  const decision = await waitForDecision(action.id, {
+    pollIntervalMs: opts.pollIntervalMs ?? 2000,
+    timeoutMs: opts.timeoutMs ?? 5 * 60 * 1000,
+  })
+
+  if (decision.status !== "approved") {
+    throw new Error(`Action ${decision.status}`)
+  }
+
+  await markExecutionStarted(action.id)
+
+  try {
+    const result = await opts.execute()
+    await markExecutionSucceeded(action.id, result)
+    return result
+  } catch (err) {
+    await markExecutionFailed(action.id, String(err))
+    throw err
+  }
+}
+```
+
+### Python sketch
+
+```python
+def propose_and_wait(agent_id, action_type, payload, execute, metadata=None):
+    action = create_action(
+        agent_id=agent_id,
+        action_type=action_type,
+        payload=payload,
+        metadata=metadata or {}
+    )
+
+    decision = wait_for_decision(action["id"])
+
+    if decision["status"] != "approved":
+        raise Exception(f'Action {decision["status"]}')
+
+    mark_execution_started(action["id"])
+
+    try:
+        result = execute()
+        mark_execution_succeeded(action["id"], result)
+        return result
+    except Exception as e:
+        mark_execution_failed(action["id"], str(e))
+        raise
+```
+
+### Decorator idea in Python
+
+```python
+def require_approval(action_type):
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            return propose_and_wait(
+                agent_id="default-agent",
+                action_type=action_type,
+                payload={"args": args, "kwargs": kwargs},
+                execute=lambda: fn(*args, **kwargs),
+            )
+        return wrapper
+    return decorator
+```
+
+Usage:
+
+```python
+@require_approval("send_email")
+def send_email(to, subject, body):
+    ...
+```
+
+---
+
+## Waiting strategy
+
+### v1: polling
+
+Use polling first.
+
+It is the simplest and works everywhere.
+
+Example:
+
+* SDK creates action
+* SDK polls `GET /api/actions/:id` every 2 seconds
+* once status changes, continue or fail
+
+### Do not start with
+
+* websockets
+* realtime streaming
+* complex resumable workflows
+* event buses
+
+Those can come later.
+
+---
+
+## Frontend UI
+
+### Page 1: Approval Inbox
+
+Show pending actions only.
+
+Columns:
+
+* action type
+* agent id
+* created at
+* environment
+* preview summary
+* approve button
+* reject button
+
+### Page 2: Action Detail
+
+Show:
+
+* full payload
+* metadata
+* status timeline
+* approve/reject controls
+* result or failure message
+
+### Page 3: History
+
+Show:
+
+* all actions
+* filter by status
+* filter by action type
+* filter by environment
+* search by agent id
+
+### Page 4: Settings
+
+Very light for now.
+
+Maybe:
+
+* API key display
+* project id
+* environment label
+
+Do not overbuild settings.
+
+---
+
+## UI component ideas
+
+Use shadcn/ui for:
+
+* table
+* dialog
+* button
+* badge
+* card
+* dropdown menu
+* textarea
+* tabs
+* toast
+
+Suggested UI:
+
+* clean dashboard look
+* lots of whitespace
+* subtle status badges
+* monospace payload blocks
+* very obvious Approve / Reject buttons
+
+---
+
+## Authentication
+
+Use Supabase Auth for:
+
+* email/password
+* magic links if desired later
+
+For v1:
+
+* simple email login is enough
+
+Keep the auth story boring.
+
+---
+
+## Database access
+
+Use Drizzle for:
+
+* schema definition
+* typed queries
+* migrations
+
+Use Supabase Postgres as the actual database.
+
+This gives you:
+
+* strong typing
+* SQL-like control
+* hosted infra fast
+
+---
+
+## Validation
+
+Use Zod for:
+
+* route input validation
+* action payload validation
+* SDK request/response parsing
+
+Suggested approach:
+
+* define action request schemas once
+* share them between API routes and SDK code later if needed
+
+---
+
+## Suggested app structure
+
+Start with a single Next.js app.
+
+```text
+agentseam/
+  app/
+    (marketing)/
+    app/
+      inbox/
+      actions/[id]/
+      history/
+      settings/
+    api/
+      actions/
+      actions/[id]/
+      actions/[id]/approve/
+      actions/[id]/reject/
+      actions/[id]/result/
+    auth/
+  components/
+    ui/
+    dashboard/
+    actions/
+  lib/
+    db/
+    auth/
+    actions/
+    validations/
+    utils/
+  drizzle/
+  public/
+  styles/
+  docs/
+```
+
+### Suggested `lib/` breakdown
+
+```text
+lib/
+  db/
+    client.ts
+    schema.ts
+    queries.ts
+  actions/
+    create-action.ts
+    get-action.ts
+    approve-action.ts
+    reject-action.ts
+    mark-result.ts
+  validations/
+    actions.ts
+  auth/
+    supabase.ts
+  utils/
+    status.ts
+    format.ts
+```
+
+---
+
+## Suggested packages
+
+Core:
+
+* `next`
+* `react`
+* `react-dom`
+* `typescript`
+
+Styling/UI:
+
+* `tailwindcss`
+* `@radix-ui/*` through shadcn/ui
+* `lucide-react`
+
+Data:
+
+* `drizzle-orm`
+* `drizzle-kit`
+* `postgres` or Supabase-compatible DB driver
+
+State/data fetching:
+
+* `@tanstack/react-query`
+
+Validation:
+
+* `zod`
+
+Utilities:
+
+* `clsx`
+* `tailwind-merge`
+* `date-fns`
+
+Auth/infrastructure:
+
+* `@supabase/supabase-js`
+
+Optional:
+
+* `sonner` for toasts
+
+---
+
+## Build phases
+
+### Phase 0 — repo setup
+
+Goal: working local app
+
+* create Next.js app with TypeScript
+* install Tailwind
+* install shadcn/ui
+* connect Supabase
+* configure Drizzle
+* create initial schema
+* add basic login page
+* add a protected dashboard route
+
+### Phase 1 — core backend
+
+Goal: action CRUD loop works
+
+* create `actions` table
+* implement create action API
+* implement get action API
+* implement approve action API
+* implement reject action API
+* implement result API
+* create seed/test data
+
+### Phase 2 — inbox UI
+
+Goal: human can review actions
+
+* build inbox page
+* build action detail page
+* approve/reject from UI
+* show status badge
+* show payload preview
+* show metadata
+
+### Phase 3 — SDK helper
+
+Goal: real propose-and-wait flow works
+
+* build tiny TS helper
+* wrap one example function
+* create action
+* poll for decision
+* continue if approved
+* fail if rejected
+
+### Phase 4 — demo actions
+
+Goal: end-to-end proof
+
+Create one or two demos:
+
+* demo send email
+* demo HTTP POST
+* demo shell command
+
+### Phase 5 — polish
+
+Goal: presentable beta
+
+* history page
+* empty states
+* error states
+* better payload rendering
+* action event timeline
+
+### Phase 6 — optional receipts
+
+Goal: layer in your original signing idea
+
+* event hashing
+* signatures
+* receipt viewer
+* exportable receipt JSON
+
+Only do this after the core loop works.
+
+---
+
+## Scope guardrails
+
+### Do not build these in v1
+
+* org/team management
+* complex RBAC
+* SSO
+* webhooks
+* realtime subscriptions
+* mobile app
+* Apple Watch integration
+* framework-specific integrations for 10 ecosystems
+* fancy policy engine
+* full audit/compliance exports
+* billing
+* multi-tenant enterprise features
+
+### Why
+
+Because those features can easily consume two weeks and still not prove whether people actually care about the product.
+
+---
+
+## MVP success criteria
+
+v1 is successful if all of these are true:
+
+1. A developer can wrap a risky action.
+2. That action appears in a web inbox.
+3. A human can approve or reject it.
+4. Approval causes the original action to execute.
+5. Rejection blocks the action.
+6. The action history is stored and visible.
+
+That is enough.
+
+---
+
+## Example product demo
+
+### Demo flow
+
+1. User runs a local demo script.
+2. Script attempts `send_email`.
+3. AgentSeam SDK creates a pending action.
+4. Inbox UI shows:
+
+   * action type
+   * target email
+   * subject
+5. User clicks approve.
+6. Script continues and sends email.
+7. UI updates to executed.
+
+This demo should be your first milestone.
+
+---
+
+## Differentiation
+
+Existing platforms and frameworks may already support human approval in pieces.
+
+AgentSeam’s value is:
+
+* simple
+* cross-stack
+* web-first
+* pleasant UX
+* focused on risky side effects
+* easy to adopt without buying enterprise tooling
+
+Do not pitch:
+
+* “we invented human-in-the-loop”
+
+Do pitch:
+
+* “we made approvals for agent actions simple”
+
+---
+
+## Positioning
+
+### Good positioning
+
+AgentSeam is the approval layer for risky AI agent actions.
+
+### Better positioning
+
+Preview, approve, and log risky AI agent actions in minutes.
+
+### Avoid
+
+* broad AI governance language
+* compliance-heavy language
+* vague orchestration language
+* trying to sound like a giant platform
+
+---
+
+## Future roadmap after v1
+
+If people care, expand into:
+
+### Near-term
+
+* auto-approve rules
+* allowlists / blocklists
+* action templates
+* action grouping
+* multiple environments
+* signed receipts
+* better history and search
+
+### Mid-term
+
+* framework adapters
+* MCP adapter
+* LangChain adapter
+* OpenAI tool wrapper
+* Python SDK
+* local self-host option
+
+### Long-term
+
+* policy engine
+* richer audit bundles
+* exportable evidence packages
+* team review workflows
+* Slack/Discord approvals
+* local dev mode vs hosted mode
+
+---
+
+## Suggested implementation philosophy
+
+### Rule 1
+
+Prove the core loop first.
+
+### Rule 2
+
+Prefer boring tech.
+
+### Rule 3
+
+Prefer explicit state transitions.
+
+### Rule 4
+
+Keep the SDK tiny.
+
+### Rule 5
+
+Keep the UI cleaner than the backend.
+
+### Rule 6
+
+Do not build enterprise features before proving adoption.
+
+---
+
+## Cursor implementation guidance
+
+When using Cursor, direct it like this:
+
+### Good prompt style
+
+* build only one small piece at a time
+* ask for edits, not giant rewrites
+* keep files small
+* keep types explicit
+* use server-side validation
+* avoid introducing unnecessary abstractions early
+
+### Example prompt
+
+“Build the Drizzle schema and API route for creating an action. Keep it minimal and typed. Use Zod for validation and return only id and status.”
+
+Another:
+“Build an inbox page that fetches pending actions from the API and renders them in a simple table with Approve and Reject buttons.”
+
+Another:
+“Create a small `proposeAndWait` helper in TypeScript that creates an action, polls status every 2 seconds, and executes a callback only when approved.”
+
+---
+
+## Final recommendation
+
+Start as a single Next.js app.
+
+Get one full demo working:
+
+* create action
+* approve in UI
+* action executes
+* result logged
+
+Nothing else matters until that works.
+
+That is the product skeleton.
+
+Once that loop works, you will understand the product much more clearly, and you can decide whether to go deeper.
+
+---
+
+```
+
+A couple of quick stack notes so you have confidence saving this as-is: Next.js’ current docs recommend the App Router as the newer router, React’s official docs list **19.2** as the latest version, Tailwind’s upgrade guide is for **v4**, and shadcn/ui’s current docs cover the modern CLI flow. :contentReference[oaicite:1]{index=1}
+

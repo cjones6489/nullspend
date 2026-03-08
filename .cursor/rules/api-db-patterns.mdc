@@ -1,0 +1,33 @@
+---
+description: API, validation, action lifecycle, and database patterns for AgentSeam
+globs: "app/api/**/*.ts,lib/**/*.ts,drizzle/**/*.ts"
+alwaysApply: false
+---
+
+# API and Data Patterns
+
+## API Design
+
+- Keep route handlers minimal, typed, and easy to read.
+- Validate request input with Zod at the route boundary.
+- Return compact responses in v1; do not over-design envelopes.
+- Prefer explicit helper functions in `lib/` for action operations.
+
+## Action Lifecycle
+
+- Treat action status as an explicit state machine.
+- Allowed core states: `pending`, `approved`, `rejected`, `executing`, `executed`, `failed`, `expired`.
+- Do not skip transitions or mutate status casually.
+- Record timestamps and actor fields when a transition occurs.
+
+## Database
+
+- Use Drizzle schema definitions and typed queries.
+- Optimize for a simple `actions` table first; add event or receipt tables only after the core loop works.
+- Prefer additive schema changes and boring column names over clever modeling.
+
+## v1 Product Guardrails
+
+- Use polling before realtime.
+- Avoid policy engines, workflow systems, and framework-specific abstractions.
+- If a backend idea adds complexity without improving the end-to-end approval demo, defer it.

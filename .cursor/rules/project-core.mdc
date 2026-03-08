@@ -1,0 +1,40 @@
+---
+description: Core project context and implementation guardrails for AgentSeam
+alwaysApply: true
+---
+
+# AgentSeam Core
+
+AgentSeam is a lightweight approval layer for risky AI agent actions.
+
+## Product Focus
+
+- Prove the core loop first: propose action, approve or reject, execute or block, log result.
+- Optimize for the smallest useful v1, not enterprise breadth.
+- Keep the product web-first, cross-stack, and easy for developers to adopt.
+- If scope is unclear, prefer the path that gets one end-to-end demo working sooner.
+
+## Default Stack
+
+- Single Next.js App Router app
+- TypeScript
+- Tailwind CSS + shadcn/ui
+- Supabase for auth and Postgres
+- Drizzle ORM
+- Zod for validation
+- pnpm only
+
+## Build Principles
+
+- Prefer boring, explicit implementations over clever abstractions.
+- Keep files and functions small; extract only when reuse or clarity is obvious.
+- Make state transitions explicit, especially for action lifecycle changes.
+- Validate all external input at the boundary.
+- Keep the SDK tiny; do not turn it into a framework.
+
+## v1 Guardrails
+
+- Do not build enterprise features before the approval loop works.
+- Do not add realtime, policy engines, workflow orchestration, or broad governance features in v1.
+- Keep the UI cleaner and simpler than the backend.
+- When product intent is ambiguous, consult `agentseam-project-outline.txt`.
