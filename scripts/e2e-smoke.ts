@@ -803,6 +803,7 @@ async function testResponseShape() {
   assert(action.approvedAt === null, "approvedAt should be null for pending");
   assert(action.rejectedAt === null, "rejectedAt should be null for pending");
   assert(action.executedAt === null, "executedAt should be null for pending");
+  assert(typeof action.expiresAt === "string", "expiresAt should be set (default TTL)");
   assert(action.expiredAt === null, "expiredAt should be null for pending");
   assert(action.approvedBy === null, "approvedBy should be null for pending");
   assert(action.rejectedBy === null, "rejectedBy should be null for pending");
@@ -812,8 +813,8 @@ async function testResponseShape() {
   // Verify createdAt is a valid ISO date
   const date = new Date(action.createdAt);
   assert(!isNaN(date.getTime()), "createdAt should be a valid date");
-  const age = Date.now() - date.getTime();
-  assert(age < 30_000 && age >= 0, "createdAt should be recent (within 30s)");
+  const age = Math.abs(Date.now() - date.getTime());
+  assert(age < 120_000, "createdAt should be recent (within 2 min, accounting for clock skew)");
 }
 
 // ---------------------------------------------------------------------------
@@ -948,6 +949,83 @@ async function testExecutingWithResult() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 25 — Action expiration via getAction
+// ---------------------------------------------------------------------------
+
+async function testExpirationViaGetAction() {
+  const created = await sdk.createAction({
+    agentId: "e2e-test-agent",
+    actionType: "file_write",
+    payload: { path: "/tmp/expire-test.txt" },
+    metadata: { test: "expiration" },
+    expiresInSeconds: 1,
+  });
+  cleanupIds.push(created.id);
+
+  assertEqual(created.status, "pending", "created.status");
+  assert(created.expiresAt !== null, "expiresAt should be set");
+
+  await sleep(3000);
+
+  const fetched = await sdk.getAction(created.id);
+  assertEqual(fetched.status, "expired", "status should be expired after TTL");
+  assert(fetched.expiredAt !== null, "expiredAt should be set");
+}
+
+// ---------------------------------------------------------------------------
+// Test 26 — Never-expire action (expiresInSeconds: 0)
+// ---------------------------------------------------------------------------
+
+async function testNeverExpire() {
+  const created = await sdk.createAction({
+    agentId: "e2e-test-agent",
+    actionType: "file_write",
+    payload: { path: "/tmp/never-expire.txt" },
+    metadata: { test: "never-expire" },
+    expiresInSeconds: 0,
+  });
+  cleanupIds.push(created.id);
+
+  assertEqual(created.status, "pending", "created.status");
+  assert(created.expiresAt === null, "expiresAt should be null for never-expire");
+
+  await sleep(3000);
+
+  const fetched = await sdk.getAction(created.id);
+  assertEqual(fetched.status, "pending", "status should still be pending");
+}
+
+// ---------------------------------------------------------------------------
+// Test 27 — Approve after expiration fails
+// ---------------------------------------------------------------------------
+
+async function testApproveAfterExpiration() {
+  const created = await sdk.createAction({
+    agentId: "e2e-test-agent",
+    actionType: "file_write",
+    payload: { path: "/tmp/approve-expired.txt" },
+    metadata: { test: "approve-expired" },
+    expiresInSeconds: 1,
+  });
+  cleanupIds.push(created.id);
+
+  await sleep(3000);
+
+  // Trigger lazy expiration via getAction
+  const fetched = await sdk.getAction(created.id);
+  assertEqual(fetched.status, "expired", "status should be expired");
+
+  // Now try to approve via direct DB — should fail because status is no longer pending
+  let threw = false;
+  try {
+    await dbApproveAction(created.id, DEV_ACTOR!);
+  } catch {
+    threw = true;
+  }
+  assert(threw, "dbApproveAction should fail on expired action");
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -1012,6 +1090,11 @@ async function main() {
   await runTest("Test 22 — Whitespace-only agentId rejected", testWhitespaceAgentId);
   await runTest("Test 23 — Non-UUID action ID", testNonUuidActionId);
   await runTest("Test 24 — Executing with result rejected", testExecutingWithResult);
+
+  // Expiration
+  await runTest("Test 25 — Action expiration via getAction", testExpirationViaGetAction);
+  await runTest("Test 26 — Never-expire action (expiresInSeconds: 0)", testNeverExpire);
+  await runTest("Test 27 — Approve after expiration fails", testApproveAfterExpiration);
 
   // Cleanup
   console.log("\nCleaning up test data...");

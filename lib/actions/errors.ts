@@ -22,3 +22,12 @@ export class StaleActionError extends Error {
     this.name = "StaleActionError";
   }
 }
+
+export class ActionExpiredError extends Error {
+  constructor(actionId: string) {
+    super(
+      `Action ${actionId} has expired and can no longer be approved or rejected.`,
+    );
+    this.name = "ActionExpiredError";
+  }
+}

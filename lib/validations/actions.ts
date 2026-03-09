@@ -25,6 +25,7 @@ export const createActionInputSchema = z.object({
   actionType: actionTypeSchema,
   payload: jsonObjectSchema,
   metadata: actionMetadataSchema,
+  expiresInSeconds: z.number().int().min(0).nullable().optional(),
 });
 
 export const actionIdParamsSchema = z.object({
@@ -82,6 +83,7 @@ export const actionRecordSchema = z.object({
   approvedAt: z.string().nullable(),
   rejectedAt: z.string().nullable(),
   executedAt: z.string().nullable(),
+  expiresAt: z.string().nullable(),
   expiredAt: z.string().nullable(),
   approvedBy: z.string().nullable(),
   rejectedBy: z.string().nullable(),
@@ -105,6 +107,7 @@ export const listActionsResponseSchema = z.object({
 export const createActionResponseSchema = z.object({
   id: z.string().uuid(),
   status: z.literal("pending"),
+  expiresAt: z.string().nullable(),
 });
 
 export const mutateActionResponseSchema = z.object({

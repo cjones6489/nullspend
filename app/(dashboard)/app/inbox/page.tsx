@@ -24,6 +24,7 @@ const STATUS_TABS: { value: string; label: string }[] = [
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
+  { value: "expired", label: "Expired" },
   { value: "executed", label: "Executed" },
   { value: "failed", label: "Failed" },
 ];

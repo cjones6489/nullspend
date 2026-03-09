@@ -42,6 +42,15 @@ function getTimelineEvents(action: ActionRecord): TimelineEvent[] {
     });
   }
 
+  if (action.expiredAt) {
+    events.push({
+      label: "Expired",
+      timestamp: action.expiredAt,
+      icon: Clock,
+      iconColor: "text-zinc-400",
+    });
+  }
+
   if (action.executedAt) {
     events.push({
       label: action.status === "failed" ? "Failed" : "Executed",

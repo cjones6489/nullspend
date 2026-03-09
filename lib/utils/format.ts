@@ -35,3 +35,21 @@ export function formatTimestamp(dateString: string): string {
     minute: "2-digit",
   });
 }
+
+export function formatExpiresAt(expiresAt: string | null): string | null {
+  if (!expiresAt) return null;
+
+  const expires = new Date(expiresAt);
+  const now = new Date();
+  const diffMs = expires.getTime() - now.getTime();
+
+  if (diffMs <= 0) return "Expired";
+
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffHour = Math.floor(diffMin / 60);
+
+  if (diffMin < 1) return "Expires in <1 min";
+  if (diffMin < 60) return `Expires in ${diffMin} min`;
+  if (diffHour < 24) return `Expires in ${diffHour}h ${diffMin % 60}m`;
+  return `Expires in ${Math.floor(diffHour / 24)}d`;
+}

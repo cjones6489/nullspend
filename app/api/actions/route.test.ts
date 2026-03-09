@@ -47,6 +47,7 @@ describe("app/api/actions/route", () => {
     mockedCreateAction.mockResolvedValue({
       id: "550e8400-e29b-41d4-a716-446655440000",
       status: "pending",
+      expiresAt: "2026-03-07T13:00:00.000Z",
     });
 
     const response = await POST(
@@ -77,6 +78,7 @@ describe("app/api/actions/route", () => {
     mockedCreateAction.mockResolvedValue({
       id: "550e8400-e29b-41d4-a716-446655440000",
       status: "pending",
+      expiresAt: "2026-03-07T13:00:00.000Z",
     });
 
     await POST(

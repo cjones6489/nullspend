@@ -51,11 +51,14 @@ export interface CreateActionInput {
   actionType: ActionType | (string & {});
   payload: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  /** Server-side TTL in seconds. Omit for server default (1 hour). Set to 0 or null to never expire. */
+  expiresInSeconds?: number | null;
 }
 
 export interface CreateActionResponse {
   id: string;
   status: "pending";
+  expiresAt: string | null;
 }
 
 export interface ActionRecord {
@@ -69,6 +72,7 @@ export interface ActionRecord {
   approvedAt: string | null;
   rejectedAt: string | null;
   executedAt: string | null;
+  expiresAt: string | null;
   expiredAt: string | null;
   approvedBy: string | null;
   rejectedBy: string | null;
@@ -101,6 +105,8 @@ export interface ProposeAndWaitOptions<T> {
   actionType: ActionType | (string & {});
   payload: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  /** Server-side TTL in seconds. Omit for server default (1 hour). Set to 0 or null to never expire. */
+  expiresInSeconds?: number | null;
   execute: () => Promise<T>;
   /** Milliseconds between polls. Default: 2000 */
   pollIntervalMs?: number;

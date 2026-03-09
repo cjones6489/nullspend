@@ -1,9 +1,11 @@
 import { and, eq } from "drizzle-orm";
 
 import {
+  ActionExpiredError,
   ActionNotFoundError,
   StaleActionError,
 } from "@/lib/actions/errors";
+import { isActionExpired } from "@/lib/actions/expiration";
 import { assertActionTransition } from "@/lib/actions/transitions";
 import { getDb } from "@/lib/db/client";
 import { actions } from "@/lib/db/schema";
@@ -21,6 +23,7 @@ export async function rejectAction(
       .select({
         id: actions.id,
         status: actions.status,
+        expiresAt: actions.expiresAt,
       })
       .from(actions)
       .where(and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)))
@@ -28,6 +31,19 @@ export async function rejectAction(
 
     if (!existingAction) {
       throw new ActionNotFoundError(actionId);
+    }
+
+    if (isActionExpired(existingAction)) {
+      await tx
+        .update(actions)
+        .set({ status: "expired", expiredAt: new Date() })
+        .where(
+          and(
+            eq(actions.id, actionId),
+            eq(actions.status, "pending"),
+          ),
+        );
+      throw new ActionExpiredError(actionId);
     }
 
     assertActionTransition(existingAction.status, "rejected");

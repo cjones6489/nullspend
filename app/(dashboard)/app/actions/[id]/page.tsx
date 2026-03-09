@@ -11,7 +11,7 @@ import { StatusBadge } from "@/components/actions/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAction } from "@/lib/queries/actions";
-import { formatActionType, formatTimestamp } from "@/lib/utils/format";
+import { formatActionType, formatExpiresAt, formatTimestamp } from "@/lib/utils/format";
 
 export default function ActionDetailPage({
   params,
@@ -103,6 +103,14 @@ export default function ActionDetailPage({
               <DetailRow
                 label="Type"
                 value={formatActionType(action.actionType)}
+              />
+              <DetailRow
+                label="Expires"
+                value={
+                  action.status === "expired"
+                    ? "Expired"
+                    : formatExpiresAt(action.expiresAt) ?? "Never"
+                }
               />
               <DetailRow label="Environment" value={action.environment} />
               <DetailRow label="Framework" value={action.sourceFramework} />

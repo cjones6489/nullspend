@@ -92,6 +92,7 @@ export class AgentSeam {
       actionType: options.actionType,
       payload: options.payload,
       metadata: options.metadata,
+      expiresInSeconds: options.expiresInSeconds,
     });
 
     const decision = await this.waitForDecision(id, {

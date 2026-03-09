@@ -39,6 +39,7 @@ export const actions = pgTable("actions", {
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   rejectedAt: timestamp("rejected_at", { withTimezone: true }),
   executedAt: timestamp("executed_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   expiredAt: timestamp("expired_at", { withTimezone: true }),
   approvedBy: text("approved_by"),
   rejectedBy: text("rejected_by"),

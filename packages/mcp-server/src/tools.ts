@@ -69,6 +69,7 @@ function registerProposeAction(
             ...MCP_METADATA,
             summary: params.summary,
           },
+          expiresInSeconds: params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS,
         });
 
         if (!wait) {

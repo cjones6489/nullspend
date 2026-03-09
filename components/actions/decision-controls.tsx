@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -14,13 +15,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { useApproveAction, useRejectAction } from "@/lib/queries/actions";
+import {
+  actionKeys,
+  useApproveAction,
+  useRejectAction,
+} from "@/lib/queries/actions";
 
 interface DecisionControlsProps {
   actionId: string;
 }
 
 export function DecisionControls({ actionId }: DecisionControlsProps) {
+  const queryClient = useQueryClient();
   const approveAction = useApproveAction();
   const rejectAction = useRejectAction();
   const [approveOpen, setApproveOpen] = useState(false);
@@ -37,6 +43,10 @@ export function DecisionControls({ actionId }: DecisionControlsProps) {
       onError: (err) => {
         toast.error(err.message || "Failed to approve action");
       },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: actionKeys.detail(actionId) });
+        queryClient.invalidateQueries({ queryKey: actionKeys.all });
+      },
     });
   }
 
@@ -48,6 +58,10 @@ export function DecisionControls({ actionId }: DecisionControlsProps) {
       },
       onError: (err) => {
         toast.error(err.message || "Failed to reject action");
+      },
+      onSettled: () => {
+        queryClient.invalidateQueries({ queryKey: actionKeys.detail(actionId) });
+        queryClient.invalidateQueries({ queryKey: actionKeys.all });
       },
     });
   }

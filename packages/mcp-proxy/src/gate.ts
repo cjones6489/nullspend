@@ -38,6 +38,7 @@ export async function gateToolCall(
       upstreamTool: toolName,
       summary,
     },
+    expiresInSeconds: config.approvalTimeoutSeconds,
   });
 
   const timeoutMs = config.approvalTimeoutSeconds * 1_000;
@@ -47,6 +48,9 @@ export async function gateToolCall(
 
     if (action.status === "approved") {
       return { actionId: id, decision: "approved" };
+    }
+    if (action.status === "expired") {
+      return { actionId: id, decision: "timedOut" };
     }
     return { actionId: id, decision: "rejected" };
   } catch (err) {

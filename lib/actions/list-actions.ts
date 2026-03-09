@@ -1,5 +1,6 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 
+import { bulkExpireActions } from "@/lib/actions/expiration";
 import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
 import { actions } from "@/lib/db/schema";
@@ -13,6 +14,8 @@ interface ListActionsOptions {
 }
 
 export async function listActions(options: ListActionsOptions) {
+  await bulkExpireActions(options.ownerUserId);
+
   const db = getDb();
   const conditions = [eq(actions.ownerUserId, options.ownerUserId)];
 

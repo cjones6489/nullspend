@@ -33,6 +33,7 @@ describe("app/api/actions/[id]/route", () => {
       approvedAt: null,
       rejectedAt: null,
       executedAt: null,
+      expiresAt: null,
       expiredAt: null,
       approvedBy: null,
       rejectedBy: null,

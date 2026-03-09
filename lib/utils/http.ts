@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
 import {
+  ActionExpiredError,
   ActionNotFoundError,
   InvalidActionTransitionError,
   StaleActionError,
@@ -63,6 +64,10 @@ export function handleRouteError(error: unknown) {
   }
 
   if (error instanceof StaleActionError) {
+    return NextResponse.json({ error: error.message }, { status: 409 });
+  }
+
+  if (error instanceof ActionExpiredError) {
     return NextResponse.json({ error: error.message }, { status: 409 });
   }
 

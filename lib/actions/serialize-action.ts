@@ -17,6 +17,7 @@ export function serializeAction(row: ActionRow): ActionRecord {
     approvedAt: toIsoString(row.approvedAt),
     rejectedAt: toIsoString(row.rejectedAt),
     executedAt: toIsoString(row.executedAt),
+    expiresAt: toIsoString(row.expiresAt),
     expiredAt: toIsoString(row.expiredAt),
     approvedBy: row.approvedBy,
     rejectedBy: row.rejectedBy,
