@@ -131,6 +131,7 @@ The core approval loop is proven and working end-to-end. Completed:
 - MCP server adapter for Claude Desktop, Cursor, and other MCP clients
 - MCP proxy for transparently gating any upstream MCP server's tools
 - Action expiration with configurable TTL and lazy check-on-read
+- Slack notifications with interactive approve/reject buttons
 - 170+ tests (unit, SDK, MCP proxy, E2E smoke)
 
 ## Stack

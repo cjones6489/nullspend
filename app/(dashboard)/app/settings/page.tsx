@@ -31,6 +31,7 @@ import {
   useCreateApiKey,
   useRevokeApiKey,
 } from "@/lib/queries/api-keys";
+import { SlackSection } from "@/components/settings/slack-section";
 import { formatRelativeTime } from "@/lib/utils/format";
 
 export default function SettingsPage() {
@@ -41,11 +42,12 @@ export default function SettingsPage() {
           Settings
         </h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Manage your account and API keys.
+          Manage your account, API keys, and integrations.
         </p>
       </div>
 
       <ApiKeysSection />
+      <SlackSection />
     </div>
   );
 }

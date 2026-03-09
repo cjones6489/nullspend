@@ -40,14 +40,17 @@ AgentSeam SDK ──────────────────────
 │          Supabase Postgres             │
 │  actions table (per-user ownership)    │
 │  api_keys table (SHA-256 hashed)       │
+│  slack_configs table (webhook URLs)    │
 └──────────────────┬─────────────────────┘
                    │
-                   ▼
-┌────────────────────────────────────────┐
-│        Approval Dashboard (web UI)     │
-│  Supabase Auth (email/password)        │
-│  Inbox · Action Detail · History       │
-└────────────────────────────────────────┘
+               ┌───┴───┐
+               ▼       ▼
+┌──────────────────┐  ┌─────────────────────┐
+│ Approval Dashboard│  │  Slack Integration  │
+│ (web UI)          │  │  Webhook notify +   │
+│ Supabase Auth     │  │  interactive buttons│
+│ Inbox · Detail    │  │  POST /api/slack/   │
+└──────────────────┘  └─────────────────────┘
 ```
 
 Three integration paths exist:

@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { createAction } from "@/lib/actions/create-action";
+import { getAction } from "@/lib/actions/get-action";
 import { listActions } from "@/lib/actions/list-actions";
 import {
   assertApiKeyWithIdentity,
   resolveDevFallbackApiKeyUserId,
 } from "@/lib/auth/api-key";
 import { resolveSessionUserId } from "@/lib/auth/session";
+import { sendSlackNotification } from "@/lib/slack/notify";
 import {
   createActionInputSchema,
   createActionResponseSchema,
@@ -38,9 +40,18 @@ export async function POST(request: Request) {
     const ownerUserId = identity?.userId ?? resolveDevFallbackApiKeyUserId();
     const body = await readJsonBody(request);
     const input = createActionInputSchema.parse(body);
-    const action = await createAction(input, ownerUserId);
+    const created = await createAction(input, ownerUserId);
 
-    return NextResponse.json(createActionResponseSchema.parse(action), {
+    try {
+      const fullAction = await getAction(created.id, ownerUserId);
+      sendSlackNotification(fullAction, ownerUserId).catch((err) => {
+        console.error("[AgentSeam] Slack notification failed:", err);
+      });
+    } catch (notifyErr) {
+      console.error("[AgentSeam] Slack notification lookup failed:", notifyErr);
+    }
+
+    return NextResponse.json(createActionResponseSchema.parse(created), {
       status: 201,
     });
   } catch (error) {

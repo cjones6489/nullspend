@@ -59,6 +59,15 @@
 - Unit tests for expiration logic + E2E expiration scenarios
 - Race condition fix for concurrent `getAction` on expiring action
 
+### Slack Notifications
+- Incoming webhook notifications with Block Kit messages on new pending actions
+- Interactive approve/reject buttons in Slack via `block_actions` callback
+- Slack signing secret verification (HMAC-SHA256) for callback security
+- Per-user webhook URL configuration in Settings UI
+- `slack_configs` table with active/inactive toggle
+- Test notification endpoint
+- Known v1 limitation: messages not updated when decided from the web dashboard
+
 ---
 
 ## Next Up
@@ -75,13 +84,7 @@ Cryptographic proof of every action lifecycle event. Every approval, rejection, 
 - Estimated effort: 2-3 days
 
 ### Notification Channels
-Notify users about pending actions through channels beyond the web dashboard.
-
-**Slack (with interactive buttons)** — ~1 day
-- Incoming webhook for notifications
-- Interactive message buttons for approve/reject directly in Slack
-- Slack callback route (`/api/webhooks/slack`)
-- Webhook URL configuration in Settings
+Extend notifications beyond the web dashboard and Slack.
 
 **PWA + Web Push** — ~1-2 days
 - `manifest.json` and service worker for installable mobile experience
@@ -99,7 +102,7 @@ Notify users about pending actions through channels beyond the web dashboard.
 - Push notifications via Expo
 - Only if mobile becomes a core selling point
 
-Priority order: Slack → PWA → SMS → Native app
+Priority order: PWA → SMS → Native app
 
 ---
 
