@@ -12,6 +12,7 @@ Keep the repo small, explicit, and easy to navigate.
 app/         Next.js routes, layouts, and route handlers
 components/  Reusable UI and page-facing presentation components
 lib/         Business logic, validation, database access, helpers
+packages/    SDK, MCP server, and MCP proxy packages (pnpm workspace)
 drizzle/     Schema and migration files
 docs/        Durable project documentation and ADRs
 public/      Static assets
@@ -36,11 +37,12 @@ scripts/     Repeatable scripts and local utilities
 
 Use `lib/` for durable application logic.
 
-Expected subfolders:
+Subfolders:
 
-- `lib/actions/`: action lifecycle operations
-- `lib/auth/`: auth helpers and session-related code
-- `lib/db/`: database client, schema helpers, and typed queries
+- `lib/actions/`: action lifecycle operations (create, get, approve, reject, expiration)
+- `lib/auth/`: auth helpers, session resolution, API key verification
+- `lib/db/`: database client and Drizzle schema
+- `lib/queries/`: TanStack Query hooks and key factories
 - `lib/validations/`: Zod schemas and boundary validation
 - `lib/utils/`: small shared helpers with no domain ownership
 

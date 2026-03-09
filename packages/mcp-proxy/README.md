@@ -115,11 +115,11 @@ All configuration is via environment variables.
 ## What happens during a gated call
 
 1. The LLM calls a gated tool (e.g. `execute_sql`).
-2. The proxy creates an AgentSeam action with the tool name, arguments, and a summary.
+2. The proxy creates an AgentSeam action with the tool name, arguments, and a summary. The action's server-side TTL matches the proxy's `APPROVAL_TIMEOUT_SECONDS`.
 3. The action appears in the AgentSeam dashboard for human review.
-4. The proxy polls until the action is **approved**, **rejected**, or the timeout expires.
+4. The proxy polls until the action is **approved**, **rejected**, **expired** (server-side TTL elapsed), or the client-side timeout expires.
 5. On **approval**: the proxy marks the action `executing`, forwards the call to the upstream server, then marks it `executed` (or `failed` if the upstream errors).
-6. On **rejection** or **timeout**: the proxy returns an error message to the LLM explaining the tool call was blocked.
+6. On **rejection**, **expiration**, or **timeout**: the proxy returns an error message to the LLM explaining the tool call was blocked.
 
 ## Development
 

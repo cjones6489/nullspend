@@ -16,7 +16,7 @@ AgentSeam is a lightweight approval layer for risky AI agent actions.
 
 ## Default Stack
 
-- Single Next.js App Router app
+- Next.js App Router app + pnpm workspace (`packages/sdk`, `packages/mcp-server`, `packages/mcp-proxy`)
 - TypeScript
 - Tailwind CSS + shadcn/ui
 - Supabase for auth and Postgres
@@ -32,9 +32,9 @@ AgentSeam is a lightweight approval layer for risky AI agent actions.
 - Validate all external input at the boundary.
 - Keep the SDK tiny; do not turn it into a framework.
 
-## v1 Guardrails
+## Guardrails
 
-- Do not build enterprise features before the approval loop works.
-- Do not add realtime, policy engines, workflow orchestration, or broad governance features in v1.
+- The core approval loop is proven. Continue to prefer focused, incremental features over enterprise breadth.
+- Do not add realtime, policy engines, or broad governance features without a clear product reason.
 - Keep the UI cleaner and simpler than the backend.
 - When product intent is ambiguous, consult `agentseam-project-outline.txt`.

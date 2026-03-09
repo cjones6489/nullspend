@@ -19,16 +19,42 @@ The core system sits between an agent runtime and a real-world side effect. Inst
 ## High-Level Shape
 
 ```text
-Agent Runtime
-    ->
-AgentSeam SDK / Wrapper
-    ->
-Next.js API / Backend
-    ->
-Supabase Postgres
-    ->
-Approval Dashboard
+Agent Runtime                  MCP Client (Claude, Cursor, ...)
+    │                                │                  │
+    │                                ▼                  ▼
+    │                       MCP Server adapter    MCP Proxy (gates
+    │                       (propose_action,       upstream tools)
+    ▼                        check_action)              │
+AgentSeam SDK ──────────────────────┼───────────────────┘
+    │                               │
+    │           HTTPS               │
+    ▼                               ▼
+┌────────────────────────────────────────┐
+│         Next.js API / Backend          │
+│  Zod validation → action helpers       │
+│  API key auth (x-agentseam-key)        │
+└──────────────────┬─────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────┐
+│          Supabase Postgres             │
+│  actions table (per-user ownership)    │
+│  api_keys table (SHA-256 hashed)       │
+└──────────────────┬─────────────────────┘
+                   │
+                   ▼
+┌────────────────────────────────────────┐
+│        Approval Dashboard (web UI)     │
+│  Supabase Auth (email/password)        │
+│  Inbox · Action Detail · History       │
+└────────────────────────────────────────┘
 ```
+
+Three integration paths exist:
+
+1. **SDK** — Agent code imports `@agentseam/sdk` and calls `proposeAndWait()` or lower-level methods directly.
+2. **MCP Server** — An MCP client (Claude Desktop, Cursor) connects to `@agentseam/mcp-server`, which exposes `propose_action` and `check_action` tools.
+3. **MCP Proxy** — An MCP client connects to `@agentseam/mcp-proxy`, which spawns an upstream MCP server and selectively gates its tools through AgentSeam approval before forwarding.
 
 ## Main Boundaries
 
@@ -42,25 +68,35 @@ Approval Dashboard
 
 ### API / Backend
 
-- Validates requests
-- Stores and updates actions
-- Enforces explicit state transitions
+- Validates requests with Zod at the route boundary
+- Authenticates SDK/agent requests via API keys (`x-agentseam-key` header, SHA-256 hashed lookup)
+- Stores and updates actions scoped to the owning user (`ownerUserId`)
+- Enforces explicit state transitions with optimistic locking
 - Returns compact typed responses
 
 ### Database
 
-- Stores actions as the primary v1 record
-- May later add event history and signed receipts
-- Should remain simple until the core loop is proven
+- `actions` table: primary record for the action lifecycle, scoped per user
+- `api_keys` table: hashed API keys for SDK route authentication
+- Drizzle ORM for schema definition and typed queries
 
 ### Dashboard
 
-- Shows pending actions
+- Supabase Auth (email/password) for user sessions
+- Shows pending actions in an inbox with status tabs
 - Supports approve and reject decisions
-- Shows action details and history
-- Prioritizes trust, clarity, and obvious action affordances
+- Shows action details, timeline, payload, and history
+- TanStack Query for client-side data fetching and cache management
 
-## Initial State Machine
+## Packages
+
+The repo is a pnpm workspace monorepo with three packages under `packages/`:
+
+- **`@agentseam/sdk`** (`packages/sdk/`) — TypeScript client with `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`. Polling-based, zero runtime dependencies.
+- **`@agentseam/mcp-server`** (`packages/mcp-server/`) — MCP server exposing `propose_action` and `check_action` tools. Uses `@agentseam/sdk` internally. Runs over stdio.
+- **`@agentseam/mcp-proxy`** (`packages/mcp-proxy/`) — Stdio proxy that sits between an LLM and any upstream MCP server, transparently gating risky tool calls through AgentSeam approval. Configurable gated/passthrough tool lists.
+
+## State Machine
 
 ```text
 pending
@@ -76,18 +112,17 @@ executing
   -> failed
 ```
 
-State transitions should be explicit in code and reflected in timestamps and actor metadata.
+State transitions are explicit in code and reflected in timestamps and actor metadata.
 
-## v1 Constraints
+## Action Expiration
 
-- Use one Next.js app, not a monorepo
-- Use polling before realtime
-- Keep the SDK small
-- Avoid policy engines, workflow systems, and enterprise governance features
-- Optimize for one strong end-to-end demo before expanding the product
+Pending actions support a configurable server-side TTL via `expiresInSeconds` (default: 1 hour). Expiration uses a lazy check-on-read pattern — no background jobs. When a pending action is accessed via `getAction`, `listActions`, `approve`, or `reject`, the system checks whether `expiresAt` has passed and atomically transitions it to `expired` if so. Attempting to approve or reject an expired action returns 409 Conflict.
+
+## Authentication
+
+- **Dashboard users**: Supabase Auth (email/password), session cookies
+- **SDK/agent callers**: API key authentication via `x-agentseam-key` header. Keys are created in the Settings page, stored as SHA-256 hashes, and scoped to the creating user. All actions created with an API key are owned by that user.
 
 ## Source of Truth
 
-Use `docs/v1-build-contract.md` as the locked implementation target for the first build.
-
-The fuller product brief lives in `agentseam-project-outline.txt`. This document is the maintainable engineering summary, not the full ideation archive.
+Use `docs/roadmap.md` for current project status and planned features. The original v1 build contract is preserved in `docs/v1-build-contract.md` (completed). The fuller product brief lives in `agentseam-project-outline.txt`.

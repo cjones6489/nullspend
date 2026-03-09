@@ -33,24 +33,37 @@
 - `AgentSeam` client with `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`
 - Polling-based approval wait strategy
 - Custom error types: `AgentSeamError`, `TimeoutError`, `RejectedError`
-- 16 unit tests, tsup build (ESM + CJS + types)
+- 19 unit tests, tsup build (ESM + CJS + types)
 - Demo script: `examples/demo-send-email.ts`
+
+### Phase 5 — MCP Adapters
+- `@agentseam/mcp-server` package at `packages/mcp-server/`
+  - Tools: `propose_action`, `check_action`
+  - Uses `@agentseam/sdk` internally
+  - Configurable via env vars (`AGENTSEAM_URL`, `AGENTSEAM_API_KEY`)
+  - Publishable as `@agentseam/mcp-server` / installable via `npx`
+- `@agentseam/mcp-proxy` package at `packages/mcp-proxy/`
+  - Stdio proxy between LLM and any upstream MCP server
+  - Selectively gates risky tool calls through AgentSeam approval
+  - Configurable gated/passthrough tool lists
+  - Handles approval, rejection, expiration, and timeout
+  - 49 unit tests across config, gate, and proxy modules
+
+### Action Expiration
+- Configurable server-side TTL (`expiresInSeconds`, default 1 hour)
+- Lazy check-on-read expiration at `getAction`, `listActions`, `approve`, `reject`
+- `expiresAt` column in DB, distinct from `expiredAt` (transition timestamp)
+- Expiration-aware approve/reject (409 Conflict when expired)
+- SDK and MCP proxy forward `expiresInSeconds`; proxy maps `expired` to `timedOut`
+- UI: expires countdown, expired tab, timeline event, cache invalidation
+- Unit tests for expiration logic + E2E expiration scenarios
+- Race condition fix for concurrent `getAction` on expiring action
 
 ---
 
 ## Next Up
 
-### Phase 5 — MCP Server Adapter
-Build a first-class MCP server so any MCP-compatible client (Claude Desktop, Cursor, etc.) can propose actions through AgentSeam without custom integration code.
-
-- New package at `packages/mcp-server/`
-- Tools: `propose_action`, `check_action`, `list_pending`
-- Uses `@agentseam/sdk` internally
-- Configurable via env vars (`AGENTSEAM_URL`, `AGENTSEAM_API_KEY`)
-- Publishable as `@agentseam/mcp-server` / installable via `npx`
-- Estimated effort: ~1 day
-
-### Phase 6 — Signed Receipts
+### Signed Receipts
 Cryptographic proof of every action lifecycle event. Every approval, rejection, and execution produces a signed, verifiable receipt.
 
 - `receipts` table: action_id, event_type, hash, previous_hash, signature
@@ -61,7 +74,7 @@ Cryptographic proof of every action lifecycle event. Every approval, rejection, 
 - Pitch: "Not just approval — proof."
 - Estimated effort: 2-3 days
 
-### Phase 7 — Notification Channels
+### Notification Channels
 Notify users about pending actions through channels beyond the web dashboard.
 
 **Slack (with interactive buttons)** — ~1 day
@@ -103,7 +116,6 @@ Priority order: Slack → PWA → SMS → Native app
 - Action templates and grouping
 - Multiple environments with separate policies
 - Bulk approve/reject
-- Action expiration (TTL on pending actions)
 
 ### Integrations
 - Framework adapters (LangChain, CrewAI, AutoGen)

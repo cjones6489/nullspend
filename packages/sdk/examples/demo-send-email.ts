@@ -4,7 +4,7 @@
  * Usage:
  *   1. Start the AgentSeam app:        pnpm dev
  *   2. Run this script in another terminal:
- *      npx tsx packages/sdk/examples/demo-send-email.ts
+ *      pnpm tsx packages/sdk/examples/demo-send-email.ts
  *   3. Open http://localhost:3000/app/inbox and approve the action.
  *   4. Watch this terminal — the "email" will send after approval.
  *

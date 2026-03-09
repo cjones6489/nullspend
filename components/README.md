@@ -1,11 +1,12 @@
 # Components Directory
 
-This folder will contain reusable UI components and page-level presentation pieces.
+This folder contains reusable UI components and page-level presentation pieces.
 
-Expected future subfolders:
+Subfolders:
 
-- `ui/` for shared primitives
-- `dashboard/` for dashboard-facing components
-- `actions/` for action-related presentation components
+- `ui/` — shadcn/ui primitives (button, card, badge, table, tabs, dialog, etc.)
+- `dashboard/` — dashboard shell components (sidebar, user menu)
+- `actions/` — action-specific components (status badge, payload viewer, decision controls, action timeline)
+- `providers/` — React context providers (TanStack Query provider)
 
-Keep components focused and avoid hiding business logic here.
+Keep components focused on presentation. Avoid hiding business logic here — use `lib/` instead.

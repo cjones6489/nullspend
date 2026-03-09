@@ -1,5 +1,8 @@
 # V1 Build Contract
 
+> **Status: Completed.** The v1 ship bar (below) has been met. This document is preserved
+> as the original build contract. For current status, see `docs/roadmap.md`.
+
 ## Purpose
 
 This document locks the minimum implementation target for the first build.

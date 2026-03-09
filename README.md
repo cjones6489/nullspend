@@ -4,89 +4,135 @@ AgentSeam is a lightweight approval layer for risky AI agent actions.
 
 It sits between an agent and a risky side effect, turns that action into a proposed action, presents it for approval, and only allows execution after a human decision.
 
-## v1 Goal
+## How it works
 
-Prove the smallest useful end-to-end loop:
+```text
+Agent Runtime                MCP Client (Claude, Cursor, ...)
+    │                              │                  │
+    │                              ▼                  ▼
+    │                     MCP Server adapter    MCP Proxy (gates
+    │                     (propose_action,       upstream tools)
+    ▼                      check_action)              │
+AgentSeam SDK ────────────────────┼───────────────────┘
+    │                             │
+    │         HTTPS               │
+    ▼                             ▼
+┌──────────────────────────────────────┐
+│        Next.js API / Backend         │
+│  POST /api/actions                   │
+│  GET  /api/actions/:id               │
+│  POST /api/actions/:id/approve       │
+│  POST /api/actions/:id/reject        │
+│  POST /api/actions/:id/result        │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│         Supabase Postgres            │
+└──────────────┬───────────────────────┘
+               │
+               ▼
+┌──────────────────────────────────────┐
+│       Approval Dashboard (web UI)    │
+│  Inbox · Action Detail · History     │
+└──────────────────────────────────────┘
+```
 
-1. An agent proposes a risky action.
-2. The action appears in a web inbox.
-3. A human approves or rejects it.
-4. Approved actions execute.
-5. Rejected actions do not execute.
-6. The result is logged and visible.
+## Quickstart
 
-## Product Scope
+Prerequisites: Node 18+, pnpm, a Supabase project.
 
-AgentSeam is:
+```bash
+git clone https://github.com/cjones6489/AgentSeam.git
+cd AgentSeam
+pnpm install
 
-- a developer tool
-- a control layer
-- an approval inbox for risky agent actions
-- a small, testable product
+# Copy .env.example to .env.local and fill in your Supabase credentials
+cp .env.example .env.local
 
-AgentSeam is not:
+# Push the database schema to Supabase
+pnpm db:push
 
-- a full governance platform
-- a workflow orchestration engine
-- a policy engine
-- an enterprise compliance suite
+# Start the dev server
+pnpm dev
+```
 
-## Planned Stack
+Then open <http://localhost:3000>, sign up, and create an API key in **Settings**.
 
-- Next.js App Router
-- React
-- TypeScript
-- Tailwind CSS
-- shadcn/ui
-- Supabase
-- Drizzle ORM
-- Zod
-- pnpm
+To run a demo end-to-end:
+
+```bash
+# In a second terminal — pick any demo:
+AGENTSEAM_API_KEY=ask_your-key pnpm tsx packages/sdk/examples/demo-send-email.ts
+AGENTSEAM_API_KEY=ask_your-key pnpm tsx packages/sdk/examples/demo-http-post.ts
+AGENTSEAM_API_KEY=ask_your-key pnpm tsx packages/sdk/examples/demo-shell-command.ts
+```
+
+Approve the action at <http://localhost:3000/app/inbox>. See [`packages/sdk/examples/`](packages/sdk/examples/) for details on each demo.
+
+## Project structure
+
+```text
+app/            Next.js routes, layouts, API route handlers
+components/     UI components (ui/, dashboard/, actions/, providers/)
+lib/            Business logic, DB, auth, validations, queries, utils
+packages/
+  sdk/          @agentseam/sdk — TypeScript client for agents
+  mcp-server/   @agentseam/mcp-server — MCP server with propose/check tools
+  mcp-proxy/    @agentseam/mcp-proxy — stdio proxy that gates upstream MCP tools
+drizzle/        Schema migrations
+docs/           Architecture, roadmap, ADRs
+scripts/        E2E smoke tests and experiment scripts
+```
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `pnpm dev` | Start the Next.js dev server |
+| `pnpm build` | Production build |
+| `pnpm test` | Run root unit tests (Vitest) |
+| `pnpm e2e` | Run E2E smoke tests against a running server |
+| `pnpm lint` | ESLint |
+| `pnpm typecheck` | TypeScript type check |
+| `pnpm sdk:build` | Build the SDK package |
+| `pnpm sdk:test` | Run SDK unit tests |
+| `pnpm mcp:build` | Build the MCP server package |
+| `pnpm mcp:test` | Run MCP server tests |
+| `pnpm mcp-proxy:build` | Build the MCP proxy package |
+| `pnpm mcp-proxy:test` | Run MCP proxy tests |
+| `pnpm db:push` | Push Drizzle schema to database |
+| `pnpm db:generate` | Generate Drizzle migrations |
+| `pnpm db:studio` | Open Drizzle Studio |
+
+## Packages
+
+- **[@agentseam/sdk](packages/sdk/)** — TypeScript client: `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`. See [SDK README](packages/sdk/README.md).
+- **[@agentseam/mcp-server](packages/mcp-server/)** — MCP server exposing `propose_action` and `check_action` tools to MCP clients. See [MCP Server README](packages/mcp-server/README.md).
+- **[@agentseam/mcp-proxy](packages/mcp-proxy/)** — Stdio proxy that sits between an LLM and any upstream MCP server, gating risky tool calls through AgentSeam approval. See [MCP Proxy README](packages/mcp-proxy/README.md).
 
 ## Documentation
 
-- `docs/v1-build-contract.md`: locked v1 implementation target and first-build decisions
-- `agentseam-project-outline.txt`: original product brief and planning archive
-- `docs/architecture.md`: system overview, boundaries, and state machine
-- `docs/repo-guide.md`: repo organization, naming, and file placement guidance
-- `docs/adr/`: architecture decision records for important early choices
+- [docs/architecture.md](docs/architecture.md) — system overview, boundaries, packages, and state machine
+- [docs/roadmap.md](docs/roadmap.md) — completed phases and planned features
+- [docs/v1-build-contract.md](docs/v1-build-contract.md) — original v1 implementation target (completed)
+- [docs/repo-guide.md](docs/repo-guide.md) — repo organization and file placement guidance
+- [docs/adr/](docs/adr/) — architecture decision records
+- [agentseam-project-outline.txt](agentseam-project-outline.txt) — original product brief and planning archive
 
-## Planned Repo Structure
+## Current status
 
-```text
-agentseam/
-  app/
-  components/
-  lib/
-    actions/
-    auth/
-    db/
-    validations/
-    utils/
-  drizzle/
-  docs/
-    adr/
-  public/
-  scripts/
-```
+The core approval loop is proven and working end-to-end. Completed:
 
-## Current Status
+- Full action lifecycle API with explicit state machine and optimistic locking
+- Approval dashboard: inbox, action detail, history, settings
+- Supabase auth (email/password) with API key authentication for SDK routes
+- TypeScript SDK with polling-based approval wait
+- MCP server adapter for Claude Desktop, Cursor, and other MCP clients
+- MCP proxy for transparently gating any upstream MCP server's tools
+- Action expiration with configurable TTL and lazy check-on-read
+- 170+ tests (unit, SDK, MCP proxy, E2E smoke)
 
-This repository is in pre-scaffold setup.
+## Stack
 
-The current focus is to establish:
-
-- lean Cursor guidance
-- clean repo conventions
-- lightweight architecture documentation
-- a small set of durable decisions before coding begins
-
-The current implementation source of truth is `docs/v1-build-contract.md`.
-
-## Working Principles
-
-- Prove the approval loop first.
-- Prefer boring, explicit implementations.
-- Keep the SDK tiny.
-- Keep the UI clean and operationally clear.
-- Do not add enterprise features before the core loop works.
+Next.js App Router, TypeScript, Tailwind CSS, shadcn/ui, Supabase (auth + Postgres), Drizzle ORM, TanStack Query, Zod, pnpm workspace.

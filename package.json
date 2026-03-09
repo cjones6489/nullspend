@@ -1,5 +1,6 @@
 {
   "name": "agentseam",
+  "description": "Lightweight approval layer for risky AI agent actions",
   "private": true,
   "version": "0.1.0",
   "scripts": {
