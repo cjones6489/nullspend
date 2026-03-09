@@ -11,7 +11,7 @@ function getDashboardUrl(): string {
 
 async function postToWebhook(
   webhookUrl: string,
-  body: Record<string, unknown>,
+  body: object,
 ): Promise<void> {
   const response = await fetch(webhookUrl, {
     method: "POST",

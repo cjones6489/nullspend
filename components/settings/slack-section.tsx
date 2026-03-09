@@ -212,15 +212,11 @@ function ConnectedState({
         </Button>
 
         <Dialog open={disconnectOpen} onOpenChange={setDisconnectOpen}>
-          <DialogTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs text-muted-foreground hover:text-red-400"
-            >
-              <Trash2 className="mr-1.5 h-3 w-3" />
-              Disconnect
-            </Button>
+          <DialogTrigger
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
+          >
+            <Trash2 className="mr-1.5 h-3 w-3" />
+            Disconnect
           </DialogTrigger>
           <DialogContent>
             <DialogTitle>Disconnect Slack?</DialogTitle>
