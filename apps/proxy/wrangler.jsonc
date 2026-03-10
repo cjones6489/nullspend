@@ -3,5 +3,12 @@
   "name": "agentseam-proxy",
   "main": "src/index.ts",
   "compatibility_date": "2026-03-09",
-  "compatibility_flags": ["nodejs_compat"]
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "PLACEHOLDER_HYPERDRIVE_ID",
+      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+    }
+  ]
 }

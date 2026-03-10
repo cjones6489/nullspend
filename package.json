@@ -20,6 +20,8 @@
     "e2e": "tsx scripts/e2e-smoke.ts",
     "proxy:dev": "pnpm --filter @agentseam/proxy dev",
     "proxy:deploy": "pnpm --filter @agentseam/proxy deploy",
+    "proxy:test": "pnpm --filter @agentseam/proxy test",
+    "proxy:smoke": "pnpm --filter @agentseam/proxy test:smoke",
     "cost-engine:build": "pnpm --filter @agentseam/cost-engine build",
     "cost-engine:test": "pnpm --filter @agentseam/cost-engine test",
     "shared:build": "pnpm --filter @agentseam/shared build",
