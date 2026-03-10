@@ -8,6 +8,7 @@ const eslintConfig = [
     "packages/mcp-proxy/dist/**",
     "packages/cost-engine/dist/**",
     "packages/shared/dist/**",
+    "packages/db/dist/**",
     "apps/**",
   ] },
   ...nextConfig,

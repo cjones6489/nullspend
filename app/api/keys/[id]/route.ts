@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@/lib/db/schema";
+import { apiKeys } from "@agentseam/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { actionIdParamsSchema } from "@/lib/validations/actions";
 import { deleteApiKeyResponseSchema } from "@/lib/validations/api-keys";

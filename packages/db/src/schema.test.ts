@@ -173,6 +173,7 @@ describe("existing tables still have correct structure", () => {
     expect(cols.actionType.notNull).toBe(true);
     expect(cols.status.notNull).toBe(true);
     expect(cols.payloadJson.notNull).toBe(true);
+    expect(cols.ownerUserId.notNull).toBe(true);
   });
 
   it("apiKeys table has required columns", () => {

@@ -1,20 +1,6 @@
 import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { costEvents } from "./db/schema.js";
-
-interface CostEventInput {
-  requestId: string;
-  provider: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cachedInputTokens: number;
-  reasoningTokens: number;
-  costMicrodollars: number;
-  durationMs?: number;
-  userId: string | null;
-  apiKeyId: string | null;
-}
+import { costEvents, type NewCostEventRow } from "@agentseam/db";
 
 const CONNECTION_TIMEOUT_MS = 5_000;
 
@@ -45,7 +31,8 @@ function isLocalConnection(connectionString: string): boolean {
 
 /**
  * Persist a cost event to Postgres via Hyperdrive.
- * Creates a per-request pg.Client and cleans up after the write.
+ * Creates a per-request pg.Client, wraps it with Drizzle for
+ * type-safe inserts, and cleans up after the write.
  * Never throws — this runs inside waitUntil().
  *
  * In local dev (localhost connection string), falls back to console
@@ -53,7 +40,7 @@ function isLocalConnection(connectionString: string): boolean {
  */
 export async function logCostEvent(
   connectionString: string,
-  event: CostEventInput,
+  event: Omit<NewCostEventRow, "id" | "createdAt">,
 ): Promise<void> {
   if (isLocalConnection(connectionString)) {
     console.log("[cost-logger] Local dev — cost event (not persisted):", {
@@ -81,21 +68,9 @@ export async function logCostEvent(
     });
 
     await client.connect();
-    const db = drizzle(client);
 
-    await db.insert(costEvents).values({
-      requestId: event.requestId,
-      provider: event.provider,
-      model: event.model,
-      inputTokens: event.inputTokens,
-      outputTokens: event.outputTokens,
-      cachedInputTokens: event.cachedInputTokens,
-      reasoningTokens: event.reasoningTokens,
-      costMicrodollars: event.costMicrodollars,
-      durationMs: event.durationMs ?? null,
-      userId: event.userId,
-      apiKeyId: event.apiKeyId,
-    });
+    const db = drizzle({ client });
+    await db.insert(costEvents).values(event);
   } catch (err) {
     console.error("[cost-logger] Failed to write cost event:", err);
   } finally {

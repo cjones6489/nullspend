@@ -11,7 +11,23 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-import type { ActionStatus, ActionType } from "@/lib/utils/status";
+export type ActionType =
+  | "send_email"
+  | "http_post"
+  | "http_delete"
+  | "shell_command"
+  | "db_write"
+  | "file_write"
+  | "file_delete";
+
+export type ActionStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "expired"
+  | "executing"
+  | "executed"
+  | "failed";
 
 export const apiKeys = pgTable("api_keys", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -32,7 +48,7 @@ export type NewApiKeyRow = typeof apiKeys.$inferInsert;
 
 export const actions = pgTable("actions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  ownerUserId: text("owner_user_id"),
+  ownerUserId: text("owner_user_id").notNull(),
   agentId: text("agent_id").notNull(),
   actionType: text("action_type").$type<ActionType>().notNull(),
   status: text("status").$type<ActionStatus>().notNull().default("pending"),
@@ -103,7 +119,7 @@ export const costEvents = pgTable("cost_events", {
   durationMs: integer("duration_ms"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
-  uniqueIndex("cost_events_request_id_idx").on(table.requestId),
+  uniqueIndex("cost_events_request_id_provider_idx").on(table.requestId, table.provider),
   index("cost_events_user_id_created_at_idx").on(table.userId, table.createdAt),
   index("cost_events_api_key_id_created_at_idx").on(table.apiKeyId, table.createdAt),
 ]);

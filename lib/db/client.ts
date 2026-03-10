@@ -1,7 +1,7 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 
-import * as schema from "@/lib/db/schema";
+import * as schema from "@agentseam/db";
 
 declare global {
   var __agentseamSql: postgres.Sql | undefined;

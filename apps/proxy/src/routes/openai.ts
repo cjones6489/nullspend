@@ -7,6 +7,8 @@ import { calculateOpenAICost } from "../lib/cost-calculator.js";
 import { logCostEvent } from "../lib/cost-logger.js";
 import { OPENAI_BASE_URL } from "../lib/constants.js";
 
+// Phase 3: Anthropic support will need a separate handler for /v1/messages
+// with different header forwarding, SSE format, and cost calculation logic.
 export async function handleChatCompletions(
   request: Request,
   env: Env,
@@ -28,10 +30,14 @@ export async function handleChatCompletions(
   const upstreamHeaders = buildUpstreamHeaders(request);
   const startTime = performance.now();
 
+  // Fail before the Worker's 30s CPU limit to allow graceful fallback
+  const UPSTREAM_TIMEOUT_MS = 25_000;
+
   const upstreamResponse = await fetch(`${OPENAI_BASE_URL}/v1/chat/completions`, {
     method: "POST",
     headers: upstreamHeaders,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   });
 
   if (!upstreamResponse.ok) {
@@ -103,6 +109,10 @@ function handleStreaming(
       }
     }),
   );
+
+  clientHeaders.set("cache-control", "no-cache, no-transform");
+  clientHeaders.set("x-accel-buffering", "no");
+  clientHeaders.set("connection", "keep-alive");
 
   return new Response(readable, {
     status: upstreamResponse.status,

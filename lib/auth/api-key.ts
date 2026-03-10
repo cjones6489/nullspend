@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { eq, and, isNull } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@/lib/db/schema";
+import { apiKeys } from "@agentseam/db";
 import { getDevActor } from "@/lib/auth/session";
 
 export const API_KEY_HEADER = "x-agentseam-key";

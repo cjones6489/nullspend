@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import { slackConfigs } from "@/lib/db/schema";
+import { slackConfigs } from "@agentseam/db";
 import { buildPendingMessage, buildTestMessage } from "@/lib/slack/message";
 import type { ActionRecord } from "@/lib/validations/actions";
 

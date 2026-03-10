@@ -1,6 +1,6 @@
 import { computeExpiresAt } from "@/lib/actions/expiration";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@/lib/db/schema";
+import { actions } from "@agentseam/db";
 import type { CreateActionInput } from "@/lib/validations/actions";
 
 function pickMetadataField(

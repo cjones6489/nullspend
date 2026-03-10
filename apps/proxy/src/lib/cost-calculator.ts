@@ -15,10 +15,10 @@ export function calculateOpenAICost(
   requestId: string,
   durationMs: number,
 ): CostEvent & { userId: string | null; apiKeyId: string | null } {
-  const promptTokens = usage.prompt_tokens ?? 0;
-  const completionTokens = usage.completion_tokens ?? 0;
-  const cachedTokens = usage.prompt_tokens_details?.cached_tokens ?? 0;
-  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens ?? 0;
+  const promptTokens = Number(usage.prompt_tokens) || 0;
+  const completionTokens = Number(usage.completion_tokens) || 0;
+  const cachedTokens = Number(usage.prompt_tokens_details?.cached_tokens) || 0;
+  const reasoningTokens = Number(usage.completion_tokens_details?.reasoning_tokens) || 0;
 
   const normalInputTokens = promptTokens - cachedTokens;
 

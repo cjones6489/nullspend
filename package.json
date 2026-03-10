@@ -25,11 +25,14 @@
     "cost-engine:build": "pnpm --filter @agentseam/cost-engine build",
     "cost-engine:test": "pnpm --filter @agentseam/cost-engine test",
     "shared:build": "pnpm --filter @agentseam/shared build",
+    "db:build": "pnpm --filter @agentseam/db build",
+    "db:test": "pnpm --filter @agentseam/db test",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@agentseam/db": "workspace:*",
     "@base-ui/react": "^1.2.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
@@ -50,7 +53,10 @@
     "zod": "^4.3.6"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["workerd"]
+    "onlyBuiltDependencies": ["workerd"],
+    "overrides": {
+      "drizzle-orm": "^0.45.1"
+    }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",

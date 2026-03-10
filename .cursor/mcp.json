@@ -21,6 +21,12 @@
           "--api-key",
           "25f8ed3d-751b-4334-a058-a5f2dd362dcc"
         ]
+      },
+      "openaiDeveloperDocs": {
+        "url": "https://developers.openai.com/mcp"
+      },
+      "cloudflare-api": {
+        "url": "https://mcp.cloudflare.com/mcp"
       }
     }
   }

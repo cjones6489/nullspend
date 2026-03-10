@@ -8,7 +8,7 @@ import {
 } from "@/lib/auth/api-key";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@/lib/db/schema";
+import { apiKeys } from "@agentseam/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
 import {
   createApiKeyInputSchema,

@@ -420,6 +420,85 @@ describe("handleChatCompletions", () => {
     expect(capturedHeaders!.get("x-agentseam-auth")).toBeNull();
   });
 
+  it("streaming response includes anti-buffering headers", async () => {
+    const sseChunks = [
+      'data: {"id":"chatcmpl-1","model":"gpt-4o-mini","choices":[{"delta":{"content":"hi"}}]}\n\n',
+      'data: {"id":"chatcmpl-1","model":"gpt-4o-mini","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}\n\n',
+      "data: [DONE]\n\n",
+    ];
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(makeSSEStream(sseChunks), {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "x-request-id": "req-stream-headers",
+        },
+      }),
+    );
+
+    const res = await handleChatCompletions(
+      makeRequest({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "hi" }],
+        stream: true,
+      }),
+      makeEnv(),
+      {
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "hi" }],
+        stream: true,
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-cache, no-transform");
+    expect(res.headers.get("x-accel-buffering")).toBe("no");
+    expect(res.headers.get("connection")).toBe("keep-alive");
+    await res.text();
+  });
+
+  it("non-streaming response does NOT include anti-buffering headers", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ model: "gpt-4o-mini", choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-request-id": "req-non-stream-headers" },
+      }),
+    );
+
+    const res = await handleChatCompletions(
+      makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      makeEnv(),
+      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBeNull();
+    expect(res.headers.get("x-accel-buffering")).toBeNull();
+    await res.text();
+  });
+
+  it("passes AbortSignal.timeout to upstream fetch", async () => {
+    let capturedSignal: AbortSignal | null = null;
+
+    globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      capturedSignal = init.signal as AbortSignal;
+      return new Response(JSON.stringify({ model: "gpt-4o-mini", choices: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-request-id": "req-timeout" },
+      });
+    });
+
+    await handleChatCompletions(
+      makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      makeEnv(),
+      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+    );
+
+    expect(capturedSignal).toBeTruthy();
+    expect(capturedSignal!.aborted).toBe(false);
+  });
+
   it("cost calculation failure in streaming waitUntil does not affect response", async () => {
     const sseChunks = [
       'data: {"id":"chatcmpl-1","model":"gpt-4o-mini","choices":[{"delta":{"content":"hi"}}]}\n\n',

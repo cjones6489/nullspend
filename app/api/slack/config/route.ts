@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { slackConfigs } from "@/lib/db/schema";
+import { slackConfigs } from "@agentseam/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
 import {
   slackConfigInputSchema,

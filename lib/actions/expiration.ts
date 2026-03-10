@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, lte, sql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import { actions, type ActionRow } from "@/lib/db/schema";
+import { actions, type ActionRow } from "@agentseam/db";
 
 export const DEFAULT_EXPIRATION_SECONDS = 3600;
 

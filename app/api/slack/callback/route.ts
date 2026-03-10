@@ -10,7 +10,7 @@ import {
 } from "@/lib/actions/errors";
 import { rejectAction } from "@/lib/actions/reject-action";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@/lib/db/schema";
+import { actions } from "@agentseam/db";
 import { buildDecisionMessage } from "@/lib/slack/message";
 import {
   SlackSignatureError,

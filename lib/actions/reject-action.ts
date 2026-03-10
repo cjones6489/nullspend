@@ -8,7 +8,7 @@ import {
 import { isActionExpired } from "@/lib/actions/expiration";
 import { assertActionTransition } from "@/lib/actions/transitions";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@/lib/db/schema";
+import { actions } from "@agentseam/db";
 import type { RejectActionInput } from "@/lib/validations/actions";
 
 export async function rejectAction(
