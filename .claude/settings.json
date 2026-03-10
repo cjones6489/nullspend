@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm test)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm proxy:test)",
+      "Bash(pnpm proxy:dev)",
+      "Bash(pnpm dev)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm db:*)",
+      "Bash(npx vitest *)",
+      "Bash(npx vitest run *)",
+      "Bash(npx tsc *)"
+    ],
+    "deny": [
+      "Bash(pnpm proxy:deploy)",
+      "Bash(rm -rf *)",
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.dev.vars)"
+    ]
+  }
+}
