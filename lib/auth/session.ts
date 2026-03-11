@@ -23,104 +23,55 @@ export async function getCurrentUserId(): Promise<string | null> {
   return (data?.claims?.sub as string) ?? null;
 }
 
-export async function assertSession(): Promise<void> {
+function tryDevFallback(warn?: boolean): string | undefined {
+  if (!canUseDevelopmentFallback()) return undefined;
+  const devActor = getDevActor();
+  if (!devActor) return undefined;
+  if (warn) {
+    console.warn(
+      "[AgentSeam] Using AGENTSEAM_DEV_ACTOR fallback — do not use in production.",
+    );
+  }
+  return devActor;
+}
+
+async function resolveUserId(options?: {
+  warnOnFallback?: boolean;
+  errorMessage?: string;
+}): Promise<string> {
   try {
     const userId = await getCurrentUserId();
-
-    if (userId) {
-      return;
-    }
+    if (userId) return userId;
   } catch (error) {
-    if (!(error instanceof SupabaseEnvError)) {
-      throw error;
-    }
-
-    if (canUseDevelopmentFallback() && getDevActor()) {
-      return;
-    }
-
+    if (!(error instanceof SupabaseEnvError)) throw error;
+    const fallback = tryDevFallback(options?.warnOnFallback);
+    if (fallback) return fallback;
     throw error;
   }
 
-  if (canUseDevelopmentFallback() && getDevActor()) {
-    return;
-  }
+  const fallback = tryDevFallback(options?.warnOnFallback);
+  if (fallback) return fallback;
 
   throw new AuthenticationRequiredError(
-    "A valid session is required.",
+    options?.errorMessage ?? "A valid session is required.",
   );
+}
+
+export async function assertSession(): Promise<void> {
+  await resolveUserId();
 }
 
 export async function resolveSessionUserId(): Promise<string> {
-  try {
-    const userId = await getCurrentUserId();
-
-    if (userId) {
-      return userId;
-    }
-  } catch (error) {
-    if (!(error instanceof SupabaseEnvError)) {
-      throw error;
-    }
-
-    if (canUseDevelopmentFallback()) {
-      const devActor = getDevActor();
-      if (devActor) {
-        return devActor;
-      }
-    }
-
-    throw error;
-  }
-
-  if (canUseDevelopmentFallback()) {
-    const devActor = getDevActor();
-    if (devActor) {
-      return devActor;
-    }
-  }
-
-  throw new AuthenticationRequiredError(
-    "A valid session is required.",
-  );
+  return resolveUserId();
 }
 
 export async function resolveApprovalActor(): Promise<string> {
-  try {
-    const userId = await getCurrentUserId();
+  return resolveUserId({
+    warnOnFallback: true,
+    errorMessage: "Approval requires an authenticated Supabase user.",
+  });
+}
 
-    if (userId) {
-      return userId;
-    }
-  } catch (error) {
-    if (!(error instanceof SupabaseEnvError)) {
-      throw error;
-    }
-
-    if (canUseDevelopmentFallback()) {
-      const devActor = getDevActor();
-      if (devActor) {
-        console.warn(
-          "[AgentSeam] Using AGENTSEAM_DEV_ACTOR fallback — do not use in production.",
-        );
-        return devActor;
-      }
-    }
-
-    throw error;
-  }
-
-  if (canUseDevelopmentFallback()) {
-    const devActor = getDevActor();
-    if (devActor) {
-      console.warn(
-        "[AgentSeam] Using AGENTSEAM_DEV_ACTOR fallback — do not use in production.",
-      );
-      return devActor;
-    }
-  }
-
-  throw new AuthenticationRequiredError(
-    "Approval requires an authenticated Supabase user.",
-  );
+export async function resolveSessionContext(): Promise<{ userId: string }> {
+  return { userId: await resolveUserId({ warnOnFallback: true }) };
 }

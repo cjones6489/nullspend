@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { approveAction } from "@/lib/actions/approve-action";
-import {
-  assertSession,
-  resolveApprovalActor,
-  resolveSessionUserId,
-} from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import {
   actionIdParamsSchema,
   mutateActionResponseSchema,
@@ -17,12 +13,10 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    await assertSession();
-    const ownerUserId = await resolveSessionUserId();
+    const { userId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
-    const approvedBy = await resolveApprovalActor();
-    const action = await approveAction(id, { approvedBy }, ownerUserId);
+    const action = await approveAction(id, { approvedBy: userId }, userId);
 
     return NextResponse.json(mutateActionResponseSchema.parse(action));
   } catch (error) {

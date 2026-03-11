@@ -6,7 +6,7 @@ import {
   ActionNotFoundError,
   InvalidActionTransitionError,
 } from "@/lib/actions/errors";
-import { assertSession, resolveApprovalActor, resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { POST } from "./route";
 
 vi.mock("@/lib/actions/reject-action", () => ({
@@ -14,15 +14,11 @@ vi.mock("@/lib/actions/reject-action", () => ({
 }));
 
 vi.mock("@/lib/auth/session", () => ({
-  assertSession: vi.fn(),
-  resolveApprovalActor: vi.fn(),
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 const mockedRejectAction = vi.mocked(rejectAction);
-const mockedAssertSession = vi.mocked(assertSession);
-const mockedResolveApprovalActor = vi.mocked(resolveApprovalActor);
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 function makeContext(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -34,9 +30,7 @@ describe("POST /api/actions/[id]/reject", () => {
   });
 
   it("rejects a pending action", async () => {
-    mockedAssertSession.mockResolvedValue(undefined);
-    mockedResolveSessionUserId.mockResolvedValue("owner-1");
-    mockedResolveApprovalActor.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
     mockedRejectAction.mockResolvedValue({
       id: "00000000-0000-4000-a000-000000000001",
       status: "rejected",
@@ -50,13 +44,15 @@ describe("POST /api/actions/[id]/reject", () => {
     const body = await res.json();
     expect(body.id).toBe("00000000-0000-4000-a000-000000000001");
     expect(body.status).toBe("rejected");
-    expect(mockedRejectAction).toHaveBeenCalledWith("00000000-0000-4000-a000-000000000001", { rejectedBy: "user-1" }, "owner-1");
+    expect(mockedRejectAction).toHaveBeenCalledWith(
+      "00000000-0000-4000-a000-000000000001",
+      { rejectedBy: "user-1" },
+      "user-1",
+    );
   });
 
   it("returns 404 when action is not found", async () => {
-    mockedAssertSession.mockResolvedValue(undefined);
-    mockedResolveSessionUserId.mockResolvedValue("owner-1");
-    mockedResolveApprovalActor.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
     mockedRejectAction.mockRejectedValue(new ActionNotFoundError("00000000-0000-4000-a000-000000000002"));
 
     const req = new Request("http://localhost/api/actions/missing/reject", { method: "POST" });
@@ -66,9 +62,7 @@ describe("POST /api/actions/[id]/reject", () => {
   });
 
   it("returns 409 when action has expired", async () => {
-    mockedAssertSession.mockResolvedValue(undefined);
-    mockedResolveSessionUserId.mockResolvedValue("owner-1");
-    mockedResolveApprovalActor.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
     mockedRejectAction.mockRejectedValue(new ActionExpiredError("00000000-0000-4000-a000-000000000001"));
 
     const req = new Request("http://localhost/api/actions/action-1/reject", { method: "POST" });
@@ -78,9 +72,7 @@ describe("POST /api/actions/[id]/reject", () => {
   });
 
   it("returns 409 when action is not in pending state", async () => {
-    mockedAssertSession.mockResolvedValue(undefined);
-    mockedResolveSessionUserId.mockResolvedValue("owner-1");
-    mockedResolveApprovalActor.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
     mockedRejectAction.mockRejectedValue(
       new InvalidActionTransitionError("executed", "rejected"),
     );
@@ -93,7 +85,7 @@ describe("POST /api/actions/[id]/reject", () => {
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
-    mockedAssertSession.mockRejectedValue(new AuthenticationRequiredError());
+    mockedResolveSessionContext.mockRejectedValue(new AuthenticationRequiredError());
 
     const req = new Request("http://localhost/api/actions/action-1/reject", { method: "POST" });
     const res = await POST(req, makeContext("00000000-0000-4000-a000-000000000001"));

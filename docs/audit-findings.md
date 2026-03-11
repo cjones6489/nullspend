@@ -22,9 +22,9 @@
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
 | High | 16 | 16 | 0 | 0 |
-| Medium | 32 | 14 | 0 | 18 |
+| Medium | 32 | 17 | 0 | 15 |
 | Low | 40 | 1 | 0 | 39 |
-| **Total** | **91** | **32** | **1** | **58** |
+| **Total** | **91** | **35** | **1** | **55** |
 
 ---
 
@@ -417,25 +417,30 @@ Root config has `apps/**` in ignores. Proxy code gets zero lint coverage.
 
 ---
 
-### M9 — `approveAction`/`rejectAction` are 90% identical [TODO]
+### M9 — `approveAction`/`rejectAction` are 90% identical [DONE]
 
 **Agent:** Code Quality
 **Files:** `lib/actions/approve-action.ts`, `lib/actions/reject-action.ts`
 
 ~170 lines of duplication. Only differ in target status, timestamp column, and actor field.
 
-**Remediation:** Extract a shared `resolveAction(actionId, targetStatus, actorField, timestampField)` helper.
+**Fix applied:**
+- Extracted `resolveAction()` shared helper in `lib/actions/resolve-action.ts`
+- Handles fetch, FOR UPDATE locking, expiration check, transition assertion, and optimistic update
+- `approveAction` and `rejectAction` reduced to thin wrappers (~15 lines each, down from ~85)
 
 ---
 
-### M10 — Triple Supabase auth call per approve/reject [TODO]
+### M10 — Triple Supabase auth call per approve/reject [DONE]
 
 **Agent:** Code Quality
 **Files:** `app/api/actions/[id]/approve/route.ts`, `app/api/actions/[id]/reject/route.ts`
 
 `assertSession()`, `resolveSessionUserId()`, `resolveApprovalActor()` each call `getCurrentUserId()` separately — 3 round-trips to Supabase.
 
-**Remediation:** Call Supabase once, pass the user object to downstream functions.
+**Fix applied:**
+- Added `resolveSessionContext()` function that makes a single auth call
+- Approve/reject routes now use `const { userId } = await resolveSessionContext()` — 1 call instead of 3
 
 ---
 
@@ -671,14 +676,17 @@ Should return 401 for authentication failure, not 403. 403 implies the identity 
 
 ---
 
-### M31 — Session fallback logic duplicated across 3 functions [TODO]
+### M31 — Session fallback logic duplicated across 3 functions [DONE]
 
 **Agent:** Code Quality
 **Files:** `lib/auth/session.ts`
 
 `assertSession()`, `resolveSessionUserId()`, `resolveApprovalActor()` all have identical try/catch/fallback pattern.
 
-**Remediation:** Extract a single `getAuthenticatedUser()` function that returns the user or throws.
+**Fix applied:**
+- Extracted shared `resolveUserId()` core with `tryDevFallback()` helper
+- All three functions reduced to thin one-line wrappers
+- 127 lines → 80 lines, zero logic duplication
 
 ---
 

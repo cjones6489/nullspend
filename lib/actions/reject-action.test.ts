@@ -43,6 +43,7 @@ vi.mock("@agentseam/db", () => ({
     status: "status",
     expiresAt: "expiresAt",
     ownerUserId: "ownerUserId",
+    approvedAt: "approvedAt",
     rejectedAt: "rejectedAt",
   },
 }));
