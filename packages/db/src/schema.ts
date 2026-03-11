@@ -11,23 +11,29 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export type ActionType =
-  | "send_email"
-  | "http_post"
-  | "http_delete"
-  | "shell_command"
-  | "db_write"
-  | "file_write"
-  | "file_delete";
+export const ACTION_TYPES = [
+  "send_email",
+  "http_post",
+  "http_delete",
+  "shell_command",
+  "db_write",
+  "file_write",
+  "file_delete",
+] as const;
 
-export type ActionStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "expired"
-  | "executing"
-  | "executed"
-  | "failed";
+export type ActionType = (typeof ACTION_TYPES)[number];
+
+export const ACTION_STATUSES = [
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+  "executing",
+  "executed",
+  "failed",
+] as const;
+
+export type ActionStatus = (typeof ACTION_STATUSES)[number];
 
 export const apiKeys = pgTable("api_keys", {
   id: uuid("id").defaultRandom().primaryKey(),

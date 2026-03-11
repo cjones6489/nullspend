@@ -1,25 +1,10 @@
-export const ACTION_TYPES = [
-  "send_email",
-  "http_post",
-  "http_delete",
-  "shell_command",
-  "db_write",
-  "file_write",
-  "file_delete",
-] as const;
-
-export const ACTION_STATUSES = [
-  "pending",
-  "approved",
-  "rejected",
-  "expired",
-  "executing",
-  "executed",
-  "failed",
-] as const;
-
-export type ActionType = (typeof ACTION_TYPES)[number];
-export type ActionStatus = (typeof ACTION_STATUSES)[number];
+export {
+  ACTION_TYPES,
+  ACTION_STATUSES,
+  type ActionType,
+  type ActionStatus,
+} from "@agentseam/db";
+import type { ActionStatus } from "@agentseam/db";
 
 export const TERMINAL_ACTION_STATUSES: ReadonlySet<ActionStatus> = new Set([
   "rejected",

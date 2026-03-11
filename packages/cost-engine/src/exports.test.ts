@@ -11,12 +11,16 @@ describe("cost-engine public API surface", () => {
     expect(typeof costEngine.costComponent).toBe("function");
   });
 
-  it("exports exactly 2 runtime values", () => {
+  it("exports isKnownModel function", () => {
+    expect(typeof costEngine.isKnownModel).toBe("function");
+  });
+
+  it("exports exactly 3 runtime values", () => {
     const runtimeExports = Object.keys(costEngine).filter(
       (k) => typeof (costEngine as Record<string, unknown>)[k] !== "undefined",
     );
-    expect(runtimeExports).toHaveLength(2);
-    expect(runtimeExports.sort()).toEqual(["costComponent", "getModelPricing"]);
+    expect(runtimeExports).toHaveLength(3);
+    expect(runtimeExports.sort()).toEqual(["costComponent", "getModelPricing", "isKnownModel"]);
   });
 });
 

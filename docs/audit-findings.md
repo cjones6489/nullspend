@@ -21,10 +21,10 @@
 | Severity | Total | Done | Partial | Todo |
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
-| High | 16 | 8 | 0 | 8 |
+| High | 16 | 14 | 0 | 2 |
 | Medium | 32 | 5 | 0 | 27 |
 | Low | 40 | 0 | 0 | 40 |
-| **Total** | **91** | **14** | **1** | **76** |
+| **Total** | **91** | **20** | **1** | **70** |
 
 ---
 
@@ -231,7 +231,7 @@ No CSP header existed. Research confirmed `proxy.ts` is the correct Next.js 16 c
 
 ---
 
-### H11 — `ActionType`/`ActionStatus` defined in 3 separate places [TODO]
+### H11 — `ActionType`/`ActionStatus` defined in 3 separate places [DONE]
 
 **Agent:** Architecture, Code Quality
 **Files:** `packages/db/src/schema.ts`, `packages/sdk/src/types.ts`, `lib/utils/status.ts`
@@ -246,7 +246,7 @@ Each file independently defines identical type unions. No single source of truth
 
 ---
 
-### H12 — No tests for API key routes [TODO]
+### H12 — No tests for API key routes [DONE]
 
 **Agent:** Test Coverage
 **Files:** `app/api/keys/route.ts`, `app/api/keys/[id]/route.ts`
@@ -262,7 +262,7 @@ GET, POST (create), and DELETE (revoke) for API keys have zero test coverage. Th
 
 ---
 
-### H13 — No tests for approve/reject API routes [TODO]
+### H13 — No tests for approve/reject API routes [DONE]
 
 **Agent:** Test Coverage
 **Files:** `app/api/actions/[id]/approve/route.ts`, `app/api/actions/[id]/reject/route.ts`
@@ -279,7 +279,7 @@ Core human-in-the-loop endpoints have no test files. These are the most critical
 
 ---
 
-### H14 — No unit tests for core action functions [TODO]
+### H14 — No unit tests for core action functions [DONE]
 
 **Agent:** Test Coverage
 **Files:** `lib/actions/approve-action.ts`, `lib/actions/reject-action.ts`, `lib/actions/create-action.ts`, `lib/actions/mark-result.ts`
@@ -292,7 +292,7 @@ Only tested indirectly through mocked route tests. Direct unit tests would catch
 
 ---
 
-### H15 — No `test:all` script across monorepo [TODO]
+### H15 — No `test:all` script across monorepo [DONE]
 
 **Agent:** Test Coverage
 **Files:** `package.json`
@@ -306,7 +306,7 @@ Root `pnpm test` runs `vitest run` which excludes `packages/**` and `apps/**`. N
 
 ---
 
-### H16 — `@agentseam/shared` is completely dead code [TODO]
+### H16 — `@agentseam/shared` is completely dead code [DONE]
 
 **Agent:** Architecture, Code Quality
 **Files:** `packages/shared/`
