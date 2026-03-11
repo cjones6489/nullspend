@@ -114,7 +114,7 @@ export type NewBudgetRow = typeof budgets.$inferInsert;
 export const costEvents = pgTable("cost_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   requestId: text("request_id").notNull(),
-  apiKeyId: uuid("api_key_id"),
+  apiKeyId: uuid("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
   userId: text("user_id"),
   provider: text("provider").notNull(),
   model: text("model").notNull(),
@@ -129,6 +129,7 @@ export const costEvents = pgTable("cost_events", {
   uniqueIndex("cost_events_request_id_provider_idx").on(table.requestId, table.provider),
   index("cost_events_user_id_created_at_idx").on(table.userId, table.createdAt),
   index("cost_events_api_key_id_created_at_idx").on(table.apiKeyId, table.createdAt),
+  index("cost_events_provider_model_created_at_idx").on(table.provider, table.model, table.createdAt),
 ]);
 
 export type CostEventRow = typeof costEvents.$inferSelect;

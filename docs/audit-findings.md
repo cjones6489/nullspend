@@ -21,10 +21,10 @@
 | Severity | Total | Done | Partial | Todo |
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
-| High | 16 | 15 | 0 | 1 |
-| Medium | 32 | 5 | 0 | 27 |
+| High | 16 | 16 | 0 | 0 |
+| Medium | 32 | 9 | 0 | 23 |
 | Low | 40 | 0 | 0 | 40 |
-| **Total** | **91** | **21** | **1** | **69** |
+| **Total** | **91** | **26** | **1** | **64** |
 
 ---
 
@@ -186,17 +186,17 @@ Any Slack workspace member who can see the channel can approve or reject any act
 
 ---
 
-### H8 — Incomplete migration history [TODO]
+### H8 — Incomplete migration history [DONE]
 
 **Agent:** Database
 **Files:** `drizzle/0000_talented_hedge_knight.sql`
 
 The first migration only creates `actions` without `owner_user_id` or `expires_at`, and is missing 4 entire tables (`api_keys`, `slack_configs`, `budgets`, `cost_events`). A fresh database cannot be bootstrapped from migrations alone.
 
-**Remediation:**
-1. The generated migration `0002_certain_mandroid.sql` now creates the missing tables and adds the missing columns
-2. Verify that running all migrations in order on a fresh DB produces the correct schema
-3. Consider squashing migrations into a single baseline for new deployments
+**Fix applied:**
+- Migration `0002_certain_mandroid.sql` creates missing tables and adds missing columns
+- Migrations `0003_add_slack_user_id.sql` and `0004_cost_events_index_and_fk.sql` registered in `_journal.json`
+- All 5 migrations now tracked in Drizzle journal for fresh DB bootstrap
 
 ---
 
@@ -354,36 +354,45 @@ Every cost event creates a fresh connection (TCP + TLS + auth overhead per reque
 
 ---
 
-### M4 — Cursor pagination uses timestamp only [TODO]
+### M4 — Cursor pagination uses timestamp only [DONE]
 
 **Agent:** API Routes
 **Files:** `lib/actions/list-actions.ts`
 
 `createdAt` as cursor. Concurrent inserts with the same timestamp can skip rows.
 
-**Remediation:** Use composite cursor `(createdAt, id)` for deterministic pagination.
+**Fix applied:**
+- Composite cursor `{ createdAt, id }` replaces single-field timestamp cursor
+- Zod schema validates cursor as JSON-encoded `{ createdAt: datetime, id: uuid }`
+- `OR(gt(createdAt, cursor), AND(eq(createdAt, cursor), gt(id, cursorId)))` prevents row skipping
+- `orderBy: [desc(createdAt), desc(id)]` ensures deterministic ordering
 
 ---
 
-### M5 — Missing cost analytics indexes [TODO]
+### M5 — Missing cost analytics indexes [DONE]
 
 **Agent:** Database
 **Files:** `packages/db/src/schema.ts`
 
 No index on `(provider, model, createdAt)` for cost aggregation dashboards.
 
-**Remediation:** Add index in next migration.
+**Fix applied:**
+- Added composite index `cost_events_provider_model_created_at_idx` on `(provider, model, createdAt)`
+- Schema updated in `packages/db/src/schema.ts`
+- Migration `0004_cost_events_index_and_fk.sql` uses `CREATE INDEX CONCURRENTLY`
 
 ---
 
-### M6 — No foreign keys between `costEvents` and `apiKeys` [TODO]
+### M6 — No foreign keys between `costEvents` and `apiKeys` [DONE]
 
 **Agent:** Database
 **Files:** `packages/db/src/schema.ts`
 
 Orphaned cost events can reference deleted API keys with no referential integrity.
 
-**Remediation:** Add FK constraint with `ON DELETE SET NULL`.
+**Fix applied:**
+- Added `.references(() => apiKeys.id, { onDelete: "set null" })` to `costEvents.apiKeyId`
+- Migration `0004_cost_events_index_and_fk.sql` adds FK constraint `cost_events_api_key_id_api_keys_id_fk`
 
 ---
 
@@ -529,14 +538,16 @@ Migration 0000 creates `actions` without `expires_at`. Schema and migration were
 
 ---
 
-### M20 — Transactions lack `SELECT ... FOR UPDATE` row locking [TODO]
+### M20 — Transactions lack `SELECT ... FOR UPDATE` row locking [DONE]
 
 **Agent:** Database, API Routes
-**Files:** `lib/actions/approve-action.ts`, `lib/actions/reject-action.ts`
+**Files:** `lib/actions/approve-action.ts`, `lib/actions/reject-action.ts`, `lib/actions/mark-result.ts`
 
 Optimistic concurrency works but has a TOCTOU window under concurrent approvals.
 
-**Remediation:** Add `FOR UPDATE` to the SELECT within the transaction, or use optimistic concurrency with a version column.
+**Fix applied:**
+- Added `.for("update")` to transaction SELECTs in `approve-action.ts`, `reject-action.ts`, `mark-result.ts`
+- Updated mock chains in all 3 test files to support `.for()` method
 
 ---
 

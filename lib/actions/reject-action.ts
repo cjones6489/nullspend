@@ -27,7 +27,8 @@ export async function rejectAction(
       })
       .from(actions)
       .where(and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)))
-      .limit(1);
+      .limit(1)
+      .for("update");
 
     if (!existingAction) {
       throw new ActionNotFoundError(actionId);

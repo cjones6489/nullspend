@@ -1,4 +1,4 @@
-import { and, desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 
 import { bulkExpireActions } from "@/lib/actions/expiration";
 import { serializeAction } from "@/lib/actions/serialize-action";
@@ -10,7 +10,7 @@ interface ListActionsOptions {
   ownerUserId: string;
   status?: ActionStatus;
   limit: number;
-  cursor?: string;
+  cursor?: { createdAt: string; id: string };
 }
 
 export async function listActions(options: ListActionsOptions) {
@@ -24,23 +24,30 @@ export async function listActions(options: ListActionsOptions) {
   }
 
   if (options.cursor) {
-    conditions.push(lt(actions.createdAt, new Date(options.cursor)));
+    const cursorDate = new Date(options.cursor.createdAt);
+    conditions.push(
+      or(
+        lt(actions.createdAt, cursorDate),
+        and(eq(actions.createdAt, cursorDate), lt(actions.id, options.cursor.id)),
+      )!,
+    );
   }
 
   const rows = await db
     .select()
     .from(actions)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(actions.createdAt))
+    .orderBy(desc(actions.createdAt), desc(actions.id))
     .limit(options.limit + 1);
 
   const hasMore = rows.length > options.limit;
   const pageRows = hasMore ? rows.slice(0, options.limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
 
   return {
     data: pageRows.map(serializeAction),
-    cursor: hasMore
-      ? pageRows[pageRows.length - 1].createdAt.toISOString()
+    cursor: hasMore && lastRow
+      ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
       : null,
   };
 }

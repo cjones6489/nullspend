@@ -93,15 +93,20 @@ export const actionRecordSchema = z.object({
   sourceFramework: z.string().nullable(),
 });
 
+const cursorSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: z.string().uuid(),
+});
+
 export const listActionsQuerySchema = z.object({
   status: actionStatusSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.string().datetime().optional(),
+  cursor: z.string().transform((s) => JSON.parse(s)).pipe(cursorSchema).optional(),
 });
 
 export const listActionsResponseSchema = z.object({
   data: z.array(actionRecordSchema),
-  cursor: z.string().nullable(),
+  cursor: cursorSchema.nullable(),
 });
 
 export const createActionResponseSchema = z.object({

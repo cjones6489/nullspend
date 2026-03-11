@@ -17,7 +17,9 @@ vi.mock("@/lib/db/client", () => ({
         select: () => ({
           from: () => ({
             where: () => ({
-              limit: mockTxSelect,
+              limit: () => ({
+                for: mockTxSelect,
+              }),
             }),
           }),
         }),

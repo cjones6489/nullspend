@@ -22,6 +22,20 @@
       "when": 1773172190291,
       "tag": "0002_certain_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1773379200000,
+      "tag": "0003_add_slack_user_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773379200001,
+      "tag": "0004_cost_events_index_and_fk",
+      "breakpoints": true
     }
   ]
 }

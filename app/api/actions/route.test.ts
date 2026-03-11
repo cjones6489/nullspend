@@ -23,10 +23,14 @@ vi.mock("@/lib/actions/list-actions", () => ({
   listActions: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/api-key", () => ({
-  assertApiKeyWithIdentity: vi.fn(),
-  resolveDevFallbackApiKeyUserId: vi.fn(),
-}));
+vi.mock("@/lib/auth/api-key", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/api-key")>();
+  return {
+    ...actual,
+    assertApiKeyWithIdentity: vi.fn(),
+    resolveDevFallbackApiKeyUserId: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
@@ -197,9 +201,12 @@ describe("app/api/actions/route", () => {
       cursor: null,
     });
 
+    const cursorObj = { createdAt: "2026-03-07T12:00:00.000Z", id: "00000000-0000-4000-a000-000000000001" };
+    const cursorParam = encodeURIComponent(JSON.stringify(cursorObj));
+
     const response = await GET(
       new Request(
-        "http://localhost/api/actions?status=pending&limit=25&cursor=2026-03-07T12:00:00.000Z",
+        `http://localhost/api/actions?status=pending&limit=25&cursor=${cursorParam}`,
       ),
     );
 
@@ -207,7 +214,7 @@ describe("app/api/actions/route", () => {
       ownerUserId: "user-123",
       status: "pending",
       limit: 25,
-      cursor: "2026-03-07T12:00:00.000Z",
+      cursor: cursorObj,
     });
     expect(response.status).toBe(200);
   });
