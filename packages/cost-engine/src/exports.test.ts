@@ -75,7 +75,7 @@ describe("type contract stability", () => {
   });
 
   it("Provider type accepts valid values", () => {
-    const providers: Provider[] = ["openai", "anthropic", "google", "mcp"];
-    expect(providers).toHaveLength(4);
+    const providers: Provider[] = ["openai", "anthropic", "google"];
+    expect(providers).toHaveLength(3);
   });
 });

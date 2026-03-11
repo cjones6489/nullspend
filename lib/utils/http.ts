@@ -20,7 +20,24 @@ class InvalidJsonBodyError extends Error {
   }
 }
 
-export async function readJsonBody(request: Request): Promise<unknown> {
+class PayloadTooLargeError extends Error {
+  constructor(maxBytes: number) {
+    super(`Request body exceeds ${maxBytes} bytes.`);
+    this.name = "PayloadTooLargeError";
+  }
+}
+
+const DEFAULT_MAX_BODY_BYTES = 1_048_576; // 1MB
+
+export async function readJsonBody(
+  request: Request,
+  maxBytes: number = DEFAULT_MAX_BODY_BYTES,
+): Promise<unknown> {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength && parseInt(contentLength, 10) > maxBytes) {
+    throw new PayloadTooLargeError(maxBytes);
+  }
+
   const rawBody = await request.text();
 
   if (!rawBody.trim()) {
@@ -43,6 +60,10 @@ export async function readRouteParams<T extends Record<string, string>>(
 export function handleRouteError(error: unknown) {
   if (error instanceof InvalidJsonBodyError) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  if (error instanceof PayloadTooLargeError) {
+    return NextResponse.json({ error: error.message }, { status: 413 });
   }
 
   if (error instanceof ZodError) {

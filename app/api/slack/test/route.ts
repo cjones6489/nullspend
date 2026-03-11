@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
-import { sendSlackTestNotification } from "@/lib/slack/notify";
+import {
+  sendSlackTestNotification,
+  SlackConfigNotFoundError,
+  SlackWebhookError,
+} from "@/lib/slack/notify";
 import { handleRouteError } from "@/lib/utils/http";
 
 export async function POST() {
@@ -12,9 +16,24 @@ export async function POST() {
       await sendSlackTestNotification(userId);
     } catch (slackErr) {
       console.error("[AgentSeam] Slack test notification failed:", slackErr);
+
+      if (slackErr instanceof SlackConfigNotFoundError) {
+        return NextResponse.json(
+          { error: slackErr.message },
+          { status: 404 },
+        );
+      }
+
+      if (slackErr instanceof SlackWebhookError) {
+        return NextResponse.json(
+          { error: "Failed to send test notification." },
+          { status: slackErr.statusCode >= 500 ? 502 : 400 },
+        );
+      }
+
       return NextResponse.json(
         { error: "Failed to send test notification." },
-        { status: 400 },
+        { status: 502 },
       );
     }
 

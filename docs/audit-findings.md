@@ -22,9 +22,9 @@
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
 | High | 16 | 16 | 0 | 0 |
-| Medium | 32 | 20 | 0 | 12 |
-| Low | 40 | 12 | 0 | 28 |
-| **Total** | **91** | **49** | **1** | **41** |
+| Medium | 32 | 21 | 0 | 11 |
+| Low | 40 | 19 | 0 | 21 |
+| **Total** | **91** | **57** | **1** | **33** |
 
 ---
 
@@ -543,14 +543,14 @@ Free-text columns with no CHECK constraint. Invalid values can be inserted.
 
 ---
 
-### M19 — Missing `expiresAt` column in initial migration [TODO]
+### M19 — Missing `expiresAt` column in initial migration [DONE]
 
 **Agent:** Database
 **Files:** `drizzle/0000_talented_hedge_knight.sql`
 
 Migration 0000 creates `actions` without `expires_at`. Schema and migration were out of sync.
 
-**Remediation:** Now addressed by migration 0002 which adds the column. Verify full migration sequence works on fresh DB.
+**Resolution:** Addressed by migration 0002 which adds the column via `ALTER TABLE`. Full migration sequence (0000-0004) registered in Drizzle journal for fresh DB bootstrap.
 
 ---
 
@@ -732,8 +732,8 @@ Mitigated by Slack signature verification, but worth noting.
 ### L7 — Webhook URL validation allows any path structure [DONE]
 Already fixed — `lib/validations/slack.ts` uses `new URL()` parsing, exact hostname check, and explicit allowed path prefixes (`/services/`, `/workflows/`, `/triggers/`).
 
-### L8 — Test notification returns 400 for all failure types [TODO]
-Should differentiate 404 (no config) from 502 (webhook error).
+### L8 — Test notification returns 400 for all failure types [DONE]
+Added typed `SlackConfigNotFoundError` (→ 404) and `SlackWebhookError` (→ 400/502 based on upstream status). Route now differentiates config-not-found, webhook client errors, and webhook server errors.
 
 ### L9 — Streaming response silently swallows errors mid-stream [TODO]
 No partial cost event logged when streaming fails.
@@ -741,17 +741,17 @@ No partial cost event logged when streaming fails.
 ### L10 — `computeExpiresAt` tristate behavior undocumented [DONE]
 Added JSDoc documenting the three behaviors: `undefined` → default TTL, `null`/`0` → no expiration, positive number → custom TTL.
 
-### L11 — Clock skew risk between `sql NOW()` and `new Date()` [TODO]
-`bulkExpireActions` uses `sql NOW()` while `expireAction` uses `new Date()`.
+### L11 — Clock skew risk between `sql NOW()` and `new Date()` [DONE]
+Unified `expireAction` to use `sql NOW()` for `expiredAt` timestamp, matching `bulkExpireActions`.
 
-### L12 — `lastUsedAt` update not atomic with key lookup [TODO]
-Two separate queries — key could be revoked between lookup and update.
+### L12 — `lastUsedAt` update not atomic with key lookup [DONE]
+Replaced two-query SELECT+UPDATE with single `UPDATE...RETURNING` — key validation and `lastUsedAt` update are now atomic.
 
 ### L13 — Header-based auth dispatch leaks timing information [TODO]
 Different response times for session vs. API key auth paths.
 
-### L14 — `readJsonBody` does not enforce max body size [TODO]
-See H5.
+### L14 — `readJsonBody` does not enforce max body size [DONE]
+Added `Content-Length` check (default 1MB) before reading. New `PayloadTooLargeError` returns 413.
 
 ### L15 — ZodError issues returned verbatim to client [DONE]
 Sanitized: `handleRouteError` now maps issues to `{ path, message }` only, stripping internal Zod fields.
@@ -783,8 +783,8 @@ Removed stale comment from `apps/proxy/src/routes/openai.ts`.
 ### L24 — `createBrowserSupabaseClient` throws `Error` not `SupabaseEnvError` [DONE]
 Changed to throw `SupabaseEnvError` for consistent error handling.
 
-### L25 — Error boundary leaks `error.message` to dashboard users [TODO]
-Should show generic message in production.
+### L25 — Error boundary leaks `error.message` to dashboard users [DONE]
+Dashboard error boundary now shows generic "An unexpected error occurred" instead of `error.message`.
 
 ### L26 — `UPSTREAM_FORWARD_HEADERS` includes `content-type` which is always overwritten [DONE]
 Removed `content-type` from `UPSTREAM_FORWARD_HEADERS` — it was always overwritten to `application/json`.
@@ -795,11 +795,11 @@ Removed from `lib/auth/api-key.ts`. Test file updated to cover `AGENTSEAM_DEV_MO
 ### L28 — `isTerminalActionStatus()` and `TERMINAL_ACTION_STATUSES` unused [DONE]
 Removed from `lib/utils/status.ts`.
 
-### L29 — `Provider` type includes "mcp" but no MCP pricing exists [TODO]
-Type allows a value that has no implementation.
+### L29 — `Provider` type includes "mcp" but no MCP pricing exists [DONE]
+Removed "mcp" from `Provider` type — no pricing data exists for it.
 
-### L30 — No `schemaFilter: ["public"]` in drizzle.config for Supabase [TODO]
-Could pick up Supabase internal schemas during introspection.
+### L30 — No `schemaFilter: ["public"]` in drizzle.config for Supabase [DONE]
+Added `schemaFilter: ["public"]` to `drizzle.config.ts` to prevent introspecting Supabase internal schemas.
 
 ### L31 — No explicit connection pool size configuration [TODO]
 Relies on driver defaults.
@@ -825,8 +825,8 @@ Undocumented in repo guide.
 ### L38 — `lib/actions/errors.ts` custom error classes have no tests [DONE]
 Added `lib/actions/errors.test.ts` covering all 4 error classes: name, message formatting, and `instanceof Error`.
 
-### L39 — `packages/shared` has no test script or test files [TODO]
-See H16 — package may be dead code entirely.
+### L39 — `packages/shared` has no test script or test files [DONE]
+Resolved — package was deleted entirely in Phase 3 (H16).
 
 ### L40 — Proxy smoke tests not wired into CI [TODO]
 Smoke tests exist but are manual-only.

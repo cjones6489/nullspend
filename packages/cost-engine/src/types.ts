@@ -1,4 +1,4 @@
-export type Provider = "openai" | "anthropic" | "google" | "mcp";
+export type Provider = "openai" | "anthropic" | "google";
 
 export interface ModelPricing {
   inputPerMTok: number;

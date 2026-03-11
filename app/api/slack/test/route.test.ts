@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
-import { sendSlackTestNotification } from "@/lib/slack/notify";
+import {
+  sendSlackTestNotification,
+  SlackConfigNotFoundError,
+  SlackWebhookError,
+} from "@/lib/slack/notify";
 
 import { POST } from "./route";
 
@@ -11,6 +15,20 @@ vi.mock("@/lib/auth/session", () => ({
 
 vi.mock("@/lib/slack/notify", () => ({
   sendSlackTestNotification: vi.fn(),
+  SlackConfigNotFoundError: class SlackConfigNotFoundError extends Error {
+    constructor() {
+      super("No Slack configuration found.");
+      this.name = "SlackConfigNotFoundError";
+    }
+  },
+  SlackWebhookError: class SlackWebhookError extends Error {
+    statusCode: number;
+    constructor(statusCode: number, detail: string) {
+      super(`Slack webhook error ${statusCode}: ${detail}`);
+      this.name = "SlackWebhookError";
+      this.statusCode = statusCode;
+    }
+  },
 }));
 
 const mockedSession = vi.mocked(resolveSessionUserId);
@@ -31,21 +49,21 @@ describe("POST /api/slack/test", () => {
     expect(mockedSendTest).toHaveBeenCalledWith("user-123");
   });
 
-  it("returns 400 with generic message when no config exists", async () => {
+  it("returns 404 when no Slack config exists", async () => {
     mockedSession.mockResolvedValue("user-123");
-    mockedSendTest.mockRejectedValue(new Error("No Slack configuration found."));
+    mockedSendTest.mockRejectedValue(new SlackConfigNotFoundError());
 
     const res = await POST();
     const json = await res.json();
 
-    expect(res.status).toBe(400);
-    expect(json.error).toBe("Failed to send test notification.");
+    expect(res.status).toBe(404);
+    expect(json.error).toBe("No Slack configuration found.");
   });
 
-  it("returns 400 with generic message on webhook error", async () => {
+  it("returns 400 on webhook client error", async () => {
     mockedSession.mockResolvedValue("user-123");
     mockedSendTest.mockRejectedValue(
-      new Error("Slack webhook error 403: invalid_payload"),
+      new SlackWebhookError(403, "invalid_payload"),
     );
 
     const res = await POST();
@@ -55,14 +73,27 @@ describe("POST /api/slack/test", () => {
     expect(json.error).toBe("Failed to send test notification.");
   });
 
-  it("returns 400 with fallback message for non-Error throws", async () => {
+  it("returns 502 on webhook server error", async () => {
     mockedSession.mockResolvedValue("user-123");
-    mockedSendTest.mockRejectedValue("something weird");
+    mockedSendTest.mockRejectedValue(
+      new SlackWebhookError(500, "internal_error"),
+    );
 
     const res = await POST();
     const json = await res.json();
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(502);
+    expect(json.error).toBe("Failed to send test notification.");
+  });
+
+  it("returns 502 for unknown errors", async () => {
+    mockedSession.mockResolvedValue("user-123");
+    mockedSendTest.mockRejectedValue(new Error("network timeout"));
+
+    const res = await POST();
+    const json = await res.json();
+
+    expect(res.status).toBe(502);
     expect(json.error).toBe("Failed to send test notification.");
   });
 

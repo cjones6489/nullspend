@@ -20,7 +20,7 @@ export default function DashboardError({
           Something went wrong
         </h2>
         <p className="text-sm text-zinc-400">
-          {error.message || "An unexpected error occurred."}
+          An unexpected error occurred. Please try again.
         </p>
         <button
           onClick={reset}

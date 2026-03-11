@@ -52,17 +52,12 @@ async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
   const hash = hashKey(rawKey);
 
   const [row] = await db
-    .select({ id: apiKeys.id, userId: apiKeys.userId })
-    .from(apiKeys)
-    .where(and(eq(apiKeys.keyHash, hash), isNull(apiKeys.revokedAt)))
-    .limit(1);
-
-  if (!row) return null;
-
-  await db
     .update(apiKeys)
     .set({ lastUsedAt: new Date() })
-    .where(eq(apiKeys.id, row.id));
+    .where(and(eq(apiKeys.keyHash, hash), isNull(apiKeys.revokedAt)))
+    .returning({ id: apiKeys.id, userId: apiKeys.userId });
+
+  if (!row) return null;
 
   return { userId: row.userId, keyId: row.id };
 }

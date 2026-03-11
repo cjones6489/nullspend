@@ -5,6 +5,23 @@ import { slackConfigs } from "@agentseam/db";
 import { buildPendingMessage, buildTestMessage } from "@/lib/slack/message";
 import type { ActionRecord } from "@/lib/validations/actions";
 
+export class SlackConfigNotFoundError extends Error {
+  constructor() {
+    super("No Slack configuration found.");
+    this.name = "SlackConfigNotFoundError";
+  }
+}
+
+export class SlackWebhookError extends Error {
+  public readonly statusCode: number;
+
+  constructor(statusCode: number, detail: string) {
+    super(`Slack webhook error ${statusCode}: ${detail}`);
+    this.name = "SlackWebhookError";
+    this.statusCode = statusCode;
+  }
+}
+
 function getDashboardUrl(): string {
   return process.env.AGENTSEAM_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 }
@@ -21,7 +38,7 @@ async function postToWebhook(
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`Slack webhook error ${response.status}: ${text}`);
+    throw new SlackWebhookError(response.status, text);
   }
 }
 
@@ -56,7 +73,7 @@ export async function sendSlackTestNotification(
     .limit(1);
 
   if (!config) {
-    throw new Error("No Slack configuration found.");
+    throw new SlackConfigNotFoundError();
   }
 
   const dashboardUrl = getDashboardUrl();

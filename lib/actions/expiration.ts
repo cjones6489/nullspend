@@ -43,7 +43,7 @@ export async function expireAction(
     .update(actions)
     .set({
       status: "expired",
-      expiredAt: new Date(),
+      expiredAt: sql`NOW()`,
     })
     .where(
       and(

@@ -20,6 +20,18 @@ function makeRequest(headers?: Record<string, string>): Request {
 
 const mockedGetDb = vi.mocked(getDb);
 
+function mockDb(updateResult: unknown[]) {
+  const updateChain = {
+    set: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue(updateResult),
+  };
+
+  mockedGetDb.mockReturnValue({
+    update: vi.fn().mockReturnValue(updateChain),
+  } as never);
+}
+
 describe("DB-backed API key auth", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalApiKey = process.env.AGENTSEAM_API_KEY;
@@ -37,22 +49,7 @@ describe("DB-backed API key auth", () => {
   });
 
   it("returns the DB-backed key identity when a managed key matches", async () => {
-    const selectChain = {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue([
-        { id: "key-123", userId: "user-123" },
-      ]),
-    };
-    const updateChain = {
-      set: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue(undefined),
-    };
-
-    mockedGetDb.mockReturnValue({
-      select: vi.fn().mockReturnValue(selectChain),
-      update: vi.fn().mockReturnValue(updateChain),
-    } as never);
+    mockDb([{ id: "key-123", userId: "user-123" }]);
 
     await expect(
       assertApiKeyWithIdentity(
@@ -68,20 +65,7 @@ describe("DB-backed API key auth", () => {
     setNodeEnv("development");
     process.env.AGENTSEAM_API_KEY = "env-secret";
 
-    const selectChain = {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue([]),
-    };
-    const updateChain = {
-      set: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue(undefined),
-    };
-
-    mockedGetDb.mockReturnValue({
-      select: vi.fn().mockReturnValue(selectChain),
-      update: vi.fn().mockReturnValue(updateChain),
-    } as never);
+    mockDb([]);
 
     await expect(
       assertApiKeyWithIdentity(
@@ -91,20 +75,7 @@ describe("DB-backed API key auth", () => {
   });
 
   it("throws when neither the managed key nor env fallback match", async () => {
-    const selectChain = {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockResolvedValue([]),
-    };
-    const updateChain = {
-      set: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue(undefined),
-    };
-
-    mockedGetDb.mockReturnValue({
-      select: vi.fn().mockReturnValue(selectChain),
-      update: vi.fn().mockReturnValue(updateChain),
-    } as never);
+    mockDb([]);
 
     await expect(
       assertApiKeyWithIdentity(
