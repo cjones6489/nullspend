@@ -5,7 +5,7 @@ import {
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 
 function canUseDevelopmentFallback(): boolean {
-  return process.env.NODE_ENV === "development";
+  return process.env.AGENTSEAM_DEV_MODE === "true" || process.env.NODE_ENV === "development";
 }
 
 export function getDevActor(): string | undefined {

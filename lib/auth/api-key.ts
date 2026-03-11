@@ -38,8 +38,12 @@ function constantTimeCompare(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
+function canUseDevelopmentFallback(): boolean {
+  return process.env.AGENTSEAM_DEV_MODE === "true" || process.env.NODE_ENV === "development";
+}
+
 function getEnvFallbackKey(): string | undefined {
-  if (process.env.NODE_ENV !== "development") return undefined;
+  if (!canUseDevelopmentFallback()) return undefined;
   return process.env.AGENTSEAM_API_KEY;
 }
 
@@ -63,16 +67,6 @@ async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
   return { userId: row.userId, keyId: row.id };
 }
 
-export function assertApiKey(request: Request): void {
-  const providedKey = request.headers.get(API_KEY_HEADER);
-  if (!providedKey) throw new ApiKeyError();
-
-  const envKey = getEnvFallbackKey();
-  if (envKey && constantTimeCompare(providedKey, envKey)) return;
-
-  throw new ApiKeyError();
-}
-
 export async function assertApiKeyWithIdentity(
   request: Request,
 ): Promise<ApiKeyIdentity | null> {
@@ -91,7 +85,7 @@ export async function assertApiKeyWithIdentity(
 export function resolveDevFallbackApiKeyUserId(): string {
   const devActor = getDevActor();
 
-  if (process.env.NODE_ENV === "development" && devActor) {
+  if (canUseDevelopmentFallback() && devActor) {
     return devActor;
   }
 

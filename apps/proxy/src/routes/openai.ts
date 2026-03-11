@@ -8,8 +8,6 @@ import { isKnownModel } from "@agentseam/cost-engine";
 import { logCostEvent } from "../lib/cost-logger.js";
 import { OPENAI_BASE_URL } from "../lib/constants.js";
 
-// Phase 3: Anthropic support will need a separate handler for /v1/messages
-// with different header forwarding, SSE format, and cost calculation logic.
 export async function handleChatCompletions(
   request: Request,
   env: Env,

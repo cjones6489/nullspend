@@ -36,7 +36,7 @@ export async function listActions(options: ListActionsOptions) {
   const rows = await db
     .select()
     .from(actions)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(desc(actions.createdAt), desc(actions.id))
     .limit(options.limit + 1);
 

@@ -22,9 +22,9 @@
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
 | High | 16 | 16 | 0 | 0 |
-| Medium | 32 | 17 | 0 | 15 |
-| Low | 40 | 1 | 0 | 39 |
-| **Total** | **91** | **35** | **1** | **55** |
+| Medium | 32 | 19 | 0 | 13 |
+| Low | 40 | 5 | 0 | 35 |
+| **Total** | **91** | **41** | **1** | **49** |
 
 ---
 
@@ -468,25 +468,30 @@ Identical utility functions in two packages.
 
 ---
 
-### M13 — `NODE_ENV` check unreliable for security decisions [TODO]
+### M13 — `NODE_ENV` check unreliable for security decisions [DONE]
 
 **Agent:** Security
 **Files:** `lib/auth/api-key.ts`, `lib/auth/session.ts`
 
 Multiple auth paths use `NODE_ENV === "development"` to enable fallback auth. Misconfigured production could disable all auth.
 
-**Remediation:** Use an explicit `AGENTSEAM_DEV_MODE=true` env var instead of relying on `NODE_ENV`. The `instrumentation.ts` startup check (Fix 2) partially addresses this.
+**Fix applied:**
+- Added `AGENTSEAM_DEV_MODE=true` as explicit opt-in for dev fallback auth
+- Both `api-key.ts` and `session.ts` now check `AGENTSEAM_DEV_MODE === "true" || NODE_ENV === "development"` (backwards compat)
+- `instrumentation.ts` warns if `AGENTSEAM_DEV_MODE` is set in production
+- `.env.example` documents the new variable
 
 ---
 
-### M14 — Missing `transpilePackages` or build ordering [TODO]
+### M14 — Missing `transpilePackages` or build ordering [DONE]
 
 **Agent:** Architecture
 **Files:** `next.config.ts`
 
 No `transpilePackages: ["@agentseam/db"]` or build script ordering. DB package must be pre-built before Next.js build.
 
-**Remediation:** Add `transpilePackages` to `next.config.ts`, or ensure CI runs `pnpm db:build` before `pnpm build`.
+**Fix applied:**
+- Added `transpilePackages: ["@agentseam/db"]` to `next.config.ts`
 
 ---
 
@@ -690,13 +695,13 @@ Should return 401 for authentication failure, not 403. 403 implies the identity 
 
 ---
 
-### M32 — No root `vitest.config.ts` [TODO]
+### M32 — No root `vitest.config.ts` [DONE]
 
 **Agent:** Test Coverage, Architecture
 
 Root `vitest run` uses default discovery, could pick up package tests incorrectly.
 
-**Remediation:** Already exists — root `vitest.config.ts` excludes `packages/**` and `apps/**`. Verify this is intentional. See H15 for the `test:all` gap.
+**Resolution:** Already addressed — root `vitest.config.ts` excludes `packages/**` and `apps/**`. Each package has its own `vitest.config.ts`. `pnpm test:all` runs all tests across the monorepo.
 
 ---
 
@@ -714,8 +719,8 @@ Root `vitest run` uses default discovery, could pick up package tests incorrectl
 ### L4 — Slack notification re-fetches action after creation [TODO]
 `app/api/actions/route.ts` — Extra DB round-trip. Pass the created action directly.
 
-### L5 — Redundant `assertSession()` call in approve/reject routes [TODO]
-Routes call both `assertSession()` and `resolveSessionUserId()` which both check the session.
+### L5 — Redundant `assertSession()` call in approve/reject routes [DONE]
+Fixed by M10 — routes now use single `resolveSessionContext()` call.
 
 ### L6 — Action ID in Slack button value is user-controllable [TODO]
 Mitigated by Slack signature verification, but worth noting.
@@ -762,14 +767,14 @@ By design, but the trust boundary is undocumented.
 ### L20 — No audit log for API key creation/revocation [TODO]
 Security-sensitive operations should be logged.
 
-### L21 — Redundant `conditions.length > 0` check in `listActions` [TODO]
-Code quality nit.
+### L21 — Redundant `conditions.length > 0` check in `listActions` [DONE]
+Removed — `conditions` always has at least the `ownerUserId` filter.
 
 ### L22 — Inconsistent error response format [TODO]
 Proxy and Next.js API return differently shaped error objects.
 
-### L23 — `Phase 3` stale planning comment in openai route [TODO]
-Dead comment.
+### L23 — `Phase 3` stale planning comment in openai route [DONE]
+Removed stale comment from `apps/proxy/src/routes/openai.ts`.
 
 ### L24 — `createBrowserSupabaseClient` throws `Error` not `SupabaseEnvError` [TODO]
 Inconsistent error typing.
@@ -780,11 +785,11 @@ Should show generic message in production.
 ### L26 — `UPSTREAM_FORWARD_HEADERS` includes `content-type` which is always overwritten [TODO]
 Dead header in the forward list.
 
-### L27 — `assertApiKey()` function is dead code [TODO]
-Never called anywhere. Remove it.
+### L27 — `assertApiKey()` function is dead code [DONE]
+Removed from `lib/auth/api-key.ts`. Test file updated to cover `AGENTSEAM_DEV_MODE` fallback instead.
 
-### L28 — `isTerminalActionStatus()` and `TERMINAL_ACTION_STATUSES` unused [TODO]
-Dead code in `lib/`. Remove or use.
+### L28 — `isTerminalActionStatus()` and `TERMINAL_ACTION_STATUSES` unused [DONE]
+Removed from `lib/utils/status.ts`.
 
 ### L29 — `Provider` type includes "mcp" but no MCP pricing exists [TODO]
 Type allows a value that has no implementation.

@@ -18,6 +18,14 @@ export async function register() {
       );
     }
 
+    if (process.env.AGENTSEAM_DEV_MODE === "true") {
+      warnings.push(
+        "AGENTSEAM_DEV_MODE is enabled in production. " +
+        "This enables auth bypass and dev fallbacks. " +
+        "Remove it from your production environment."
+      );
+    }
+
     for (const warning of warnings) {
       console.error(`[AgentSeam] SECURITY WARNING: ${warning}`);
     }

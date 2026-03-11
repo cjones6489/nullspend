@@ -1,75 +1,58 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiKeyError, assertApiKey } from "@/lib/auth/api-key";
+import {
+  ApiKeyError,
+  resolveDevFallbackApiKeyUserId,
+} from "@/lib/auth/api-key";
 
-function makeRequest(headers?: Record<string, string>): Request {
-  return new Request("http://localhost/api/actions", {
-    method: "POST",
-    headers,
-  });
-}
-
-describe("assertApiKey", () => {
-  const originalKey = process.env.AGENTSEAM_API_KEY;
+describe("AGENTSEAM_DEV_MODE fallback", () => {
+  const originalDevMode = process.env.AGENTSEAM_DEV_MODE;
   const originalNodeEnv = process.env.NODE_ENV;
+  const originalDevActor = process.env.AGENTSEAM_DEV_ACTOR;
 
-  function setNodeEnv(value: string | undefined) {
-    Object.assign(process.env, { NODE_ENV: value });
+  function setEnv(key: string, value: string | undefined) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
   }
 
   afterEach(() => {
-    if (originalKey !== undefined) {
-      process.env.AGENTSEAM_API_KEY = originalKey;
-    } else {
-      delete process.env.AGENTSEAM_API_KEY;
-    }
-    setNodeEnv(originalNodeEnv);
+    setEnv("AGENTSEAM_DEV_MODE", originalDevMode);
+    setEnv("NODE_ENV", originalNodeEnv);
+    setEnv("AGENTSEAM_DEV_ACTOR", originalDevActor);
   });
 
-  it("passes when the correct key is provided in development", () => {
-    setNodeEnv("development");
-    process.env.AGENTSEAM_API_KEY = "test-secret-key";
-    const request = makeRequest({ "x-agentseam-key": "test-secret-key" });
+  it("allows dev fallback when AGENTSEAM_DEV_MODE=true", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("AGENTSEAM_DEV_MODE", "true");
+    setEnv("AGENTSEAM_DEV_ACTOR", "dev-user");
 
-    expect(() => assertApiKey(request)).not.toThrow();
+    expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
   });
 
-  it("rejects env fallback key in production", () => {
-    setNodeEnv("production");
-    process.env.AGENTSEAM_API_KEY = "test-secret-key";
-    const request = makeRequest({ "x-agentseam-key": "test-secret-key" });
+  it("allows dev fallback when NODE_ENV=development (backwards compat)", () => {
+    setEnv("NODE_ENV", "development");
+    setEnv("AGENTSEAM_DEV_MODE", undefined);
+    setEnv("AGENTSEAM_DEV_ACTOR", "dev-user");
 
-    expect(() => assertApiKey(request)).toThrow(ApiKeyError);
+    expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
   });
 
-  it("throws ApiKeyError when no header is provided", () => {
-    setNodeEnv("development");
-    process.env.AGENTSEAM_API_KEY = "test-secret-key";
-    const request = makeRequest();
+  it("rejects dev fallback in production without AGENTSEAM_DEV_MODE", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("AGENTSEAM_DEV_MODE", undefined);
+    setEnv("AGENTSEAM_DEV_ACTOR", "dev-user");
 
-    expect(() => assertApiKey(request)).toThrow(ApiKeyError);
+    expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);
   });
 
-  it("throws ApiKeyError when the wrong key is provided", () => {
-    setNodeEnv("development");
-    process.env.AGENTSEAM_API_KEY = "test-secret-key";
-    const request = makeRequest({ "x-agentseam-key": "wrong-key-value" });
+  it("rejects when AGENTSEAM_DEV_MODE is not exactly 'true'", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("AGENTSEAM_DEV_MODE", "yes");
+    setEnv("AGENTSEAM_DEV_ACTOR", "dev-user");
 
-    expect(() => assertApiKey(request)).toThrow(ApiKeyError);
-  });
-
-  it("throws ApiKeyError when key has different length", () => {
-    setNodeEnv("development");
-    process.env.AGENTSEAM_API_KEY = "test-secret-key";
-    const request = makeRequest({ "x-agentseam-key": "short" });
-
-    expect(() => assertApiKey(request)).toThrow(ApiKeyError);
-  });
-
-  it("throws ApiKeyError when AGENTSEAM_API_KEY is not configured and key does not match", () => {
-    delete process.env.AGENTSEAM_API_KEY;
-    const request = makeRequest({ "x-agentseam-key": "any-key" });
-
-    expect(() => assertApiKey(request)).toThrow(ApiKeyError);
+    expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);
   });
 });
