@@ -85,6 +85,7 @@ export const slackConfigs = pgTable("slack_configs", {
   userId: text("user_id").notNull().unique(),
   webhookUrl: text("webhook_url").notNull(),
   channelName: text("channel_name"),
+  slackUserId: text("slack_user_id"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

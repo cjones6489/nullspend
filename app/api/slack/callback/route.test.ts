@@ -68,15 +68,26 @@ function makeSignedRequest(body: string): Request {
   });
 }
 
-function mockDbSelect(result: typeof dbAction | undefined) {
-  const chain = {
+function mockDbSelect(
+  result: typeof dbAction | undefined,
+  slackConfig?: { slackUserId: string | null } | undefined,
+) {
+  const actionChain = {
     select: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(result ? [result] : []),
   };
-  mockedGetDb.mockReturnValue(chain as never);
-  return chain;
+  const configChain = {
+    select: vi.fn().mockReturnThis(),
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(slackConfig ? [slackConfig] : []),
+  };
+  mockedGetDb
+    .mockReturnValueOnce(actionChain as never)
+    .mockReturnValueOnce(configChain as never);
+  return actionChain;
 }
 
 describe("POST /api/slack/callback", () => {
@@ -347,6 +358,100 @@ describe("POST /api/slack/callback", () => {
     const json = await res.json();
 
     expect(json.text).toContain("Something went wrong");
+  });
+
+  // ── Slack user authorization ─────────────────────────────────
+
+  it("allows action when Slack user matches configured slackUserId", async () => {
+    mockDbSelect(dbAction, { slackUserId: "U1234" });
+    mockedApproveAction.mockResolvedValue(undefined as never);
+
+    const body = makePayload();
+    const res = await POST(makeSignedRequest(body));
+    const json = await res.json();
+
+    expect(mockedApproveAction).toHaveBeenCalledTimes(1);
+    expect(json.replace_original).toBe(true);
+    expect(json.text).toContain("approved");
+  });
+
+  it("denies action with ephemeral message when Slack user does not match", async () => {
+    mockDbSelect(dbAction, { slackUserId: "U9999" });
+
+    const body = makePayload();
+    const res = await POST(makeSignedRequest(body));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.response_type).toBe("ephemeral");
+    expect(json.replace_original).toBe(false);
+    expect(json.text).toContain("not authorized");
+    expect(mockedApproveAction).not.toHaveBeenCalled();
+  });
+
+  it("allows action when no slack config exists (graceful degradation)", async () => {
+    mockDbSelect(dbAction);
+    mockedApproveAction.mockResolvedValue(undefined as never);
+
+    const body = makePayload();
+    const res = await POST(makeSignedRequest(body));
+    const json = await res.json();
+
+    expect(mockedApproveAction).toHaveBeenCalledTimes(1);
+    expect(json.text).toContain("approved");
+  });
+
+  it("allows action when slackUserId is null (not configured)", async () => {
+    mockDbSelect(dbAction, { slackUserId: null });
+    mockedApproveAction.mockResolvedValue(undefined as never);
+
+    const body = makePayload();
+    const res = await POST(makeSignedRequest(body));
+    const json = await res.json();
+
+    expect(mockedApproveAction).toHaveBeenCalledTimes(1);
+    expect(json.text).toContain("approved");
+  });
+
+  it("denies unauthorized user on reject action too", async () => {
+    mockDbSelect(dbAction, { slackUserId: "U9999" });
+
+    const body = makePayload({
+      actions: [{ action_id: "reject_action", value: ACTION_ID }],
+    });
+    const res = await POST(makeSignedRequest(body));
+    const json = await res.json();
+
+    expect(json.response_type).toBe("ephemeral");
+    expect(json.replace_original).toBe(false);
+    expect(json.text).toContain("not authorized");
+    expect(mockedRejectAction).not.toHaveBeenCalled();
+  });
+
+  it("allows action when authorization lookup fails (fail-open for availability)", async () => {
+    const actionChain = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([dbAction]),
+    };
+    const configChain = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockRejectedValue(new Error("DB down")),
+    };
+    mockedGetDb
+      .mockReturnValueOnce(actionChain as never)
+      .mockReturnValueOnce(configChain as never);
+    mockedApproveAction.mockResolvedValue(undefined as never);
+
+    const body = makePayload();
+    const res = await POST(makeSignedRequest(body));
+    const json = await res.json();
+
+    expect(mockedApproveAction).toHaveBeenCalledTimes(1);
+    expect(json.text).toContain("approved");
   });
 
   // ── All responses return 200 ──────────────────────────────────

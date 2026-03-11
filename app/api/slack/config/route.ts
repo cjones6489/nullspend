@@ -30,6 +30,7 @@ export async function GET() {
         id: config.id,
         webhookUrl: config.webhookUrl,
         channelName: config.channelName,
+        slackUserId: config.slackUserId,
         isActive: config.isActive,
         createdAt: config.createdAt.toISOString(),
         updatedAt: config.updatedAt.toISOString(),
@@ -54,12 +55,14 @@ export async function POST(request: Request) {
         userId,
         webhookUrl: input.webhookUrl,
         channelName: input.channelName ?? null,
+        slackUserId: input.slackUserId ?? null,
       })
       .onConflictDoUpdate({
         target: slackConfigs.userId,
         set: {
           webhookUrl: input.webhookUrl,
           channelName: input.channelName ?? null,
+          slackUserId: input.slackUserId ?? null,
           isActive: input.isActive ?? true,
           updatedAt: new Date(),
         },
@@ -71,6 +74,7 @@ export async function POST(request: Request) {
         id: upserted.id,
         webhookUrl: upserted.webhookUrl,
         channelName: upserted.channelName,
+        slackUserId: upserted.slackUserId,
         isActive: upserted.isActive,
         createdAt: upserted.createdAt.toISOString(),
         updatedAt: upserted.updatedAt.toISOString(),

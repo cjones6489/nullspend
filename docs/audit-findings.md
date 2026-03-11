@@ -21,10 +21,10 @@
 | Severity | Total | Done | Partial | Todo |
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
-| High | 16 | 14 | 0 | 2 |
+| High | 16 | 15 | 0 | 1 |
 | Medium | 32 | 5 | 0 | 27 |
 | Low | 40 | 0 | 0 | 40 |
-| **Total** | **91** | **20** | **1** | **70** |
+| **Total** | **91** | **21** | **1** | **69** |
 
 ---
 
@@ -172,7 +172,7 @@ Any model string is forwarded to OpenAI. Unknown models get `costMicrodollars = 
 
 ---
 
-### H7 — Slack callback lacks user-to-owner authorization [TODO]
+### H7 — Slack callback lacks user-to-owner authorization [DONE]
 
 **Agent:** Security, API Routes, Code Quality
 **Files:** `app/api/slack/callback/route.ts`

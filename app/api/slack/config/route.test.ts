@@ -23,6 +23,7 @@ const storedConfig = {
   userId: "user-123",
   webhookUrl: "https://hooks.slack.com/services/T00/B00/xxxx",
   channelName: "#alerts",
+  slackUserId: null as string | null,
   isActive: true,
   createdAt: now,
   updatedAt: now,

@@ -28,6 +28,7 @@ export const slackConfigInputSchema = z.object({
         "Webhook URL must be a valid https://hooks.slack.com/ URL with a /services/, /workflows/, or /triggers/ path",
     }),
   channelName: z.string().trim().max(80).optional(),
+  slackUserId: z.string().trim().min(1).max(30).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -37,6 +38,7 @@ export const slackConfigRecordSchema = z.object({
   id: z.string().uuid(),
   webhookUrl: z.string(),
   channelName: z.string().nullable(),
+  slackUserId: z.string().nullable(),
   isActive: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),

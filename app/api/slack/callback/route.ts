@@ -10,7 +10,7 @@ import {
 } from "@/lib/actions/errors";
 import { rejectAction } from "@/lib/actions/reject-action";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@agentseam/db";
+import { actions, slackConfigs } from "@agentseam/db";
 import { buildDecisionMessage } from "@/lib/slack/message";
 import {
   SlackSignatureError,
@@ -24,6 +24,20 @@ function getDashboardUrl(): string {
 function errorMessage(text: string) {
   return NextResponse.json({
     replace_original: true,
+    text,
+    blocks: [
+      {
+        type: "section",
+        text: { type: "mrkdwn", text },
+      },
+    ],
+  });
+}
+
+function ephemeralDenial(text: string) {
+  return NextResponse.json({
+    response_type: "ephemeral",
+    replace_original: false,
     text,
     blocks: [
       {
@@ -110,6 +124,21 @@ export async function POST(request: Request) {
 
   if (!action || !action.ownerUserId) {
     return errorMessage("This action was not found.");
+  }
+
+  try {
+    const db2 = getDb();
+    const [ownerConfig] = await db2
+      .select({ slackUserId: slackConfigs.slackUserId })
+      .from(slackConfigs)
+      .where(eq(slackConfigs.userId, action.ownerUserId))
+      .limit(1);
+
+    if (ownerConfig?.slackUserId && ownerConfig.slackUserId !== payload.user.id) {
+      return ephemeralDenial("You are not authorized to approve or reject this action.");
+    }
+  } catch (err) {
+    console.error("[AgentSeam] Slack authorization lookup error:", err);
   }
 
   const dashboardUrl = getDashboardUrl();
