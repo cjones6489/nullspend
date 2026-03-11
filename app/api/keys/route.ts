@@ -113,6 +113,10 @@ export async function POST(request: Request) {
         createdAt: apiKeys.createdAt,
       });
 
+    console.info(
+      `[AgentSeam] API key created: userId=${userId}, keyId=${created.id}, name="${created.name}"`,
+    );
+
     return NextResponse.json(
       createApiKeyResponseSchema.parse({
         ...created,

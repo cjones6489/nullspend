@@ -38,6 +38,10 @@ export async function DELETE(
       );
     }
 
+    console.info(
+      `[AgentSeam] API key revoked: userId=${userId}, keyId=${revoked.id}`,
+    );
+
     return NextResponse.json(
       deleteApiKeyResponseSchema.parse({
         id: revoked.id,

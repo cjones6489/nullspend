@@ -43,6 +43,13 @@
       "when": 1773465600000,
       "tag": "0005_add_cost_check_constraint",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773552000000,
+      "tag": "0006_add_budget_check_constraints",
+      "breakpoints": true
     }
   ]
 }
