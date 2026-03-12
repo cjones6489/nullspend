@@ -123,6 +123,11 @@ const cursorSchema = z.object({
 
 export const listActionsQuerySchema = z.object({
   status: actionStatusSchema.optional(),
+  statuses: z
+    .string()
+    .transform((s) => s.split(","))
+    .pipe(z.array(actionStatusSchema).min(1))
+    .optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().transform((s) => JSON.parse(s)).pipe(cursorSchema).optional(),
 });

@@ -1,10 +1,11 @@
 "use client";
 
-import { Inbox } from "lucide-react";
+import { Inbox, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { StatusBadge } from "@/components/actions/status-badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -15,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useActions } from "@/lib/queries/actions";
+import { useActionsInfinite } from "@/lib/queries/actions";
 import { formatActionType, formatRelativeTime } from "@/lib/utils/format";
 import type { ActionStatus } from "@/lib/utils/status";
 
@@ -33,7 +34,16 @@ export default function InboxPage() {
   const [activeTab, setActiveTab] = useState("pending");
   const statusFilter =
     activeTab === "all" ? undefined : (activeTab as ActionStatus);
-  const { data, isLoading, error } = useActions(statusFilter);
+  const {
+    data,
+    isLoading,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useActionsInfinite({ status: statusFilter });
+
+  const actions = data?.pages.flatMap((p) => p.data) ?? [];
 
   return (
     <div className="space-y-6">
@@ -68,9 +78,11 @@ export default function InboxPage() {
         <LoadingSkeleton />
       ) : null}
 
-      {data && data.data.length === 0 && <EmptyState status={activeTab} />}
+      {!isLoading && !error && actions.length === 0 && (
+        <EmptyState status={activeTab} />
+      )}
 
-      {data && data.data.length > 0 && (
+      {actions.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-border/50 bg-card">
           <Table>
             <TableHeader>
@@ -93,14 +105,14 @@ export default function InboxPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.data.map((action) => (
+              {actions.map((action) => (
                 <TableRow
                   key={action.id}
                   className="group border-border/30 transition-colors hover:bg-accent/40"
                 >
                   <TableCell>
                     <Link
-                      href={`/app/actions/${action.id}`}
+                      href={`/app/actions/${action.id}?from=inbox`}
                       className="text-[13px] font-medium text-foreground transition-colors hover:text-primary"
                     >
                       {formatActionType(action.actionType)}
@@ -122,6 +134,27 @@ export default function InboxPage() {
               ))}
             </TableBody>
           </Table>
+
+          {hasNextPage && (
+            <div className="flex justify-center border-t border-border/30 py-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className="text-xs"
+              >
+                {isFetchingNextPage ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load More"
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -9,7 +9,7 @@
 > from `docs/finops-pivot-roadmap.md`, broken into sub-phases sized for
 > incremental delivery.
 >
-> **Last audited:** 2026-03-07 (Phase 3B complete)
+> **Last audited:** 2026-03-12 (Phase 3D complete)
 
 ---
 
@@ -124,12 +124,11 @@ are exactly the queries we need to build.
 - `api_keys.lastUsedAt` -- shown in Settings, but not correlated with
   cost events (could show "last used: 2 min ago, $0.03 last call").
 - `actions.approvedBy` / `actions.rejectedBy` -- stores the user ID of who
-  took the action (dashboard user or Slack callback). Not shown on the action
-  detail page or timeline. Important for audit trail and distinguishing
-  dashboard vs Slack approvals.
-- `actions.status = "executing"` -- valid status, but has no dedicated filter
-  tab in Inbox or History. The History page's `HISTORY_STATUSES` set excludes
-  it, so in-flight actions are invisible in History's "All" tab.
+  took the action (dashboard user or Slack callback). **Now shown in timeline**
+  with UUID heuristic: UUIDs display as "Dashboard", other values show as
+  Slack usernames. (Phase 3D)
+- `actions.status = "executing"` -- valid status. **Now included** in History
+  page's `HISTORY_STATUSES` and has a dedicated filter tab. (Phase 3D)
 
 ### 1.4 API Routes (Next.js at `app/api/`)
 
@@ -143,9 +142,8 @@ are exactly the queries we need to build.
 
 **Slack:** GET/POST/DELETE `/api/slack/config`, POST `/api/slack/test`, POST `/api/slack/callback`
 
-**Known bug:** The budgets GET route uses raw SQL `IN ${keyIds}` which may not
-produce valid SQL in all cases. Should use Drizzle's `inArray()` helper.
-Track as a fix in Phase 3D.
+**Fixed in Phase 3D:** The budgets GET route now uses Drizzle's `inArray()` helper
+instead of raw SQL `IN ${keyIds}`.
 
 ---
 
@@ -167,15 +165,15 @@ Track as a fix in Phase 3D.
 |---|---|---|---|
 | `cost_events` (per-call cost log) | **Visible on Activity page (Phase 3A complete)** | ~~Critical~~ Done | ~~3A~~ |
 | Cost on individual actions | **Shown on action detail page via CostCard (Phase 3B complete)** | ~~High~~ Done | ~~3B~~ |
-| Spend breakdown by model | **Not available anywhere** | High | 3C |
-| Spend over time (trend) | **Not available anywhere** | Medium | 3C |
-| Spend by API key | **Not available anywhere** | Medium | 3C |
-| Budget denial details | **429 body has rich data, not shown to dashboard users** | Medium | 3C |
+| Spend breakdown by model | **Shown on Analytics page (Phase 3C complete)** | ~~High~~ Done | ~~3C~~ |
+| Spend over time (trend) | **Shown on Analytics page (Phase 3C complete)** | ~~Medium~~ Done | ~~3C~~ |
+| Spend by API key | **Shown on Analytics page (Phase 3C complete)** | ~~Medium~~ Done | ~~3C~~ |
+| Budget denial details | **429 body has rich data, not shown to dashboard users** | Medium | Future |
 | Reasoning token breakdown | **Displayed on Activity page (Phase 3A complete)** | ~~Low~~ Done | ~~3A~~ |
-| Who approved/rejected actions | **`approvedBy`/`rejectedBy` stored but not shown in UI** | Medium | 3D |
-| `executing` status visibility | **No filter tab; excluded from History "All" tab** | Low | 3D |
-| Action type API filter | **`GET /api/actions` only filters by `status`, not `actionType`** | Low | 3D |
-| Edit budget limit | **API supports upsert, but UI only offers create/delete/reset** | Medium | 3D |
+| Who approved/rejected actions | **Shown in timeline with Dashboard vs Slack heuristic (Phase 3D complete)** | ~~Medium~~ Done | ~~3D~~ |
+| `executing` status visibility | **Added to History HISTORY_STATUSES and STATUS_TABS (Phase 3D complete)** | ~~Low~~ Done | ~~3D~~ |
+| Action type API filter | **`GET /api/actions` only filters by `status`, not `actionType`** | Low | Future |
+| Edit budget limit | **Edit Budget dialog with pre-fill and upsert (Phase 3D complete)** | ~~Medium~~ Done | ~~3D~~ |
 | Model pricing reference | **19 models priced, not viewable by users** | Low | Future |
 | Upstream latency (time OpenAI takes) | **Not measured or stored** | Medium | 5 |
 | Proxy overhead (our added latency) | **Not measured or stored** | Medium | 5 |
@@ -188,15 +186,15 @@ Track as a fix in Phase 3D.
 
 | Area | What Works | What's Missing |
 |---|---|---|
-| Inbox | List + filter + detail | No pagination (capped at 50), no cost info |
-| History | List + filter + search | No pagination (capped at 100), no cost info |
-| Budgets | Budget CRUD + progress bars | No analytics, no breakdowns (cost event log is now on dedicated Activity page) |
-| Action Detail | Payload, metadata, result, timeline, cost card | Does not show `approvedBy`/`rejectedBy` (who acted) |
-| Create Budget dialog | Works | "Monthly limit" label doesn't match selected interval; no "edit" mode for existing budgets |
-| Budget `currentPeriodStart` | Not set on creation | `POST /api/budgets` doesn't initialize `currentPeriodStart`, so "days left" is always null for real budgets (only seed script sets it) |
+| Inbox | List + filter + detail + cursor pagination | **Complete** (Phase 3D) |
+| History | List + filter + search + cursor pagination + multi-status | **Complete** (Phase 3D) |
+| Budgets | Budget CRUD + progress bars + edit mode | No analytics, no breakdowns (cost event log is now on dedicated Activity page) |
+| Action Detail | Payload, metadata, result, timeline, cost card, context-aware back link, actor display | **Complete** (Phase 3D) |
+| Budget dialog | Create + Edit modes, dynamic label | **Complete** (Phase 3D) |
+| Budget `currentPeriodStart` | **Fixed:** `POST /api/budgets` now sets `currentPeriodStart` when `resetInterval` is provided | **Complete** (Phase 3D) |
 | Command palette search | Uses `cmdk` built-in text filter | Only matches visible text (action type, agent ID); can't search by ID, status, or metadata |
-| Budgets GET route | Works | Raw SQL `IN` clause should use Drizzle `inArray()` |
-| `slack_configs` schema | Has `slackUserId` column in Drizzle schema | Column missing from actual DB table (migration gap) |
+| Budgets GET route | **Fixed:** Uses Drizzle `inArray()` | **Complete** (Phase 3D) |
+| `slack_configs` schema | Has `slackUserId` column in Drizzle schema | Idempotent migration script created (Phase 3D) |
 
 ---
 
@@ -320,37 +318,34 @@ charts and spend breakdowns.
 
 ---
 
-### Phase 3D: Pagination & Polish
+### Phase 3D: Pagination & Polish -- COMPLETE
 
 **Goal:** Handle real traffic volumes and clean up rough edges.
 
-**What it delivers:**
-- Cursor-based pagination on Inbox and History pages
-- Delete unused `components/settings/budgets-section.tsx`
-- Fix "Monthly limit" label in create budget dialog
-- Context-aware back-link on action detail page
-- Fix budgets GET route: replace raw SQL `IN ${keyIds}` with Drizzle `inArray()`
-- Run `slack_configs` migration to add `slack_user_id` column (or remove from schema)
-- Fix `POST /api/budgets` to initialize `currentPeriodStart` to `NOW()` when
-  `resetInterval` is provided (currently left null, breaking "days left" display)
-- Add "Edit Budget" capability to the Budgets page (API already supports upsert)
-- Show `approvedBy` / `rejectedBy` on action detail page and in timeline
-- Add `executing` to History page's `HISTORY_STATUSES` set so in-flight actions
-  are visible in the "All" tab
+**What was delivered:**
+- Cursor-based pagination (Load More) on Inbox and History pages using `useActionsInfinite` hook
+- Multi-status API support (`statuses` query param) for History "All" tab server-side filtering
+- Edit Budget capability with pre-filled dialog, cache dedup on upsert
+- Context-aware back link on action detail page (inbox vs history via `useSearchParams`)
+- `formatActor` heuristic in timeline: UUID = "Dashboard", non-UUID = Slack username
+- `executing` status added to History page's `HISTORY_STATUSES` and `STATUS_TABS`
+- Fixed budgets GET route: raw SQL `IN` replaced with Drizzle `inArray()`
+- Fixed `currentPeriodStart` initialization on budget create/edit
+- Fixed dynamic "Monthly limit" / "Daily limit" / etc. label
+- Deleted unused `components/settings/budgets-section.tsx`
+- Idempotent migration script for `slack_user_id` column
+- Fixed `ListActionsResponse` cursor type (object, not string)
+- New tests: `formatActor`, `statuses` validation, budgets route, `listActions` unit tests
 
 **Key design decisions:**
-- The API already supports `cursor` param; this is frontend-only work
+- Distinct `actionKeys.listInfinite` query key avoids cache collision with `useActions`
 - "Load more" button pattern (not infinite scroll -- simpler, more predictable)
-- `approvedBy`/`rejectedBy` display: show "Approved by Dashboard" vs
-  "Approved via Slack" in the timeline (resolve user ID display later)
-- Edit budget: reuse `CreateBudgetDialog` with pre-filled values; the POST
-  endpoint's `onConflictDoUpdate` handles the upsert
+- `key={editBudget?.entityId ?? "create"}` forces dialog remount for correct state init
+- `<Suspense fallback={null}>` wraps `BackLink` for `useSearchParams()` in client component
 
-**Files involved:** ~8-10 files
+**Files changed:** ~15 files
 
-**Depends on:** Nothing. Can run in parallel with any other phase.
-
-**Reference:** General UX polish, not from a specific roadmap item.
+**Depends on:** Nothing. Ran independently.
 
 ### Phase 5: Performance Monitoring
 
@@ -411,17 +406,17 @@ are included in the performance view.
 ## 4. Dependency Graph
 
 ```
-Sidebar: Approvals (Inbox, History) | FinOps (Budgets, Activity) | Configure (Settings)
+Sidebar: Approvals (Inbox, History) | FinOps (Budgets, Activity, Analytics) | Configure (Settings)
 
 Phase 3A (Cost Events Visibility) -- COMPLETE; Activity page at /app/activity
   │
   ├──> Phase 3B (Cost on Action Detail) -- COMPLETE; CostCard + actionId correlation
   │
-  └──> Phase 3C (Analytics Page) -- new page under FinOps, needs cost event data
+  └──> Phase 3C (Analytics Page) -- COMPLETE; Analytics page at /app/analytics
           │
           └──> Phase 5 (Performance Monitoring) -- needs analytics page
   
-Phase 3D (Pagination & Polish) -- independent, can run anytime
+Phase 3D (Pagination & Polish) -- COMPLETE
 
 Phase 4 (MCP Tool Cost Tracking, from finops roadmap) -- independent proxy work
 ```
@@ -434,27 +429,15 @@ Recommended order: 3A → 3B → 3C → 3D → Phase 4 (MCP) → Phase 5 (Perf).
 
 Items discovered during backend audits that should be tracked.
 
-### Bugs to fix (Phase 3D)
+### Bugs fixed (Phase 3D -- all resolved)
 
-- **Budgets GET route SQL injection risk:** `app/api/budgets/route.ts` uses
-  raw SQL `IN ${keyIds}` instead of Drizzle's `inArray()`. Could produce
-  invalid SQL for certain inputs.
-- **`slack_configs` migration gap:** Drizzle schema has `slackUserId` column
-  but the actual Postgres table does not. Every Settings page load triggers
-  a 500 error on the Slack config API. Needs either a migration or schema
-  correction.
-- **Budget `currentPeriodStart` not initialized on creation:** `POST /api/budgets`
-  sets `resetInterval` but never sets `currentPeriodStart`. It stays null,
-  which means `computeDaysLeft()` on the Budgets page always returns null for
-  real user-created budgets. Only the seed script sets this field. Fix: set
-  `currentPeriodStart: sql\`NOW()\`` in both the insert values and the
-  onConflictDoUpdate set clause when `resetInterval` is provided.
+- ~~**Budgets GET route SQL injection risk:**~~ **FIXED.** Now uses Drizzle `inArray()`.
+- ~~**`slack_configs` migration gap:**~~ **FIXED.** Idempotent migration script at `scripts/migrate-add-slack-user-id.ts`.
+- ~~**Budget `currentPeriodStart` not initialized on creation:**~~ **FIXED.** Conditionally set to `NOW()` when `resetInterval` is provided.
 - ~~**Revoked API keys shown in budget create dropdown:**~~ **FALSE POSITIVE.**
   `GET /api/keys` already filters `isNull(apiKeys.revokedAt)` — revoked keys
   never appear in the dropdown. No fix needed.
-- **`executing` status invisible in History:** `HISTORY_STATUSES` in
-  `history/page.tsx` excludes `executing`, so actions mid-execution don't
-  appear in the "All" tab.
+- ~~**`executing` status invisible in History:**~~ **FIXED.** Added to `HISTORY_STATUSES` and `STATUS_TABS`.
 
 ### Data quality observations
 
@@ -523,7 +506,7 @@ planning when prioritized.
 | Phase 0-2 (Proxy + Budget Enforcement) | **Complete** | -- |
 | Phase 3A (Cost Events Visibility) | **Complete** | Activity page live at `/app/activity` |
 | Phase 3B (Cost on Action Detail) | **Complete** | CostCard on action detail page, `actionId` correlation via proxy header |
-| Phase 3C (Usage Analytics) | **Not started** | Blocked on 3A |
-| Phase 3D (Pagination & Polish) | **Not started** | Can start anytime |
+| Phase 3C (Usage Analytics) | **Complete** | Analytics page live at `/app/analytics` |
+| Phase 3D (Pagination & Polish) | **Complete** | Cursor pagination, edit budget, actor display, bug fixes |
 | Phase 4 (MCP Tool Cost Tracking) | **Not started** | After Phase 3; tracked in `finops-pivot-roadmap.md` |
 | Phase 5 (Performance Monitoring) | **Not started** | After Phase 3C and Phase 4 |

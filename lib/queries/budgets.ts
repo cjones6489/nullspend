@@ -67,7 +67,7 @@ export function useCreateBudget() {
               ...created,
               currentPeriodStart: created.currentPeriodStart ?? null,
             },
-            ...(existing?.data ?? []),
+            ...(existing?.data ?? []).filter((b) => b.id !== created.id),
           ],
         }),
       );

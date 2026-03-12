@@ -137,9 +137,13 @@ async function main() {
     console.log(`Found ${eligibleActions.length} executed/failed action(s) for correlation`);
   }
 
-  const eventCount = randInt(25, 30);
+  // Clear old seed data before re-seeding
+  const deleted = await db.delete(costEvents);
+  console.log(`Cleared ${deleted.length} existing cost event(s)`);
+
+  const eventCount = randInt(80, 120);
   const now = Date.now();
-  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
   const events = Array.from({ length: eventCount }, () => {
     const profile = pickModel();
@@ -169,7 +173,7 @@ async function main() {
       outputTokens,
     );
     const durationMs = randInt(...profile.durationRange);
-    const createdAt = new Date(now - randInt(0, sevenDaysMs));
+    const createdAt = new Date(now - randInt(0, thirtyDaysMs));
     const apiKey = existingKeys[randInt(0, existingKeys.length - 1)];
 
     let actionId: string | null = null;
@@ -197,23 +201,16 @@ async function main() {
 
   events.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-  let inserted = 0;
   for (const event of events) {
-    const result = await db
+    await db
       .insert(costEvents)
       .values(event)
       .onConflictDoNothing({
         target: [costEvents.requestId, costEvents.provider],
       });
-
-    if (result.length !== 0) {
-      inserted++;
-    }
   }
 
-  console.log(
-    `\nDone. Seeded ${inserted} cost event(s) (${events.length - inserted} skipped as duplicates).`,
-  );
+  console.log(`\nDone. Seeded ${events.length} cost event(s).`);
   const correlated = events.filter((e) => e.actionId !== null).length;
   console.log(`Action-correlated: ${correlated} / ${events.length}`);
   console.log("Models used:");

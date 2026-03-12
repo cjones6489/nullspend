@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
@@ -28,8 +28,10 @@ export async function GET() {
       .from(budgets)
       .where(
         keyIds.length > 0
-          ? sql`(${budgets.entityType} = 'user' AND ${budgets.entityId} = ${userId})
-                OR (${budgets.entityType} = 'api_key' AND ${budgets.entityId} IN ${keyIds})`
+          ? or(
+              and(eq(budgets.entityType, "user"), eq(budgets.entityId, userId)),
+              and(eq(budgets.entityType, "api_key"), inArray(budgets.entityId, keyIds)),
+            )
           : and(eq(budgets.entityType, "user"), eq(budgets.entityId, userId)),
       );
 
@@ -64,12 +66,14 @@ export async function POST(request: Request) {
         entityId: input.entityId,
         maxBudgetMicrodollars: input.maxBudgetMicrodollars,
         resetInterval: input.resetInterval ?? null,
+        ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
       })
       .onConflictDoUpdate({
         target: [budgets.entityType, budgets.entityId],
         set: {
           maxBudgetMicrodollars: input.maxBudgetMicrodollars,
           resetInterval: input.resetInterval ?? null,
+          ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
           updatedAt: sql`NOW()`,
         },
       })

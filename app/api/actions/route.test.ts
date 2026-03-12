@@ -48,8 +48,8 @@ function makeActionRecord(overrides: Record<string, unknown> = {}) {
   return {
     id: "550e8400-e29b-41d4-a716-446655440000",
     agentId: "agent-1",
-    actionType: "http_post",
-    status: "pending",
+    actionType: "http_post" as const,
+    status: "pending" as const,
     payload: { url: "https://example.com" },
     metadata: null,
     createdAt: "2026-03-07T12:00:00.000Z",
@@ -186,6 +186,27 @@ describe("app/api/actions/route", () => {
       status: "pending",
       limit: 25,
       cursor: cursorObj,
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("passes statuses array to listActions when provided", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockedListActions.mockResolvedValue({
+      data: [],
+      cursor: null,
+    });
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/actions?statuses=approved,executed,failed",
+      ),
+    );
+
+    expect(mockedListActions).toHaveBeenCalledWith({
+      ownerUserId: "user-123",
+      statuses: ["approved", "executed", "failed"],
+      limit: 50,
     });
     expect(response.status).toBe(200);
   });

@@ -60,6 +60,33 @@ export function budgetHealthColor(spent: number, limit: number): string {
   return "bg-primary";
 }
 
+export function formatChartDollars(microdollars: number): string {
+  const dollars = microdollars / 1_000_000;
+  if (dollars === 0) return "$0";
+  if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  if (dollars >= 1) return `$${dollars.toFixed(dollars % 1 === 0 ? 0 : 2)}`;
+  return `$${dollars.toFixed(2)}`;
+}
+
+export function fillDateGaps(
+  data: { date: string; totalCostMicrodollars: number }[],
+  periodDays: number,
+): { date: string; totalCostMicrodollars: number }[] {
+  const lookup = new Map(data.map((d) => [d.date, d.totalCostMicrodollars]));
+  const result: { date: string; totalCostMicrodollars: number }[] = [];
+  const now = new Date();
+  now.setUTCHours(0, 0, 0, 0);
+
+  for (let i = periodDays - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    result.push({ date: dateStr, totalCostMicrodollars: lookup.get(dateStr) ?? 0 });
+  }
+
+  return result;
+}
+
 export function formatExpiresAt(expiresAt: string | null): string | null {
   if (!expiresAt) return null;
 

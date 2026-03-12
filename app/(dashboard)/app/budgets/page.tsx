@@ -1,6 +1,6 @@
 "use client";
 
-import { DollarSign, MoreHorizontal, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { DollarSign, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -67,11 +67,21 @@ export default function BudgetsPage() {
   const { data, isLoading, error } = useBudgets();
   const { data: keysData } = useApiKeys();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editBudget, setEditBudget] = useState<EditBudgetData | undefined>();
 
   const budgets = data?.data ?? [];
   const keyMap = new Map(
     (keysData?.data ?? []).map((k) => [k.id, k.name]),
   );
+
+  function handleEditClick(budget: BudgetData) {
+    setEditBudget({
+      entityType: budget.entityType as "user" | "api_key",
+      entityId: budget.entityId,
+      limitDollars: (budget.maxBudgetMicrodollars / 1_000_000).toString(),
+      resetInterval: budget.resetInterval ?? "none",
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -84,8 +94,15 @@ export default function BudgetsPage() {
             Manage spending limits for your account and API keys.
           </p>
         </div>
-        <CreateBudgetDialog open={createOpen} onOpenChange={setCreateOpen} />
+        <BudgetDialog open={createOpen} onOpenChange={setCreateOpen} />
       </div>
+
+      <BudgetDialog
+        key={editBudget?.entityId ?? "edit-closed"}
+        open={!!editBudget}
+        onOpenChange={(open) => { if (!open) setEditBudget(undefined); }}
+        editBudget={editBudget}
+      />
 
       {isLoading && <BudgetsSkeleton />}
 
@@ -134,6 +151,7 @@ export default function BudgetsPage() {
                         ? "Your Account"
                         : keyMap.get(budget.entityId) ?? budget.entityId.slice(0, 8)
                     }
+                    onEditClick={() => handleEditClick(budget)}
                   />
                 ))}
               </TableBody>
@@ -187,9 +205,11 @@ function StatCard({
 function BudgetRow({
   budget,
   entityName,
+  onEditClick,
 }: {
   budget: BudgetData;
   entityName: string;
+  onEditClick: () => void;
 }) {
   const resetBudget = useResetBudget();
   const deleteBudget = useDeleteBudget();
@@ -279,6 +299,10 @@ function BudgetRow({
             <MoreHorizontal className="h-3.5 w-3.5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onEditClick}>
+              <Pencil className="mr-2 h-3.5 w-3.5" />
+              Edit Budget
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setResetOpen(true)}>
               <RotateCcw className="mr-2 h-3.5 w-3.5" />
               Reset Spend
@@ -348,22 +372,38 @@ function BudgetRow({
   );
 }
 
-function CreateBudgetDialog({
+interface EditBudgetData {
+  entityType: "user" | "api_key";
+  entityId: string;
+  limitDollars: string;
+  resetInterval: string;
+}
+
+function BudgetDialog({
   open,
   onOpenChange,
+  editBudget,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  editBudget?: EditBudgetData;
 }) {
+  const isEdit = !!editBudget;
   const createBudget = useCreateBudget();
   const { data: userId } = useCurrentUserId();
   const { data: keysData } = useApiKeys();
   const keys = keysData?.data ?? [];
 
-  const [entityType, setEntityType] = useState<"user" | "api_key">("user");
-  const [selectedKeyId, setSelectedKeyId] = useState("");
-  const [limitDollars, setLimitDollars] = useState("");
-  const [resetInterval, setResetInterval] = useState<string>("none");
+  const [entityType, setEntityType] = useState<"user" | "api_key">(
+    editBudget?.entityType ?? "user",
+  );
+  const [selectedKeyId, setSelectedKeyId] = useState(
+    editBudget?.entityType === "api_key" ? editBudget.entityId : "",
+  );
+  const [limitDollars, setLimitDollars] = useState(editBudget?.limitDollars ?? "");
+  const [resetInterval, setResetInterval] = useState<string>(
+    editBudget?.resetInterval ?? "none",
+  );
 
   function resetForm() {
     setEntityType("user");
@@ -372,15 +412,18 @@ function CreateBudgetDialog({
     setResetInterval("none");
   }
 
-  function handleCreate() {
+  function handleSubmit() {
     const dollars = parseFloat(limitDollars);
     if (isNaN(dollars) || dollars <= 0) {
       toast.error("Enter a valid budget amount");
       return;
     }
 
-    const entityId =
-      entityType === "user" ? userId : selectedKeyId;
+    const entityId = isEdit
+      ? editBudget.entityId
+      : entityType === "user"
+        ? userId
+        : selectedKeyId;
 
     if (!entityId) {
       toast.error(
@@ -403,37 +446,42 @@ function CreateBudgetDialog({
       },
       {
         onSuccess: () => {
-          toast.success("Budget created");
-          resetForm();
+          toast.success(isEdit ? "Budget updated" : "Budget created");
+          if (!isEdit) resetForm();
           onOpenChange(false);
         },
-        onError: (err) => toast.error(err.message || "Failed to create budget"),
+        onError: (err) =>
+          toast.error(err.message || `Failed to ${isEdit ? "update" : "create"} budget`),
       },
     );
   }
 
   function handleClose(nextOpen: boolean) {
-    if (!nextOpen) resetForm();
+    if (!nextOpen && !isEdit) resetForm();
     onOpenChange(nextOpen);
   }
 
   const canSubmit =
     limitDollars.trim() !== "" &&
     parseFloat(limitDollars) > 0 &&
-    (entityType === "user" ? !!userId : !!selectedKeyId);
+    (isEdit || (entityType === "user" ? !!userId : !!selectedKeyId));
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogTrigger
-        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        Set Budget
-      </DialogTrigger>
+      {!isEdit && (
+        <DialogTrigger
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Set Budget
+        </DialogTrigger>
+      )}
       <DialogContent>
-        <DialogTitle>Set Budget</DialogTitle>
+        <DialogTitle>{isEdit ? "Edit Budget" : "Set Budget"}</DialogTitle>
         <DialogDescription>
-          Set a spending limit for your account or an individual API key.
+          {isEdit
+            ? "Update the spending limit or reset interval."
+            : "Set a spending limit for your account or an individual API key."}
         </DialogDescription>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -441,24 +489,28 @@ function CreateBudgetDialog({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setEntityType("user")}
+                onClick={() => !isEdit && setEntityType("user")}
+                disabled={isEdit}
                 className={cn(
                   "flex-1 rounded-md border px-3 py-2 text-xs font-medium transition-colors",
                   entityType === "user"
                     ? "border-primary bg-primary/10 text-primary"
                     : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground",
+                  isEdit && "cursor-default opacity-60",
                 )}
               >
                 Your Account
               </button>
               <button
                 type="button"
-                onClick={() => setEntityType("api_key")}
+                onClick={() => !isEdit && setEntityType("api_key")}
+                disabled={isEdit}
                 className={cn(
                   "flex-1 rounded-md border px-3 py-2 text-xs font-medium transition-colors",
                   entityType === "api_key"
                     ? "border-primary bg-primary/10 text-primary"
                     : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground",
+                  isEdit && "cursor-default opacity-60",
                 )}
               >
                 API Key
@@ -469,12 +521,17 @@ function CreateBudgetDialog({
           {entityType === "api_key" && (
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">API Key</Label>
-              {keys.length === 0 ? (
+              {isEdit ? (
+                <p className="text-xs text-foreground/80">
+                  {keys.find((k) => k.id === editBudget.entityId)?.name ??
+                    editBudget.entityId.slice(0, 8)}
+                </p>
+              ) : keys.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   No API keys available. Create a key first.
                 </p>
               ) : (
-                <Select value={selectedKeyId} onValueChange={setSelectedKeyId}>
+                <Select value={selectedKeyId} onValueChange={(v) => setSelectedKeyId(v ?? "")}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a key..." />
                   </SelectTrigger>
@@ -492,7 +549,13 @@ function CreateBudgetDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="budget-limit" className="text-xs text-muted-foreground">
-              Monthly limit
+              {resetInterval === "daily"
+                ? "Daily limit"
+                : resetInterval === "weekly"
+                  ? "Weekly limit"
+                  : resetInterval === "monthly"
+                    ? "Monthly limit"
+                    : "Budget limit"}
             </Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
@@ -513,7 +576,7 @@ function CreateBudgetDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Reset interval</Label>
-            <Select value={resetInterval} onValueChange={setResetInterval}>
+            <Select value={resetInterval} onValueChange={(v) => setResetInterval(v ?? "none")}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -535,10 +598,12 @@ function CreateBudgetDialog({
           </DialogClose>
           <Button
             size="sm"
-            onClick={handleCreate}
+            onClick={handleSubmit}
             disabled={!canSubmit || createBudget.isPending}
           >
-            {createBudget.isPending ? "Creating..." : "Set Budget"}
+            {createBudget.isPending
+              ? isEdit ? "Saving..." : "Creating..."
+              : isEdit ? "Save Changes" : "Set Budget"}
           </Button>
         </DialogFooter>
       </DialogContent>

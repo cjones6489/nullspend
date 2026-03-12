@@ -2,7 +2,8 @@
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import { use } from "react";
+import { Suspense, use } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { ActionTimeline } from "@/components/actions/action-timeline";
 import { CostCard } from "@/components/actions/cost-card";
@@ -29,7 +30,9 @@ export default function ActionDetailPage({
   if (error || !action) {
     return (
       <div className="space-y-4">
+        <Suspense fallback={null}>
         <BackLink />
+      </Suspense>
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-6 text-center text-sm text-red-400">
           {error?.message || "Action not found."}
         </div>
@@ -39,7 +42,9 @@ export default function ActionDetailPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <BackLink />
+      <Suspense fallback={null}>
+        <BackLink />
+      </Suspense>
 
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
@@ -134,13 +139,18 @@ export default function ActionDetailPage({
 }
 
 function BackLink() {
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
+  const href = from === "history" ? "/app/history" : "/app/inbox";
+  const label = from === "history" ? "Back to history" : "Back to inbox";
+
   return (
     <Link
-      href="/app/inbox"
+      href={href}
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
     >
       <ArrowLeft className="h-3.5 w-3.5" />
-      Back to inbox
+      {label}
     </Link>
   );
 }

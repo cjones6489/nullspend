@@ -1,10 +1,11 @@
 "use client";
 
-import { Clock } from "lucide-react";
+import { Clock, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
 import { StatusBadge } from "@/components/actions/status-badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -16,38 +17,50 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useActions } from "@/lib/queries/actions";
+import { useActionsInfinite } from "@/lib/queries/actions";
 import { formatActionType, formatRelativeTime } from "@/lib/utils/format";
-import type { ActionRecord } from "@/lib/validations/actions";
 import type { ActionStatus } from "@/lib/utils/status";
 
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: "all", label: "All" },
   { value: "executed", label: "Executed" },
+  { value: "executing", label: "Executing" },
   { value: "failed", label: "Failed" },
   { value: "rejected", label: "Rejected" },
   { value: "expired", label: "Expired" },
   { value: "approved", label: "Approved" },
 ];
 
-const HISTORY_STATUSES = new Set<ActionStatus>([
+const HISTORY_STATUSES: ActionStatus[] = [
   "approved",
   "executed",
+  "executing",
   "failed",
   "rejected",
   "expired",
-]);
+];
 
 export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
-  const statusFilter =
-    activeTab === "all" ? undefined : (activeTab as ActionStatus);
-  const { data, isLoading, error } = useActions(statusFilter, 100);
 
-  const historyActions = filterHistoryActions(data?.data ?? [], activeTab);
+  const queryOptions =
+    activeTab === "all"
+      ? { statuses: HISTORY_STATUSES }
+      : { status: activeTab as ActionStatus };
 
-  const filtered = historyActions.filter((action) => {
+  const {
+    data,
+    isLoading,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useActionsInfinite(queryOptions);
+
+  const allActions = data?.pages.flatMap((p) => p.data) ?? [];
+
+  const filtered = allActions.filter((action) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -65,9 +78,6 @@ export default function HistoryPage() {
         </h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
           Browse past agent actions and their outcomes.
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground/80">
-          Showing the 100 most recent historical actions loaded from the server.
         </p>
       </div>
 
@@ -103,9 +113,11 @@ export default function HistoryPage() {
         <LoadingSkeleton />
       ) : null}
 
-      {data && filtered.length === 0 && <EmptyState hasSearch={!!search.trim()} />}
+      {!isLoading && !error && filtered.length === 0 && (
+        <EmptyState hasSearch={!!search.trim()} />
+      )}
 
-      {data && filtered.length > 0 && (
+      {filtered.length > 0 && (
         <div className="overflow-hidden rounded-lg border border-border/50 bg-card">
           <Table>
             <TableHeader>
@@ -135,7 +147,7 @@ export default function HistoryPage() {
                 >
                   <TableCell>
                     <Link
-                      href={`/app/actions/${action.id}`}
+                      href={`/app/actions/${action.id}?from=history`}
                       className="text-[13px] font-medium text-foreground transition-colors hover:text-primary"
                     >
                       {formatActionType(action.actionType)}
@@ -157,18 +169,31 @@ export default function HistoryPage() {
               ))}
             </TableBody>
           </Table>
+
+          {hasNextPage && (
+            <div className="flex justify-center border-t border-border/30 py-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className="text-xs"
+              >
+                {isFetchingNextPage ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load More"
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
-}
-
-function filterHistoryActions(actions: ActionRecord[], activeTab: string) {
-  if (activeTab !== "all") {
-    return actions;
-  }
-
-  return actions.filter((action) => HISTORY_STATUSES.has(action.status));
 }
 
 function LoadingSkeleton() {

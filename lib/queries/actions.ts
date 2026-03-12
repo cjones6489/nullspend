@@ -1,4 +1,5 @@
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -8,9 +9,14 @@ import { apiGet, apiPost } from "@/lib/api/client";
 import type { ActionRecord } from "@/lib/validations/actions";
 import type { ActionStatus } from "@/lib/utils/status";
 
+interface ActionCursor {
+  createdAt: string;
+  id: string;
+}
+
 interface ListActionsResponse {
   data: ActionRecord[];
-  cursor: string | null;
+  cursor: ActionCursor | null;
 }
 
 interface MutateActionResponse {
@@ -26,6 +32,13 @@ export const actionKeys = {
   lists: () => [...actionKeys.all, "list"] as const,
   list: (status?: ActionStatus, limit = 50) =>
     [...actionKeys.lists(), status ?? "all", limit] as const,
+  listInfinite: (status?: string, statuses?: string[]) =>
+    [
+      ...actionKeys.all,
+      "list-infinite",
+      status ?? "all",
+      statuses?.join(",") ?? "none",
+    ] as const,
   detail: (id: string) => [...actionKeys.all, "detail", id] as const,
 };
 
@@ -38,6 +51,26 @@ export function useActions(status?: ActionStatus, limit = 50) {
   return useQuery<ListActionsResponse>({
     queryKey: actionKeys.list(status, limit),
     queryFn: () => apiGet(`/api/actions?${qs}`),
+  });
+}
+
+export function useActionsInfinite(options: {
+  status?: ActionStatus;
+  statuses?: ActionStatus[];
+  limit?: number;
+}) {
+  return useInfiniteQuery({
+    queryKey: actionKeys.listInfinite(options.status, options.statuses),
+    queryFn: ({ pageParam }): Promise<ListActionsResponse> => {
+      const params = new URLSearchParams();
+      if (options.status) params.set("status", options.status);
+      if (options.statuses) params.set("statuses", options.statuses.join(","));
+      params.set("limit", String(options.limit ?? 25));
+      if (pageParam) params.set("cursor", JSON.stringify(pageParam));
+      return apiGet(`/api/actions?${params.toString()}`);
+    },
+    getNextPageParam: (lastPage) => lastPage.cursor ?? undefined,
+    initialPageParam: undefined as ActionCursor | undefined,
   });
 }
 

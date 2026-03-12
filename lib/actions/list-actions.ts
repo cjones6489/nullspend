@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 
 import { bulkExpireActions } from "@/lib/actions/expiration";
 import { serializeAction } from "@/lib/actions/serialize-action";
@@ -9,6 +9,7 @@ import type { ActionStatus } from "@/lib/utils/status";
 interface ListActionsOptions {
   ownerUserId: string;
   status?: ActionStatus;
+  statuses?: ActionStatus[];
   limit: number;
   cursor?: { createdAt: string; id: string };
 }
@@ -19,7 +20,9 @@ export async function listActions(options: ListActionsOptions) {
   const db = getDb();
   const conditions = [eq(actions.ownerUserId, options.ownerUserId)];
 
-  if (options.status) {
+  if (options.statuses && options.statuses.length > 0) {
+    conditions.push(inArray(actions.status, options.statuses));
+  } else if (options.status) {
     conditions.push(eq(actions.status, options.status));
   }
 

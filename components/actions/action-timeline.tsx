@@ -63,6 +63,14 @@ function getTimelineEvents(action: ActionRecord): TimelineEvent[] {
   return events;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function formatActor(actor: string | null | undefined): string | null {
+  if (!actor) return null;
+  if (UUID_RE.test(actor)) return "Dashboard";
+  return actor;
+}
+
 interface ActionTimelineProps {
   action: ActionRecord;
 }
@@ -90,9 +98,9 @@ export function ActionTimeline({ action }: ActionTimelineProps) {
               {event.timestamp && (
                 <p className="text-[11px] text-muted-foreground">
                   {formatTimestamp(event.timestamp)}
-                  {event.actor && (
+                  {formatActor(event.actor) && (
                     <span className="ml-1 text-muted-foreground/70">
-                      by {event.actor}
+                      by {formatActor(event.actor)}
                     </span>
                   )}
                 </p>

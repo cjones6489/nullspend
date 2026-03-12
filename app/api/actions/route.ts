@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const query = listActionsQuerySchema.parse({
       status: url.searchParams.get("status") ?? undefined,
+      statuses: url.searchParams.get("statuses") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
       cursor: url.searchParams.get("cursor") ?? undefined,
     });

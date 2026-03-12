@@ -1,0 +1,221 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { resolveSessionUserId } from "@/lib/auth/session";
+import {
+  getDailySpend,
+  getKeyBreakdown,
+  getModelBreakdown,
+  getTotals,
+} from "@/lib/cost-events/aggregate-cost-events";
+import { GET } from "./route";
+
+vi.mock("@/lib/auth/session", () => ({
+  resolveSessionUserId: vi.fn(),
+}));
+
+vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
+  getDailySpend: vi.fn(),
+  getModelBreakdown: vi.fn(),
+  getKeyBreakdown: vi.fn(),
+  getTotals: vi.fn(),
+}));
+
+const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedGetDailySpend = vi.mocked(getDailySpend);
+const mockedGetModelBreakdown = vi.mocked(getModelBreakdown);
+const mockedGetKeyBreakdown = vi.mocked(getKeyBreakdown);
+const mockedGetTotals = vi.mocked(getTotals);
+
+const MOCK_USER_ID = "user-abc-123";
+
+const mockDailyData = [
+  { date: "2026-03-07", totalCostMicrodollars: 5_000_000 },
+  { date: "2026-03-08", totalCostMicrodollars: 3_000_000 },
+];
+
+const mockModelData = [
+  {
+    model: "gpt-4o",
+    totalCostMicrodollars: 6_000_000,
+    requestCount: 15,
+    inputTokens: 30000,
+    outputTokens: 8000,
+    cachedInputTokens: 2000,
+    reasoningTokens: 0,
+  },
+  {
+    model: "gpt-4o-mini",
+    totalCostMicrodollars: 2_000_000,
+    requestCount: 25,
+    inputTokens: 20000,
+    outputTokens: 5000,
+    cachedInputTokens: 1000,
+    reasoningTokens: 0,
+  },
+];
+
+const mockKeyData = [
+  {
+    apiKeyId: "550e8400-e29b-41d4-a716-446655440000",
+    keyName: "Production Key",
+    totalCostMicrodollars: 8_000_000,
+    requestCount: 40,
+  },
+];
+
+const mockTotals = {
+  totalCostMicrodollars: 8_000_000,
+  totalRequests: 40,
+};
+
+function setupMocks() {
+  mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
+  mockedGetDailySpend.mockResolvedValue(mockDailyData);
+  mockedGetModelBreakdown.mockResolvedValue(mockModelData);
+  mockedGetKeyBreakdown.mockResolvedValue(mockKeyData);
+  mockedGetTotals.mockResolvedValue(mockTotals);
+}
+
+describe("GET /api/cost-events/summary", () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("returns 200 with aggregated data for default period", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/summary");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.daily).toEqual(mockDailyData);
+    expect(body.models).toEqual(mockModelData);
+    expect(body.keys).toEqual(mockKeyData);
+    expect(body.totals.totalCostMicrodollars).toBe(8_000_000);
+    expect(body.totals.totalRequests).toBe(40);
+    expect(body.totals.period).toBe("30d");
+  });
+
+  it("uses default period 30d when no query param provided", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/summary");
+    await GET(req);
+
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 30);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30);
+    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30);
+  });
+
+  it("parses 7d period correctly", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/summary?period=7d");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 7);
+    const body = await res.json();
+    expect(body.totals.period).toBe("7d");
+  });
+
+  it("parses 90d period correctly", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/summary?period=90d");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 90);
+    const body = await res.json();
+    expect(body.totals.period).toBe("90d");
+  });
+
+  it("returns 400 for invalid period value", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/summary?period=14d");
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("Request validation failed.");
+  });
+
+  it("returns 401 when session is invalid", async () => {
+    const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
+    mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
+
+    const req = new Request("http://localhost/api/cost-events/summary");
+    const res = await GET(req);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("calls all four aggregation functions in parallel", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/summary?period=7d");
+    await GET(req);
+
+    expect(mockedGetDailySpend).toHaveBeenCalledTimes(1);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledTimes(1);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledTimes(1);
+    expect(mockedGetTotals).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 200 with empty arrays when no data exists", async () => {
+    mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
+    mockedGetDailySpend.mockResolvedValue([]);
+    mockedGetModelBreakdown.mockResolvedValue([]);
+    mockedGetKeyBreakdown.mockResolvedValue([]);
+    mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
+
+    const req = new Request("http://localhost/api/cost-events/summary");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.daily).toEqual([]);
+    expect(body.models).toEqual([]);
+    expect(body.keys).toEqual([]);
+    expect(body.totals.totalCostMicrodollars).toBe(0);
+    expect(body.totals.totalRequests).toBe(0);
+  });
+
+  it("returns 500 when an aggregation function throws", async () => {
+    mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
+    mockedGetDailySpend.mockRejectedValue(new Error("DB connection lost"));
+    mockedGetModelBreakdown.mockResolvedValue([]);
+    mockedGetKeyBreakdown.mockResolvedValue([]);
+    mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
+
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const req = new Request("http://localhost/api/cost-events/summary");
+    const res = await GET(req);
+
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("Internal server error.");
+  });
+
+  it("passes the authenticated user ID to all aggregation functions", async () => {
+    const customUserId = "custom-user-xyz";
+    mockedResolveSessionUserId.mockResolvedValue(customUserId);
+    mockedGetDailySpend.mockResolvedValue([]);
+    mockedGetModelBreakdown.mockResolvedValue([]);
+    mockedGetKeyBreakdown.mockResolvedValue([]);
+    mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
+
+    const req = new Request("http://localhost/api/cost-events/summary?period=7d");
+    await GET(req);
+
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(customUserId, 7);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(customUserId, 7);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(customUserId, 7);
+    expect(mockedGetTotals).toHaveBeenCalledWith(customUserId, 7);
+  });
+});
