@@ -25,11 +25,9 @@ import {
 import {
   formatChartDollars,
   formatMicrodollars,
-  formatModelName,
   formatProviderName,
-  formatTokens,
 } from "@/lib/utils/format";
-import type { ModelBreakdown as ModelBreakdownData } from "@/lib/validations/cost-event-summary";
+import type { ProviderBreakdown as ProviderBreakdownData } from "@/lib/validations/cost-event-summary";
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -45,21 +43,30 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function ModelBreakdown({ data }: { data: ModelBreakdownData[] }) {
-  const chartData = data.slice(0, 5).map((d, i) => ({
+export function ProviderBreakdown({
+  data,
+}: {
+  data: ProviderBreakdownData[];
+}) {
+  const chartData = data.map((d, i) => ({
     ...d,
-    displayName: formatModelName(d.model),
+    displayName: formatProviderName(d.provider),
     fill: CHART_COLORS[i % CHART_COLORS.length],
   }));
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-medium">Spend by Model</CardTitle>
+        <CardTitle className="text-sm font-medium">
+          Spend by Provider
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         {chartData.length > 0 && (
-          <ChartContainer config={chartConfig} className="min-h-[160px] w-full">
+          <ChartContainer
+            config={chartConfig}
+            className="min-h-[100px] w-full"
+          >
             <BarChart data={chartData} layout="vertical" accessibilityLayer>
               <XAxis
                 type="number"
@@ -72,7 +79,7 @@ export function ModelBreakdown({ data }: { data: ModelBreakdownData[] }) {
                 dataKey="displayName"
                 tickLine={false}
                 axisLine={false}
-                width={140}
+                width={100}
                 tick={{ fontSize: 11 }}
               />
               <ChartTooltip
@@ -92,13 +99,10 @@ export function ModelBreakdown({ data }: { data: ModelBreakdownData[] }) {
             <TableHeader>
               <TableRow className="border-border/50 hover:bg-transparent">
                 <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Model
+                  Provider
                 </TableHead>
                 <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Requests
-                </TableHead>
-                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Tokens
                 </TableHead>
                 <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Cost
@@ -107,23 +111,12 @@ export function ModelBreakdown({ data }: { data: ModelBreakdownData[] }) {
             </TableHeader>
             <TableBody>
               {data.map((row) => (
-                <TableRow
-                  key={`${row.provider}/${row.model}`}
-                  className="border-border/30"
-                >
-                  <TableCell>
-                    <p className="text-[13px] font-medium text-foreground">
-                      {formatModelName(row.model)}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {formatProviderName(row.provider)}
-                    </p>
+                <TableRow key={row.provider} className="border-border/30">
+                  <TableCell className="text-[13px] font-medium text-foreground">
+                    {formatProviderName(row.provider)}
                   </TableCell>
                   <TableCell className="text-right text-[13px] tabular-nums text-foreground">
                     {row.requestCount.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right text-[13px] tabular-nums text-foreground">
-                    {formatTokens(row.inputTokens + row.outputTokens)}
                   </TableCell>
                   <TableCell className="text-right text-[13px] tabular-nums text-foreground">
                     {formatMicrodollars(row.totalCostMicrodollars)}

@@ -17,6 +17,7 @@ export async function GET(request: Request) {
       cursor: url.searchParams.get("cursor") ?? undefined,
       apiKeyId: url.searchParams.get("apiKeyId") ?? undefined,
       model: url.searchParams.get("model") ?? undefined,
+      provider: url.searchParams.get("provider") ?? undefined,
     });
     const result = await listCostEvents({ ...query, userId });
     return NextResponse.json(listCostEventsResponseSchema.parse(result));

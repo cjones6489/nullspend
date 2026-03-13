@@ -24,6 +24,8 @@ import { useCostEvents } from "@/lib/queries/cost-events";
 import {
   formatDuration,
   formatMicrodollars,
+  formatModelName,
+  formatProviderName,
   formatRelativeTime,
   formatTokens,
 } from "@/lib/utils/format";
@@ -33,12 +35,18 @@ interface RecentActivityProps {
 }
 
 const ALL_KEYS = "all";
+const ALL_PROVIDERS = "all";
 
 export function RecentActivity({ keys }: RecentActivityProps) {
   const [selectedKeyId, setSelectedKeyId] = useState(ALL_KEYS);
+  const [selectedProvider, setSelectedProvider] = useState(ALL_PROVIDERS);
 
-  const filters =
-    selectedKeyId !== ALL_KEYS ? { apiKeyId: selectedKeyId } : {};
+  const filters = {
+    ...(selectedKeyId !== ALL_KEYS ? { apiKeyId: selectedKeyId } : {}),
+    ...(selectedProvider !== ALL_PROVIDERS
+      ? { provider: selectedProvider }
+      : {}),
+  };
   const {
     data,
     isLoading,
@@ -49,13 +57,30 @@ export function RecentActivity({ keys }: RecentActivityProps) {
   } = useCostEvents(filters);
 
   const events = data?.pages.flatMap((p) => p.data) ?? [];
-  const hasFilter = selectedKeyId !== ALL_KEYS;
+  const hasFilter =
+    selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS;
 
   return (
     <div className="space-y-3">
-      {keys.length > 0 && (
-        <div className="flex justify-end">
-          <Select value={selectedKeyId} onValueChange={(v) => setSelectedKeyId(v ?? ALL_KEYS)}>
+      <div className="flex justify-end gap-2">
+        <Select
+          value={selectedProvider}
+          onValueChange={(v) => setSelectedProvider(v ?? ALL_PROVIDERS)}
+        >
+          <SelectTrigger className="h-8 w-[150px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_PROVIDERS}>All providers</SelectItem>
+            <SelectItem value="openai">OpenAI</SelectItem>
+            <SelectItem value="anthropic">Anthropic</SelectItem>
+          </SelectContent>
+        </Select>
+        {keys.length > 0 && (
+          <Select
+            value={selectedKeyId}
+            onValueChange={(v) => setSelectedKeyId(v ?? ALL_KEYS)}
+          >
             <SelectTrigger className="h-8 w-[180px] text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -68,8 +93,8 @@ export function RecentActivity({ keys }: RecentActivityProps) {
               ))}
             </SelectContent>
           </Select>
-        </div>
-      )}
+        )}
+      </div>
 
       {isLoading && <ActivitySkeleton />}
 
@@ -94,7 +119,7 @@ export function RecentActivity({ keys }: RecentActivityProps) {
                 <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Model
                 </TableHead>
-                {!hasFilter && (
+                {selectedKeyId === ALL_KEYS && (
                   <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                     Key
                   </TableHead>
@@ -125,10 +150,15 @@ export function RecentActivity({ keys }: RecentActivityProps) {
                   >
                     {formatRelativeTime(event.createdAt)}
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-foreground">
-                    {event.model}
+                  <TableCell>
+                    <p className="text-[11px] text-muted-foreground">
+                      {formatProviderName(event.provider)}
+                    </p>
+                    <p className="font-mono text-[13px] text-foreground">
+                      {formatModelName(event.model)}
+                    </p>
                   </TableCell>
-                  {!hasFilter && (
+                  {selectedKeyId === ALL_KEYS && (
                     <TableCell className="text-[13px] text-muted-foreground">
                       {event.keyName}
                     </TableCell>
@@ -198,11 +228,11 @@ function EmptyActivity({ hasFilter }: { hasFilter: boolean }) {
       </div>
       <div>
         <p className="text-sm font-medium text-foreground">
-          {hasFilter ? "No cost events for this key" : "No API calls recorded yet"}
+          {hasFilter ? "No cost events match your filters" : "No API calls recorded yet"}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           {hasFilter
-            ? "Try selecting a different API key or view all keys."
+            ? "Try adjusting your provider or API key filters."
             : "Cost events will appear here as your agents make API calls through the proxy."}
         </p>
       </div>

@@ -14,6 +14,7 @@ import * as schema from "../packages/db/src/schema";
 const { actions, apiKeys, costEvents } = schema;
 
 interface ModelProfile {
+  provider: "openai" | "anthropic";
   model: string;
   inputPerMTok: number;
   cachedInputPerMTok: number;
@@ -27,6 +28,7 @@ interface ModelProfile {
 
 const MODEL_PROFILES: ModelProfile[] = [
   {
+    provider: "openai",
     model: "gpt-4o",
     inputPerMTok: 2.5,
     cachedInputPerMTok: 1.25,
@@ -38,6 +40,7 @@ const MODEL_PROFILES: ModelProfile[] = [
     durationRange: [800, 4000],
   },
   {
+    provider: "openai",
     model: "gpt-4o-mini",
     inputPerMTok: 0.15,
     cachedInputPerMTok: 0.075,
@@ -49,6 +52,7 @@ const MODEL_PROFILES: ModelProfile[] = [
     durationRange: [500, 2000],
   },
   {
+    provider: "openai",
     model: "gpt-4.1",
     inputPerMTok: 2.0,
     cachedInputPerMTok: 0.5,
@@ -60,6 +64,7 @@ const MODEL_PROFILES: ModelProfile[] = [
     durationRange: [700, 3500],
   },
   {
+    provider: "openai",
     model: "o3-mini",
     inputPerMTok: 1.1,
     cachedInputPerMTok: 0.55,
@@ -70,6 +75,42 @@ const MODEL_PROFILES: ModelProfile[] = [
     reasoningChance: 0.8,
     durationRange: [2000, 8000],
   },
+  {
+    provider: "anthropic",
+    model: "claude-3-haiku-20240307",
+    inputPerMTok: 0.25,
+    cachedInputPerMTok: 0.03,
+    outputPerMTok: 1.25,
+    inputRange: [800, 4000],
+    outputRange: [100, 1200],
+    cacheChance: 0.3,
+    reasoningChance: 0,
+    durationRange: [600, 3000],
+  },
+  {
+    provider: "anthropic",
+    model: "claude-sonnet-4-20250514",
+    inputPerMTok: 3.0,
+    cachedInputPerMTok: 0.3,
+    outputPerMTok: 15.0,
+    inputRange: [500, 3500],
+    outputRange: [100, 1500],
+    cacheChance: 0.35,
+    reasoningChance: 0,
+    durationRange: [800, 4500],
+  },
+  {
+    provider: "anthropic",
+    model: "claude-opus-4-20250514",
+    inputPerMTok: 15.0,
+    cachedInputPerMTok: 1.5,
+    outputPerMTok: 75.0,
+    inputRange: [300, 2500],
+    outputRange: [100, 800],
+    cacheChance: 0.25,
+    reasoningChance: 0,
+    durationRange: [1500, 6000],
+  },
 ];
 
 function randInt(min: number, max: number): number {
@@ -78,10 +119,15 @@ function randInt(min: number, max: number): number {
 
 function pickModel(): ModelProfile {
   const r = Math.random();
-  if (r < 0.4) return MODEL_PROFILES[0]; // gpt-4o 40%
-  if (r < 0.7) return MODEL_PROFILES[1]; // gpt-4o-mini 30%
-  if (r < 0.85) return MODEL_PROFILES[2]; // gpt-4.1 15%
-  return MODEL_PROFILES[3]; // o3-mini 15%
+  // ~70% OpenAI
+  if (r < 0.28) return MODEL_PROFILES[0]; // gpt-4o
+  if (r < 0.48) return MODEL_PROFILES[1]; // gpt-4o-mini
+  if (r < 0.58) return MODEL_PROFILES[2]; // gpt-4.1
+  if (r < 0.70) return MODEL_PROFILES[3]; // o3-mini
+  // ~30% Anthropic
+  if (r < 0.82) return MODEL_PROFILES[4]; // claude-3-haiku
+  if (r < 0.92) return MODEL_PROFILES[5]; // claude-sonnet-4
+  return MODEL_PROFILES[6]; // claude-opus-4
 }
 
 function computeCostMicrodollars(
@@ -186,7 +232,7 @@ async function main() {
       requestId: crypto.randomUUID(),
       apiKeyId: apiKey.id,
       userId,
-      provider: "openai" as const,
+      provider: profile.provider,
       model: profile.model,
       inputTokens,
       outputTokens,
@@ -215,11 +261,17 @@ async function main() {
   console.log(`Action-correlated: ${correlated} / ${events.length}`);
   console.log("Models used:");
   const modelCounts = new Map<string, number>();
+  const providerCounts = new Map<string, number>();
   for (const e of events) {
     modelCounts.set(e.model, (modelCounts.get(e.model) ?? 0) + 1);
+    providerCounts.set(e.provider, (providerCounts.get(e.provider) ?? 0) + 1);
   }
   for (const [model, count] of modelCounts) {
     console.log(`  ${model}: ${count}`);
+  }
+  console.log("Providers:");
+  for (const [provider, count] of providerCounts) {
+    console.log(`  ${provider}: ${count}`);
   }
 
   await sqlClient.end();

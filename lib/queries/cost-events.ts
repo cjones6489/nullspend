@@ -10,6 +10,7 @@ interface CostEventsPage {
 
 interface CostEventFilters {
   apiKeyId?: string;
+  provider?: string;
 }
 
 export const costEventKeys = {
@@ -36,6 +37,7 @@ export function useCostEvents(filters: CostEventFilters = {}) {
       const params = new URLSearchParams();
       params.set("limit", "25");
       if (filters.apiKeyId) params.set("apiKeyId", filters.apiKeyId);
+      if (filters.provider) params.set("provider", filters.provider);
       if (pageParam) params.set("cursor", JSON.stringify(pageParam));
       return apiGet(`/api/cost-events?${params.toString()}`);
     },

@@ -40,6 +40,7 @@ export async function getModelBreakdown(userId: string, periodDays: number) {
 
   return db
     .select({
+      provider: costEvents.provider,
       model: costEvents.model,
       totalCostMicrodollars:
         sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
@@ -56,7 +57,25 @@ export async function getModelBreakdown(userId: string, periodDays: number) {
     .from(costEvents)
     .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff))
-    .groupBy(costEvents.model)
+    .groupBy(costEvents.provider, costEvents.model)
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
+}
+
+export async function getProviderBreakdown(userId: string, periodDays: number) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+
+  return db
+    .select({
+      provider: costEvents.provider,
+      totalCostMicrodollars:
+        sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+      requestCount: sql<number>`cast(count(*) as int)`,
+    })
+    .from(costEvents)
+    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .where(baseConditions(userId, cutoff))
+    .groupBy(costEvents.provider)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 

@@ -10,6 +10,7 @@ interface ListCostEventsOptions {
   cursor?: { createdAt: string; id: string };
   apiKeyId?: string;
   model?: string;
+  provider?: string;
 }
 
 export async function listCostEvents(options: ListCostEventsOptions) {
@@ -24,6 +25,9 @@ export async function listCostEvents(options: ListCostEventsOptions) {
   }
   if (options.model) {
     conditions.push(eq(costEvents.model, options.model));
+  }
+  if (options.provider) {
+    conditions.push(eq(costEvents.provider, options.provider));
   }
 
   if (options.cursor) {

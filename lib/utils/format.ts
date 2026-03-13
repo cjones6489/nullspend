@@ -87,6 +87,63 @@ export function fillDateGaps(
   return result;
 }
 
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  "gpt-4o": "GPT-4o",
+  "gpt-4o-mini": "GPT-4o Mini",
+  "gpt-4.1": "GPT-4.1",
+  "gpt-4.1-mini": "GPT-4.1 Mini",
+  "gpt-4.1-nano": "GPT-4.1 Nano",
+  "o4-mini": "o4 Mini",
+  "o3": "o3",
+  "o3-mini": "o3 Mini",
+  "o1": "o1",
+  "gpt-5": "GPT-5",
+  "gpt-5-mini": "GPT-5 Mini",
+  "gpt-5-nano": "GPT-5 Nano",
+  "gpt-5.1": "GPT-5.1",
+  "gpt-5.2": "GPT-5.2",
+
+  "claude-sonnet-4-6": "Claude Sonnet 4.6",
+  "claude-sonnet-4-6-20260217": "Claude Sonnet 4.6",
+  "claude-haiku-3.5": "Claude Haiku 3.5",
+  "claude-3-5-haiku-20241022": "Claude Haiku 3.5",
+  "claude-opus-4": "Claude Opus 4",
+  "claude-opus-4-20250514": "Claude Opus 4",
+  "claude-opus-4-0": "Claude Opus 4",
+  "claude-opus-4-6": "Claude Opus 4.6",
+  "claude-opus-4-6-20260205": "Claude Opus 4.6",
+  "claude-sonnet-4-5": "Claude Sonnet 4.5",
+  "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
+  "claude-opus-4-5": "Claude Opus 4.5",
+  "claude-opus-4-5-20251101": "Claude Opus 4.5",
+  "claude-opus-4-1": "Claude Opus 4.1",
+  "claude-opus-4-1-20250805": "Claude Opus 4.1",
+  "claude-sonnet-4": "Claude Sonnet 4",
+  "claude-sonnet-4-20250514": "Claude Sonnet 4",
+  "claude-sonnet-4-0": "Claude Sonnet 4",
+  "claude-haiku-4-5": "Claude Haiku 4.5",
+  "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+  "claude-haiku-3": "Claude Haiku 3",
+  "claude-3-haiku-20240307": "Claude Haiku 3",
+};
+
+export function formatModelName(model: string): string {
+  return MODEL_DISPLAY_NAMES[model] ?? model;
+}
+
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  google: "Google",
+};
+
+export function formatProviderName(provider: string): string {
+  return (
+    PROVIDER_DISPLAY_NAMES[provider] ??
+    provider.charAt(0).toUpperCase() + provider.slice(1)
+  );
+}
+
 export function formatExpiresAt(expiresAt: string | null): string | null {
   if (!expiresAt) return null;
 

@@ -5,6 +5,7 @@ import {
   getDailySpend,
   getKeyBreakdown,
   getModelBreakdown,
+  getProviderBreakdown,
   getTotals,
 } from "@/lib/cost-events/aggregate-cost-events";
 import { handleRouteError } from "@/lib/utils/http";
@@ -22,9 +23,10 @@ export async function GET(request: Request) {
     });
     const periodDays = parseInt(period, 10);
 
-    const [daily, models, keys, totals] = await Promise.all([
+    const [daily, models, providers, keys, totals] = await Promise.all([
       getDailySpend(userId, periodDays),
       getModelBreakdown(userId, periodDays),
+      getProviderBreakdown(userId, periodDays),
       getKeyBreakdown(userId, periodDays),
       getTotals(userId, periodDays),
     ]);
@@ -32,6 +34,7 @@ export async function GET(request: Request) {
     const response = costSummaryResponseSchema.parse({
       daily,
       models,
+      providers,
       keys,
       totals: { ...totals, period },
     });

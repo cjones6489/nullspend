@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { KeyBreakdown } from "@/components/analytics/key-breakdown";
 import { ModelBreakdown } from "@/components/analytics/model-breakdown";
+import { ProviderBreakdown } from "@/components/analytics/provider-breakdown";
 import { SpendChart } from "@/components/analytics/spend-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,12 +14,6 @@ import { formatMicrodollars } from "@/lib/utils/format";
 import { cn } from "@/lib/utils";
 
 type Period = "7d" | "30d" | "90d";
-
-const PERIOD_LABELS: Record<Period, string> = {
-  "7d": "Last 7 days",
-  "30d": "Last 30 days",
-  "90d": "Last 90 days",
-};
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>("30d");
@@ -82,10 +77,24 @@ export default function AnalyticsPage() {
               label="Total Requests"
               value={data.totals.totalRequests.toLocaleString()}
             />
-            <StatCard label="Period" value={PERIOD_LABELS[period]} />
+            <StatCard
+              label="Avg Cost / Request"
+              value={
+                data.totals.totalRequests > 0
+                  ? formatMicrodollars(
+                      Math.round(
+                        data.totals.totalCostMicrodollars /
+                          data.totals.totalRequests,
+                      ),
+                    )
+                  : "$0.00"
+              }
+            />
           </div>
 
           <SpendChart data={data.daily} />
+
+          <ProviderBreakdown data={data.providers} />
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ModelBreakdown data={data.models} />
@@ -130,6 +139,7 @@ function AnalyticsSkeleton() {
         ))}
       </div>
       <Skeleton className="h-[240px] w-full rounded-lg bg-secondary/50" />
+      <Skeleton className="h-[200px] w-full rounded-lg bg-secondary/50" />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Skeleton className="h-[300px] w-full rounded-lg bg-secondary/50" />
         <Skeleton className="h-[300px] w-full rounded-lg bg-secondary/50" />

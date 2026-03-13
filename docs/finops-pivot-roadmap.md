@@ -1,16 +1,18 @@
 # AgentSeam FinOps Pivot: Build Roadmap
 
-> **Status: Active.** This is the master roadmap for the AgentSeam pivot from
-> approval layer to trust-first AI agent FinOps proxy.
+> **Status: Active.** This is the master roadmap for AgentSeam — the FinOps
+> layer for AI agents.
 >
 > **How to use this document:** Each phase has scope, acceptance criteria, and
-> references to the technical build spec. When we start a phase, we create a
-> detailed implementation plan for that phase using the referenced sections.
-> We do not build ahead of the current phase.
+> references. When we start a phase, we create a detailed implementation plan
+> for that phase. We do not build ahead of the current phase.
 >
 > **Reference documents:**
-> - `docs/claude-research/compass_artifact_wf-4db73083-*` — Competitive landscape
+> - `docs/competitive-landscape-march-2026.md` — Current competitive intelligence (updated Mar 2026)
+> - `docs/claude-research/compass_artifact_wf-4db73083-*` — Original competitive landscape
 > - `docs/claude-research/compass_artifact_wf-40b71591-*` — Technical build spec
+> - `docs/frontend-gap-analysis.md` — Dashboard feature status
+> - `docs/finops-pivot-tech-audit.md` — Technology sanity check
 
 ---
 
@@ -34,25 +36,43 @@ enforcement.
 For MCP, same idea — one config line change to point at our proxy instead of
 the real server.
 
-**All complexity is OUR complexity, not the developer's.** The Anthropic cache
-token math, the Redis Lua scripts, the streaming parser edge cases — all lives
-behind the proxy. The developer never sees it. They see: "my agent costs $4.72
-today, it's used 47% of its $10 budget."
+**All complexity is OUR complexity, not the developer's.**
 
 **The complexity trap to avoid:** LiteLLM requires Docker + PostgreSQL + Redis +
 YAML config. That's why developers complain about it despite 38K stars. If
 setting up AgentSeam ever requires more than an API key and a base URL change,
 we've gone wrong.
 
-**V1 surface area (four things):**
-1. Change your base URL
-2. See your costs in a dashboard
-3. Set a budget
-4. Get blocked when you exceed it
+## Core principles
 
-Everything else — kill receipts, BATS-style budget injection, cost forecasting,
-team hierarchies, tool cost registries — is post-launch. The research docs are
-a roadmap, not a sprint.
+These principles don't change. How they are *expressed* evolves as the
+product matures, but the principles themselves are non-negotiable.
+
+1. **Trust.** The proxy is transparent by default — it never modifies
+   requests or responses unless the developer explicitly opts in.
+2. **Transparency.** Every capability that touches payloads is clearly
+   documented, toggled off by default, and explained in plain language.
+3. **Security.** Identity-based enforcement. No bypass paths. Provider
+   keys are never stored (BYOK).
+4. **Developer-first.** Setup is one environment variable change. No
+   packages, no wrappers, no config files.
+
+### The opt-in principle
+
+As the product grows, some features will modify payloads (model routing,
+budget injection, context compression). These features are powerful but
+break the "transparent proxy" default. The rule:
+
+- **Layer 0 (always on):** Transparent proxy. Cost tracking, budget
+  enforcement, analytics. Never touches the request or response content.
+- **Layer 1+ (opt-in):** Capabilities the developer explicitly enables
+  via dashboard toggles or API flags. Each is documented with exactly
+  what it modifies and why.
+
+The default experience is always Layer 0. A developer who never touches
+a toggle gets a proxy that is indistinguishable from hitting the provider
+directly (plus cost data and budget enforcement). Features that modify
+payloads require affirmative action to enable.
 
 ---
 
@@ -67,17 +87,93 @@ and gives you the receipts to prove it.
 | What we are | What we are not |
 |---|---|
 | One env var change, instant cost visibility | Install a package, wrap your client, add decorators |
-| Hard budget enforcement in a hosted product | Soft alerts that nobody acts on |
-| $49–99/month, zero infrastructure | Docker + Postgres + Redis + YAML config |
+| Hard budget enforcement at startup pricing | Enforcement gated behind enterprise contracts (Portkey) |
+| Zero infrastructure — hosted proxy | Docker + Postgres + Redis + YAML config (LiteLLM) |
 | Transparent proxy (zero code changes) | SDK that requires rewriting your agent |
-| Identity-based enforcement (no bypass bugs) | Route-based enforcement (LiteLLM's flaw) |
+| Identity-based enforcement (no bypass bugs) | Header-driven enforcement the client can skip (Helicone) |
+| Agent-native financial infrastructure | General observability tools adapted for agents |
+
+## Pricing model
+
+> **Decision: Usage-based tiers, metered by proxied LLM spend.**
+
+| Tier | Monthly Price | Proxied Spend Cap | Budgets | Retention | Key Features |
+|---|---|---|---|---|---|
+| **Free** | $0 | $1,000/mo | 1 | 7 days | Cost tracking, budget enforcement, dashboard |
+| **Pro** | $49/mo | $50,000/mo | Unlimited | 30 days | Kill receipts, webhooks, API access |
+| **Team** | $199/mo | $250,000/mo | Unlimited | 90 days | Multi-user, team budgets, advanced analytics |
+| **Enterprise** | Custom | Unlimited | Unlimited | Custom | VPC, SSO/SCIM, compliance, SLA |
+
+**Why this model:**
+
+1. **The natural unit is proxied spend.** That's what developers care about and
+   what our enforcement protects. A developer spending $800/mo on LLM calls
+   uses the free tier indefinitely. When their agent spend grows past $1K/mo,
+   they're getting enough value to pay $49.
+2. **Free tier at $1K/mo spend is genuinely generous.** Most solo developers and
+   early-stage startups spend less than this. They get the full product for
+   free, build dependency on it, and upgrade organically. Portkey's free tier
+   caps at 10K logs with 3-day retention — ours gives real enforcement with
+   7-day retention for anyone under $1K/mo.
+3. **$49 Pro matches Portkey's price point but includes budget enforcement.**
+   Portkey charges $49/mo for production but gates budget enforcement behind
+   enterprise. We include it at Pro. This is the competitive wedge in one
+   pricing comparison.
+4. **Proxied spend caps create natural upgrade pressure** without charging a
+   percentage. Developers don't feel "taxed" on their AI costs — they pay a
+   flat rate for the tier of service they need. The caps just gate which tier.
+5. **Enterprise is where the real revenue is.** Teams spending $250K+/mo on
+   LLM calls will happily pay $1K-5K/mo for controls and compliance. Custom
+   pricing captures this without artificial ceilings.
+
+**Why not pure percentage (Stripe-style):**
+Stripe charges a percentage because it *enables revenue* — merchants earn money
+through Stripe. We're on the cost side — our value is helping developers
+spend *less*. Charging a percentage of spend creates a misalignment where our
+revenue grows when their costs grow. Flat tiers with spend caps avoid this
+tension while still scaling naturally.
+
+**What we don't charge for:** Zero markup on LLM API calls. The proxy is
+pass-through on pricing. We charge for the metering, enforcement, and
+intelligence layer — never for the tokens themselves.
+
+## Market context
+
+**The structural thesis:** Just as AgentMail built email for agents because Gmail's
+API isn't agent-native, AgentSeam builds financial infrastructure for agents because
+existing cost tools aren't built for autonomous, high-frequency, multi-provider agent
+workflows that need real-time enforcement, not after-the-fact dashboards.
+
+**Market size:** AI agent market $7.84B (2025) → $52.6B by 2030 (46% CAGR). 35%+ of
+enterprises will have agent budgets >$5M in 2026. Agent infrastructure receives only
+9% of VC capital despite growing demand — underfunded relative to opportunity.
+
+**Timing:** Helicone's exit creates an immediate acquisition channel. Portkey's Series A
+validates the category but their enforcement is enterprise-gated. LiteLLM's $7M ARR
+proves demand but their DX is the anti-pattern we're positioned against.
+
+See `docs/competitive-landscape-march-2026.md` for the full competitive analysis.
 
 ## Competitive wedge
 
+> **Updated March 9, 2026:** Helicone was acquired by Mintlify on March 3, 2026
+> and is entering maintenance mode. Their 16,000 organizations are orphaned.
+> See `docs/competitive-landscape-march-2026.md` for the full analysis.
+
 No hosted product under $500/month offers real budget enforcement with unified
-LLM + tool call cost tracking. LiteLLM has budget enforcement but it's buggy
-and requires self-hosting. Portkey only enforces at Enterprise tier. We offer
-it at $49/month with a one-line setup.
+LLM + tool call cost tracking. Helicone (our closest comp) just exited the
+market — acquired by Mintlify, maintenance mode only. Portkey ($18M Series A)
+has budget enforcement but gates it behind enterprise pricing with immutable
+limits. LiteLLM has budget enforcement but requires Docker + Postgres + Redis
++ YAML and has 800+ open issues. We offer budget enforcement at startup pricing
+with a one-line setup.
+
+**The AgentMail parallel:** Just as AgentMail built email infrastructure that
+is agent-native (when Gmail's API technically works but isn't built for agent
+workflows), AgentSeam builds financial infrastructure that is agent-native.
+Existing tools (Stripe, Datadog, observability platforms) can technically track
+costs, but none provide identity-based budget enforcement, cryptographic
+receipts, or unified LLM + tool metering designed for autonomous agents.
 
 ## Architecture overview
 
@@ -113,468 +209,358 @@ it at $49/month with a one-line setup.
 └──────────────────────────────────────────────────────────────┘
 ```
 
-## Providers in scope (launch)
+## Providers in scope
 
-- **OpenAI** — GPT-5, GPT-4.1, GPT-4o, o3, o4-mini (Phase 1)
-- **Anthropic** — Claude Sonnet 4.6, Opus 4.6, Haiku 4.5 (Phase 3)
-
-Post-launch based on demand: Gemini, Bedrock, Azure OpenAI.
-
----
-
-## Phase 0: Foundation & Repo Restructure
-
-**Goal:** Set up the new infrastructure so every subsequent phase has a place to land.
-
-### Scope
-
-1. **Create the Cloudflare Workers project** at `apps/proxy/`
-   - Wrangler config, TypeScript, local dev with `wrangler dev`
-   - Basic "hello world" Worker that accepts a request and returns a response
-   - CI: `pnpm proxy:dev`, `pnpm proxy:deploy`
-
-2. **Set up Upstash Redis**
-   - Create Upstash Redis instance
-   - Add `@upstash/redis` dependency to the proxy
-   - Verify connectivity from CF Worker (REST-based, not TCP)
-   - Add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to env
-
-3. **Restructure the monorepo**
-   - Move existing Next.js app to `apps/dashboard/` (or keep at root — decide)
-   - Create `packages/cost-engine/` for provider parsers and pricing logic
-   - Create `packages/shared/` for types shared between proxy and dashboard
-   - Update workspace config in `pnpm-workspace.yaml`
-
-4. **New database tables** (Drizzle schema additions)
-   - `budgets` — entity_type, entity_id, max_budget, spend, reset_interval, policy, reset_at
-   - `cost_events` — append-only ledger: request_id, provider, model, input_tokens, output_tokens, cached_tokens, reasoning_tokens, cost_microdollars, entity attributions, timestamp
-   - `tool_costs` — registered tool cost definitions (name, estimated_cost, provider)
-   - Keep existing `api_keys` table (reusable as-is)
-
-5. **Model pricing database**
-   - Import LiteLLM's `model_prices_and_context_window.json` as seed data
-   - Create a typed lookup function: `getModelPricing(provider, model) → PricingConfig`
-   - Store in a JSON file in `packages/cost-engine/` for now (DB-backed later)
-
-### Acceptance criteria
-
-- `wrangler dev` starts locally and responds to HTTP requests
-- Redis connection works from the Worker
-- `pnpm build` still succeeds for the dashboard
-- New DB tables can be pushed with `pnpm db:push`
-- `getModelPricing("openai", "gpt-4o")` returns correct rates
-
-### Tech spec references
-
-- §4: Proxy architecture patterns (Cloudflare Workers setup)
-- §5: Budget state storage architecture (Redis + Postgres roles)
-- §6: Model pricing databases (LiteLLM JSON format)
-- §7: Trust architecture principles
+- **OpenAI** — GPT-5, GPT-4.1, GPT-4o, o3, o4-mini (Phase 1 — DONE)
+- **Anthropic** — Claude Sonnet 4, Opus 4, Haiku 3/3.5/4.5 (Phase 3 — DONE)
+- Post-launch based on demand: Gemini, Bedrock, Azure OpenAI
 
 ---
 
-## Phase 1: OpenAI Streaming Proxy
+## Completed Phases
 
-**Goal:** A working proxy that intercepts OpenAI API calls, streams responses
-back to the client transparently, extracts usage data, and calculates cost
-accurately.
+### Phase 0: Foundation & Repo Restructure — DONE
 
-### Scope
+Cloudflare Workers project at `apps/proxy/`, Upstash Redis, monorepo
+restructure with `packages/cost-engine/`, database tables (`budgets`,
+`cost_events`), model pricing database with typed lookup.
 
-1. **Request interception**
-   - Accept `POST /v1/chat/completions` at the proxy
-   - Authenticate via `X-AgentSeam-Auth` header (platform key)
-   - Pass through `Authorization` header to OpenAI (BYOK mode)
-   - Inject `stream: true` and `stream_options: { include_usage: true }` if not present
+### Phase 1: OpenAI Streaming Proxy — DONE
 
-2. **Stream proxying**
-   - Forward request to `https://api.openai.com/v1/chat/completions`
-   - Use `response.body.tee()` to split: one leg to client, one for processing
-   - Client receives the stream with zero modification
-   - `ctx.waitUntil()` for async log processing (never block the response)
-   - `ctx.passThroughOnException()` for automatic failover
+Working proxy at `/v1/chat/completions`. Request interception, stream
+proxying with `response.body.tee()`, SSE usage extraction, cost calculation
+in microdollars, cost event logging via `ctx.waitUntil()`, non-streaming
+support, `passThroughOnException()` failover. 280+ unit and smoke tests.
 
-3. **Usage extraction from streaming responses**
-   - Parse SSE chunks: lines starting with `data: `, skip `data: [DONE]`
-   - Extract `usage` from the final chunk (empty `choices` array)
-   - Handle both Chat Completions and Responses API field names
+### Phase 2: Budget Enforcement (Redis) — DONE
 
-4. **Cost calculation engine** (`packages/cost-engine/`)
-   - OpenAI cost formula:
-     ```
-     cost = (prompt_tokens - cached_tokens) × input_rate
-          + cached_tokens × cached_input_rate
-          + completion_tokens × output_rate
-     ```
-   - Handle `reasoning_tokens` (subset of `completion_tokens`, billed at output rate)
-   - Handle `cached_tokens` (subset of `prompt_tokens`)
-   - Use microdollars (integers) for all cost math — no floating point
+Atomic Redis Lua check-and-reserve script, pre-request budget estimation,
+post-response reconciliation, budget hierarchy (key + user), STRICT_BLOCK
+policy, budget CRUD API, reservation TTL auto-expiry. Concurrent request
+safety verified via load tests.
 
-5. **Cost event logging**
-   - After cost is calculated, log to Postgres `cost_events` table
-   - Include: provider, model, all token counts, cost, request metadata
-   - Async via `ctx.waitUntil()` — never block the response
+### Phase 3: Anthropic Provider Support — DONE
 
-6. **Non-streaming support**
-   - If request has `stream: false` or no `stream` field, handle synchronous response
-   - Extract `usage` from the response body JSON directly
-   - Same cost calculation and logging
+Anthropic route at `/v1/messages`. Named-event SSE parsing (`message_start`,
+`message_delta`), cache token accounting (read/write/5min/1hr), long-context
+multipliers, extended thinking support, cost calculator with all pricing
+tiers. Budget enforcement shared with OpenAI. 280 stress tests covering
+pricing accuracy across 7 live models, edge cases, resilience, load,
+security, and known Anthropic API issues.
 
-### Acceptance criteria
+### Phase 4: Dashboard Multi-Provider Support — DONE
 
-- `curl` to the proxy with an OpenAI API key streams a response identically to hitting OpenAI directly
-- Usage data is correctly extracted from both streaming and non-streaming responses
-- Cost is calculated correctly for GPT-5, GPT-4o, o3, o4-mini (verify against manual calculation)
-- `cost_events` table has a row for every proxied request
-- If the proxy throws, the request falls through to OpenAI (passThroughOnException)
-
-### Test cases
-
-- Streaming response with cached tokens
-- Streaming response with reasoning tokens (o3/o4-mini)
-- Non-streaming response
-- Request with no `stream_options` (proxy should inject)
-- Large streaming response (verify no buffering, stays under 128MB)
-- Proxy error (verify passthrough to OpenAI)
-
-### Tech spec references
-
-- §1: OpenAI Chat Completions API usage object
-- §1: Streaming usage data handling (OpenAI section)
-- §1: Reasoning tokens
-- §1: Current pricing reference table
-- §4: Streaming proxy pattern (code example)
-- §4: Helicone's Cloudflare Workers architecture
+Provider awareness throughout the dashboard: provider filter on cost events
+API, provider breakdown analytics, formatted model/provider display names,
+provider badge in Activity table, provider breakdown chart in Analytics,
+Avg Cost/Request stat card, seed script with ~30% Anthropic events. No
+schema migration required.
 
 ---
 
-## Phase 2: Budget Enforcement (Redis)
+## Current Phase
 
-**Goal:** Atomic budget check-and-reserve that blocks requests when spend
-exceeds limits, with zero bypass vulnerabilities.
-
-### Scope
-
-1. **Redis Lua budget script**
-   - Implement the atomic check-and-reserve script from the tech spec
-   - Budget stored in microdollars for integer precision
-   - Reservation with TTL (auto-expire if response never comes back)
-   - Clean expired reservations on every check
-
-2. **Pre-request budget check**
-   - Before forwarding to OpenAI, estimate max cost:
-     ```
-     estimated = input_tokens × input_rate + max_tokens × output_rate × 1.1
-     ```
-   - For pre-request token estimation: use the `max_tokens` from the request
-     as the upper bound for output cost (conservative but safe)
-   - Call Redis Lua script atomically
-   - If budget exceeded: return HTTP 429 with clear error message and remaining budget info
-   - If approved: forward request with reservation ID
-
-3. **Post-response budget reconciliation**
-   - After response completes, calculate actual cost from usage data
-   - Release the reservation and debit the actual cost
-   - If actual > estimated, debit the difference
-   - If actual < estimated, credit the difference back to remaining budget
-
-4. **Budget enforcement hierarchy**
-   - Check ALL entities independently, enforce most restrictive:
-     - Key budget (from `api_keys` + `budgets` join)
-     - User budget (always checked, regardless of team)
-   - (Team and org budgets are post-launch scope)
-
-5. **Budget policy (V1: STRICT_BLOCK only)**
-   - Block the request if estimated max cost > remaining budget
-   - Return HTTP 429 with: reason, remaining budget, estimated cost
-   - Advanced policies (SOFT_CAP, CAP_MAX_TOKENS, DRAIN_MODE) are post-launch
-
-6. **Budget CRUD API**
-   - `POST /api/budgets` — create/update budget for a key or user
-   - `GET /api/budgets` — list budgets with current spend
-   - `DELETE /api/budgets/:id` — remove a budget
-   - `POST /api/budgets/:id/reset` — manual reset
-
-### Acceptance criteria
-
-- Concurrent requests cannot collectively exceed budget (no race condition)
-- A request that would exceed budget returns 429 with useful error
-- After budget is exhausted, all subsequent requests are blocked
-- Budget survives proxy restarts (Redis-backed)
-- Manual budget reset works
-- Reservations auto-expire after TTL
-
-### Test cases
-
-- 10 concurrent requests against a $1 budget — total spend should not exceed $1 + one request's cost
-- Budget exhausted → 429 response with clear error message
-- Reservation TTL expiry (simulate failed response)
-- Budget reset (manual)
-- No budget set → proxy passes through without enforcement
-
-### Tech spec references
-
-- §5: The hybrid pre-request + post-response pattern
-- §5: Atomic budget check-and-reserve (Redis Lua script — full code)
-- §5: The "last request" problem — configurable policies
-- §5: Budget enforcement hierarchy
-- §5: Streaming budget enforcement
-- §2: All 5 LiteLLM budget enforcement bugs (anti-patterns to avoid)
-- §2: Architectural patterns to avoid
-
----
-
-## Phase 3: Anthropic Provider Support
-
-**Goal:** Add Anthropic as the second provider, handling the cache token math
-that has tripped up every competitor.
-
-### Scope
-
-1. **Request interception for Anthropic**
-   - Accept `POST /v1/messages` at the proxy
-   - Forward to `https://api.anthropic.com/v1/messages`
-   - Pass through `x-api-key` and `anthropic-version` headers
-
-2. **Anthropic-specific streaming parsing**
-   - Input tokens arrive in `message_start` event
-   - Output tokens arrive in `message_delta` event (cumulative, not incremental)
-   - **Critical rule:** Use ONLY `message_start` for input, ONLY final `message_delta` for output
-   - Never sum across events (this is the root cause of double-counting bugs)
-
-3. **Anthropic cost calculation**
-   - `input_tokens` = uncached tokens only (NOT total — opposite of OpenAI)
-   - Total input = `input_tokens` + `cache_creation_input_tokens` + `cache_read_input_tokens`
-   - Cost formula:
-     ```
-     cost = input_tokens × base_rate
-          + cache_creation × (1.25 × base_rate)     // 5-min TTL
-          + cache_read × (0.1 × base_rate)           // 90% discount
-          + output_tokens × output_rate
-     ```
-   - Handle 1-hour TTL cache writes (2.0× multiplier)
-   - Handle the `cache_creation` sub-object with `ephemeral_5m` and `ephemeral_1h` breakdowns
-   - Handle long context (>200K input) rate doubling
-
-4. **Extended thinking tokens**
-   - Anthropic thinking produces visible `{"type": "thinking"}` content blocks
-   - Billed as output tokens (already in `output_tokens`)
-   - No special handling needed for cost — just ensure we don't double-count
-
-5. **Non-streaming Anthropic support**
-   - Extract usage from response JSON directly
-   - Same cost formula
-
-### Acceptance criteria
-
-- Anthropic streaming responses proxy correctly with zero modification
-- Cache token costs are calculated accurately (no double-counting)
-- Cost matches manual calculation for: Sonnet 4.6, Opus 4.6, Haiku 4.5
-- Extended thinking responses are handled correctly
-- Both 5-min and 1-hour cache TTLs produce correct costs
-- Budget enforcement works identically to OpenAI (same Redis path)
-
-### Test cases (derived from real bugs)
-
-- Langfuse #12306 scenario: verify cache tokens are not double-added
-- LangChain #10249 scenario: streaming with cache counts in both events — verify no double-counting
-- LiteLLM #5443 scenario: verify cache read/write costs are included, not just input_tokens
-- LiteLLM #6575 scenario: verify cache write cost uses correct formula
-- Cline #4346 scenario: verify cumulative message_delta is not treated as incremental
-- Response with both ephemeral_5m and ephemeral_1h cache writes
-
-### Tech spec references
-
-- §1: Anthropic Messages API usage object
-- §1: Streaming usage data handling (Anthropic section)
-- §1: Cache token double-counting bugs to avoid (all 5 bugs)
-- §1: Current pricing reference table (Claude models)
-
----
-
-## Phase 4: MCP Tool Cost Proxy
-
-**Goal:** Adapt the existing MCP proxy to track tool call costs and enforce
-budgets. Same developer simplicity: one config line change.
-
-> **Simplicity check:** Developer changes one line in their MCP client config
-> to point at AgentSeam's proxy instead of the real server. That's it.
-
-### Scope
-
-1. **Strip the approval loop from the MCP proxy**
-   - Remove `gateToolCall` (polls for human decision)
-   - Replace with: check budget → forward call → track cost → update budget
-   - Keep `discoverUpstreamTools`, `forwardToUpstream`, config patterns
-
-2. **Tool call tracking**
-   - Time every `tools/call` invocation (start → response)
-   - Record: tool name, duration_ms, cost (if known)
-   - Log to `cost_events` with `provider: "mcp"` and `model: tool_name`
-   - V1: track calls and duration only. Tool cost configuration is post-launch.
-
-3. **Shared budget enforcement**
-   - Same Redis Lua script as LLM proxy
-   - MCP tool calls and LLM calls share the same budget pool
-   - If budget exceeded: return MCP error result (not JSON-RPC error)
-
-4. **Unified cost view**
-   - Both LLM proxy and MCP proxy write to the same `cost_events` table
-   - Dashboard shows LLM costs and tool calls together
-
-### NOT in V1 scope (post-launch)
-
-- Tool cost registration API (per-tool pricing configuration)
-- Duration-based cost estimation
-- Dashboard UI for managing tool costs
-
-### Acceptance criteria
-
-- MCP tool calls are tracked with duration in the cost events ledger
-- Budget enforcement blocks tool calls when budget is exceeded
-- Cost events appear alongside LLM costs in the same dashboard
-- Developer setup is one config line change
-
-### Tech spec references
-
-- §3: MCP protocol details for proxy interception
-- §3: JSON-RPC message formats
-- §3: Transport layers and interception strategies
-- §3: Proxy architecture pattern
-
----
-
-## Phase 5: Dashboard & API
-
-**Goal:** A minimal dashboard that answers "what are my agents costing me?"
-and lets users set budgets. Nothing more for V1.
-
-> **Simplicity check:** The dashboard serves two purposes: (1) see your costs,
-> (2) set a budget. If a feature doesn't serve one of those, it's post-launch.
-
-### Scope
-
-1. **Cost overview page**
-   - Total spend (today, this week, this month)
-   - Breakdown by: provider, model, API key
-   - Simple table or bar chart — no need for fancy analytics in V1
-
-2. **Budget management page**
-   - Create a budget for an API key (amount + reset interval)
-   - See current spend vs limit (progress bar)
-   - Default policy: `STRICT_BLOCK`
-   - Edit / delete / reset a budget
-
-3. **Cost events log**
-   - Paginated table of recent cost events
-   - Filter by: provider, model, date range
-   - Shows: timestamp, model, tokens, cost
-
-4. **Settings page (evolve existing)**
-   - Keep API key management from current app
-   - Show proxy base URL for each provider ("point your OpenAI SDK here")
-   - Copy-paste setup instructions
-
-5. **API endpoints**
-   - `GET /api/costs/summary` — aggregated cost data
-   - `GET /api/costs/events` — paginated cost event log
-   - `POST/GET/DELETE /api/budgets` — budget CRUD
-
-### NOT in V1 scope (post-launch)
-
-- Kill receipts (post-launch — complete whitespace, great differentiator, but not V1)
-- Per-agent breakdown charts
-- Cost forecasting
-- Alert thresholds / Slack notifications
-- Provider key vault configuration
-- Advanced budget policies (SOFT_CAP, CAP_MAX_TOKENS) — V1 ships STRICT_BLOCK only
-
-### Acceptance criteria
-
-- Dashboard loads with real cost data from proxied requests
-- User can create a budget and see current spend vs limit
-- Cost event log shows every proxied request with accurate cost
-- Settings page shows the proxy URL and API key setup instructions
-- A developer can go from sign-up to seeing costs in under 5 minutes
-
-### Tech spec references
-
-- §5: Budget enforcement hierarchy (for budget management UI)
-- §7: Trust architecture principles (for settings/security)
-
----
-
-## Phase 6: Launch Prep
+### Phase 5: Launch Prep (now — 3 days)
 
 **Goal:** Everything needed to put this in front of developers.
 
-### Scope
+#### Scope
 
-1. **Landing page**
-   - Clear value prop: "Know what your AI agents cost. Set hard budgets."
-   - Hero shows the one-line setup (change your base URL)
-   - Interactive demo showing cost tracking in action
-   - Pricing page (free tier + paid)
+1. **README rewrite** — compelling README with the $47K horror story hook,
+   one-line setup, architecture diagram
+2. **`.env.example` audit** — verify all required env vars are documented
+3. **`fillDateGaps` fix** — edge case in date gap filling for analytics
+4. **Sidebar reorder** — Analytics above Activity, Settings at bottom
+5. **Documentation** — quickstart guide, provider setup guides (OpenAI,
+   Anthropic), budget configuration guide, API reference
+6. **HN post draft** — "Show HN: AgentSeam – FinOps for AI agents (budget
+   enforcement that actually works)." Lead with the problem, show the gaps,
+   link to live demo.
+7. **Helicone migration guide (TIME-SENSITIVE)** — Helicone was acquired by
+   Mintlify on March 3, 2026 and is entering maintenance mode. 16,000
+   organizations need an alternative. Write a clear migration guide showing
+   our proxy model is identical (change base URL). Blog post for SEO + docs
+   page. Target: capture orphaned users while the window is open.
 
-2. **Documentation**
-   - Quickstart: "Add AgentSeam in 60 seconds" (base URL change)
-   - Provider setup guides (OpenAI, Anthropic)
-   - MCP proxy setup guide
-   - Budget configuration guide
-   - API reference
+#### Acceptance criteria
 
-3. **Open source prep**
-   - License the proxy as Apache 2.0
-   - Clean up the repo for public consumption
-   - Write a compelling README with the $47K horror story hook
-   - GitHub Actions CI
-
-4. **HN launch post**
-   - Title: "Show HN: AgentSeam – FinOps for AI agents (budget enforcement that actually works)"
-   - Lead with the problem ($47K recursive loop, $764 LiteLLM budget bypass)
-   - Show the 5 gaps and how AgentSeam fills them
-   - Link to live demo, GitHub, docs
-
-5. **Pricing**
-   - Free tier: 10K requests/month, 1 budget, basic dashboard
-   - Pro ($49/month): unlimited requests, unlimited budgets, kill receipts, Slack alerts
-   - Team ($99/month): team budgets, advanced analytics, priority support
-
-### Acceptance criteria
-
-- A developer can sign up, point their OpenAI base URL at AgentSeam, and see costs within 5 minutes
-- Landing page clearly communicates value
+- A developer can sign up, change their base URL, and see costs within 5 minutes
+- README clearly communicates value with one-line setup
 - HN post is ready to submit
+- Helicone migration guide is published and SEO-indexed
 - Free tier works without credit card
 
 ---
 
-## Post-Launch Roadmap (prioritize based on user demand)
+## Forward Roadmap
 
-### Near-term (add based on early user feedback)
+### How to read this roadmap
 
-- **Kill receipts** (Gap 3): human-readable post-mortems when requests are blocked.
-  Complete whitespace — no competitor does this. Strong differentiator.
-- **Advanced budget policies**: SOFT_CAP, CAP_MAX_TOKENS, DRAIN_MODE
-- **Slack/webhook alerts**: notify on budget thresholds (50%, 80%, 100%)
-- **Tool cost registration**: let users configure per-tool costs for MCP tracking
-- **Per-agent breakdown**: attribute costs to specific agents/workflows
+This roadmap is a **north star, not a stone tablet.** It captures our best
+thinking about where the product goes, but it will be shaped — and
+reshaped — by what real users and developers tell us after launch.
 
-### Additional providers
+- **The Plan (Phases 6-9):** Concrete, scoped, likely to ship roughly as
+  described. These are next up after launch.
+- **The Direction (Phases 10-14):** Reasonable bets based on competitive
+  research and first principles. Timing and scope will shift based on
+  user demand. Features here get built when users ask for them, not on a
+  calendar.
+- **The Vision (Phases 15-22):** Long-term trajectory for investors,
+  architectural decision-making, and strategic orientation. These are not
+  commitments — they are possibilities that the earlier phases make
+  achievable. Any of them could be reprioritized, transformed, or dropped
+  based on what we learn.
 
-- Google Gemini (§1: usageMetadata format, thoughtsTokenCount)
-- AWS Bedrock (§1: camelCase fields, Converse API)
-- Azure OpenAI (§1: null vs 0, Provisioned deployment discounts)
+**The metric that governs prioritization:** total dollar volume flowing
+through the proxy. Every phase should either increase the number of
+developers routing through us or increase the value delivered per request.
+If a phase doesn't move one of those numbers, it gets deprioritized.
 
-### Longer-term
+---
 
-- **Agent unit economics** (Gap 4): cost per successful task, quality-adjusted metrics
-- **Cost forecasting** (Gap 5): model agent workflow cost patterns for prediction
-- **BATS-style budget injection** (§8): inject remaining budget into system prompts
-- **Vault mode**: encrypted provider key storage (XChaCha20)
-- **Team/org budget hierarchy**: multi-level budget enforcement
-- **Pre-request token estimation**: tiktoken for OpenAI, server-side count_tokens for Anthropic
-- **Self-hosted deployment**: Docker Compose + Helm charts
+## The Plan (Phases 6-9)
+
+These phases have concrete scope and are next in the build queue.
+
+### Phase 6: Post-Launch Hardening (week 1-2 after launch)
+
+Fix whatever real users surface. Extract common patterns from support
+questions into better docs. Add the cost events log page to the dashboard
+(paginated table with filters — it's in the frontend gap analysis as
+pending). Wire up Stripe for Pro tier if demand warrants it, or stay free
+to maximize adoption. Build the signup/onboarding flow if not completed
+in Phase 5.
+
+---
+
+### Phase 7: MCP Tool Cost Proxy — Option C (week 3-4)
+
+Modify the existing stdio MCP proxy: strip the approval gate, add duration
+tracking, add HTTP calls to the CF Workers proxy for cost reporting and
+budget pre-checks. New endpoint on the proxy: `POST /v1/mcp/track`. Cost
+events logged with `provider: "mcp"`, `model: tool_name`. Shared Redis
+budget pool — an agent's LLM calls and tool calls draw from the same
+budget. This is the feature nobody else offers at our price point.
+
+**Market timing note:** The MCP spec is still evolving. Option C (stdio
+proxy modification) is low-risk because it builds on our existing MCP proxy
+code. But this implementation may need to adapt as the spec stabilizes. We
+accept this trade-off to ship MCP tracking early while competitors don't
+have it.
+
+**Reference:** `docs/technical-outlines/mcp-tool-tracking/MCP tool cost tracking.md`
+
+---
+
+### Phase 8: Cryptographic Cost Receipts — Kill Receipts (month 1-2)
+
+Every time the proxy blocks a request or an agent exhausts its budget,
+generate a signed, tamper-evident receipt. Ed25519 signature on the event
+chain — request ID, model, estimated cost, budget state, timestamp,
+decision (blocked/allowed). Chain-hashed per agent so the complete spend
+history is provably unmodified. Public receipt viewer at `/receipt/{id}`.
+
+This is 2-3 days of engineering and it's our clearest differentiator —
+complete whitespace in the market. No competitor does this. Immediate use
+case: when a developer's agent gets blocked, they get a human-readable
+post-mortem explaining exactly why, not just a 429. Enterprise use case:
+auditable proof that budget controls were enforced, exportable for
+compliance.
+
+---
+
+### Phase 9: Webhook Event Stream (month 2)
+
+Expose every cost event as a real-time webhook to customer-configured
+endpoints. This is the Lithic pattern — customers build their own
+integrations (PagerDuty alerts, Slack bots, internal accounting) on top
+of the event stream. We don't build every integration; we expose the
+primitive. Low engineering cost (~2 days), high platform leverage.
+
+This also enables the JIT authorization pattern — customer's endpoint
+decides per-request whether to approve, deny, or modify. But that's an
+advanced use case we document, not something we build UI for initially.
+
+---
+
+## The Direction (Phases 10-14)
+
+These phases are reasonable bets. Timing and scope will be determined by
+what real users ask for. The descriptions below capture intent, not
+detailed specifications — those get written when a phase moves into the
+build queue.
+
+### Phase 10: Programmable Spend Policies (driven by user demand)
+
+Move beyond "max budget = $50" to richer policy rules. Per-model
+allowlists, velocity limits (max spend per minute), time-of-day
+restrictions. This is the Marqeta differentiation — programmable
+authorization, not just a number. Store policies in Postgres, evaluate in
+the proxy before the budget check.
+
+**Wait signal:** Don't build this until at least 100 active users have hit
+the limits of simple dollar-amount budgets. The current STRICT_BLOCK with
+a dollar cap covers 90% of use cases. Let real demand dictate what policy
+features to build first.
+
+**Reference:** `docs/unified-policy-engine-spec.md`
+
+---
+
+### Phase 11: Model Routing + BATS Budget Injection (driven by user demand)
+
+Rule-based model downgrade: if a policy says "use gpt-4o-mini for requests
+under 500 input tokens," the proxy rewrites the model field before
+forwarding. BATS-style budget injection: when spend exceeds a threshold,
+inject remaining budget into the system prompt so the agent self-optimizes.
+
+**Opt-in only (Layer 1).** These features modify the request payload. They
+are disabled by default, require explicit developer opt-in via dashboard
+toggles, and are clearly documented about exactly what they change and why.
+A developer who never enables these features sees zero difference in proxy
+behavior.
+
+---
+
+### Phase 12: Agent Ledger Accounts + Analytics V2 (month 3-4)
+
+Each API key gets a dedicated ledger page — balance, transaction history,
+spend rate chart, budget utilization. Frame it as a "bank statement for the
+agent." Add per-agent cost breakdown, cost-per-task metrics, model usage
+efficiency scores. This is where "financial infrastructure for AI agents"
+becomes tangible in the UI, not just positioning language.
+
+---
+
+### Phase 13: MCP Gateway — Option D, Streamable HTTP (month 4-5)
+
+Build the remote MCP gateway on CF Workers. By this point the MCP spec
+will be more stable (June 2026 spec release expected), client support for
+Streamable HTTP will be broader, and we'll have real usage data from
+Option C telling us what developers actually need. The gateway receives
+MCP JSON-RPC over Streamable HTTP, forwards to upstream servers, tracks
+cost/duration, enforces budgets. Developer config: one URL in their MCP
+client settings.
+
+**Depends on:** Phase 7 usage data and MCP spec stability. If Option C
+meets user needs and the spec is still in flux, this phase gets deferred.
+
+---
+
+### Phase 14: Context Compression Integration (month 5-6)
+
+Partner with Compresr or The Token Company, or build a lightweight
+compression layer. Proxy middleware that strips context bloat before
+forwarding to the LLM. Enables a percentage-of-savings revenue model —
+"we saved you $4,000 this month, our fee is 10%."
+
+**Opt-in only (Layer 1).** This modifies the request payload. Disabled by
+default, requires explicit developer opt-in, with clear documentation
+about what is being compressed and how it affects model behavior.
+
+---
+
+### Phase 15: Enterprise + Open Core Split (month 6-8)
+
+Create the `ee/` directory. SSO/SCIM, team/org budget hierarchy, compliance
+audit logs with cryptographic tamper evidence, role-based access control.
+This is the PostHog open-core model. The proxy stays Apache 2.0, enterprise
+features are commercial license. Also build agent risk scores (reliability
+score per API key based on budget compliance, cost predictability, error
+rate) and anomaly detection (recursive loop detection, spend velocity
+alerts). These features require the data volume we'll have by this point.
+
+---
+
+## The Vision (Phases 16-22)
+
+These phases represent the long-term trajectory. They exist to inform
+architectural decisions today, give investors confidence in the path, and
+ensure we don't close off future options. They are not commitments. Any of
+them could be reprioritized, transformed, or dropped based on what we learn
+from real users.
+
+### Phase 16: Agent Spend Intelligence
+
+Once processing millions of cost events across thousands of organizations,
+build intelligence on top of the data. Anomaly detection (recursive loops
+before they hit $47K), cost benchmarking ("your agent costs $0.12/task,
+median is $0.04"), model recommendation ("switch 60% of calls to save
+$400/month"), forecasting ("Agent B exhausts budget by March 22"). Start
+with SQL-driven heuristics and graduate to ML when data volume warrants it.
+
+### Phase 17: Compliance Frameworks
+
+**SOC 2 Type II** — first enterprise compliance milestone. Cryptographic
+receipts + audit logs + budget enforcement already provide most control
+evidence. 3-6 month process.
+
+**HIPAA** — the proxy already doesn't store prompt content (only token
+counts, model names, costs). Need BAA with Supabase/Upstash, encryption
+attestations, access logging.
+
+**EU AI Act** — by 2027, relevant for European customers. Audit trails
+and enforcement proof map to governance requirements.
+
+### Phase 18: Multi-Tenant Isolation + Team Hierarchies
+
+Organization → team → user → agent budget hierarchies where each level
+inherits and constrains the level below. Team A gets $500/month, User 1
+gets $100/month, Agent X gets $25/day. Redis Lua scripts already check all
+entity budgets independently — extending to deeper hierarchies is evolution,
+not rewrite.
+
+### Phase 19: Agent Identity + Access Control
+
+Verifiable identity credentials for agents. Cryptographic identity
+certificates tied to API keys. Enables access control (Agent X uses gpt-4o,
+Agent Y restricted to gpt-4o-mini), cross-agent delegation tracking, and
+integration with Visa's Trusted Agent Protocol / Mastercard's Agent Pay.
+Bridge between internal FinOps and external agent commerce.
+
+### Phase 20: Agent Marketplace Infrastructure
+
+If agents have identity, budgets, and verifiable cost histories — build
+the financial infrastructure for agents transacting with each other. Agent
+A discovers Agent B, negotiates price, escrows payment through AgentSeam,
+releases on verified completion. "Stripe for the agent economy" end state.
+
+### Phase 21: Embedded FinOps
+
+Stop making developers come to a dashboard. VS Code/Cursor extension,
+CLI tool (`agentseam status`), git hook for cost impact, CI/CD gate, Slack
+bot with daily digests. The best financial infrastructure is invisible.
+
+### Phase 22: Self-Hosted Enterprise Deployment
+
+Docker Compose for proxy + Redis + Postgres. Helm charts for Kubernetes.
+The Plausible Analytics model — some enterprises will never send data to a
+hosted service. The open-source proxy already works self-hosted; this phase
+packages it with the dashboard and configuration management.
+
+---
+
+## The Narrative Arc
+
+**Phases 5-9 (The Plan):** Developer tool — "change your base URL, see
+your costs, set your budgets, get cryptographic receipts."
+
+**Phases 10-15 (The Direction):** Platform — "programmable policies, model
+optimization, agent ledgers, enterprise features." Shaped by user demand.
+
+**Phases 16-22 (The Vision):** Financial infrastructure — "intelligence,
+compliance, identity, marketplace rails, embedded FinOps." Shaped by
+market evolution.
+
+Each phase is fundable on its own merits. Seed pitch is the developer tool
+with a credible path to enterprise platform. The broader vision is what
+demonstrates the size of the opportunity.
+
+**What ultimately defines us:** The users and developers who route through
+the proxy. Their feedback shapes what gets built, when, and how. The
+principles (trust, transparency, security, simplicity) stay constant. The
+features and priorities adapt.
 
 ---
 
@@ -590,20 +576,11 @@ and lets users set budgets. Nothing more for V1.
 | Dashboard hosting | Vercel (existing) | Keep the Next.js app where it is. Dashboard ≠ proxy — different latency requirements. |
 | License | Apache 2.0 (proxy), proprietary (dashboard SaaS) | Following Helicone's model. Max adoption for proxy, monetize via dashboard. |
 | Existing approval code | Preserve but deprioritize | Don't delete — may become a feature within FinOps. But don't invest in it now. |
-
----
-
-## What carries over from the current codebase
-
-| Asset | Reusable? | Notes |
-|---|---|---|
-| Dashboard shell (layout, sidebar, auth) | Yes | Same auth flow, same navigation pattern |
-| shadcn/ui components | Yes | All UI primitives carry over |
-| Auth logic (session, API keys, Supabase) | Yes | API key model is reusable as-is |
-| Drizzle ORM setup | Yes | Add new tables, keep existing |
-| Error handling patterns | Yes | Same HTTP error utilities |
-| MCP proxy structure | Partial | Keep transport/config, replace gate logic |
-| TanStack Query patterns | Yes | Same data fetching approach, new queries |
-| Action lifecycle code | No | Preserved but not used in FinOps flow |
-| Slack integration | Partial | Adapt for budget alerts instead of approval notifications |
-| Test infrastructure (Vitest) | Yes | Same framework, new test cases |
+| MCP approach | Option C first, Option D later | Option C (stdio proxy mod) ships in weeks. Option D (Streamable HTTP gateway) waits for spec stability. |
+| Open core split | Phase 15, not sooner | Build the free user base first. Enterprise features require data volume. |
+| Payload-modifying features | Opt-in only (Layer 1) | Model routing, budget injection, compression all require explicit developer opt-in. Default proxy behavior never touches payloads. |
+| Kill receipts timing | Phase 8 (early) | 2-3 days of work, maximum differentiation. Complete whitespace — no competitor does this. Ship before policies or optimization. |
+| Post-launch prioritization | User-feedback-driven | Phases 10+ scope and timing determined by what real users ask for, not by a predetermined calendar. |
+| Helicone migration | Elevated to Phase 5 critical path | Helicone acquired by Mintlify (Mar 3, 2026), 16K orgs orphaned. Time-sensitive acquisition channel. Same proxy integration model = easy migration narrative. |
+| Pricing model | Usage-based tiers (proxied spend caps) | Free ($1K/mo spend), Pro $49/mo ($50K), Team $199/mo ($250K), Enterprise custom. Natural unit is proxied spend. Flat rate per tier avoids "percentage tax" misalignment. Matches Portkey Pro price but includes budget enforcement. See Pricing Model section above. |
+| Primary competitive position | "Budget enforcement at startup pricing" | Portkey gates enforcement behind enterprise. LiteLLM requires self-hosting. We offer enforcement at $49 (or usage-based) with zero infrastructure. This is the wedge. |

@@ -1,6 +1,10 @@
 # AgentSeam Roadmap
 
-## Completed
+> **Note:** The master roadmap for the FinOps pivot is at
+> `docs/finops-pivot-roadmap.md`. This file preserves the history of the
+> original approval layer phases and tracks the FinOps build progress.
+
+## Completed (Original Platform — Approval Layer)
 
 ### Phase 0 — Repo Setup
 - Next.js app with TypeScript, Tailwind, shadcn/ui
@@ -31,110 +35,61 @@
 ### Phase 4 — SDK Package
 - `@agentseam/sdk` TypeScript package at `packages/sdk/`
 - `AgentSeam` client with `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`
-- Polling-based approval wait strategy
 - Custom error types: `AgentSeamError`, `TimeoutError`, `RejectedError`
 - 19 unit tests, tsup build (ESM + CJS + types)
-- Demo script: `examples/demo-send-email.ts`
 
 ### Phase 5 — MCP Adapters
-- `@agentseam/mcp-server` package at `packages/mcp-server/`
-  - Tools: `propose_action`, `check_action`
-  - Uses `@agentseam/sdk` internally
-  - Configurable via env vars (`AGENTSEAM_URL`, `AGENTSEAM_API_KEY`)
-  - Publishable as `@agentseam/mcp-server` / installable via `npx`
-- `@agentseam/mcp-proxy` package at `packages/mcp-proxy/`
-  - Stdio proxy between LLM and any upstream MCP server
-  - Selectively gates risky tool calls through AgentSeam approval
-  - Configurable gated/passthrough tool lists
-  - Handles approval, rejection, expiration, and timeout
-  - 49 unit tests across config, gate, and proxy modules
+- `@agentseam/mcp-server` — tools: `propose_action`, `check_action`
+- `@agentseam/mcp-proxy` — stdio proxy with selective tool gating
+- 49 unit tests across config, gate, and proxy modules
 
 ### Action Expiration
-- Configurable server-side TTL (`expiresInSeconds`, default 1 hour)
-- Lazy check-on-read expiration at `getAction`, `listActions`, `approve`, `reject`
-- `expiresAt` column in DB, distinct from `expiredAt` (transition timestamp)
+- Configurable server-side TTL, lazy check-on-read
 - Expiration-aware approve/reject (409 Conflict when expired)
-- SDK and MCP proxy forward `expiresInSeconds`; proxy maps `expired` to `timedOut`
-- UI: expires countdown, expired tab, timeline event, cache invalidation
-- Unit tests for expiration logic + E2E expiration scenarios
-- Race condition fix for concurrent `getAction` on expiring action
 
 ### Slack Notifications
-- Incoming webhook notifications with Block Kit messages on new pending actions
-- Interactive approve/reject buttons in Slack via `block_actions` callback
-- Slack signing secret verification (HMAC-SHA256) for callback security
-- Per-user webhook URL configuration in Settings UI
-- `slack_configs` table with active/inactive toggle
-- Test notification endpoint
-- Known v1 limitation: messages not updated when decided from the web dashboard
+- Block Kit messages, interactive approve/reject buttons
+- HMAC-SHA256 signing verification, per-user webhook config
 
 ---
 
-## Next Up
+## Completed (FinOps Pivot)
 
-### Signed Receipts
-Cryptographic proof of every action lifecycle event. Every approval, rejection, and execution produces a signed, verifiable receipt.
+### FinOps Phase 0 — Foundation & Repo Restructure
+- Cloudflare Workers project at `apps/proxy/`
+- Upstash Redis with REST-based connectivity from CF Workers
+- `packages/cost-engine/` with model pricing database
+- `budgets` and `cost_events` database tables
 
-- `receipts` table: action_id, event_type, hash, previous_hash, signature
-- Ed25519 key pair for signing
-- Chain hashed events per action for tamper evidence
-- Public receipt viewer page (e.g. `/receipt/[id]`)
-- Exportable receipt JSON
-- Pitch: "Not just approval — proof."
-- Estimated effort: 2-3 days
+### FinOps Phase 1 — OpenAI Streaming Proxy
+- `/v1/chat/completions` proxy with stream tee, SSE parsing
+- Cost calculation in microdollars (integer precision)
+- Async cost event logging via `ctx.waitUntil()`
+- `passThroughOnException()` failover
+- 280+ unit and smoke tests
 
-### Notification Channels
-Extend notifications beyond the web dashboard and Slack.
+### FinOps Phase 2 — Budget Enforcement (Redis)
+- Atomic Lua check-and-reserve script
+- Pre-request estimation, post-response reconciliation
+- Key + user budget hierarchy, STRICT_BLOCK policy
+- Budget CRUD API, reservation TTL auto-expiry
 
-**PWA + Web Push** — ~1-2 days
-- `manifest.json` and service worker for installable mobile experience
-- Web Push API for notifications when new actions arrive
-- Works on Android and iOS Safari (16.4+)
+### FinOps Phase 3 — Anthropic Provider Support
+- `/v1/messages` route with named-event SSE parsing
+- Cache token accounting (read/write/5min/1hr), long-context multipliers
+- Budget enforcement shared with OpenAI path
+- 280 stress tests across 7 live Anthropic models
 
-**SMS (Twilio)** — ~1-2 days
-- SMS notification when actions are created
-- Link to dashboard for approval
-- Phone number configuration in Settings
-- Optional: reply "YES" to approve via SMS
-
-**iOS App (Expo/React Native)** — 1-2 weeks
-- Login, inbox, action detail, approve/reject
-- Push notifications via Expo
-- Only if mobile becomes a core selling point
-
-Priority order: PWA → SMS → Native app
+### FinOps Phase 4 — Dashboard Multi-Provider Support
+- Provider filter on cost events API
+- Provider breakdown analytics (chart + table)
+- Formatted model/provider display names (30+ models)
+- Provider badge in Activity, ProviderBreakdown in Analytics
+- Seed script with ~30% Anthropic event mix
 
 ---
 
-## Future (Post-Launch)
+## Current: Phase 5 — Launch Prep
 
-### Developer Experience
-- Python SDK (direct port of TypeScript client)
-- Additional demo scripts (HTTP POST, shell command, stock trade)
-- CLI tool for creating actions from the terminal
-
-### Product Features
-- Auto-approve rules (approve all actions matching a pattern)
-- Allowlists / blocklists
-- Action templates and grouping
-- Multiple environments with separate policies
-- Bulk approve/reject
-
-### Integrations
-- Framework adapters (LangChain, CrewAI, AutoGen)
-- OpenAI function call wrapper
-- Discord approval channel
-- Email notifications with one-click approve links
-
-### Enterprise
-- Team/org management
-- Role-based access control
-- Audit log exports
-- SSO
-- Self-hosted deployment option
-
-### Infrastructure
-- Real-time updates (WebSocket/SSE instead of polling)
-- Action event timeline table (`action_events`)
-- Webhook system for external integrations
-- Rate limiting and usage quotas
+See `docs/finops-pivot-roadmap.md` for full details and forward roadmap
+(Phases 5-22).

@@ -30,6 +30,7 @@ export const listCostEventsQuerySchema = z.object({
     .optional(),
   apiKeyId: z.string().uuid().optional(),
   model: z.string().optional(),
+  provider: z.string().optional(),
 });
 
 export const listCostEventsResponseSchema = z.object({
