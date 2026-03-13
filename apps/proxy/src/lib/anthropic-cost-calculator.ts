@@ -1,0 +1,104 @@
+import { getModelPricing, costComponent } from "@agentseam/cost-engine";
+import type { NewCostEventRow } from "@agentseam/db";
+import type {
+  AnthropicRawUsage,
+  AnthropicCacheCreationDetail,
+} from "./anthropic-types.js";
+
+type CostEventInsert = Omit<NewCostEventRow, "id" | "createdAt">;
+
+/**
+ * Map an Anthropic Messages API usage object to a cost event ready for persistence.
+ *
+ * Key differences from the OpenAI calculator:
+ * - `input_tokens` is already the uncached portion (do NOT subtract cache tokens)
+ * - `totalInputTokens` includes cache creation + cache read for DB and long-context check
+ * - Long context (>200K total input) doubles input/cache rates, 1.5x output
+ * - Cache write cost is TTL-aware when detail is available
+ * - Thinking tokens are included in `output_tokens` — no separate count
+ */
+export function calculateAnthropicCost(
+  requestModel: string,
+  responseModel: string | null,
+  usage: AnthropicRawUsage,
+  cacheCreationDetail: AnthropicCacheCreationDetail | null,
+  requestId: string,
+  durationMs: number,
+  attribution?: {
+    userId: string | null;
+    apiKeyId: string | null;
+    actionId: string | null;
+  },
+): CostEventInsert {
+  const inputTokens = Number(usage.input_tokens) || 0;
+  const outputTokens = Number(usage.output_tokens) || 0;
+  const cacheCreationTokens =
+    Number(usage.cache_creation_input_tokens) || 0;
+  const cacheReadTokens = Number(usage.cache_read_input_tokens) || 0;
+
+  const totalInputTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
+
+  let pricing = getModelPricing("anthropic", requestModel);
+  let resolvedModel = requestModel;
+
+  if (!pricing && responseModel) {
+    pricing = getModelPricing("anthropic", responseModel);
+    if (pricing) resolvedModel = responseModel;
+  }
+
+  const isLongContext = totalInputTokens > 200_000;
+  const inputRate = pricing
+    ? isLongContext ? pricing.inputPerMTok * 2 : pricing.inputPerMTok
+    : 0;
+  const cacheReadRate = pricing
+    ? isLongContext ? pricing.cachedInputPerMTok * 2 : pricing.cachedInputPerMTok
+    : 0;
+  const cacheWrite5mRate = pricing?.cacheWrite5mPerMTok
+    ? isLongContext ? pricing.cacheWrite5mPerMTok * 2 : pricing.cacheWrite5mPerMTok
+    : 0;
+  const cacheWrite1hRate = pricing?.cacheWrite1hPerMTok
+    ? isLongContext ? pricing.cacheWrite1hPerMTok * 2 : pricing.cacheWrite1hPerMTok
+    : 0;
+  const outputRate = pricing
+    ? isLongContext ? pricing.outputPerMTok * 1.5 : pricing.outputPerMTok
+    : 0;
+
+  let cacheWriteCost: number;
+
+  if (cacheCreationDetail?.ephemeral_5m_input_tokens !== undefined) {
+    const tokens5m =
+      Number(cacheCreationDetail.ephemeral_5m_input_tokens) || 0;
+    const tokens1h =
+      Number(cacheCreationDetail.ephemeral_1h_input_tokens) || 0;
+    cacheWriteCost =
+      costComponent(tokens5m, cacheWrite5mRate) +
+      costComponent(tokens1h, cacheWrite1hRate);
+  } else {
+    cacheWriteCost = costComponent(cacheCreationTokens, cacheWrite5mRate);
+  }
+
+  let costMicrodollars = 0;
+  if (pricing) {
+    costMicrodollars = Math.round(
+      costComponent(inputTokens, inputRate) +
+        cacheWriteCost +
+        costComponent(cacheReadTokens, cacheReadRate) +
+        costComponent(outputTokens, outputRate),
+    );
+  }
+
+  return {
+    requestId,
+    provider: "anthropic",
+    model: resolvedModel,
+    inputTokens: totalInputTokens,
+    outputTokens,
+    cachedInputTokens: cacheReadTokens,
+    reasoningTokens: 0,
+    costMicrodollars,
+    durationMs,
+    userId: attribution?.userId ?? null,
+    apiKeyId: attribution?.apiKeyId ?? null,
+    actionId: attribution?.actionId ?? null,
+  };
+}

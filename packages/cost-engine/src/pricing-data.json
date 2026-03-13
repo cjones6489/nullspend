@@ -90,6 +90,139 @@
     "cacheWrite1hPerMTok": 30.00,
     "outputPerMTok": 75.00
   },
+  "anthropic/claude-opus-4-6": {
+    "inputPerMTok": 5.00,
+    "cachedInputPerMTok": 0.50,
+    "cacheWrite5mPerMTok": 6.25,
+    "cacheWrite1hPerMTok": 10.00,
+    "outputPerMTok": 25.00
+  },
+  "anthropic/claude-sonnet-4-5": {
+    "inputPerMTok": 3.00,
+    "cachedInputPerMTok": 0.30,
+    "cacheWrite5mPerMTok": 3.75,
+    "cacheWrite1hPerMTok": 6.00,
+    "outputPerMTok": 15.00
+  },
+  "anthropic/claude-opus-4-5": {
+    "inputPerMTok": 5.00,
+    "cachedInputPerMTok": 0.50,
+    "cacheWrite5mPerMTok": 6.25,
+    "cacheWrite1hPerMTok": 10.00,
+    "outputPerMTok": 25.00
+  },
+  "anthropic/claude-opus-4-1": {
+    "inputPerMTok": 15.00,
+    "cachedInputPerMTok": 1.50,
+    "cacheWrite5mPerMTok": 18.75,
+    "cacheWrite1hPerMTok": 30.00,
+    "outputPerMTok": 75.00
+  },
+  "anthropic/claude-sonnet-4": {
+    "inputPerMTok": 3.00,
+    "cachedInputPerMTok": 0.30,
+    "cacheWrite5mPerMTok": 3.75,
+    "cacheWrite1hPerMTok": 6.00,
+    "outputPerMTok": 15.00
+  },
+  "anthropic/claude-haiku-4-5": {
+    "inputPerMTok": 1.00,
+    "cachedInputPerMTok": 0.10,
+    "cacheWrite5mPerMTok": 1.25,
+    "cacheWrite1hPerMTok": 2.00,
+    "outputPerMTok": 5.00
+  },
+  "anthropic/claude-haiku-3": {
+    "inputPerMTok": 0.25,
+    "cachedInputPerMTok": 0.03,
+    "cacheWrite5mPerMTok": 0.30,
+    "cacheWrite1hPerMTok": 0.50,
+    "outputPerMTok": 1.25
+  },
+  "anthropic/claude-opus-4-6-20260205": {
+    "inputPerMTok": 5.00,
+    "cachedInputPerMTok": 0.50,
+    "cacheWrite5mPerMTok": 6.25,
+    "cacheWrite1hPerMTok": 10.00,
+    "outputPerMTok": 25.00
+  },
+  "anthropic/claude-sonnet-4-6-20260217": {
+    "inputPerMTok": 3.00,
+    "cachedInputPerMTok": 0.30,
+    "cacheWrite5mPerMTok": 3.75,
+    "cacheWrite1hPerMTok": 6.00,
+    "outputPerMTok": 15.00
+  },
+  "anthropic/claude-sonnet-4-5-20250929": {
+    "inputPerMTok": 3.00,
+    "cachedInputPerMTok": 0.30,
+    "cacheWrite5mPerMTok": 3.75,
+    "cacheWrite1hPerMTok": 6.00,
+    "outputPerMTok": 15.00
+  },
+  "anthropic/claude-opus-4-5-20251101": {
+    "inputPerMTok": 5.00,
+    "cachedInputPerMTok": 0.50,
+    "cacheWrite5mPerMTok": 6.25,
+    "cacheWrite1hPerMTok": 10.00,
+    "outputPerMTok": 25.00
+  },
+  "anthropic/claude-haiku-4-5-20251001": {
+    "inputPerMTok": 1.00,
+    "cachedInputPerMTok": 0.10,
+    "cacheWrite5mPerMTok": 1.25,
+    "cacheWrite1hPerMTok": 2.00,
+    "outputPerMTok": 5.00
+  },
+  "anthropic/claude-opus-4-1-20250805": {
+    "inputPerMTok": 15.00,
+    "cachedInputPerMTok": 1.50,
+    "cacheWrite5mPerMTok": 18.75,
+    "cacheWrite1hPerMTok": 30.00,
+    "outputPerMTok": 75.00
+  },
+  "anthropic/claude-opus-4-20250514": {
+    "inputPerMTok": 15.00,
+    "cachedInputPerMTok": 1.50,
+    "cacheWrite5mPerMTok": 18.75,
+    "cacheWrite1hPerMTok": 30.00,
+    "outputPerMTok": 75.00
+  },
+  "anthropic/claude-sonnet-4-20250514": {
+    "inputPerMTok": 3.00,
+    "cachedInputPerMTok": 0.30,
+    "cacheWrite5mPerMTok": 3.75,
+    "cacheWrite1hPerMTok": 6.00,
+    "outputPerMTok": 15.00
+  },
+  "anthropic/claude-3-5-haiku-20241022": {
+    "inputPerMTok": 0.80,
+    "cachedInputPerMTok": 0.08,
+    "cacheWrite5mPerMTok": 1.00,
+    "cacheWrite1hPerMTok": 1.60,
+    "outputPerMTok": 4.00
+  },
+  "anthropic/claude-3-haiku-20240307": {
+    "inputPerMTok": 0.25,
+    "cachedInputPerMTok": 0.03,
+    "cacheWrite5mPerMTok": 0.30,
+    "cacheWrite1hPerMTok": 0.50,
+    "outputPerMTok": 1.25
+  },
+  "anthropic/claude-opus-4-0": {
+    "inputPerMTok": 15.00,
+    "cachedInputPerMTok": 1.50,
+    "cacheWrite5mPerMTok": 18.75,
+    "cacheWrite1hPerMTok": 30.00,
+    "outputPerMTok": 75.00
+  },
+  "anthropic/claude-sonnet-4-0": {
+    "inputPerMTok": 3.00,
+    "cachedInputPerMTok": 0.30,
+    "cacheWrite5mPerMTok": 3.75,
+    "cacheWrite1hPerMTok": 6.00,
+    "outputPerMTok": 15.00
+  },
   "google/gemini-2.5-pro": {
     "inputPerMTok": 1.25,
     "cachedInputPerMTok": 0.3125,
