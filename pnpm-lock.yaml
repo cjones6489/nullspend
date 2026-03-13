@@ -6,6 +6,7 @@ settings:
 
 overrides:
   drizzle-orm: ^0.45.1
+  recharts: ^2
 
 importers:
 
@@ -63,7 +64,7 @@ importers:
         specifier: ^19.2.4
         version: 19.2.4(react@19.2.4)
       recharts:
-        specifier: 2.15.4
+        specifier: ^2
         version: 2.15.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       shadcn:
         specifier: ^4.0.0
@@ -241,15 +242,6 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@25.3.5)(jiti@2.6.1)(lightningcss@1.31.1)(msw@2.12.10(@types/node@25.3.5)(typescript@5.9.3))(tsx@4.21.0)
-
-  packages/shared:
-    devDependencies:
-      tsup:
-        specifier: ^8.4.0
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
 
 packages:
 
