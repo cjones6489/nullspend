@@ -235,6 +235,47 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(404);
     });
+
+    it("POST /v1/messages reaches Anthropic handler", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "msg_test",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [{ type: "text", text: "Hello" }],
+            usage: { input_tokens: 10, output_tokens: 5 },
+          }),
+          { status: 200, headers: { "content-type": "application/json", "request-id": "req_test123" } },
+        ),
+      );
+
+      const req = new Request("http://localhost/v1/messages", {
+        method: "POST",
+        headers: {
+          "X-AgentSeam-Auth": "test-platform-key",
+          Authorization: "Bearer sk-ant-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 100,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.model).toBe("claude-sonnet-4-20250514");
+    });
+
+    it("GET /v1/messages returns 404 (POST only)", async () => {
+      const req = new Request("http://localhost/v1/messages", { method: "GET" });
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(404);
+    });
   });
 
   describe("fail-closed behavior", () => {

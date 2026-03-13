@@ -14,39 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { Redis } from "@upstash/redis";
 import postgres from "postgres";
-
-const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
-
-function authHeaders(userId?: string, keyId?: string): Record<string, string> {
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
-  };
-  if (userId) h["X-AgentSeam-User-Id"] = userId;
-  if (keyId) h["X-AgentSeam-Key-Id"] = keyId;
-  return h;
-}
-
-function smallRequest(overrides: Record<string, unknown> = {}) {
-  return JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: "Say ok" }],
-    max_tokens: 3,
-    ...overrides,
-  });
-}
-
-async function isServerUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Budget edge cases (LiteLLM bug avoidance)", () => {
   let redis: Redis;
@@ -162,7 +130,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders(undefined, keyId),
+      headers: authHeaders({ "X-AgentSeam-Key-Id": keyId }),
       body: smallRequest(),
     });
 
@@ -359,8 +327,9 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     expect(res.status).toBe(200);
     await res.json();
 
-    // Wait for waitUntil reconciliation to complete (may be slow under load)
-    await new Promise((r) => setTimeout(r, 10_000));
+    // Wait for waitUntil reconciliation to complete (needs extra time when
+    // running alongside 11 other test files that all hit the same proxy)
+    await new Promise((r) => setTimeout(r, 15_000));
 
     // All reservation keys should be cleaned up by reconciliation
     const rsvKeys = await redis.keys(`{budget}:rsv:*`);
@@ -368,7 +337,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     // After reconciliation, there should be none
     const state = await redis.hgetall(`{budget}:user:${userId}`) as Record<string, string>;
     expect(Number(state?.reserved ?? 0)).toBe(0);
-  }, 30_000);
+  }, 45_000);
 
   it("requests without any budget headers bypass budget checks entirely", async () => {
     // This is the inverse of the LiteLLM bug — verify that NOT having

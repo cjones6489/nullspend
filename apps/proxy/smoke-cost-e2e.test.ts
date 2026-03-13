@@ -11,58 +11,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
-
-const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
-const DATABASE_URL = process.env.DATABASE_URL;
-
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
-    ...extra,
-  };
-}
-
-async function isServerUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForCostEvent(
-  sql: postgres.Sql,
-  requestId: string,
-  timeoutMs = 10_000,
-): Promise<Record<string, unknown> | null> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const rows = await sql`
-      SELECT * FROM cost_events
-      WHERE request_id = ${requestId} AND provider = 'openai'
-      LIMIT 1
-    `;
-    if (rows.length > 0) return rows[0] as Record<string, unknown>;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return null;
-}
-
-async function countCostEventsSince(
-  sql: postgres.Sql,
-  since: Date,
-): Promise<number> {
-  const rows = await sql`
-    SELECT COUNT(*)::int as count FROM cost_events
-    WHERE created_at >= ${since.toISOString()}
-  `;
-  return rows[0].count as number;
-}
+import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL, authHeaders, isServerUp, waitForCostEvent, countCostEventsSince } from "./smoke-test-helpers.js";
 
 describe("End-to-end cost verification", () => {
   let sql: postgres.Sql;

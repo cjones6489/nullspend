@@ -10,38 +10,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import postgres from "postgres";
-
-const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
-const DATABASE_URL = process.env.DATABASE_URL;
-
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
-    ...extra,
-  };
-}
-
-function smallRequest(overrides: Record<string, unknown> = {}) {
-  return JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: "Say ok" }],
-    max_tokens: 3,
-    ...overrides,
-  });
-}
-
-async function isServerUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Security tests", () => {
   let sql: postgres.Sql;

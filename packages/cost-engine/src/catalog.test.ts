@@ -1,9 +1,15 @@
 import { describe, it, expect } from "vitest";
 import pricingData from "./pricing-data.json";
+import { getModelPricing } from "./pricing.js";
 import type { ModelPricing } from "./types.js";
 
 const catalog = pricingData as Record<string, ModelPricing>;
 const entries = Object.entries(catalog);
+
+const LEGACY_ANTHROPIC_MODELS = new Set([
+  "anthropic/claude-haiku-3",
+  "anthropic/claude-3-haiku-20240307",
+]);
 
 describe("pricing catalog integrity", () => {
   it("has at least 10 models", () => {
@@ -67,13 +73,27 @@ describe("per-model field validation", () => {
           expect(pricing.cacheWrite1hPerMTok).toBeGreaterThan(0);
         });
 
-        it("5m cache write rate is 1.25x base input (Anthropic pricing rule)", () => {
-          expect(pricing.cacheWrite5mPerMTok).toBeCloseTo(pricing.inputPerMTok * 1.25, 10);
-        });
+        if (LEGACY_ANTHROPIC_MODELS.has(key)) {
+          it("cache write 5m > input (legacy model — non-standard multiplier)", () => {
+            expect(pricing.cacheWrite5mPerMTok!).toBeGreaterThan(pricing.inputPerMTok);
+          });
 
-        it("1h cache write rate is 2.0x base input (Anthropic pricing rule)", () => {
-          expect(pricing.cacheWrite1hPerMTok).toBeCloseTo(pricing.inputPerMTok * 2.0, 10);
-        });
+          it("cache write 1h > cache write 5m (legacy model)", () => {
+            expect(pricing.cacheWrite1hPerMTok!).toBeGreaterThan(pricing.cacheWrite5mPerMTok!);
+          });
+        } else {
+          it("5m cache write rate is 1.25x base input (Anthropic pricing rule)", () => {
+            expect(pricing.cacheWrite5mPerMTok).toBeCloseTo(pricing.inputPerMTok * 1.25, 10);
+          });
+
+          it("1h cache write rate is 2.0x base input (Anthropic pricing rule)", () => {
+            expect(pricing.cacheWrite1hPerMTok).toBeCloseTo(pricing.inputPerMTok * 2.0, 10);
+          });
+
+          it("cache read rate is 0.1x base input (Anthropic pricing rule)", () => {
+            expect(pricing.cachedInputPerMTok).toBeCloseTo(pricing.inputPerMTok * 0.1, 10);
+          });
+        }
 
         it("cache write rates follow 5m < 1h ordering", () => {
           expect(pricing.cacheWrite5mPerMTok!).toBeLessThan(pricing.cacheWrite1hPerMTok!);
@@ -112,14 +132,65 @@ describe("per-model field validation", () => {
   }
 });
 
-describe("cross-model sanity checks", () => {
-  it("opus is the most expensive Anthropic model per output token", () => {
-    const opus = catalog["anthropic/claude-opus-4"];
-    const sonnet = catalog["anthropic/claude-sonnet-4-6"];
-    const haiku = catalog["anthropic/claude-haiku-3.5"];
+describe("alias consistency", () => {
+  const aliasPairs: [string, string[]][] = [
+    ["claude-opus-4-6", ["claude-opus-4-6-20260205"]],
+    ["claude-sonnet-4-6", ["claude-sonnet-4-6-20260217"]],
+    ["claude-sonnet-4-5", ["claude-sonnet-4-5-20250929"]],
+    ["claude-opus-4-5", ["claude-opus-4-5-20251101"]],
+    ["claude-haiku-4-5", ["claude-haiku-4-5-20251001"]],
+    ["claude-opus-4-1", ["claude-opus-4-1-20250805"]],
+    ["claude-opus-4", ["claude-opus-4-20250514", "claude-opus-4-0"]],
+    ["claude-sonnet-4", ["claude-sonnet-4-20250514", "claude-sonnet-4-0"]],
+    ["claude-haiku-3.5", ["claude-3-5-haiku-20241022"]],
+    ["claude-haiku-3", ["claude-3-haiku-20240307"]],
+  ];
 
-    expect(opus.outputPerMTok).toBeGreaterThan(sonnet.outputPerMTok);
-    expect(sonnet.outputPerMTok).toBeGreaterThan(haiku.outputPerMTok);
+  for (const [shortName, aliases] of aliasPairs) {
+    for (const alias of aliases) {
+      it(`${alias} has same pricing as ${shortName}`, () => {
+        const base = getModelPricing("anthropic", shortName);
+        const aliased = getModelPricing("anthropic", alias);
+        expect(base, `${shortName} not found in pricing data`).not.toBeNull();
+        expect(aliased, `${alias} not found in pricing data`).not.toBeNull();
+        expect(aliased).toEqual(base);
+      });
+    }
+  }
+});
+
+describe("cross-model sanity checks", () => {
+  it("opus 4 ($75) is the most expensive Anthropic model per output token", () => {
+    const opus4 = catalog["anthropic/claude-opus-4"];
+    const opus46 = catalog["anthropic/claude-opus-4-6"];
+
+    expect(opus4.outputPerMTok).toBeGreaterThan(opus46.outputPerMTok);
+  });
+
+  it("opus 4.6 ($25) > sonnet 4.6 ($15) on output rate", () => {
+    const opus46 = catalog["anthropic/claude-opus-4-6"];
+    const sonnet46 = catalog["anthropic/claude-sonnet-4-6"];
+
+    expect(opus46.outputPerMTok).toBeGreaterThan(sonnet46.outputPerMTok);
+  });
+
+  it("sonnet 4.6 ($15) > haiku 4.5 ($5) > haiku 3.5 ($4) > haiku 3 ($1.25) on output rate", () => {
+    const sonnet46 = catalog["anthropic/claude-sonnet-4-6"];
+    const haiku45 = catalog["anthropic/claude-haiku-4-5"];
+    const haiku35 = catalog["anthropic/claude-haiku-3.5"];
+    const haiku3 = catalog["anthropic/claude-haiku-3"];
+
+    expect(sonnet46.outputPerMTok).toBeGreaterThan(haiku45.outputPerMTok);
+    expect(haiku45.outputPerMTok).toBeGreaterThan(haiku35.outputPerMTok);
+    expect(haiku35.outputPerMTok).toBeGreaterThan(haiku3.outputPerMTok);
+  });
+
+  it("every Anthropic model: cacheWrite5m > input and cacheWrite1h > cacheWrite5m", () => {
+    for (const [key, pricing] of entries) {
+      if (!key.startsWith("anthropic/")) continue;
+      expect(pricing.cacheWrite5mPerMTok!, `${key}: 5m write > input`).toBeGreaterThan(pricing.inputPerMTok);
+      expect(pricing.cacheWrite1hPerMTok!, `${key}: 1h write > 5m write`).toBeGreaterThan(pricing.cacheWrite5mPerMTok!);
+    }
   });
 
   it("gpt-4o is more expensive than gpt-4o-mini", () => {

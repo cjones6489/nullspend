@@ -20,37 +20,7 @@
  * Run with: pnpm proxy:smoke
  */
 import { describe, it, expect, beforeAll } from "vitest";
-
-const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
-
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
-    ...extra,
-  };
-}
-
-function smallRequest(overrides: Record<string, unknown> = {}) {
-  return JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: "Say 'ok'" }],
-    max_tokens: 5,
-    ...overrides,
-  });
-}
-
-async function isServerUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Cloudflare runtime edge cases", () => {
   beforeAll(async () => {

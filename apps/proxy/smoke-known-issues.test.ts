@@ -12,58 +12,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import postgres from "postgres";
 import { Redis } from "@upstash/redis";
-
-const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
-const DATABASE_URL = process.env.DATABASE_URL;
-
-function authHeaders(userId?: string, keyId?: string): Record<string, string> {
-  const h: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
-  };
-  if (userId) h["X-AgentSeam-User-Id"] = userId;
-  if (keyId) h["X-AgentSeam-Key-Id"] = keyId;
-  return h;
-}
-
-function smallRequest(overrides: Record<string, unknown> = {}) {
-  return JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: "Say ok" }],
-    max_tokens: 3,
-    ...overrides,
-  });
-}
-
-async function isServerUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForCostEvent(
-  sql: postgres.Sql,
-  requestId: string,
-  timeoutMs = 15_000,
-): Promise<Record<string, unknown> | null> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const rows = await sql`
-      SELECT * FROM cost_events
-      WHERE request_id = ${requestId} AND provider = 'openai'
-      LIMIT 1
-    `;
-    if (rows.length > 0) return rows[0] as Record<string, unknown>;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return null;
-}
+import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL, authHeaders, smallRequest, isServerUp, waitForCostEvent } from "./smoke-test-helpers.js";
 
 describe("Known issues: connection exhaustion & waitUntil reliability", () => {
   let sql: postgres.Sql;

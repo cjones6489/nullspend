@@ -8,19 +8,7 @@
  * Run with: npx vitest run smoke-openai.test.ts
  */
 import { describe, it, expect, beforeAll } from "vitest";
-
-const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
-
-async function isServerUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, isServerUp } from "./smoke-test-helpers.js";
 
 describe("OpenAI proxy smoke tests", () => {
   beforeAll(async () => {

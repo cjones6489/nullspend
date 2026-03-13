@@ -8,10 +8,10 @@ import { calculateOpenAICost } from "../lib/cost-calculator.js";
 import { isKnownModel } from "@agentseam/cost-engine";
 import { logCostEvent } from "../lib/cost-logger.js";
 import { OPENAI_BASE_URL } from "../lib/constants.js";
-import { checkAndReserve, reconcile, type BudgetCheckResult } from "../lib/budget.js";
+import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
 import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { estimateMaxCost } from "../lib/cost-estimator.js";
-import { updateBudgetSpend } from "../lib/budget-spend.js";
+import { reconcileReservation } from "../lib/budget-reconcile.js";
 
 export async function handleChatCompletions(
   request: Request,
@@ -172,32 +172,6 @@ export async function handleChatCompletions(
 }
 
 type Attribution = { userId: string | null; apiKeyId: string | null; actionId: string | null };
-
-/**
- * Never-throwing helper that reconciles a budget reservation and updates
- * Postgres spend. Always called inside `waitUntil`.
- */
-async function reconcileReservation(
-  redis: Redis,
-  reservationId: string,
-  actualCostMicrodollars: number,
-  budgetEntities: BudgetEntity[],
-  connectionString: string,
-): Promise<void> {
-  try {
-    const entityKeys = budgetEntities.map((e) => e.entityKey);
-    await reconcile(redis, reservationId, entityKeys, actualCostMicrodollars);
-    if (actualCostMicrodollars > 0) {
-      const entities = budgetEntities.map((e) => ({
-        entityType: e.entityType,
-        entityId: e.entityId,
-      }));
-      await updateBudgetSpend(connectionString, entities, actualCostMicrodollars);
-    }
-  } catch (err) {
-    console.error("[budget] Reconciliation failed:", err);
-  }
-}
 
 function handleStreaming(
   upstreamResponse: Response,
