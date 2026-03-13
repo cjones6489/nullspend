@@ -16,3 +16,4 @@ tsconfig.tsbuildinfo
 worker-configuration.d.ts
 
 .cursor/mcp.json
+.mcp.json
