@@ -53,7 +53,7 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 
 ## Supabase
 
-- Project ref: `tycgnuukvplrvsqdgxen`
+- Project ref: set in .env.local (not committed)
 - Use `apply_migration` (not `execute_sql`) for DDL via MCP
 - RLS policies scope to `auth.uid()::text` for `authenticated` role
 
