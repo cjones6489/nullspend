@@ -92,7 +92,8 @@ describe("updateBudgetSpend", () => {
     expect(mockConnect).not.toHaveBeenCalled();
   });
 
-  it("skips DB write for localhost connection string", async () => {
+  it("skips DB write when __SKIP_DB_PERSIST is set", async () => {
+    (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST = true;
     vi.spyOn(console, "log").mockImplementation(() => {});
     await updateBudgetSpend(
       "postgresql://postgres:postgres@localhost:5432/postgres",
@@ -104,26 +105,29 @@ describe("updateBudgetSpend", () => {
       expect.stringContaining("[budget-spend]"),
       expect.anything(),
     );
+    delete (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST;
   });
 
-  it("skips DB write for 127.0.0.1 connection string", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
+  it("does NOT skip DB write when __SKIP_DB_PERSIST is unset (even for localhost)", async () => {
     await updateBudgetSpend(
       "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
       [{ entityType: "user", entityId: "user-1" }],
       100_000,
     );
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockConnect).toHaveBeenCalled();
   });
 
-  it("skips DB write for hyperdrive.local connection string", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
+  it("force persists when __FORCE_DB_PERSIST overrides __SKIP_DB_PERSIST", async () => {
+    (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST = true;
+    (globalThis as Record<string, unknown>).__FORCE_DB_PERSIST = true;
     await updateBudgetSpend(
       "postgresql://postgres:postgres@abc123.hyperdrive.local:5432/postgres",
       [{ entityType: "api_key", entityId: "key-1" }],
       500_000,
     );
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockConnect).toHaveBeenCalled();
+    delete (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST;
+    delete (globalThis as Record<string, unknown>).__FORCE_DB_PERSIST;
   });
 
   it("calls Drizzle update for each entity", async () => {

@@ -3,12 +3,19 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { handleChatCompletions } from "./routes/openai.js";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
-const PROXY_RATE_LIMIT = 120; // requests per minute per key
+const DEFAULT_RATE_LIMIT = 120;
+
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     // No passThroughOnException() — FinOps proxy must fail closed, never forward
     // unauthenticated/untracked requests to the origin.
+
+    const globals = globalThis as Record<string, unknown>;
+    globals.__FORCE_DB_PERSIST =
+      (env as Record<string, unknown>).FORCE_DB_PERSIST === "true";
+    globals.__SKIP_DB_PERSIST =
+      (env as Record<string, unknown>).SKIP_DB_PERSIST === "true";
 
     try {
       const url = new URL(request.url);
@@ -31,9 +38,10 @@ export default {
         // Rate limiting — per connecting IP via sliding window
         const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
         try {
+          const rateLimit = Number((env as Record<string, unknown>).PROXY_RATE_LIMIT) || DEFAULT_RATE_LIMIT;
           const ratelimit = new Ratelimit({
             redis: Redis.fromEnv(env),
-            limiter: Ratelimit.slidingWindow(PROXY_RATE_LIMIT, "1 m"),
+            limiter: Ratelimit.slidingWindow(rateLimit, "1 m"),
             prefix: "agentseam:proxy:rl",
           });
           const { success, limit, remaining, reset } = await ratelimit.limit(clientIp);

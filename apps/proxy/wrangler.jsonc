@@ -1,14 +1,17 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "agentseam-proxy",
+  "name": "agent-seam",
   "main": "src/index.ts",
   "compatibility_date": "2026-03-09",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "PROXY_RATE_LIMIT": "600"
+  },
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "PLACEHOLDER_HYPERDRIVE_ID",
-      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+      "id": "ae987aca79704f1fa94bf2c4bb761f14",
+      "localConnectionString": "postgresql://postgres:TGmuPE1cRvWHTKN7@db.tycgnuukvplrvsqdgxen.supabase.co:5432/postgres"
     }
   ]
 }

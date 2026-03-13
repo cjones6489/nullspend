@@ -2,24 +2,10 @@ import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql, eq, and } from "drizzle-orm";
 import { budgets } from "@agentseam/db";
+import { isLocalConnection } from "./cost-logger.js";
+import { withDbConnection } from "./db-semaphore.js";
 
 const CONNECTION_TIMEOUT_MS = 5_000;
-
-function isLocalConnection(connectionString: string): boolean {
-  try {
-    const url = new URL(connectionString);
-    const host = url.hostname;
-    return (
-      host === "127.0.0.1" ||
-      host === "localhost" ||
-      host === "::1" ||
-      host === "[::1]" ||
-      host.endsWith(".hyperdrive.local")
-    );
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Atomically increment `spend_microdollars` on each budget entity in Postgres.
@@ -43,45 +29,47 @@ export async function updateBudgetSpend(
     return;
   }
 
-  let client: Client | null = null;
+  await withDbConnection(async () => {
+    let client: Client | null = null;
 
-  try {
-    client = new Client({
-      connectionString,
-      connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-    });
-    client.on("error", (err) => {
-      console.error("[budget-spend] pg client error:", err.message);
-    });
-    await client.connect();
-    const db = drizzle({ client });
+    try {
+      client = new Client({
+        connectionString,
+        connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+      });
+      client.on("error", (err) => {
+        console.error("[budget-spend] pg client error:", err.message);
+      });
+      await client.connect();
+      const db = drizzle({ client });
 
-    for (const entity of entities) {
-      await db
-        .update(budgets)
-        .set({
-          spendMicrodollars: sql`${budgets.spendMicrodollars} + ${actualCostMicrodollars}`,
-          updatedAt: sql`NOW()`,
-        })
-        .where(
-          and(
-            eq(budgets.entityType, entity.entityType),
-            eq(budgets.entityId, entity.entityId),
-          ),
-        );
-    }
-  } catch (err) {
-    console.error(
-      "[budget-spend] Failed to update spend:",
-      err instanceof Error ? err.message : "Unknown error",
-    );
-  } finally {
-    if (client) {
-      try {
-        await client.end();
-      } catch {
-        // already closed
+      for (const entity of entities) {
+        await db
+          .update(budgets)
+          .set({
+            spendMicrodollars: sql`${budgets.spendMicrodollars} + ${actualCostMicrodollars}`,
+            updatedAt: sql`NOW()`,
+          })
+          .where(
+            and(
+              eq(budgets.entityType, entity.entityType),
+              eq(budgets.entityId, entity.entityId),
+            ),
+          );
+      }
+    } catch (err) {
+      console.error(
+        "[budget-spend] Failed to update spend:",
+        err instanceof Error ? err.message : "Unknown error",
+      );
+    } finally {
+      if (client) {
+        try {
+          await client.end();
+        } catch {
+          // already closed
+        }
       }
     }
-  }
+  });
 }

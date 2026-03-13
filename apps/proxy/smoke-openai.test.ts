@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 
-const BASE = `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
+const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
 

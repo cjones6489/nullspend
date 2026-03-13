@@ -1,34 +1,14 @@
 /**
  * Unit tests for the cost-logger module.
- * Covers isLocalConnection detection and logCostEvent behavior
+ * Covers isLocalConnection flag-based detection and logCostEvent behavior
  * in local dev mode (console fallback) and error resilience.
  *
  * Important: The cost-logger module is designed to NEVER throw,
  * because it runs inside waitUntil() where unhandled rejections
  * could crash the Cloudflare Workers runtime.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-// We can't directly test the private `isLocalConnection` function,
-// so we test it indirectly through `logCostEvent` behavior.
-// However, we can also re-implement the detection logic for direct testing.
-
-// Re-implement isLocalConnection for direct unit testing
-function isLocalConnection(connectionString: string): boolean {
-  try {
-    const url = new URL(connectionString);
-    const host = url.hostname;
-    return (
-      host === "127.0.0.1" ||
-      host === "localhost" ||
-      host === "::1" ||
-      host === "[::1]" ||
-      host.endsWith(".hyperdrive.local")
-    );
-  } catch {
-    return false;
-  }
-}
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { isLocalConnection } from "../lib/cost-logger.js";
 
 function makeCostEvent(overrides: Record<string, unknown> = {}) {
   return {
@@ -49,109 +29,54 @@ function makeCostEvent(overrides: Record<string, unknown> = {}) {
 }
 
 describe("isLocalConnection", () => {
-  describe("local addresses", () => {
-    it("detects 127.0.0.1", () => {
-      expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(true);
-    });
+  const globals = globalThis as Record<string, unknown>;
 
-    it("detects localhost", () => {
-      expect(isLocalConnection("postgresql://user:pass@localhost:5432/db")).toBe(true);
-    });
-
-    it("detects IPv6 loopback", () => {
-      expect(isLocalConnection("postgresql://user:pass@[::1]:5432/db")).toBe(true);
-    });
-
-    it("detects Hyperdrive local emulation hostname", () => {
-      expect(
-        isLocalConnection("postgresql://user:pass@d4b0065cdf52b2240de63bd8c1c5ce9f.hyperdrive.local:5432/db"),
-      ).toBe(true);
-    });
-
-    it("detects any subdomain of .hyperdrive.local", () => {
-      expect(
-        isLocalConnection("postgresql://user:pass@abc123.hyperdrive.local:5432/db"),
-      ).toBe(true);
-    });
-
-    it("detects 127.0.0.1 with default Supabase port", () => {
-      expect(isLocalConnection("postgresql://postgres:postgres@127.0.0.1:54322/postgres")).toBe(true);
-    });
-
-    it("detects localhost with no port specified", () => {
-      expect(isLocalConnection("postgresql://user:pass@localhost/db")).toBe(true);
-    });
+  afterEach(() => {
+    delete globals.__FORCE_DB_PERSIST;
+    delete globals.__SKIP_DB_PERSIST;
   });
 
-  describe("remote addresses", () => {
-    it("rejects real Supabase host", () => {
-      expect(
-        isLocalConnection("postgresql://user:pass@db.abcdefghij.supabase.co:5432/postgres"),
-      ).toBe(false);
-    });
-
-    it("rejects AWS RDS endpoint", () => {
-      expect(
-        isLocalConnection("postgresql://user:pass@mydb.cluster-12345.us-east-1.rds.amazonaws.com:5432/db"),
-      ).toBe(false);
-    });
-
-    it("rejects generic remote hostname", () => {
-      expect(isLocalConnection("postgresql://user:pass@postgres.example.com:5432/db")).toBe(false);
-    });
-
-    it("rejects IP address that isn't localhost", () => {
-      expect(isLocalConnection("postgresql://user:pass@192.168.1.1:5432/db")).toBe(false);
-    });
-
-    it("rejects 10.0.0.1 (private but not loopback)", () => {
-      expect(isLocalConnection("postgresql://user:pass@10.0.0.1:5432/db")).toBe(false);
-    });
-
-    it("rejects hyperdrive.local without subdomain (no dot prefix match)", () => {
-      // .endsWith(".hyperdrive.local") won't match bare "hyperdrive.local"
-      // This is correct - real Hyperdrive always uses a hash subdomain
-      expect(isLocalConnection("postgresql://user:pass@hyperdrive.local:5432/db")).toBe(false);
-    });
+  it("returns false by default (production: always persist)", () => {
+    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(false);
+    expect(isLocalConnection("postgresql://user:pass@localhost:5432/db")).toBe(false);
+    expect(isLocalConnection("postgresql://user:pass@db.supabase.co:5432/db")).toBe(false);
   });
 
-  describe("invalid inputs", () => {
-    it("returns false for empty string", () => {
-      expect(isLocalConnection("")).toBe(false);
-    });
+  it("returns true when __SKIP_DB_PERSIST is set", () => {
+    globals.__SKIP_DB_PERSIST = true;
+    expect(isLocalConnection("postgresql://user:pass@db.supabase.co:5432/db")).toBe(true);
+    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(true);
+  });
 
-    it("returns false for non-URL string", () => {
-      expect(isLocalConnection("not a url at all")).toBe(false);
-    });
+  it("returns false when __FORCE_DB_PERSIST is set (overrides skip)", () => {
+    globals.__FORCE_DB_PERSIST = true;
+    globals.__SKIP_DB_PERSIST = true;
+    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(false);
+  });
 
-    it("returns false for partial URL", () => {
-      expect(isLocalConnection("localhost:5432")).toBe(false);
-    });
-
-    it("handles URL with unusual characters in password", () => {
-      expect(
-        isLocalConnection("postgresql://user:p%40ss%23word@127.0.0.1:5432/db"),
-      ).toBe(true);
-    });
-
-    it("handles connection string with query parameters", () => {
-      expect(
-        isLocalConnection("postgresql://user:pass@localhost:5432/db?sslmode=disable"),
-      ).toBe(true);
-    });
+  it("__FORCE_DB_PERSIST alone returns false", () => {
+    globals.__FORCE_DB_PERSIST = true;
+    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(false);
   });
 });
 
 describe("logCostEvent", () => {
   let logCostEvent: typeof import("../lib/cost-logger.js").logCostEvent;
+  const globals = globalThis as Record<string, unknown>;
 
   beforeEach(async () => {
     vi.resetModules();
+    globals.__SKIP_DB_PERSIST = true;
     const mod = await import("../lib/cost-logger.js");
     logCostEvent = mod.logCostEvent;
   });
 
-  it("does not throw with a local connection string", async () => {
+  afterEach(() => {
+    delete globals.__FORCE_DB_PERSIST;
+    delete globals.__SKIP_DB_PERSIST;
+  });
+
+  it("does not throw when DB persistence is skipped", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await expect(
       logCostEvent("postgresql://postgres:postgres@127.0.0.1:54322/postgres", makeCostEvent()),
@@ -159,7 +84,7 @@ describe("logCostEvent", () => {
     consoleSpy.mockRestore();
   });
 
-  it("logs cost event to console for local connections", async () => {
+  it("logs cost event to console when skipping DB", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await logCostEvent("postgresql://postgres:postgres@localhost:5432/db", makeCostEvent());
 
@@ -178,20 +103,7 @@ describe("logCostEvent", () => {
     consoleSpy.mockRestore();
   });
 
-  it("logs to console for hyperdrive.local addresses", async () => {
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await logCostEvent(
-      "postgresql://user:pass@abc123.hyperdrive.local:5432/db",
-      makeCostEvent({ model: "gpt-4o" }),
-    );
-
-    expect(consoleSpy).toHaveBeenCalledTimes(1);
-    const loggedEvent = consoleSpy.mock.calls[0][1] as Record<string, unknown>;
-    expect(loggedEvent.model).toBe("gpt-4o");
-    consoleSpy.mockRestore();
-  });
-
-  it("includes durationMs in console log for local connections", async () => {
+  it("includes durationMs in console log when skipping DB", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await logCostEvent(
       "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -203,23 +115,21 @@ describe("logCostEvent", () => {
     consoleSpy.mockRestore();
   });
 
-  it("does not attempt pg connection for local addresses", async () => {
+  it("does not attempt pg connection when skipping DB", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await logCostEvent("postgresql://postgres:postgres@localhost:5432/db", makeCostEvent());
 
-    // If it tried to connect to pg, it would call console.error on failure
     expect(errorSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
   it("does not throw for unreachable remote connection (graceful error handling)", async () => {
+    delete globals.__SKIP_DB_PERSIST;
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    // Use a deliberately unreachable remote address (not localhost, so it bypasses the local check)
-    // This will try to connect via pg and fail, but should not throw
     await expect(
       logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent()),
     ).resolves.toBeUndefined();
