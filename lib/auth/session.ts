@@ -43,9 +43,14 @@ async function resolveUserId(options?: {
     const userId = await getCurrentUserId();
     if (userId) return userId;
   } catch (error) {
-    if (!(error instanceof SupabaseEnvError)) throw error;
-    const fallback = tryDevFallback(options?.warnOnFallback);
-    if (fallback) return fallback;
+    // Fall back to dev actor for both missing Supabase config and auth failures.
+    if (
+      error instanceof SupabaseEnvError ||
+      error instanceof AuthenticationRequiredError
+    ) {
+      const fallback = tryDevFallback(options?.warnOnFallback);
+      if (fallback) return fallback;
+    }
     throw error;
   }
 
