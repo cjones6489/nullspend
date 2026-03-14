@@ -2,14 +2,14 @@
 
 ## Summary
 
-AgentSeam is a lightweight approval layer for risky AI agent actions.
+NullSpend is a lightweight approval layer for risky AI agent actions.
 
 The core system sits between an agent runtime and a real-world side effect. Instead of executing immediately, risky actions become pending proposals that a human can approve or reject.
 
 ## Core Loop
 
 1. An agent attempts a risky action.
-2. AgentSeam creates a pending action record.
+2. NullSpend creates a pending action record.
 3. The action appears in the approval inbox.
 4. A human approves or rejects it.
 5. If approved, the agent continues and executes the original action.
@@ -25,14 +25,14 @@ Agent Runtime                  MCP Client (Claude, Cursor, ...)
     │                       MCP Server adapter    MCP Proxy (gates
     │                       (propose_action,       upstream tools)
     ▼                        check_action)              │
-AgentSeam SDK ──────────────────────┼───────────────────┘
+NullSpend SDK ──────────────────────┼───────────────────┘
     │                               │
     │           HTTPS               │
     ▼                               ▼
 ┌────────────────────────────────────────┐
 │         Next.js API / Backend          │
 │  Zod validation → action helpers       │
-│  API key auth (x-agentseam-key)        │
+│  API key auth (x-nullspend-key)        │
 └──────────────────┬─────────────────────┘
                    │
                    ▼
@@ -55,9 +55,9 @@ AgentSeam SDK ──────────────────────
 
 Three integration paths exist:
 
-1. **SDK** — Agent code imports `@agentseam/sdk` and calls `proposeAndWait()` or lower-level methods directly.
-2. **MCP Server** — An MCP client (Claude Desktop, Cursor) connects to `@agentseam/mcp-server`, which exposes `propose_action` and `check_action` tools.
-3. **MCP Proxy** — An MCP client connects to `@agentseam/mcp-proxy`, which spawns an upstream MCP server and selectively gates its tools through AgentSeam approval before forwarding.
+1. **SDK** — Agent code imports `@nullspend/sdk` and calls `proposeAndWait()` or lower-level methods directly.
+2. **MCP Server** — An MCP client (Claude Desktop, Cursor) connects to `@nullspend/mcp-server`, which exposes `propose_action` and `check_action` tools.
+3. **MCP Proxy** — An MCP client connects to `@nullspend/mcp-proxy`, which spawns an upstream MCP server and selectively gates its tools through NullSpend approval before forwarding.
 
 ## Main Boundaries
 
@@ -72,7 +72,7 @@ Three integration paths exist:
 ### API / Backend
 
 - Validates requests with Zod at the route boundary
-- Authenticates SDK/agent requests via API keys (`x-agentseam-key` header, SHA-256 hashed lookup)
+- Authenticates SDK/agent requests via API keys (`x-nullspend-key` header, SHA-256 hashed lookup)
 - Stores and updates actions scoped to the owning user (`ownerUserId`)
 - Enforces explicit state transitions with optimistic locking
 - Returns compact typed responses
@@ -95,9 +95,9 @@ Three integration paths exist:
 
 The repo is a pnpm workspace monorepo with three packages under `packages/`:
 
-- **`@agentseam/sdk`** (`packages/sdk/`) — TypeScript client with `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`. Polling-based, zero runtime dependencies.
-- **`@agentseam/mcp-server`** (`packages/mcp-server/`) — MCP server exposing `propose_action` and `check_action` tools. Uses `@agentseam/sdk` internally. Runs over stdio.
-- **`@agentseam/mcp-proxy`** (`packages/mcp-proxy/`) — Stdio proxy that sits between an LLM and any upstream MCP server, transparently gating risky tool calls through AgentSeam approval. Configurable gated/passthrough tool lists.
+- **`@nullspend/sdk`** (`packages/sdk/`) — TypeScript client with `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`. Polling-based, zero runtime dependencies.
+- **`@nullspend/mcp-server`** (`packages/mcp-server/`) — MCP server exposing `propose_action` and `check_action` tools. Uses `@nullspend/sdk` internally. Runs over stdio.
+- **`@nullspend/mcp-proxy`** (`packages/mcp-proxy/`) — Stdio proxy that sits between an LLM and any upstream MCP server, transparently gating risky tool calls through NullSpend approval. Configurable gated/passthrough tool lists.
 
 ## State Machine
 
@@ -124,8 +124,8 @@ Pending actions support a configurable server-side TTL via `expiresInSeconds` (d
 ## Authentication
 
 - **Dashboard users**: Supabase Auth (email/password), session cookies
-- **SDK/agent callers**: API key authentication via `x-agentseam-key` header. Keys are created in the Settings page, stored as SHA-256 hashes, and scoped to the creating user. All actions created with an API key are owned by that user.
+- **SDK/agent callers**: API key authentication via `x-nullspend-key` header. Keys are created in the Settings page, stored as SHA-256 hashes, and scoped to the creating user. All actions created with an API key are owned by that user.
 
 ## Source of Truth
 
-Use `docs/roadmap.md` for current project status and planned features. The original v1 build contract is preserved in `docs/v1-build-contract.md` (completed). The fuller product brief lives in `agentseam-project-outline.txt`.
+Use `docs/roadmap.md` for current project status and planned features. The original v1 build contract is preserved in `docs/v1-build-contract.md` (completed). The fuller product brief lives in `nullspend-project-outline.txt`.

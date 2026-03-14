@@ -11,7 +11,7 @@ import { createServerSupabaseClient } from "@/lib/auth/supabase";
 function canUseDevelopmentFallback(): boolean {
   return (
     process.env.NODE_ENV === "development" &&
-    !!process.env.AGENTSEAM_DEV_ACTOR
+    !!process.env.NULLSPEND_DEV_ACTOR
   );
 }
 
@@ -50,7 +50,7 @@ export default async function DashboardLayout({
       <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <DashboardHeader email={email ?? process.env.AGENTSEAM_DEV_ACTOR ?? null} />
+          <DashboardHeader email={email ?? process.env.NULLSPEND_DEV_ACTOR ?? null} />
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
         </div>
       </div>

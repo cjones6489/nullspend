@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-AgentSeam is a new product and the near-term goal is to prove the smallest useful approval loop for risky AI agent actions.
+NullSpend is a new product and the near-term goal is to prove the smallest useful approval loop for risky AI agent actions.
 
 The project needs:
 

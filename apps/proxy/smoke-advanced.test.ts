@@ -389,7 +389,7 @@ describe("Advanced proxy scenarios", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-AgentSeam-Auth": "wrong-key",
+          "X-NullSpend-Auth": "wrong-key",
         },
         body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       });

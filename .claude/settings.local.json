@@ -9,7 +9,20 @@
       "Bash(find /c/Users/cjone/Projects/AgentSeam -path \"*/migrations/*.sql\" -type f 2>/dev/null | sort)",
       "Bash(cd C:/Users/cjone/Projects/AgentSeam && pnpm test:all 2>&1 | tail -20)",
       "Bash(find /c/Users/cjone/Projects/AgentSeam -type f -name \"*validations*\" | grep -E \"\\\\.\\(ts|js\\)$\")",
-      "Bash(ls -lh /c/Users/cjone/Projects/AgentSeam/drizzle/*.sql)"
+      "Bash(ls -lh /c/Users/cjone/Projects/AgentSeam/drizzle/*.sql)",
+      "Bash(wc -l /c/Users/cjone/AppData/Local/Temp/claude/C--Users-cjone-Projects-AgentSeam/2c0cb1dc-005a-479b-9a35-c94457137eb6/tasks/*.output 2>/dev/null)",
+      "Bash(pnpm audit:*)",
+      "Bash(cd /c/Users/cjone/Projects/AgentSeam && pnpm --filter=@nullspend/cost-engine test 2>&1 | head -100)",
+      "Bash(grep -r \"waitUntil\" /c/Users/cjone/Projects/AgentSeam/apps/proxy/src/routes/*.ts | head -20)",
+      "Bash(/tmp/verify_prices.md:*)",
+      "Read(//tmp/**)",
+      "Bash(cd /c/Users/cjone/Projects/AgentSeam && pnpm --filter=@nullspend/cost-engine test 2>&1 | tail -20)",
+      "Bash(cd C:/Users/cjone/Projects/AgentSeam && pnpm proxy:test -- --run 2>&1 | tail -60)",
+      "Bash(cd C:/Users/cjone/Projects/AgentSeam && pnpm proxy:test -- --run 2>&1 | tail -20)",
+      "Bash(cd C:/Users/cjone/Projects/AgentSeam && pnpm proxy:test -- --run 2>&1 | grep -A 5 \"FAIL\")",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(cd:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

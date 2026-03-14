@@ -317,7 +317,7 @@ describe("Cloudflare runtime edge cases", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-AgentSeam-Auth": "bad-key",
+            "X-NullSpend-Auth": "bad-key",
             Authorization: `Bearer ${OPENAI_API_KEY}`,
           },
           body: smallRequest(),
@@ -427,7 +427,7 @@ describe("Cloudflare runtime edge cases", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${"x".repeat(5000)}`,
-          "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
         },
         body: smallRequest(),
       });
@@ -534,7 +534,7 @@ describe("Cloudflare runtime edge cases", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-AgentSeam-Auth": "wrong",
+          "X-NullSpend-Auth": "wrong",
         },
         body: smallRequest({ stream: true }),
       });

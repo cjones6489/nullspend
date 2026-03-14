@@ -22,7 +22,7 @@ async function applyRateLimit(
     const ipLimiter = new Ratelimit({
       redis,
       limiter: Ratelimit.slidingWindow(rateLimit, "1 m"),
-      prefix: "agentseam:proxy:rl:ip",
+      prefix: "nullspend:proxy:rl:ip",
     });
     const ipResult = await ipLimiter.limit(clientIp);
     if (!ipResult.success) {
@@ -30,7 +30,7 @@ async function applyRateLimit(
     }
 
     // Per-key rate limit (if key-id header is present)
-    const keyId = request.headers.get("x-agentseam-key-id");
+    const keyId = request.headers.get("x-nullspend-key-id");
     if (keyId && keyId.length <= 128) {
       const keyRateLimit =
         Number((env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT) ||
@@ -38,7 +38,7 @@ async function applyRateLimit(
       const keyLimiter = new Ratelimit({
         redis,
         limiter: Ratelimit.slidingWindow(keyRateLimit, "1 m"),
-        prefix: "agentseam:proxy:rl:key",
+        prefix: "nullspend:proxy:rl:key",
       });
       const keyResult = await keyLimiter.limit(keyId);
       if (!keyResult.success) {
@@ -148,7 +148,7 @@ export default {
       const url = new URL(request.url);
 
       if (url.pathname === "/health") {
-        return Response.json({ status: "ok", service: "agentseam-proxy" });
+        return Response.json({ status: "ok", service: "nullspend-proxy" });
       }
 
       if (url.pathname === "/health/ready") {

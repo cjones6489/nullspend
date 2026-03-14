@@ -15,7 +15,7 @@ export async function POST() {
     try {
       await sendSlackTestNotification(userId);
     } catch (slackErr) {
-      console.error("[AgentSeam] Slack test notification failed:", slackErr);
+      console.error("[NullSpend] Slack test notification failed:", slackErr);
 
       if (slackErr instanceof SlackConfigNotFoundError) {
         return NextResponse.json(

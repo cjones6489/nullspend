@@ -1,8 +1,8 @@
 {
-  "name": "@agentseam/sdk",
+  "name": "@nullspend/sdk",
   "private": true,
   "version": "0.1.0",
-  "description": "TypeScript SDK for AgentSeam — propose, approve, and execute risky AI agent actions",
+  "description": "TypeScript SDK for NullSpend — propose, approve, and execute risky AI agent actions",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

@@ -14,7 +14,7 @@ Redis, so there are no race conditions even under concurrent load.
 
 ## Creating a budget
 
-1. Open the [AgentSeam dashboard](https://agentseam.com/app/budgets)
+1. Open the [NullSpend dashboard](https://nullspend.com/app/budgets)
 2. Click **Create Budget**
 3. Configure:
    - **Name** — descriptive label (e.g., "Production Monthly", "Agent Alpha")

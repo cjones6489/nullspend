@@ -4,12 +4,12 @@ Get cost tracking and budget enforcement for your AI agent in under 5 minutes.
 
 ## Prerequisites
 
-- An AgentSeam account ([sign up at agentseam.com](https://agentseam.com/signup))
+- An NullSpend account ([sign up at nullspend.com](https://nullspend.com/signup))
 - An existing application that calls OpenAI or Anthropic APIs
 
 ## Step 1: Create an API key
 
-1. Log in to the [AgentSeam dashboard](https://agentseam.com/app/analytics)
+1. Log in to the [NullSpend dashboard](https://nullspend.com/app/analytics)
 2. Go to **Settings** (sidebar or `Cmd+K` → "Settings")
 3. Click **Create API Key**
 4. Give it a name (e.g., "Production" or "My Agent")
@@ -22,8 +22,8 @@ Add two environment variables to your application:
 ### For OpenAI
 
 ```bash
-# Point your OpenAI SDK at the AgentSeam proxy
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+# Point your OpenAI SDK at the NullSpend proxy
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 
 # Your real OpenAI key — unchanged
 OPENAI_API_KEY=sk-your-openai-key
@@ -35,8 +35,8 @@ The OpenAI SDK (Python, Node, or any HTTP client) automatically uses
 ### For Anthropic
 
 ```bash
-# Point your Anthropic SDK at the AgentSeam proxy
-ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
+# Point your Anthropic SDK at the NullSpend proxy
+ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
 
 # Your real Anthropic key — unchanged
 ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
@@ -44,15 +44,15 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
 
 ### Authentication
 
-Every request to the proxy must include your AgentSeam platform key in the
-`X-AgentSeam-Auth` header. If you're using the SDK directly:
+Every request to the proxy must include your NullSpend platform key in the
+`X-NullSpend-Auth` header. If you're using the SDK directly:
 
 ```typescript
 // OpenAI example
 const openai = new OpenAI({
-  baseURL: "https://proxy.agentseam.com/v1",
+  baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: {
-    "X-AgentSeam-Auth": process.env.PLATFORM_AUTH_KEY,
+    "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
   },
 });
 ```
@@ -60,9 +60,9 @@ const openai = new OpenAI({
 ```python
 # OpenAI Python example
 client = OpenAI(
-    base_url="https://proxy.agentseam.com/v1",
+    base_url="https://proxy.nullspend.com/v1",
     default_headers={
-        "X-AgentSeam-Auth": os.environ["PLATFORM_AUTH_KEY"],
+        "X-NullSpend-Auth": os.environ["PLATFORM_AUTH_KEY"],
     },
 )
 ```
@@ -70,7 +70,7 @@ client = OpenAI(
 ## Step 3: Run your agent
 
 Run your application as normal. Every LLM API call is now routed through
-AgentSeam, which:
+NullSpend, which:
 
 1. Forwards the request to the real provider (OpenAI / Anthropic)
 2. Streams the response back to your application — zero latency overhead
@@ -79,7 +79,7 @@ AgentSeam, which:
 
 ## Step 4: See your costs
 
-Open the [AgentSeam dashboard](https://agentseam.com/app/analytics). You should
+Open the [NullSpend dashboard](https://nullspend.com/app/analytics). You should
 see:
 
 - **Daily spend chart** — cost over time
@@ -109,7 +109,7 @@ HTTP error — no special handling needed.
 ## Troubleshooting
 
 **Requests return 401 Unauthorized**
-- Verify your `X-AgentSeam-Auth` header contains a valid platform key
+- Verify your `X-NullSpend-Auth` header contains a valid platform key
 - Check that the key hasn't been revoked in Settings
 
 **Requests return 429 Too Many Requests**
@@ -122,4 +122,4 @@ HTTP error — no special handling needed.
 
 **Streaming doesn't work**
 - The proxy transparently passes through SSE streams. If streaming worked
-  before pointing at AgentSeam, it should work identically after.
+  before pointing at NullSpend, it should work identically after.

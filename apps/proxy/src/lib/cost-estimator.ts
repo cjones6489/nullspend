@@ -1,4 +1,4 @@
-import { getModelPricing, costComponent } from "@agentseam/cost-engine";
+import { getModelPricing, costComponent } from "@nullspend/cost-engine";
 
 const SAFETY_MARGIN = 1.1;
 const CHARS_PER_TOKEN = 4;

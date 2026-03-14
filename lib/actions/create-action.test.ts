@@ -14,7 +14,7 @@ vi.mock("@/lib/db/client", () => ({
   })),
 }));
 
-vi.mock("@agentseam/db", () => ({
+vi.mock("@nullspend/db", () => ({
   actions: {},
 }));
 

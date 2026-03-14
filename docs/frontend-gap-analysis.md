@@ -31,8 +31,8 @@ request:
 | Cost (microdollars) | Cost engine calculation | `cost_events.cost_microdollars` |
 | Duration (ms) | `performance.now()` start-to-finish | `cost_events.duration_ms` |
 | Request ID | Upstream `x-request-id` or generated UUID | `cost_events.request_id` |
-| API Key ID | `x-agentseam-key-id` header | `cost_events.api_key_id` |
-| User ID | `x-agentseam-user-id` header | `cost_events.user_id` |
+| API Key ID | `x-nullspend-key-id` header | `cost_events.api_key_id` |
+| User ID | `x-nullspend-user-id` header | `cost_events.user_id` |
 
 **Important detail:** `reasoningTokens` is extracted and stored but NOT used in
 cost calculation (reasoning tokens are a subset of `completion_tokens` and
@@ -43,7 +43,7 @@ Enforcement mechanisms:
 
 | Mechanism | Description |
 |---|---|
-| Platform auth | `X-AgentSeam-Auth` header, timing-safe comparison |
+| Platform auth | `X-NullSpend-Auth` header, timing-safe comparison |
 | Rate limiting | 120 req/min per IP via Upstash Ratelimit |
 | Body size limit | 1 MB max request body |
 | Model allowlist | Only known models accepted (400 for unknown) |
@@ -280,14 +280,14 @@ approved/executed action, they see what it cost.
 
 **What was delivered:**
 - Added `actionId` nullable FK column to `cost_events` table with index
-- Proxy reads `x-agentseam-action-id` header and stores it in `cost_events`
+- Proxy reads `x-nullspend-action-id` header and stores it in `cost_events`
 - New API route: `GET /api/actions/[id]/costs` with ownership verification
 - New `CostCard` component on action detail page (status-aware, only shows for executing/executed/failed)
 - SDK `proposeAndWait` passes `{ actionId }` context to the `execute` callback (backwards-compatible)
 - Seed script updated to correlate ~35% of cost events with executed/failed actions
 
 **Correlation approach:** Option B was chosen -- `actionId` column on `cost_events`
-with `x-agentseam-action-id` header passed through the proxy. This is opt-in for
+with `x-nullspend-action-id` header passed through the proxy. This is opt-in for
 SDK `proposeAndWait` users. MCP proxy tool calls cannot be correlated with LLM
 costs in the current architecture (deferred to Phase 4).
 
@@ -442,7 +442,7 @@ Items discovered during backend audits that should be tracked.
 ### Data quality observations
 
 - **`cost_events.userId` semantics:** This stores the proxied agent's user ID
-  (from `x-agentseam-user-id` header), NOT the dashboard owner. Dashboard
+  (from `x-nullspend-user-id` header), NOT the dashboard owner. Dashboard
   queries must join through `api_keys` to find the owner. The Phase 3A API
   design accounts for this.
 - **Reasoning tokens not used in cost:** `reasoningTokens` are stored for

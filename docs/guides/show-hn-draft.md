@@ -1,6 +1,6 @@
-# Show HN: AgentSeam — FinOps for AI Agents (budget enforcement that actually works)
+# Show HN: NullSpend — FinOps for AI Agents (budget enforcement that actually works)
 
-We built AgentSeam after watching an agent burn $47K in a single weekend on
+We built NullSpend after watching an agent burn $47K in a single weekend on
 runaway GPT-4 calls. The developer didn't know until the invoice hit.
 
 The problem is simple: AI agents call LLMs autonomously, at scale, across
@@ -9,10 +9,10 @@ agent can rack up thousands in minutes. Existing solutions either gate budget
 enforcement behind enterprise pricing, require you to self-host Docker + Postgres
 + Redis + YAML, or just got acquired and shut down.
 
-**AgentSeam is one environment variable change:**
+**NullSpend is one environment variable change:**
 
 ```bash
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 ```
 
 Your existing OpenAI/Anthropic SDK, streaming, error handling — all works
@@ -40,4 +40,4 @@ credit card required.
 We're particularly interested in feedback from developers running autonomous
 agents in production. What cost controls do you wish you had?
 
-Try it: https://agentseam.com
+Try it: https://nullspend.com

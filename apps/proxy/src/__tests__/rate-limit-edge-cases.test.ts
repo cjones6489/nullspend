@@ -151,7 +151,7 @@ describe("per-key rate limiting edge cases", () => {
 
   it("key-id header present — both IP and key rate limits applied", async () => {
     const req = makeRequest("/v1/chat/completions", {
-      "x-agentseam-key-id": "key-123",
+      "x-nullspend-key-id": "key-123",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -165,7 +165,7 @@ describe("per-key rate limiting edge cases", () => {
     mockIpLimit.mockResolvedValue(ipDenied);
 
     const req = makeRequest("/v1/chat/completions", {
-      "x-agentseam-key-id": "key-123",
+      "x-nullspend-key-id": "key-123",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -186,7 +186,7 @@ describe("per-key rate limiting edge cases", () => {
     mockKeyLimit.mockResolvedValue(keyDenied);
 
     const req = makeRequest("/v1/chat/completions", {
-      "x-agentseam-key-id": "key-456",
+      "x-nullspend-key-id": "key-456",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -201,7 +201,7 @@ describe("per-key rate limiting edge cases", () => {
   it("key-id header exceeds 128 chars — key rate limit skipped", async () => {
     const longKeyId = "a".repeat(129);
     const req = makeRequest("/v1/chat/completions", {
-      "x-agentseam-key-id": longKeyId,
+      "x-nullspend-key-id": longKeyId,
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -212,7 +212,7 @@ describe("per-key rate limiting edge cases", () => {
   it("key-id header exactly 128 chars — key rate limit applied", async () => {
     const exactKeyId = "a".repeat(128);
     const req = makeRequest("/v1/chat/completions", {
-      "x-agentseam-key-id": exactKeyId,
+      "x-nullspend-key-id": exactKeyId,
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -223,7 +223,7 @@ describe("per-key rate limiting edge cases", () => {
 
   it("empty key-id header — key rate limit skipped", async () => {
     const req = makeRequest("/v1/chat/completions", {
-      "x-agentseam-key-id": "",
+      "x-nullspend-key-id": "",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -236,7 +236,7 @@ describe("per-key rate limiting edge cases", () => {
     (env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT = "1000";
 
     const req = makeRequest("/v1/chat/completions", {
-      "x-agentseam-key-id": "key-custom",
+      "x-nullspend-key-id": "key-custom",
     });
     const res = await handler.fetch(req, env, makeCtx());
 

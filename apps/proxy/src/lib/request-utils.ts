@@ -34,8 +34,8 @@ export function extractAttribution(request: Request): {
   actionId: string | null;
 } {
   return {
-    userId: validateAttributionHeader(request.headers.get("x-agentseam-user-id")),
-    apiKeyId: validateAttributionHeader(request.headers.get("x-agentseam-key-id")),
-    actionId: validateAttributionHeader(request.headers.get("x-agentseam-action-id")),
+    userId: validateAttributionHeader(request.headers.get("x-nullspend-user-id")),
+    apiKeyId: validateAttributionHeader(request.headers.get("x-nullspend-key-id")),
+    actionId: validateAttributionHeader(request.headers.get("x-nullspend-action-id")),
   };
 }

@@ -154,7 +154,7 @@ describe("Anthropic end-to-end cost verification", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-AgentSeam-Auth": "wrong-key-for-cost-test",
+        "X-NullSpend-Auth": "wrong-key-for-cost-test",
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",

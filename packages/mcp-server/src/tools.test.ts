@@ -6,22 +6,22 @@ import type { McpServerConfig } from "./config.js";
 let mockCreateAction = vi.fn();
 let mockGetAction = vi.fn();
 
-vi.mock("@agentseam/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@agentseam/sdk")>();
-  class MockAgentSeam {
+vi.mock("@nullspend/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@nullspend/sdk")>();
+  class MockNullSpend {
     constructor() {}
     createAction(...args: unknown[]) { return mockCreateAction(...args); }
     getAction(...args: unknown[]) { return mockGetAction(...args); }
   }
   return {
     ...actual,
-    AgentSeam: MockAgentSeam,
+    NullSpend: MockNullSpend,
   };
 });
 
 const TEST_CONFIG: McpServerConfig = {
-  agentseamUrl: "http://localhost:3000",
-  agentseamApiKey: "ask_test123",
+  nullspendUrl: "http://localhost:3000",
+  nullspendApiKey: "ask_test123",
   agentId: "test-agent",
 };
 

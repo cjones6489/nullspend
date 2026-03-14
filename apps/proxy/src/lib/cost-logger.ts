@@ -1,6 +1,6 @@
 import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { costEvents, type NewCostEventRow } from "@agentseam/db";
+import { costEvents, type NewCostEventRow } from "@nullspend/db";
 import { withDbConnection } from "./db-semaphore.js";
 
 const CONNECTION_TIMEOUT_MS = 5_000;

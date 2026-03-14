@@ -5,7 +5,7 @@ import { buildUpstreamHeaders, buildClientHeaders } from "../lib/headers.js";
 import { ensureStreamOptions, extractModelFromBody, extractAttribution } from "../lib/request-utils.js";
 import { createSSEParser } from "../lib/sse-parser.js";
 import { calculateOpenAICost } from "../lib/cost-calculator.js";
-import { isKnownModel } from "@agentseam/cost-engine";
+import { isKnownModel } from "@nullspend/cost-engine";
 import { logCostEvent } from "../lib/cost-logger.js";
 import { OPENAI_BASE_URL } from "../lib/constants.js";
 import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
@@ -20,7 +20,7 @@ export async function handleChatCompletions(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const isAuthed = await validatePlatformKey(
-    request.headers.get("x-agentseam-auth"),
+    request.headers.get("x-nullspend-auth"),
     env.PLATFORM_AUTH_KEY,
   );
   if (!isAuthed) return unauthorizedResponse();

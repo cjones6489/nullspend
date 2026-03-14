@@ -10,7 +10,7 @@ export default function AuthLayout({
       <div className="mb-8 flex items-center gap-2">
         <Shield className="h-5 w-5 text-primary" />
         <span className="text-sm font-semibold tracking-tight text-foreground">
-          AgentSeam
+          NullSpend
         </span>
       </div>
       <div className="w-full max-w-sm">{children}</div>

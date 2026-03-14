@@ -54,7 +54,7 @@ describe("Security tests", () => {
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${OPENAI_API_KEY}`,
-              "X-AgentSeam-Auth": key,
+              "X-NullSpend-Auth": key,
             },
             body: smallRequest(),
           });
@@ -85,7 +85,7 @@ describe("Security tests", () => {
   // ── Header injection ──
 
   describe("Header injection attacks", () => {
-    it("X-AgentSeam-Auth with null bytes is rejected by HTTP client (client-side protection)", async () => {
+    it("X-NullSpend-Auth with null bytes is rejected by HTTP client (client-side protection)", async () => {
       // fetch() itself rejects null bytes in header values before sending
       await expect(
         fetch(`${BASE}/v1/chat/completions`, {
@@ -93,21 +93,21 @@ describe("Security tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${OPENAI_API_KEY}`,
-            "X-AgentSeam-Auth": "valid-key\x00injected",
+            "X-NullSpend-Auth": "valid-key\x00injected",
           },
           body: smallRequest(),
         }),
       ).rejects.toThrow();
     });
 
-    it("very long X-AgentSeam-Auth (10KB) is rejected gracefully", async () => {
+    it("very long X-NullSpend-Auth (10KB) is rejected gracefully", async () => {
       const longKey = "x".repeat(10_000);
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-AgentSeam-Auth": longKey,
+          "X-NullSpend-Auth": longKey,
         },
         body: smallRequest(),
       });
@@ -117,13 +117,13 @@ describe("Security tests", () => {
       await res.text();
     });
 
-    it("empty X-AgentSeam-Auth returns 401", async () => {
+    it("empty X-NullSpend-Auth returns 401", async () => {
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-AgentSeam-Auth": "",
+          "X-NullSpend-Auth": "",
         },
         body: smallRequest(),
       });
@@ -132,7 +132,7 @@ describe("Security tests", () => {
       await res.text();
     });
 
-    it("missing X-AgentSeam-Auth header returns 401", async () => {
+    it("missing X-NullSpend-Auth header returns 401", async () => {
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
         headers: {
@@ -146,7 +146,7 @@ describe("Security tests", () => {
       await res.text();
     });
 
-    it("X-AgentSeam-Auth with spaces/tabs is accepted (HTTP spec trims header values)", async () => {
+    it("X-NullSpend-Auth with spaces/tabs is accepted (HTTP spec trims header values)", async () => {
       // Per HTTP spec, leading/trailing whitespace in header values is stripped,
       // so padded keys effectively match. This is a known browser/runtime behavior.
       const res = await fetch(`${BASE}/v1/chat/completions`, {
@@ -154,7 +154,7 @@ describe("Security tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-AgentSeam-Auth": `  ${PLATFORM_AUTH_KEY}  `,
+          "X-NullSpend-Auth": `  ${PLATFORM_AUTH_KEY}  `,
         },
         body: smallRequest(),
       });
@@ -164,11 +164,11 @@ describe("Security tests", () => {
     }, 30_000);
   });
 
-  // ── Proxy header stripping (X-AgentSeam-Auth must not reach OpenAI) ──
+  // ── Proxy header stripping (X-NullSpend-Auth must not reach OpenAI) ──
 
   describe("Proxy header stripping", () => {
-    it("X-AgentSeam-Auth is stripped from upstream request (not leaked to OpenAI)", async () => {
-      // If the proxy forwarded X-AgentSeam-Auth to OpenAI, OpenAI would ignore it
+    it("X-NullSpend-Auth is stripped from upstream request (not leaked to OpenAI)", async () => {
+      // If the proxy forwarded X-NullSpend-Auth to OpenAI, OpenAI would ignore it
       // but it would be a credential leak. We verify indirectly: a valid request
       // succeeds (so the proxy handled auth) and the response comes from OpenAI.
       const res = await fetch(`${BASE}/v1/chat/completions`, {
@@ -183,13 +183,13 @@ describe("Security tests", () => {
       // The response is from OpenAI, confirming the proxy forwarded correctly
     }, 30_000);
 
-    it("X-AgentSeam-User-Id and X-AgentSeam-Key-Id are not forwarded to OpenAI", async () => {
+    it("X-NullSpend-User-Id and X-NullSpend-Key-Id are not forwarded to OpenAI", async () => {
       // These attribution headers should be consumed by the proxy, not forwarded
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
         headers: authHeaders({
-          "X-AgentSeam-User-Id": "test-user",
-          "X-AgentSeam-Key-Id": "test-key",
+          "X-NullSpend-User-Id": "test-user",
+          "X-NullSpend-Key-Id": "test-key",
         }),
         body: smallRequest(),
       });
@@ -211,7 +211,7 @@ describe("Security tests", () => {
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
         headers: authHeaders({
-          "X-AgentSeam-User-Id": spoofedUserId,
+          "X-NullSpend-User-Id": spoofedUserId,
         }),
         body: smallRequest(),
       });

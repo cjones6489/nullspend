@@ -148,7 +148,7 @@ function CostCardEmpty() {
         <p className="text-xs text-muted-foreground">
           No cost data linked. Include{" "}
           <code className="rounded bg-secondary px-1 py-0.5 font-mono text-[11px]">
-            x-agentseam-action-id
+            x-nullspend-action-id
           </code>{" "}
           in proxy calls to correlate costs.
         </p>

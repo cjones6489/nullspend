@@ -108,7 +108,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     expect(body.error).toBe("budget_exceeded");
   }, 15_000);
 
-  it("budget enforced with X-AgentSeam-User-Id header (LiteLLM #11083)", async () => {
+  it("budget enforced with X-NullSpend-User-Id header (LiteLLM #11083)", async () => {
     const userId = `bec-user-header-${Date.now()}`;
     await setupBudget("user", userId, 1);
 
@@ -124,13 +124,13 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     expect(body.message).toContain("budget");
   }, 15_000);
 
-  it("budget enforced with X-AgentSeam-Key-Id header", async () => {
+  it("budget enforced with X-NullSpend-Key-Id header", async () => {
     const keyId = `bec-key-header-${Date.now()}`;
     await setupBudget("api_key", keyId, 1);
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders({ "X-AgentSeam-Key-Id": keyId }),
+      headers: authHeaders({ "X-NullSpend-Key-Id": keyId }),
       body: smallRequest(),
     });
 

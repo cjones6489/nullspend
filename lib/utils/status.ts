@@ -3,8 +3,8 @@ export {
   ACTION_STATUSES,
   type ActionType,
   type ActionStatus,
-} from "@agentseam/db";
-import type { ActionStatus } from "@agentseam/db";
+} from "@nullspend/db";
+import type { ActionStatus } from "@nullspend/db";
 
 const ALLOWED_TRANSITIONS: Record<ActionStatus, readonly ActionStatus[]> = {
   pending: ["approved", "rejected", "expired"],

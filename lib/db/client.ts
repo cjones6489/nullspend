@@ -1,21 +1,21 @@
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 
-import * as schema from "@agentseam/db";
+import * as schema from "@nullspend/db";
 import { getEnv } from "@/lib/env";
 
 declare global {
-  var __agentseamSql: postgres.Sql | undefined;
+  var __nullspendSql: postgres.Sql | undefined;
 }
 
 function getSqlClient(): postgres.Sql {
-  if (!globalThis.__agentseamSql) {
-    globalThis.__agentseamSql = postgres(getEnv().DATABASE_URL, {
+  if (!globalThis.__nullspendSql) {
+    globalThis.__nullspendSql = postgres(getEnv().DATABASE_URL, {
       prepare: false,
     });
   }
 
-  return globalThis.__agentseamSql;
+  return globalThis.__nullspendSql;
 }
 
 export function getDb() {
@@ -23,10 +23,10 @@ export function getDb() {
 }
 
 export async function closeDbConnection() {
-  if (!globalThis.__agentseamSql) {
+  if (!globalThis.__nullspendSql) {
     return;
   }
 
-  await globalThis.__agentseamSql.end();
-  globalThis.__agentseamSql = undefined;
+  await globalThis.__nullspendSql.end();
+  globalThis.__nullspendSql = undefined;
 }

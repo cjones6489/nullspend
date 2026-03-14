@@ -44,7 +44,7 @@ vi.mock("cloudflare:workers", () => ({
   waitUntil: mockWaitUntil,
 }));
 
-vi.mock("@agentseam/cost-engine", () => ({
+vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: vi.fn().mockReturnValue(true),
   getModelPricing: vi.fn().mockReturnValue({
     inputPerMTok: 0.15,
@@ -99,9 +99,9 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-test-key",
-      "X-AgentSeam-Auth": "test-platform-key",
-      "X-AgentSeam-Key-Id": "key-uuid-123",
-      "X-AgentSeam-User-Id": "user-uuid-456",
+      "X-NullSpend-Auth": "test-platform-key",
+      "X-NullSpend-Key-Id": "key-uuid-123",
+      "X-NullSpend-User-Id": "user-uuid-456",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -184,12 +184,12 @@ describe("Budget Edge Cases", () => {
 
   // --- Attribution nulls ---
 
-  it("passes (null, userId) when X-AgentSeam-Key-Id header is absent", async () => {
+  it("passes (null, userId) when X-NullSpend-Key-Id header is absent", async () => {
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    const req = makeRequest(defaultBody, { "X-AgentSeam-Key-Id": "" });
-    req.headers.delete("X-AgentSeam-Key-Id");
+    const req = makeRequest(defaultBody, { "X-NullSpend-Key-Id": "" });
+    req.headers.delete("X-NullSpend-Key-Id");
 
     await handleChatCompletions(req, makeEnv(), defaultBody);
 
@@ -201,12 +201,12 @@ describe("Budget Edge Cases", () => {
     );
   });
 
-  it("passes (keyId, null) when X-AgentSeam-User-Id header is absent", async () => {
+  it("passes (keyId, null) when X-NullSpend-User-Id header is absent", async () => {
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    const req = makeRequest(defaultBody, { "X-AgentSeam-User-Id": "" });
-    req.headers.delete("X-AgentSeam-User-Id");
+    const req = makeRequest(defaultBody, { "X-NullSpend-User-Id": "" });
+    req.headers.delete("X-NullSpend-User-Id");
 
     await handleChatCompletions(req, makeEnv(), defaultBody);
 
@@ -227,7 +227,7 @@ describe("Budget Edge Cases", () => {
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer sk-test-key",
-        "X-AgentSeam-Auth": "test-platform-key",
+        "X-NullSpend-Auth": "test-platform-key",
       },
       body: JSON.stringify(defaultBody),
     });
@@ -340,7 +340,7 @@ describe("Budget Edge Cases", () => {
     const text = await res.text();
 
     expect(text).not.toContain("test-platform-key");
-    expect(text).not.toContain("x-agentseam-auth");
+    expect(text).not.toContain("x-nullspend-auth");
     expect(text).not.toContain("postgresql://");
     expect(text).not.toContain("upstash.io");
     expect(text).not.toContain("fake-token");

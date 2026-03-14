@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import { slackConfigs } from "@agentseam/db";
+import { slackConfigs } from "@nullspend/db";
 import { buildPendingMessage, buildTestMessage } from "@/lib/slack/message";
 import type { ActionRecord } from "@/lib/validations/actions";
 
@@ -23,7 +23,7 @@ export class SlackWebhookError extends Error {
 }
 
 function getDashboardUrl(): string {
-  return process.env.AGENTSEAM_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  return process.env.NULLSPEND_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 }
 
 async function postToWebhook(

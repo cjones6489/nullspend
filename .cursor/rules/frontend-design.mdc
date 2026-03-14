@@ -1,5 +1,5 @@
 ---
-description: Frontend design system and UI patterns for AgentSeam
+description: Frontend design system and UI patterns for NullSpend
 globs: "app/**/*.tsx,components/**/*.tsx,app/**/*.css,styles/**/*.css"
 alwaysApply: false
 ---

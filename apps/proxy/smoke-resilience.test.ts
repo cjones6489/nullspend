@@ -34,7 +34,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer sk-invalid-key-for-resilience-test",
-          "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
         },
         body: smallRequest(),
       });
@@ -63,7 +63,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer sk-bad",
-          "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
         },
         body: smallRequest(),
       });
@@ -85,7 +85,7 @@ describe("Resilience tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: "Bearer invalid",
-            "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+            "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
           },
           body: smallRequest(),
         }),
@@ -113,7 +113,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer bad",
-          "X-AgentSeam-Auth": "bad",
+          "X-NullSpend-Auth": "bad",
         },
         body: smallRequest(),
       });
@@ -213,7 +213,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-AgentSeam-Auth": "wrong",
+          "X-NullSpend-Auth": "wrong",
         },
         body: smallRequest(),
       });
@@ -271,7 +271,7 @@ describe("Resilience tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: "Bearer invalid",
-            "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+            "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
           },
           body: smallRequest(),
         }),

@@ -9,7 +9,7 @@ async function main() {
     config = loadConfig();
   } catch (err) {
     if (err instanceof ConfigError) {
-      process.stderr.write(`[agentseam-mcp] ${err.message}\n`);
+      process.stderr.write(`[nullspend-mcp] ${err.message}\n`);
       process.exit(1);
     }
     throw err;
@@ -18,7 +18,7 @@ async function main() {
   const shutdownController = new AbortController();
 
   const mcpServer = new McpServer(
-    { name: "agentseam", version: "0.1.0" },
+    { name: "nullspend", version: "0.1.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -45,11 +45,11 @@ async function main() {
 
   await mcpServer.connect(transport);
   process.stderr.write(
-    `[agentseam-mcp] Server running (stdio). API → ${config.agentseamUrl}\n`,
+    `[nullspend-mcp] Server running (stdio). API → ${config.nullspendUrl}\n`,
   );
 }
 
 main().catch((err) => {
-  process.stderr.write(`[agentseam-mcp] Fatal: ${String(err)}\n`);
+  process.stderr.write(`[nullspend-mcp] Fatal: ${String(err)}\n`);
   process.exit(1);
 });

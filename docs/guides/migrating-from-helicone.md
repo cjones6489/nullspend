@@ -1,8 +1,8 @@
-# Migrating from Helicone to AgentSeam
+# Migrating from Helicone to NullSpend
 
 Helicone was acquired by Mintlify on March 3, 2026 and is entering maintenance
 mode. If you're one of the 16,000 organizations on Helicone, this guide shows
-you how to migrate to AgentSeam in under 5 minutes.
+you how to migrate to NullSpend in under 5 minutes.
 
 ## Why migrate now
 
@@ -10,7 +10,7 @@ you how to migrate to AgentSeam in under 5 minutes.
   best-effort, and there's no public timeline for how long the service stays up.
 - **Your cost data will become inaccessible.** Helicone hasn't announced a data
   export tool or retention commitment post-acquisition.
-- **The integration model is identical.** Both Helicone and AgentSeam use the
+- **The integration model is identical.** Both Helicone and NullSpend use the
   same pattern: change your base URL. Migration is literally swapping one URL
   for another.
 
@@ -23,20 +23,20 @@ OPENAI_BASE_URL=https://oai.helicone.ai/v1
 HELICONE_API_KEY=sk-helicone-...
 ```
 
-### AgentSeam (after)
+### NullSpend (after)
 
 ```bash
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 # Remove HELICONE_API_KEY — not needed
 ```
 
-Add the AgentSeam authentication header to your client:
+Add the NullSpend authentication header to your client:
 
 ```typescript
 const client = new OpenAI({
-  baseURL: "https://proxy.agentseam.com/v1",
+  baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: {
-    "X-AgentSeam-Auth": process.env.PLATFORM_AUTH_KEY,
+    "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
   },
 });
 ```
@@ -50,13 +50,13 @@ the same.
 # Helicone (before)
 ANTHROPIC_BASE_URL=https://anthropic.helicone.ai
 
-# AgentSeam (after)
-ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
+# NullSpend (after)
+ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
 ```
 
 ## Feature mapping
 
-| Helicone feature | AgentSeam equivalent | Notes |
+| Helicone feature | NullSpend equivalent | Notes |
 |---|---|---|
 | Request logging | Cost event logging | Automatic — every request is logged |
 | Cost tracking | Cost tracking | Per-request, per-model, per-key breakdown |
@@ -68,11 +68,11 @@ ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
 | User tracking | API key tracking | Track costs per key (one key per agent/user) |
 | Prompt templates | — | Not supported (out of scope) |
 
-## What AgentSeam adds that Helicone didn't have
+## What NullSpend adds that Helicone didn't have
 
 ### Hard budget enforcement
 
-Helicone could alert you when costs got high. AgentSeam **blocks requests** when
+Helicone could alert you when costs got high. NullSpend **blocks requests** when
 a budget ceiling is hit. No soft limits — the proxy returns `429` and the
 request never reaches the LLM provider. You don't get charged for blocked
 requests.
@@ -90,15 +90,15 @@ was a known issue with Helicone's header-based approach.
 
 ### Kill receipts (coming soon)
 
-When a request is blocked by a budget ceiling, AgentSeam will generate a
+When a request is blocked by a budget ceiling, NullSpend will generate a
 cryptographically signed, tamper-evident receipt — proof that the block happened,
 when, and why. Useful for compliance and audit trails.
 
 ## Step-by-step migration
 
-### 1. Sign up for AgentSeam
+### 1. Sign up for NullSpend
 
-Go to [agentseam.com/signup](https://agentseam.com/signup) and create an
+Go to [nullspend.com/signup](https://nullspend.com/signup) and create an
 account.
 
 ### 2. Create an API key
@@ -113,8 +113,8 @@ current Helicone cost data. Start generous — you can tighten later.
 
 ### 4. Update your environment variables
 
-Replace your Helicone base URL with the AgentSeam proxy URL. Add the
-`X-AgentSeam-Auth` header to your client configuration.
+Replace your Helicone base URL with the NullSpend proxy URL. Add the
+`X-NullSpend-Auth` header to your client configuration.
 
 ### 5. Remove Helicone dependencies
 
@@ -136,12 +136,12 @@ Remove any Helicone-specific headers from your code:
 
 ### 6. Deploy and verify
 
-Deploy your updated application. Check the AgentSeam dashboard — cost events
+Deploy your updated application. Check the NullSpend dashboard — cost events
 should appear within seconds of your first LLM call.
 
 ## Pricing comparison
 
-| Feature | Helicone (was) | AgentSeam |
+| Feature | Helicone (was) | NullSpend |
 |---|---|---|
 | Free tier | 10K logs, 3-day retention | $1K/mo proxied spend, 7-day retention |
 | Budget enforcement | Alerts only | Hard enforcement (all tiers) |
@@ -153,7 +153,7 @@ should appear within seconds of your first LLM call.
 Helicone hasn't announced data export or retention guarantees. We recommend
 exporting any critical data from Helicone's dashboard before migrating.
 
-**Can I run both Helicone and AgentSeam simultaneously?**
+**Can I run both Helicone and NullSpend simultaneously?**
 Not easily — both require changing the base URL, and you can only point at one
 proxy at a time. However, you could route some traffic to each by using
 different API keys with different base URLs.
@@ -163,7 +163,7 @@ The actual code change takes under 5 minutes. It's one environment variable
 swap and adding the auth header.
 
 **What if I was using Helicone's caching?**
-AgentSeam doesn't support response caching yet. If you relied on Helicone's
+NullSpend doesn't support response caching yet. If you relied on Helicone's
 cache, you'll need to implement caching at the application level or wait for
 our caching feature (on the roadmap).
 

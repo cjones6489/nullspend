@@ -1,10 +1,10 @@
 # Anthropic Provider Setup
 
-Detailed guide for routing Anthropic API calls through AgentSeam.
+Detailed guide for routing Anthropic API calls through NullSpend.
 
 ## Supported models
 
-AgentSeam tracks costs for all current Anthropic models:
+NullSpend tracks costs for all current Anthropic models:
 
 | Model | Input (per 1M tokens) | Output (per 1M tokens) |
 |---|---|---|
@@ -25,9 +25,9 @@ Cache read tokens and cache creation tokens are tracked and priced separately.
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
-  baseURL: "https://proxy.agentseam.com/anthropic",
+  baseURL: "https://proxy.nullspend.com/anthropic",
   defaultHeaders: {
-    "X-AgentSeam-Auth": process.env.PLATFORM_AUTH_KEY,
+    "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
   },
 });
 
@@ -45,9 +45,9 @@ from anthropic import Anthropic
 import os
 
 client = Anthropic(
-    base_url="https://proxy.agentseam.com/anthropic",
+    base_url="https://proxy.nullspend.com/anthropic",
     default_headers={
-        "X-AgentSeam-Auth": os.environ["PLATFORM_AUTH_KEY"],
+        "X-NullSpend-Auth": os.environ["PLATFORM_AUTH_KEY"],
     },
 )
 
@@ -61,17 +61,17 @@ response = client.messages.create(
 ### Environment variables
 
 ```bash
-ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
+ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
 ANTHROPIC_API_KEY=sk-ant-your-real-anthropic-key
-PLATFORM_AUTH_KEY=your-agentseam-platform-key
+PLATFORM_AUTH_KEY=your-nullspend-platform-key
 ```
 
 ### cURL
 
 ```bash
-curl https://proxy.agentseam.com/anthropic/v1/messages \
+curl https://proxy.nullspend.com/anthropic/v1/messages \
   -H "x-api-key: sk-ant-your-anthropic-key" \
-  -H "X-AgentSeam-Auth: your-platform-key" \
+  -H "X-NullSpend-Auth: your-platform-key" \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
@@ -134,7 +134,7 @@ Use the same version header you would with direct Anthropic calls.
 
 Anthropic uses `x-api-key` instead of `Authorization: Bearer`. The proxy
 handles both authentication methods — your Anthropic key goes in `x-api-key`,
-your AgentSeam platform key goes in `X-AgentSeam-Auth`.
+your NullSpend platform key goes in `X-NullSpend-Auth`.
 
 ### Model naming
 

@@ -9,7 +9,7 @@ import "./globals.css";
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "AgentSeam",
+  title: "NullSpend",
   description: "Approval layer for risky AI agent actions.",
 };
 

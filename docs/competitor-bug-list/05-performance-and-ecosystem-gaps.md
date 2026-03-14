@@ -17,7 +17,7 @@
 
 ## SECTION A: Performance & Architecture Advantages
 
-These are competitor weaknesses that AgentSeam's architecture inherently avoids.
+These are competitor weaknesses that NullSpend's architecture inherently avoids.
 Not bugs to test for — structural advantages to verify and market.
 
 ### PA-1: LiteLLM Python GIL bottleneck
@@ -27,7 +27,7 @@ Not bugs to test for — structural advantages to verify and market.
 **Competitor problem:** At 500 RPS, P99 latency hits 28 seconds. At 1,000 RPS,
 LiteLLM crashes — OOM at 8GB+. Python's GIL creates a throughput ceiling.
 
-**AgentSeam advantage:** Cloudflare Workers run on V8 isolates — no GIL, no
+**NullSpend advantage:** Cloudflare Workers run on V8 isolates — no GIL, no
 shared memory, no process-level concurrency limits. Each request is an
 independent isolate with <1ms cold start.
 
@@ -51,7 +51,7 @@ PA-1: Proxy latency under load
 
 **Competitor problem:** Portkey adds 20-40ms to every request.
 
-**AgentSeam advantage:** CF Workers edge execution + no heavy middleware stack.
+**NullSpend advantage:** CF Workers edge execution + no heavy middleware stack.
 Target: <5ms overhead.
 
 **Verification test:**
@@ -72,7 +72,7 @@ PA-2: Measure actual proxy overhead
 **Competitor problem:** LiteLLM gradually slows down, requires periodic
 restarts. Teams report worker recycling after 10,000 requests.
 
-**AgentSeam advantage:** CF Workers are stateless. Each request gets a fresh
+**NullSpend advantage:** CF Workers are stateless. Each request gets a fresh
 isolate. Memory leaks are structurally impossible across requests.
 
 **Verification test:** Not needed — this is an architectural property of CF
@@ -87,7 +87,7 @@ Workers, not something that can regress.
 **Competitor problem:** Performance degrades after 1M rows in PostgreSQL logs.
 At 100K req/day, this threshold hits in 10 days.
 
-**AgentSeam advantage:** Cost logging happens asynchronously via
+**NullSpend advantage:** Cost logging happens asynchronously via
 `ctx.waitUntil()`. The database write is never in the hot path. The proxy
 responds to the client before the cost event is persisted.
 
@@ -112,7 +112,7 @@ PA-4: Cost logging never blocks response
 **Competitor problem:** LiteLLM's Python import time exceeds 3 seconds,
 creating noticeable latency on serverless cold starts.
 
-**AgentSeam advantage:** CF Workers cold start is <5ms. The entire proxy
+**NullSpend advantage:** CF Workers cold start is <5ms. The entire proxy
 module is lightweight TypeScript — no heavy dependency tree.
 
 **Verification test:**
@@ -133,7 +133,7 @@ PA-5: Cold start latency
 5 hours with zero traces. One user hit storage exhaustion in 1 day. Certain
 ClickHouse versions attempt to allocate exabytes of memory during deletions.
 
-**AgentSeam advantage:** No ClickHouse dependency. Postgres for transactional
+**NullSpend advantage:** No ClickHouse dependency. Postgres for transactional
 data, with ClickHouse as an optional future analytics layer. Managed Supabase
 handles storage management.
 
@@ -150,7 +150,7 @@ Competitor UX issues that inform our design decisions.
 **Competitor problem:** Production LiteLLM requires Docker + PostgreSQL +
 Redis + YAML configuration. Estimated 2-4 weeks for production deployment.
 
-**AgentSeam design rule:**
+**NullSpend design rule:**
 
 ```
 Setup = API key + base URL change. That's it.
@@ -159,7 +159,7 @@ Setup = API key + base URL change. That's it.
 OPENAI_BASE_URL=https://api.openai.com/v1
 
 # After
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 ```
 
 No Docker. No self-hosted databases. No YAML. No config files.
@@ -175,7 +175,7 @@ If setup ever requires more than this, we've gone wrong.
 **Competitor problem:** When log quota is exceeded, the gateway keeps routing
 but stops recording. You lose cost visibility during high-traffic periods.
 
-**AgentSeam design rule:** Cost tracking never stops. Every request through
+**NullSpend design rule:** Cost tracking never stops. Every request through
 the proxy produces a cost event, regardless of volume. No log quotas. No
 "recorded logs" pricing tier. Cost tracking IS the product — it can't degrade.
 
@@ -189,7 +189,7 @@ PR #10167 (shared mutable state)
 **Competitor problem:** Multiple scenarios where spend tracking silently reports
 $0 without any error. Users discover the problem when their bill arrives.
 
-**AgentSeam design rule:** If we can't calculate cost for a request, we log a
+**NullSpend design rule:** If we can't calculate cost for a request, we log a
 warning event with `isFallback=true` and use a conservative estimate. We never
 silently report $0 for a request that went to a paid provider.
 
@@ -217,7 +217,7 @@ function logCostEvent(usage: Usage | null, provider: Provider, model: string) {
 **Competitor problem:** When budget is exceeded, the error message doesn't
 tell the user what the budget was, how much is remaining, or what to do.
 
-**AgentSeam design rule:** HTTP 429 with actionable body:
+**NullSpend design rule:** HTTP 429 with actionable body:
 
 ```json
 {
@@ -251,7 +251,7 @@ gaps in the OpenClaw ecosystem.
 
 **User pain:** $3,600/month (Viticci), $200/day (Reddit), $3K/day (DenchClaw).
 
-**Feature:** This is AgentSeam's core product. Budget enforcement via proxy.
+**Feature:** This is NullSpend's core product. Budget enforcement via proxy.
 
 **Go-to-market artifact:** Tutorial titled "How to add budget enforcement
 to OpenClaw in 30 seconds" showing the `OPENAI_BASE_URL` change.
@@ -294,7 +294,7 @@ if (cacheRatio > 0.70 && cost.totalMicrodollars > 100_000) {
 **User pain:** "Sub-agents spawning other sub-agents, costs spiral fast and
 you have zero visibility."
 
-**Feature opportunity (V1.1):** `X-AgentSeam-Agent-Id` header support. OpenClaw
+**Feature opportunity (V1.1):** `X-NullSpend-Agent-Id` header support. OpenClaw
 or the agent framework includes an agent identifier in each request. The proxy
 attributes costs to specific agents in the hierarchy.
 
@@ -302,7 +302,7 @@ attributes costs to specific agents in the hierarchy.
 
 ```typescript
 function extractAgentId(request: Request): string | null {
-  return request.headers.get("X-AgentSeam-Agent-Id")
+  return request.headers.get("X-NullSpend-Agent-Id")
       ?? request.headers.get("X-Agent-Id")
       ?? null;
 }
@@ -362,7 +362,7 @@ jobs running in parallel. Each a separate billable call with full context.
 
 **Feature opportunity (V1.1):** Dashboard "background cost" view that
 separates agent-initiated costs from user-initiated costs. Requires either:
-- Header-based tagging (`X-AgentSeam-Request-Type: heartbeat|cron|user`)
+- Header-based tagging (`X-NullSpend-Request-Type: heartbeat|cron|user`)
 - Pattern detection (high-frequency, low-variance requests = background)
 
 **Priority:** Post-launch. Nice dashboard feature, not enforcement-critical.
@@ -453,7 +453,7 @@ interface CostEvent {
   isLongContext: boolean;        // Anthropic >200K doubled rates
 
   // Optional attribution (V1.1+)
-  agentId: string | null;        // X-AgentSeam-Agent-Id header
+  agentId: string | null;        // X-NullSpend-Agent-Id header
   requestType: string | null;    // heartbeat, cron, user
 
   // Warnings

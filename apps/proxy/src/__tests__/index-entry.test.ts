@@ -42,7 +42,7 @@ vi.mock("@upstash/ratelimit", () => ({
   Ratelimit: MockProxyRatelimit,
 }));
 
-vi.mock("@agentseam/cost-engine", () => ({
+vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: vi.fn().mockReturnValue(true),
   getModelPricing: vi.fn().mockReturnValue(null),
   costComponent: vi.fn().mockReturnValue(0),
@@ -87,7 +87,7 @@ describe("Worker entry point routing", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.status).toBe("ok");
-      expect(body.service).toBe("agentseam-proxy");
+      expect(body.service).toBe("nullspend-proxy");
     });
 
     it("GET /health/ready returns 200 when Redis is up", async () => {
@@ -104,7 +104,7 @@ describe("Worker entry point routing", () => {
     it("empty body returns 400 with bad_request", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-AgentSeam-Auth": "test-platform-key" },
+        headers: { "X-NullSpend-Auth": "test-platform-key" },
         body: "",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -116,7 +116,7 @@ describe("Worker entry point routing", () => {
     it("non-JSON body returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-AgentSeam-Auth": "test-platform-key" },
+        headers: { "X-NullSpend-Auth": "test-platform-key" },
         body: "not json {{{",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -129,7 +129,7 @@ describe("Worker entry point routing", () => {
     it("JSON array returns 400 (must be object)", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-AgentSeam-Auth": "test-platform-key" },
+        headers: { "X-NullSpend-Auth": "test-platform-key" },
         body: "[1, 2, 3]",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -141,7 +141,7 @@ describe("Worker entry point routing", () => {
     it("JSON null returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-AgentSeam-Auth": "test-platform-key" },
+        headers: { "X-NullSpend-Auth": "test-platform-key" },
         body: "null",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -151,7 +151,7 @@ describe("Worker entry point routing", () => {
     it("JSON string returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-AgentSeam-Auth": "test-platform-key" },
+        headers: { "X-NullSpend-Auth": "test-platform-key" },
         body: '"hello"',
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -161,7 +161,7 @@ describe("Worker entry point routing", () => {
     it("JSON number returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-AgentSeam-Auth": "test-platform-key" },
+        headers: { "X-NullSpend-Auth": "test-platform-key" },
         body: "42",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -179,7 +179,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -254,7 +254,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/messages", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-ant-test",
           "Content-Type": "application/json",
         },
@@ -287,7 +287,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -316,7 +316,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           "Content-Type": "application/json",
           "Content-Length": "2000000",
         },
@@ -340,7 +340,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -359,7 +359,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ model: "gpt-4o-mini", messages: [] }),
@@ -384,7 +384,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -408,7 +408,7 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-AgentSeam-Auth": "test-platform-key",
+          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },

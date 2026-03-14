@@ -169,7 +169,7 @@ describe("Load tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${OPENAI_API_KEY}`,
-            "X-AgentSeam-Auth": "wrong-key",
+            "X-NullSpend-Auth": "wrong-key",
           },
           body: smallRequest(),
         }),

@@ -10,7 +10,7 @@ import {
 } from "@/lib/actions/errors";
 import { rejectAction } from "@/lib/actions/reject-action";
 import { getDb } from "@/lib/db/client";
-import { actions, slackConfigs } from "@agentseam/db";
+import { actions, slackConfigs } from "@nullspend/db";
 import { buildDecisionMessage } from "@/lib/slack/message";
 import {
   SlackSignatureError,
@@ -18,7 +18,7 @@ import {
 } from "@/lib/slack/verify";
 
 function getDashboardUrl(): string {
-  return process.env.AGENTSEAM_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  return process.env.NULLSPEND_URL || process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 }
 
 function errorMessage(text: string) {
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       .where(eq(actions.id, actionId))
       .limit(1);
   } catch (err) {
-    console.error("[AgentSeam] Slack callback DB lookup error:", err);
+    console.error("[NullSpend] Slack callback DB lookup error:", err);
     return errorMessage("Something went wrong processing this action.");
   }
 
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
       return ephemeralDenial("You are not authorized to approve or reject this action.");
     }
   } catch (err) {
-    console.error("[AgentSeam] Slack authorization lookup error:", err);
+    console.error("[NullSpend] Slack authorization lookup error:", err);
     return ephemeralDenial("Could not verify your authorization. Please try again.");
   }
 
@@ -189,7 +189,7 @@ export async function POST(request: Request) {
       return errorMessage("This action has already been decided.");
     }
 
-    console.error("[AgentSeam] Slack callback error:", err);
+    console.error("[NullSpend] Slack callback error:", err);
     return errorMessage("Something went wrong processing this action.");
   }
 }

@@ -6,8 +6,8 @@ let mockCreateAction = vi.fn();
 let mockGetAction = vi.fn();
 let mockMarkResult = vi.fn();
 
-vi.mock("@agentseam/sdk", () => {
-  class MockAgentSeam {
+vi.mock("@nullspend/sdk", () => {
+  class MockNullSpend {
     constructor() {}
     createAction(...args: unknown[]) {
       return mockCreateAction(...args);
@@ -26,7 +26,7 @@ vi.mock("@agentseam/sdk", () => {
     }
   }
   return {
-    AgentSeam: MockAgentSeam,
+    NullSpend: MockNullSpend,
     TimeoutError: MockTimeoutError,
   };
 });
@@ -45,15 +45,15 @@ vi.mock("./gate.js", async (importOriginal) => {
 
 import { discoverUpstreamTools, registerProxyHandlers } from "./proxy.js";
 import { isToolGated, gateToolCall } from "./gate.js";
-import { AgentSeam } from "@agentseam/sdk";
+import { NullSpend } from "@nullspend/sdk";
 
 const mockedIsToolGated = vi.mocked(isToolGated);
 const mockedGateToolCall = vi.mocked(gateToolCall);
 
 function makeConfig(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
   return {
-    agentseamUrl: "http://127.0.0.1:3000",
-    agentseamApiKey: "ask_test",
+    nullspendUrl: "http://127.0.0.1:3000",
+    nullspendApiKey: "ask_test",
     agentId: "test-proxy",
     upstreamCommand: "node",
     upstreamArgs: [],
@@ -152,7 +152,7 @@ describe("registerProxyHandlers", () => {
 
   it("registers tools/list and tools/call handlers", () => {
     const fakeServer = makeFakeServer();
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
     registerProxyHandlers(
       fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -171,7 +171,7 @@ describe("registerProxyHandlers", () => {
       { name: "read_file", description: "Read", inputSchema: { type: "object", properties: { path: { type: "string" } } } },
     ];
     const fakeServer = makeFakeServer();
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
     registerProxyHandlers(
       fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -195,7 +195,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -225,7 +225,7 @@ describe("registerProxyHandlers", () => {
       mockCallTool.mockRejectedValue(new Error("upstream crash"));
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -259,7 +259,7 @@ describe("registerProxyHandlers", () => {
       mockMarkResult.mockResolvedValue({ id: "act-1", status: "executed" });
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -301,7 +301,7 @@ describe("registerProxyHandlers", () => {
       mockMarkResult.mockResolvedValue({ id: "act-2", status: "failed" });
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -339,7 +339,7 @@ describe("registerProxyHandlers", () => {
       mockMarkResult.mockResolvedValue({ id: "act-3", status: "failed" });
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -370,7 +370,7 @@ describe("registerProxyHandlers", () => {
       } satisfies GateResult);
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -399,7 +399,7 @@ describe("registerProxyHandlers", () => {
       } satisfies GateResult);
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -420,12 +420,12 @@ describe("registerProxyHandlers", () => {
       expect(mockCallTool).not.toHaveBeenCalled();
     });
 
-    it("returns isError when AgentSeam API is unreachable", async () => {
+    it("returns isError when NullSpend API is unreachable", async () => {
       mockedIsToolGated.mockReturnValue(true);
       mockedGateToolCall.mockRejectedValue(new Error("Connection refused"));
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -466,7 +466,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -504,7 +504,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
@@ -534,7 +534,7 @@ describe("registerProxyHandlers", () => {
       mockMarkResult.mockRejectedValue(new Error("Audit trail also down"));
 
       const fakeServer = makeFakeServer();
-      const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
 
       registerProxyHandlers(
         fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,

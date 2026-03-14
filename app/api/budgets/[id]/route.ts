@@ -4,7 +4,7 @@ import { eq, and, isNull, sql } from "drizzle-orm";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
-import { apiKeys, budgets } from "@agentseam/db";
+import { apiKeys, budgets } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 
 type RouteParams = { params: Promise<{ id: string }> };

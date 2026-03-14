@@ -14,12 +14,12 @@ vi.mock("@/lib/auth/supabase", () => ({
 const mockedCreateServerSupabaseClient = vi.mocked(createServerSupabaseClient);
 
 describe("resolveApprovalActor", () => {
-  const originalDevMode = process.env.AGENTSEAM_DEV_MODE;
-  const originalDevActor = process.env.AGENTSEAM_DEV_ACTOR;
+  const originalDevMode = process.env.NULLSPEND_DEV_MODE;
+  const originalDevActor = process.env.NULLSPEND_DEV_ACTOR;
 
   afterEach(() => {
-    process.env.AGENTSEAM_DEV_MODE = originalDevMode;
-    process.env.AGENTSEAM_DEV_ACTOR = originalDevActor;
+    process.env.NULLSPEND_DEV_MODE = originalDevMode;
+    process.env.NULLSPEND_DEV_ACTOR = originalDevActor;
     vi.resetAllMocks();
   });
 
@@ -36,9 +36,9 @@ describe("resolveApprovalActor", () => {
     await expect(resolveApprovalActor()).resolves.toBe("user-123");
   });
 
-  it("uses AGENTSEAM_DEV_ACTOR when dev mode is enabled and auth is unavailable", async () => {
-    process.env.AGENTSEAM_DEV_MODE = "true";
-    process.env.AGENTSEAM_DEV_ACTOR = "env-dev-actor";
+  it("uses NULLSPEND_DEV_ACTOR when dev mode is enabled and auth is unavailable", async () => {
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";
     mockedCreateServerSupabaseClient.mockRejectedValue(
       new SupabaseEnvError("NEXT_PUBLIC_SUPABASE_URL"),
     );
@@ -46,9 +46,9 @@ describe("resolveApprovalActor", () => {
     await expect(resolveApprovalActor()).resolves.toBe("env-dev-actor");
   });
 
-  it("uses AGENTSEAM_DEV_ACTOR in dev mode when auth returns no user", async () => {
-    process.env.AGENTSEAM_DEV_MODE = "true";
-    process.env.AGENTSEAM_DEV_ACTOR = "env-dev-actor";
+  it("uses NULLSPEND_DEV_ACTOR in dev mode when auth returns no user", async () => {
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -61,9 +61,9 @@ describe("resolveApprovalActor", () => {
     await expect(resolveApprovalActor()).resolves.toBe("env-dev-actor");
   });
 
-  it("throws in dev mode when auth fails and AGENTSEAM_DEV_ACTOR is not set", async () => {
-    process.env.AGENTSEAM_DEV_MODE = "true";
-    delete process.env.AGENTSEAM_DEV_ACTOR;
+  it("throws in dev mode when auth fails and NULLSPEND_DEV_ACTOR is not set", async () => {
+    process.env.NULLSPEND_DEV_MODE = "true";
+    delete process.env.NULLSPEND_DEV_ACTOR;
     mockedCreateServerSupabaseClient.mockRejectedValue(
       new SupabaseEnvError("NEXT_PUBLIC_SUPABASE_URL"),
     );
@@ -71,9 +71,9 @@ describe("resolveApprovalActor", () => {
     await expect(resolveApprovalActor()).rejects.toBeInstanceOf(SupabaseEnvError);
   });
 
-  it("does NOT use dev fallback when only NODE_ENV=development (requires AGENTSEAM_DEV_MODE)", async () => {
-    delete process.env.AGENTSEAM_DEV_MODE;
-    process.env.AGENTSEAM_DEV_ACTOR = "env-dev-actor";
+  it("does NOT use dev fallback when only NODE_ENV=development (requires NULLSPEND_DEV_MODE)", async () => {
+    delete process.env.NULLSPEND_DEV_MODE;
+    process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -88,9 +88,9 @@ describe("resolveApprovalActor", () => {
     );
   });
 
-  it("requires auth in production even when AGENTSEAM_DEV_ACTOR is set", async () => {
-    delete process.env.AGENTSEAM_DEV_MODE;
-    process.env.AGENTSEAM_DEV_ACTOR = "env-dev-actor";
+  it("requires auth in production even when NULLSPEND_DEV_ACTOR is set", async () => {
+    delete process.env.NULLSPEND_DEV_MODE;
+    process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({

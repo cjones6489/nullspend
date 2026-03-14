@@ -4,7 +4,7 @@ import { ActionNotFoundError } from "@/lib/actions/errors";
 import { expireAction, isActionExpired } from "@/lib/actions/expiration";
 import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@agentseam/db";
+import { actions } from "@nullspend/db";
 
 export async function getAction(actionId: string, ownerUserId: string) {
   const db = getDb();

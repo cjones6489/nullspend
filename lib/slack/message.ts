@@ -152,13 +152,13 @@ export function buildDecisionMessage(
 
 export function buildTestMessage(dashboardUrl: string): SlackMessage {
   return {
-    text: "AgentSeam Slack integration is working!",
+    text: "NullSpend Slack integration is working!",
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `:white_check_mark: *AgentSeam Slack integration is working!*\nYou'll receive notifications here when new actions are pending approval.\n<${dashboardUrl}/app/inbox|Open Dashboard>`,
+          text: `:white_check_mark: *NullSpend Slack integration is working!*\nYou'll receive notifications here when new actions are pending approval.\n<${dashboardUrl}/app/inbox|Open Dashboard>`,
         },
       },
     ],

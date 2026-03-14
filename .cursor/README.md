@@ -1,4 +1,4 @@
-# AgentSeam Cursor Setup
+# NullSpend Cursor Setup
 
 This project intentionally keeps Cursor guidance lean.
 

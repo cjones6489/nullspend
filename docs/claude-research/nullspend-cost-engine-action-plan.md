@@ -1,6 +1,6 @@
-# AgentSeam cost engine: competitor bug database and action plan
+# NullSpend cost engine: competitor bug database and action plan
 
-**Every bug documented below was found in a production tool used by thousands of developers. Each one is a test case for AgentSeam.**
+**Every bug documented below was found in a production tool used by thousands of developers. Each one is a test case for NullSpend.**
 
 ---
 
@@ -17,7 +17,7 @@ These are the most common and most costly bugs in the ecosystem. They all stem f
 - **Impact:** 2× the real input token count, inflated costs.
 - **Exact numbers from reporter:** Anthropic returned input_tokens=5, cache_read=128,955, cache_creation=1,253. OTel reported total input=130,213 (correct sum). Langfuse computed 130,213 + 128,955 + 1,253 = 260,421 (double).
 - **Root cause:** Boundary confusion — Langfuse doesn't know whether its upstream has already normalized the fields. No source-of-truth flag distinguishes "raw Anthropic fields" from "OTel-normalized totals."
-- **AgentSeam lesson:** Always parse from the raw provider response. Never accept pre-normalized token counts from any framework or OTel layer. The proxy reads directly from the API response, so this class of bug is structurally impossible.
+- **NullSpend lesson:** Always parse from the raw provider response. Never accept pre-normalized token counts from any framework or OTel layer. The proxy reads directly from the API response, so this class of bug is structurally impossible.
 
 **Bug A2 — LangChain.js #10249: Streaming double-count from cumulative message_delta**
 
@@ -26,7 +26,7 @@ These are the most common and most costly bugs in the ecosystem. They all stem f
 - **Impact:** Exactly double the real cache token counts.
 - **Exact code:** In `libs/providers/langchain-anthropic/src/utils/message_outputs.ts`, the `message_delta` handler passes cumulative values into the chunk's `usage_metadata`. Then in `libs/langchain-core/src/messages/metadata.ts`, `mergeInputTokenDetails` sums them.
 - **Root cause:** The Anthropic SDK type definitions explicitly document that `message_delta` values are cumulative (`"The cumulative number of input tokens read from the cache"`), but LangChain treats them as incremental deltas.
-- **AgentSeam lesson:** The streaming parser must be a state machine. For Anthropic: capture input from `message_start` once. Overwrite (never sum) output from each `message_delta`. Only read final values after stream completes.
+- **NullSpend lesson:** The streaming parser must be a state machine. For Anthropic: capture input from `message_start` once. Overwrite (never sum) output from each `message_delta`. Only read final values after stream completes.
 
 **Bug A3 — LiteLLM #5443: Missing cache costs entirely**
 
@@ -34,7 +34,7 @@ These are the most common and most costly bugs in the ecosystem. They all stem f
 - **What happens:** LiteLLM only counted `input_tokens` for Anthropic, completely ignoring `cache_creation_input_tokens` and `cache_read_input_tokens`.
 - **Impact:** Any request with caching was undercharged — sometimes dramatically, since cache creation tokens can be 10-100× the uncached input.
 - **Root cause:** The developer likely assumed `input_tokens` was total (following OpenAI's convention) and didn't realize Anthropic uses different semantics.
-- **AgentSeam lesson:** Mandatory test case — construct a response where cache tokens dominate and verify the cost reflects all three fields.
+- **NullSpend lesson:** Mandatory test case — construct a response where cache tokens dominate and verify the cost reflects all three fields.
 
 **Bug A4 — LiteLLM #6575 / #9812: Wrong cache write cost formula**
 
@@ -42,14 +42,14 @@ These are the most common and most costly bugs in the ecosystem. They all stem f
 - **What happens:** LiteLLM calculated cache write cost as `base_input_cost + surcharge` instead of `cache_write_rate × tokens`. For #9812 specifically: a user reported LiteLLM charged $0.091311 while Anthropic's billing console showed $0.05439 — nearly double.
 - **Impact:** Systematic overcharging on every request with cache creation.
 - **Root cause:** The cost formula treated cache write as "base cost plus a premium" rather than using the independent cache write rate. The PR #6576 that fixed it was titled "Stopped double counting the tokens" and noted "There don't seem to be any tests of this function."
-- **AgentSeam lesson:** Store cache write rates as independent values in the pricing database. Never derive them from the base rate at calculation time. And always test cost functions.
+- **NullSpend lesson:** Store cache write rates as independent values in the pricing database. Never derive them from the base rate at calculation time. And always test cost functions.
 
 **Bug A5 — Cline #4346: Cumulative message_delta treated as incremental**
 
 - **Source:** Referenced in ecosystem analysis
 - **What happens:** Same root cause as Bug A2. Cline accumulated cache token values across multiple `message_delta` events instead of treating each as a cumulative snapshot.
 - **Impact:** Cache tokens multiplied by the number of delta events received.
-- **AgentSeam lesson:** Same fix as A2 — overwrite, never sum.
+- **NullSpend lesson:** Same fix as A2 — overwrite, never sum.
 
 **Bug A6 — LiteLLM #19680 / #19681 / #11364: Ongoing cache cost calculation errors (January 2026)**
 
@@ -57,14 +57,14 @@ These are the most common and most costly bugs in the ecosystem. They all stem f
 - **What happens:** As of January 2026, LiteLLM still has open bugs about incorrect cached token cost calculation. Issue #11364 ("Wrong cost for Anthropic models, cached tokens not being correctly considered") was filed January 21, 2026 and remains open. Issue #19680 documents that `total_prompt_tokens` calculation incorrectly charges for cached tokens.
 - **Related issues:** #18728 (rate limiter incorrectly counts cached tokens toward TPM limits), #16341 (Gemini implicit cached tokens not counted in spend log).
 - **Impact:** This is not a single bug but a persistent class of errors. The Anthropic cache token semantics continue to cause problems across multiple LiteLLM subsystems.
-- **AgentSeam lesson:** This validates that the problem is genuinely hard and that competitors have not solved it even after multiple fix attempts. Getting this right is a real differentiator.
+- **NullSpend lesson:** This validates that the problem is genuinely hard and that competitors have not solved it even after multiple fix attempts. Getting this right is a real differentiator.
 
 **Bug A7 — Langfuse #5568: OpenAI cached tokens accumulating across consecutive requests**
 
 - **Source:** github.com/langfuse/langfuse/issues/5568 (February 2025)
 - **What happens:** When using cached tokens in consecutive OpenAI generations, input tokens accumulated instead of subtracting cached tokens as expected.
 - **Impact:** Overstated input token counts and inflated costs for OpenAI requests with caching.
-- **AgentSeam lesson:** Even OpenAI's simpler cache model (subset semantics) can be mishandled. Test with consecutive cached requests, not just single requests.
+- **NullSpend lesson:** Even OpenAI's simpler cache model (subset semantics) can be mishandled. Test with consecutive cached requests, not just single requests.
 
 ### Category B: Budget enforcement bypass vulnerabilities
 
@@ -76,7 +76,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** The `openai.AzureOpenAI` client sends requests to Azure-formatted paths (`/openai/deployments/{model}/chat/completions?api-version=2023-05-15`). LiteLLM's budget enforcement uses route matching against a hardcoded list that doesn't include these paths.
 - **Impact:** One user reported $764.78 spend against a $50 budget — a 15× overspend.
 - **Root cause:** Budget enforcement tied to URL pattern matching rather than authentication identity.
-- **AgentSeam lesson:** Budget enforcement must be identity-based, not route-based. Check the authenticated key/user before any routing. This is the #1 architectural principle.
+- **NullSpend lesson:** Budget enforcement must be identity-based, not route-based. Check the authenticated key/user before any routing. This is the #1 architectural principle.
 
 **Bug B2 — LiteLLM #12905: Team membership nullifies user budgets**
 
@@ -85,7 +85,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **Exact code:** `if (user_object is not None and user_object.max_budget is not None and (team_object is None or team_object.team_id is None)):` — that last condition is the bug.
 - **Impact:** Any user in a team has no individual budget enforcement.
 - **Root cause:** Mutually exclusive entity hierarchy — checking only one entity level at a time.
-- **AgentSeam lesson:** Check ALL applicable entities independently. Enforce the most restrictive budget. Never short-circuit.
+- **NullSpend lesson:** Check ALL applicable entities independently. Enforce the most restrictive budget. Never short-circuit.
 
 **Bug B3 — LiteLLM #11083: End-user budgets never enforced**
 
@@ -93,7 +93,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** When a budget is set for an end-user identified by the `user` field, LiteLLM's auth middleware never populates `max_budget` for that end-user. The fix PR (#9658) was closed without merge.
 - **Impact:** End-users can spend without limit regardless of budget configuration. The reporter noted: "This can result in incurring massive, unexpected costs."
 - **Root cause:** End-user identity is decoupled from key identity, and budget enforcement only runs for the primary auth entity.
-- **AgentSeam lesson:** Every entity type that can have a budget must be checked on every request. No exceptions, no "we'll add that later."
+- **NullSpend lesson:** Every entity type that can have a budget must be checked on every request. No exceptions, no "we'll add that later."
 
 **Bug B4 — LiteLLM #10750 / #13882: Pass-through routes skip budget middleware**
 
@@ -101,14 +101,14 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** Pass-through routes (`/bedrock`, `/anthropic`, `/vertex-ai`) use a different code path that bypasses the middleware stack entirely. PR #15805 partially fixed this with wildcard route matching, but coverage remains uncertain.
 - **Impact:** Any request using pass-through routes incurs cost with zero budget enforcement.
 - **Root cause:** Route-based enforcement with hardcoded lists that don't cover all paths.
-- **AgentSeam lesson:** There should be no code path to a paid provider that doesn't go through budget enforcement. The proxy architecture should make this impossible by design — budget check happens before the upstream fetch, always.
+- **NullSpend lesson:** There should be no code path to a paid provider that doesn't go through budget enforcement. The proxy architecture should make this impossible by design — budget check happens before the upstream fetch, always.
 
 **Bug B5 — LiteLLM PR #9329: Budget reset cron job silently fails**
 
 - **Source:** Referenced in ecosystem analysis
 - **What happens:** The cron job that resets budgets failed due to `isinstance(result, LiteLLM_TeamTable)` not matching Prisma's `prisma.LiteLLM_TeamTable`. Budgets were never actually reset.
 - **Impact:** Users who thought their budgets reset monthly were actually accumulating spend forever. Once they hit the limit, they were permanently blocked.
-- **AgentSeam lesson:** Budget resets must be atomic and verifiable. AgentSeam's Redis Lua approach (where reset is a single atomic operation) eliminates this class of bug.
+- **NullSpend lesson:** Budget resets must be atomic and verifiable. NullSpend's Redis Lua approach (where reset is a single atomic operation) eliminates this class of bug.
 
 **Bug B6 — LiteLLM #14266: Race condition in budget reset**
 
@@ -116,7 +116,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** `budget_reset_at` timestamp updates but `spend` doesn't zero for random keys. The operation is non-atomic.
 - **Impact:** Random keys accumulate spend across reset periods. Users resort to manual SQL scripts as workarounds.
 - **Root cause:** Non-atomic budget reset — timestamp and spend are updated in separate operations.
-- **AgentSeam lesson:** All budget state mutations (check, reserve, update, reset) must be atomic. Redis Lua scripts give you this for free.
+- **NullSpend lesson:** All budget state mutations (check, reserve, update, reset) must be atomic. Redis Lua scripts give you this for free.
 
 **Bug B7 — LiteLLM #14004: Budget blocks all models including free ones**
 
@@ -124,14 +124,14 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** When a budget is exceeded, LiteLLM blocks ALL models including zero-cost on-premises models. The budget check runs before model cost evaluation.
 - **Impact:** Exceeding your cloud LLM budget also blocks access to your own self-hosted models.
 - **Root cause:** Budget check is order-dependent — it runs before the system knows whether the request will cost anything.
-- **AgentSeam lesson:** For V1 with only paid providers (OpenAI, Anthropic), this isn't an issue. But when adding support for custom/local models, the cost evaluation must happen before or alongside the budget check, not after.
+- **NullSpend lesson:** For V1 with only paid providers (OpenAI, Anthropic), this isn't an issue. But when adding support for custom/local models, the cost evaluation must happen before or alongside the budget check, not after.
 
 **Bug B8 — LiteLLM #20324: Soft budget alerts never fire for virtual keys**
 
 - **Source:** Referenced in ecosystem analysis
 - **What happens:** `LiteLLM_BudgetTable` is loaded for end-users and teams but not for `LiteLLM_VerificationToken` (virtual keys). Soft budget alerts are effectively broken for the most common entity type.
 - **Impact:** Users who configured soft alerts (warn at 80%) never receive them.
-- **AgentSeam lesson:** Every budget feature must work for every entity type from day one. Don't ship a feature for one entity and assume it'll work for others.
+- **NullSpend lesson:** Every budget feature must work for every entity type from day one. Don't ship a feature for one entity and assume it'll work for others.
 
 ### Category C: Spend tracking and logging failures
 
@@ -141,7 +141,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** A user with a properly configured Docker + Postgres + Redis setup running both OpenAI and Ollama models gets zero spend on every request. Models show correct pricing in the model hub, but spend calculation produces nothing.
 - **Impact:** Complete failure of the core value proposition.
 - **Root cause:** Unclear from the issue — likely a configuration or initialization bug specific to certain Docker setups.
-- **AgentSeam lesson:** The "zero spend" failure mode should be specifically tested for. If the cost engine can't calculate cost for a request, it should log a warning, not silently report zero.
+- **NullSpend lesson:** The "zero spend" failure mode should be specifically tested for. If the cost engine can't calculate cost for a request, it should log a warning, not silently report zero.
 
 **Bug C2 — LiteLLM PR #10167: Shared mutable state corrupts spend tracking**
 
@@ -149,7 +149,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** When a user calls the `/responses` endpoint and then `/chat/completions`, cost/spend for the second call is not recorded. The `/responses` handler mutates a shared `default_litellm_params` dict, renaming the metadata key. All subsequent calls see the wrong key name.
 - **Impact:** Intermittent spend tracking failures that depend on request ordering — extremely hard to debug.
 - **Root cause:** Mutable shared state modified in place instead of copied.
-- **AgentSeam lesson:** Cloudflare Workers V8 isolates give you natural isolation per request. Each request gets its own memory space, destroyed on completion. This class of shared-state bug is structurally impossible.
+- **NullSpend lesson:** Cloudflare Workers V8 isolates give you natural isolation per request. Each request gets its own memory space, destroyed on completion. This class of shared-state bug is structurally impossible.
 
 **Bug C3 — LiteLLM #20179: WebSearch callback breaks spend tracking**
 
@@ -157,7 +157,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** When the `websearch_interception` callback is enabled, spend tracking fails silently for any request that includes a tool named "WebSearch." Request completes successfully (200 response), but `x-litellm-response-cost-original: 0.0` and no entry in `LiteLLM_SpendLogs`.
 - **Impact:** Tool-using agent requests silently drop cost tracking. The user gets a working response but no cost record.
 - **Root cause:** The callback modifies the request pipeline in a way that breaks the cost tracking callback.
-- **AgentSeam lesson:** Cost tracking must be the last thing in the pipeline, operating on the final response. It should never be skippable by other middleware or callbacks.
+- **NullSpend lesson:** Cost tracking must be the last thing in the pipeline, operating on the final response. It should never be skippable by other middleware or callbacks.
 
 **Bug C4 — LiteLLM #12892: Every request creates a new spend table entry**
 
@@ -165,7 +165,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** Every incoming request creates a new entry in the daily spend table, bypassing the unique constraint on `[user_id, date, api_key, model, custom_llm_provider, mcp_namespaced_tool_name]`.
 - **Impact:** Spend table grows without bound, breaking the usage dashboard.
 - **Root cause:** Likely a race condition or constraint violation handling issue.
-- **AgentSeam lesson:** Use append-only `cost_events` table (one row per request) rather than trying to aggregate into daily spend rows. Aggregation happens at query time, not write time. Simpler, no race conditions.
+- **NullSpend lesson:** Use append-only `cost_events` table (one row per request) rather than trying to aggregate into daily spend rows. Aggregation happens at query time, not write time. Simpler, no race conditions.
 
 **Bug C5 — Langfuse #7767: Failed/refused requests still charged**
 
@@ -173,14 +173,14 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** A request to Anthropic that's rejected (too many tokens) costs $0 according to Anthropic's billing, but Langfuse assigns a cost of $1.24+ because it infers cost from input parameters rather than checking the response status.
 - **Impact:** Phantom costs from failed requests inflate the user's cost view.
 - **Root cause:** Cost inference runs regardless of response status.
-- **AgentSeam lesson:** Always check the response status before calculating cost. If the provider returned an error (4xx, 5xx), the cost is zero. Only calculate cost from successful responses that include a `usage` object.
+- **NullSpend lesson:** Always check the response status before calculating cost. If the provider returned an error (4xx, 5xx), the cost is zero. Only calculate cost from successful responses that include a `usage` object.
 
 **Bug C6 — Langfuse: Reasoning model costs can't be inferred without token counts**
 
 - **Source:** Langfuse documentation on cost tracking
 - **What happens:** Langfuse cannot infer costs for reasoning models (o1, o3, o4-mini) unless explicit token usage is provided. Reasoning tokens are hidden and invisible in the response content, so tokenization-based inference doesn't work.
 - **Impact:** Missing cost data for the most expensive model family.
-- **AgentSeam lesson:** For reasoning models, always extract `reasoning_tokens` from the `completion_tokens_details` object. Never try to infer output costs from visible response text — the hidden reasoning tokens can be 10× the visible output.
+- **NullSpend lesson:** For reasoning models, always extract `reasoning_tokens` from the `completion_tokens_details` object. Never try to infer output costs from visible response text — the hidden reasoning tokens can be 10× the visible output.
 
 ### Category D: Performance and scalability issues
 
@@ -190,14 +190,14 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** At 500 RPS, P99 latency hits 28 seconds. At 1,000 RPS, LiteLLM crashes — out of memory, cascading request failures. Memory usage climbs to 8GB+.
 - **Impact:** LiteLLM is unusable for high-traffic production workloads.
 - **Root cause:** Python's Global Interpreter Lock (GIL) and async overhead become bottlenecks at scale.
-- **AgentSeam lesson:** Cloudflare Workers on V8 isolates don't have this problem. Each request is handled in its own lightweight isolate. The <1ms cold start and sub-5ms overhead per request means AgentSeam can handle thousands of RPS without degradation.
+- **NullSpend lesson:** Cloudflare Workers on V8 isolates don't have this problem. Each request is handled in its own lightweight isolate. The <1ms cold start and sub-5ms overhead per request means NullSpend can handle thousands of RPS without degradation.
 
 **Bug D2 — Portkey: 20-40ms latency overhead**
 
 - **Source:** Multiple comparison articles, TrueFoundry analysis
 - **What happens:** Portkey adds 20-40ms to every request.
 - **Impact:** For latency-sensitive applications, this is meaningful. For comparison, Bifrost (Go-based) claims 11μs and Helicone (Rust-based) claims 8ms P50.
-- **AgentSeam lesson:** CF Workers should add <5ms. Benchmark this early and make it a marketing number. "Sub-5ms overhead" is a concrete claim competitors can't match (Portkey) or can (but they don't enforce budgets).
+- **NullSpend lesson:** CF Workers should add <5ms. Benchmark this early and make it a marketing number. "Sub-5ms overhead" is a concrete claim competitors can't match (Portkey) or can (but they don't enforce budgets).
 
 **Bug D3 — LiteLLM #19781: Can't reset budget to unlimited**
 
@@ -205,7 +205,7 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 - **What happens:** Users who've been assigned a budget cannot be set back to unlimited. The API returns a float parsing error when receiving an empty string for `max_budget`.
 - **Impact:** Admin workflow broken — can't remove budgets once set.
 - **Root cause:** Frontend sends empty string, backend expects float or null, Pydantic validation rejects it.
-- **AgentSeam lesson:** Budget CRUD must handle the full lifecycle: create, update, reset, and remove. Zod validation should accept `null` to mean "no budget."
+- **NullSpend lesson:** Budget CRUD must handle the full lifecycle: create, update, reset, and remove. Zod validation should accept `null` to mean "no budget."
 
 ---
 
@@ -214,19 +214,19 @@ These are all from LiteLLM, the dominant open-source proxy. Each one represents 
 Distilled from every bug above:
 
 **Anti-pattern 1: Route-based budget enforcement.**
-LiteLLM's budget check is tied to URL pattern matching against a hardcoded list. New route formats (Azure paths, pass-through endpoints) bypass it entirely. **AgentSeam's rule:** Budget enforcement is identity-based. It's tied to the authenticated API key, checked before any routing or proxying happens. There is exactly one code path from request to upstream provider, and the budget check is on it.
+LiteLLM's budget check is tied to URL pattern matching against a hardcoded list. New route formats (Azure paths, pass-through endpoints) bypass it entirely. **NullSpend's rule:** Budget enforcement is identity-based. It's tied to the authenticated API key, checked before any routing or proxying happens. There is exactly one code path from request to upstream provider, and the budget check is on it.
 
 **Anti-pattern 2: Mutually exclusive entity hierarchy.**
-LiteLLM checks only one entity (key OR user OR team) and uses conditional logic that can skip levels. **AgentSeam's rule (V1):** Check key budget. That's it — V1 only has key-level budgets. When team/org budgets are added later, check ALL levels and enforce the most restrictive.
+LiteLLM checks only one entity (key OR user OR team) and uses conditional logic that can skip levels. **NullSpend's rule (V1):** Check key budget. That's it — V1 only has key-level budgets. When team/org budgets are added later, check ALL levels and enforce the most restrictive.
 
 **Anti-pattern 3: Post-hoc cost tracking without pre-request reservation.**
-LiteLLM tracks costs after the response but checks stale spend values before requests. Concurrent requests can all pass budget checks simultaneously, each seeing the pre-concurrent spend value. **AgentSeam's rule:** Atomic check-and-reserve with Redis Lua scripts. Before the request, reserve the estimated max cost. After the response, reconcile with the actual cost and release the surplus. Concurrent requests see the reserved amount and enforce correctly.
+LiteLLM tracks costs after the response but checks stale spend values before requests. Concurrent requests can all pass budget checks simultaneously, each seeing the pre-concurrent spend value. **NullSpend's rule:** Atomic check-and-reserve with Redis Lua scripts. Before the request, reserve the estimated max cost. After the response, reconcile with the actual cost and release the surplus. Concurrent requests see the reserved amount and enforce correctly.
 
 **Anti-pattern 4: Accepting pre-normalized token counts.**
-Langfuse's double-counting bug exists because it received already-normalized values from OTel but didn't know whether normalization had occurred. **AgentSeam's rule:** Parse from raw provider responses only. The proxy reads the API response directly — no intermediate framework, no OTel translation layer, no ambiguity about field semantics.
+Langfuse's double-counting bug exists because it received already-normalized values from OTel but didn't know whether normalization had occurred. **NullSpend's rule:** Parse from raw provider responses only. The proxy reads the API response directly — no intermediate framework, no OTel translation layer, no ambiguity about field semantics.
 
 **Anti-pattern 5: Non-atomic budget operations.**
-LiteLLM's budget resets, spend updates, and cron jobs are separate non-atomic operations that race with each other. **AgentSeam's rule:** All budget state lives in Redis. All mutations happen via Lua scripts that execute atomically. Postgres stores the durable ledger (cost_events), but real-time enforcement state is exclusively in Redis.
+LiteLLM's budget resets, spend updates, and cron jobs are separate non-atomic operations that race with each other. **NullSpend's rule:** All budget state lives in Redis. All mutations happen via Lua scripts that execute atomically. Postgres stores the durable ledger (cost_events), but real-time enforcement state is exclusively in Redis.
 
 ---
 
@@ -421,4 +421,4 @@ Test M3: Sub-cent costs display correctly
 
 ### Ongoing: Use competitor bugs as your regression suite
 
-Every new bug filed against LiteLLM, Langfuse, LangChain, or Portkey related to cost calculation should become a test case in AgentSeam. Subscribe to these repos' issues. The ecosystem is doing your QA for free.
+Every new bug filed against LiteLLM, Langfuse, LangChain, or Portkey related to cost calculation should become a test case in NullSpend. Subscribe to these repos' issues. The ecosystem is doing your QA for free.

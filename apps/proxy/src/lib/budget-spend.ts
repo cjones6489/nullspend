@@ -1,7 +1,7 @@
 import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql, eq, and } from "drizzle-orm";
-import { budgets } from "@agentseam/db";
+import { budgets } from "@nullspend/db";
 import { isLocalConnection } from "./cost-logger.js";
 import { withDbConnection } from "./db-semaphore.js";
 

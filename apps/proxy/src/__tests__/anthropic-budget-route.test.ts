@@ -21,7 +21,7 @@ vi.mock("cloudflare:workers", () => ({
   }),
 }));
 
-vi.mock("@agentseam/cost-engine", () => ({
+vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: vi.fn().mockReturnValue(true),
   getModelPricing: vi.fn().mockReturnValue({
     inputPerMTok: 3,
@@ -103,8 +103,8 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-ant-api03-test",
-      "X-AgentSeam-Auth": "test-platform-key",
-      "X-AgentSeam-Key-Id": "test-key-id",
+      "X-NullSpend-Auth": "test-platform-key",
+      "X-NullSpend-Key-Id": "test-key-id",
       ...headers,
     },
     body: JSON.stringify(body),

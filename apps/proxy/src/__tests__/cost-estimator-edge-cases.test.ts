@@ -2,7 +2,7 @@
  * Cost Estimator Edge Case Tests
  *
  * Additional edge case tests for estimateMaxCost. Uses real
- * @agentseam/cost-engine (no mocks) to validate actual behavior
+ * @nullspend/cost-engine (no mocks) to validate actual behavior
  * with nullish coalescing, model caps, and safety margin.
  */
 import { describe, it, expect } from "vitest";

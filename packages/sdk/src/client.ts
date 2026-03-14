@@ -1,7 +1,7 @@
-import { AgentSeamError, RejectedError, TimeoutError } from "./errors.js";
+import { NullSpendError, RejectedError, TimeoutError } from "./errors.js";
 import type {
   ActionRecord,
-  AgentSeamConfig,
+  NullSpendConfig,
   CreateActionInput,
   CreateActionResponse,
   MarkResultInput,
@@ -13,17 +13,17 @@ import type {
 const DEFAULT_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-const API_KEY_HEADER = "x-agentseam-key";
+const API_KEY_HEADER = "x-nullspend-key";
 
-export class AgentSeam {
+export class NullSpend {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly _fetch: typeof globalThis.fetch;
   private readonly requestTimeoutMs: number;
 
-  constructor(config: AgentSeamConfig) {
-    if (!config.baseUrl) throw new AgentSeamError("baseUrl is required");
-    if (!config.apiKey) throw new AgentSeamError("apiKey is required");
+  constructor(config: NullSpendConfig) {
+    if (!config.baseUrl) throw new NullSpendError("baseUrl is required");
+    if (!config.apiKey) throw new NullSpendError("apiKey is required");
 
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
     this.apiKey = config.apiKey;
@@ -163,7 +163,7 @@ export class AgentSeam {
       response = await this._fetch(url, fetchOptions);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new AgentSeamError(`${method} ${path} network error: ${msg}`);
+      throw new NullSpendError(`${method} ${path} network error: ${msg}`);
     }
 
     if (!response.ok) {
@@ -175,7 +175,7 @@ export class AgentSeam {
       } catch {
         detail = response.statusText;
       }
-      throw new AgentSeamError(
+      throw new NullSpendError(
         `${method} ${path} failed: ${detail}`,
         response.status,
       );
@@ -184,7 +184,7 @@ export class AgentSeam {
     try {
       return (await response.json()) as T;
     } catch {
-      throw new AgentSeamError(
+      throw new NullSpendError(
         `${method} ${path} returned invalid JSON`,
         response.status,
       );

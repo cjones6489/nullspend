@@ -1,11 +1,11 @@
 ---
-description: Core project context and implementation guardrails for AgentSeam
+description: Core project context and implementation guardrails for NullSpend
 alwaysApply: true
 ---
 
-# AgentSeam Core
+# NullSpend Core
 
-AgentSeam is the FinOps layer for AI agents — a transparent proxy that tracks
+NullSpend is the FinOps layer for AI agents — a transparent proxy that tracks
 costs and enforces budgets for LLM API calls and MCP tool invocations.
 
 ## The #1 Rule: Developer Simplicity

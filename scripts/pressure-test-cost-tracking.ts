@@ -1,5 +1,5 @@
 /**
- * Comprehensive pressure test for the AgentSeam cost-tracking pipeline.
+ * Comprehensive pressure test for the NullSpend cost-tracking pipeline.
  *
  * Tests:
  *  1. Multi-model live calls (gpt-4o-mini, gpt-4.1-nano, gpt-4o, o4-mini)
@@ -473,7 +473,7 @@ async function testCachedTokens(ctx: TestContext) {
 
   const longPrompt =
     "You are a helpful assistant. " +
-    "This is a test of the AgentSeam cost tracking system. ".repeat(20) +
+    "This is a test of the NullSpend cost tracking system. ".repeat(20) +
     "What is 2 + 2?";
 
   console.log("  Call 1 (cold)...");
@@ -814,7 +814,7 @@ async function main() {
 
   const apiKey = existingKeys[0];
   console.log("╔══════════════════════════════════════════════════╗");
-  console.log("║   AgentSeam Cost-Tracking Pressure Test Suite    ║");
+  console.log("║   NullSpend Cost-Tracking Pressure Test Suite    ║");
   console.log("╚══════════════════════════════════════════════════╝");
   console.log(`API Key: "${apiKey.name}" (${apiKey.id.slice(0, 8)}...)`);
   console.log(`User: ${apiKey.userId}`);

@@ -9,7 +9,7 @@ import { extractModelFromBody, extractAttribution } from "../lib/request-utils.j
 import { createAnthropicSSEParser } from "../lib/anthropic-sse-parser.js";
 import { calculateAnthropicCost } from "../lib/anthropic-cost-calculator.js";
 import type { AnthropicCacheCreationDetail } from "../lib/anthropic-types.js";
-import { isKnownModel } from "@agentseam/cost-engine";
+import { isKnownModel } from "@nullspend/cost-engine";
 import { logCostEvent } from "../lib/cost-logger.js";
 import { ANTHROPIC_BASE_URL } from "../lib/constants.js";
 import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
@@ -32,7 +32,7 @@ export async function handleAnthropicMessages(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const isAuthed = await validatePlatformKey(
-    request.headers.get("x-agentseam-auth"),
+    request.headers.get("x-nullspend-auth"),
     env.PLATFORM_AUTH_KEY,
   );
   if (!isAuthed) return unauthorizedResponse();

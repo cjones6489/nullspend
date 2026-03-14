@@ -5,11 +5,11 @@ import {
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 
 function canUseDevelopmentFallback(): boolean {
-  return process.env.AGENTSEAM_DEV_MODE === "true";
+  return process.env.NULLSPEND_DEV_MODE === "true";
 }
 
 export function getDevActor(): string | undefined {
-  return process.env.AGENTSEAM_DEV_ACTOR;
+  return process.env.NULLSPEND_DEV_ACTOR;
 }
 
 export async function getCurrentUserId(): Promise<string | null> {
@@ -29,7 +29,7 @@ function tryDevFallback(warn?: boolean): string | undefined {
   if (!devActor) return undefined;
   if (warn) {
     console.warn(
-      "[AgentSeam] Using AGENTSEAM_DEV_ACTOR fallback — do not use in production.",
+      "[NullSpend] Using NULLSPEND_DEV_ACTOR fallback — do not use in production.",
     );
   }
   return devActor;

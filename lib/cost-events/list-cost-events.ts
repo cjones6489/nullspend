@@ -2,7 +2,7 @@ import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
 import { getDb } from "@/lib/db/client";
-import { apiKeys, costEvents } from "@agentseam/db";
+import { apiKeys, costEvents } from "@nullspend/db";
 
 interface ListCostEventsOptions {
   userId: string;

@@ -1,4 +1,4 @@
-# AgentSeam
+# NullSpend
 
 FinOps layer for AI agents — cost tracking, budget enforcement, and human-in-the-loop approval.
 
@@ -9,13 +9,13 @@ Research thoroughly, plan carefully, trust first, test often.
 ## Structure
 
 ```
-agentseam/                  # Next.js 16 dashboard (root)
-├── apps/proxy/             # Cloudflare Workers proxy (@agentseam/proxy)
-├── packages/db/            # Drizzle ORM schema (@agentseam/db)
-├── packages/sdk/           # Client SDK (@agentseam/sdk)
-├── packages/cost-engine/   # Cost calculation (@agentseam/cost-engine)
-├── packages/mcp-server/    # MCP server (@agentseam/mcp-server)
-├── packages/mcp-proxy/     # MCP proxy (@agentseam/mcp-proxy)
+nullspend/                  # Next.js 16 dashboard (root)
+├── apps/proxy/             # Cloudflare Workers proxy (@nullspend/proxy)
+├── packages/db/            # Drizzle ORM schema (@nullspend/db)
+├── packages/sdk/           # Client SDK (@nullspend/sdk)
+├── packages/cost-engine/   # Cost calculation (@nullspend/cost-engine)
+├── packages/mcp-server/    # MCP server (@nullspend/mcp-server)
+├── packages/mcp-proxy/     # MCP proxy (@nullspend/mcp-proxy)
 ├── proxy.ts                # Next.js 16 proxy (replaces middleware.ts)
 └── drizzle/                # SQL migrations
 ```
@@ -30,7 +30,7 @@ pnpm proxy:dev        # Proxy dev server (wrangler)
 pnpm typecheck        # TypeScript check
 pnpm lint             # ESLint
 pnpm db:generate      # Generate Drizzle migration
-pnpm db:build         # Build @agentseam/db (required before next build)
+pnpm db:build         # Build @nullspend/db (required before next build)
 ```
 
 IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both when changes span root and proxy.

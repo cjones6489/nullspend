@@ -1,4 +1,4 @@
-import type { AgentSeam } from "./client.js";
+import type { NullSpend } from "./client.js";
 import type { ActionRecord } from "./types.js";
 import { TimeoutError } from "./errors.js";
 
@@ -8,10 +8,10 @@ const DEFAULT_POLL_INTERVAL_MS = 3_000;
  * Poll an action until it leaves "pending" status, respecting both
  * a deadline and an external abort signal.
  *
- * Shared by `@agentseam/mcp-server` and `@agentseam/mcp-proxy`.
+ * Shared by `@nullspend/mcp-server` and `@nullspend/mcp-proxy`.
  */
 export async function waitWithAbort(
-  sdk: AgentSeam,
+  sdk: NullSpend,
   actionId: string,
   timeoutMs: number,
   signal: AbortSignal,

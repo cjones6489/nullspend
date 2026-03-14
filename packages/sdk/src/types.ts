@@ -33,7 +33,7 @@ export const TERMINAL_STATUSES: ReadonlySet<ActionStatus> = new Set([
 // Client configuration
 // ---------------------------------------------------------------------------
 
-export interface AgentSeamConfig {
+export interface NullSpendConfig {
   baseUrl: string;
   apiKey: string;
   /** Custom fetch implementation (defaults to globalThis.fetch). */
@@ -114,7 +114,7 @@ export interface ProposeAndWaitOptions<T> {
   expiresInSeconds?: number | null;
   /**
    * Called after the action is approved. Receives context with `actionId` which
-   * can be sent as the `x-agentseam-action-id` header when calling the proxy
+   * can be sent as the `x-nullspend-action-id` header when calling the proxy
    * to correlate cost events with this action.
    */
   execute: (context?: ExecuteContext) => T | Promise<T>;

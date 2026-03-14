@@ -1,5 +1,5 @@
 ---
-description: Testing standards for AgentSeam proxy, dashboard, and shared packages
+description: Testing standards for NullSpend proxy, dashboard, and shared packages
 globs: "**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx"
 alwaysApply: false
 ---

@@ -1,4 +1,4 @@
-# AgentSeam Codebase Audit v2 — Comprehensive Report
+# NullSpend Codebase Audit v2 — Comprehensive Report
 
 **Date:** March 13, 2026
 **Method:** 12-agent parallel audit (6 foreground + 6 background)
@@ -60,11 +60,11 @@ The schema defines `actionId` with FK to `actions.id` and an index, but NO migra
 **Agents:** Dependency/Supply Chain
 **Files:** `packages/sdk/package.json`, `packages/mcp-server/package.json`, `packages/mcp-proxy/package.json`
 
-These packages lack `"private": true`. If the `@agentseam` npm scope is not claimed, an attacker could publish malicious packages under these names. `@agentseam/db` and `@agentseam/cost-engine` correctly have it.
+These packages lack `"private": true`. If the `@nullspend` npm scope is not claimed, an attacker could publish malicious packages under these names. `@nullspend/db` and `@nullspend/cost-engine` correctly have it.
 
 **Remediation:**
 1. Add `"private": true` to all three immediately
-2. Verify `@agentseam` npm scope is claimed, or create `.npmrc` with a dummy registry
+2. Verify `@nullspend` npm scope is claimed, or create `.npmrc` with a dummy registry
 
 ---
 
@@ -445,7 +445,7 @@ No CHECK constraint. Zero budget permanently blocks; negative breaks arithmetic.
 **Agents:** Proxy Worker (x2)
 **Files:** `apps/proxy/src/routes/openai.ts:29-31`, `apps/proxy/src/routes/anthropic.ts:41-43`
 
-`x-agentseam-user-id`, `x-agentseam-key-id` used in Redis keys and DB writes without length/format validation. Any authenticated caller can impersonate any identity.
+`x-nullspend-user-id`, `x-nullspend-key-id` used in Redis keys and DB writes without length/format validation. Any authenticated caller can impersonate any identity.
 
 **Remediation:** Validate format (UUID, max length). Document as admin-level trust boundary.
 
@@ -456,7 +456,7 @@ No CHECK constraint. Zero budget permanently blocks; negative breaks arithmetic.
 **Agent:** Auth/Security (background)
 **Files:** `lib/auth/api-key.ts:42`, `lib/auth/session.ts:8`
 
-Misconfigured staging with `NODE_ENV=development` enables auth bypass. `instrumentation.ts` only checks `AGENTSEAM_DEV_MODE`.
+Misconfigured staging with `NODE_ENV=development` enables auth bypass. `instrumentation.ts` only checks `NULLSPEND_DEV_MODE`.
 
 **Remediation:** Remove `NODE_ENV` fallback in future release; add startup check for `NODE_ENV=development` in production.
 
@@ -498,7 +498,7 @@ Misconfigured staging with `NODE_ENV=development` enables auth bypass. `instrume
 
 ---
 
-### L15 — `@agentseam/mcp-proxy` lists unused `zod` dependency [DONE]
+### L15 — `@nullspend/mcp-proxy` lists unused `zod` dependency [DONE]
 
 **File:** `packages/mcp-proxy/package.json:34`
 
@@ -526,7 +526,7 @@ Misconfigured staging with `NODE_ENV=development` enables auth bypass. `instrume
 
 **Agent:** Dependency/Supply Chain
 
-**Remediation:** Create `.npmrc` pinning `@agentseam` scope.
+**Remediation:** Create `.npmrc` pinning `@nullspend` scope.
 
 ---
 
@@ -550,7 +550,7 @@ Misconfigured staging with `NODE_ENV=development` enables auth bypass. `instrume
 
 **Agent:** Architecture
 
-**Remediation:** Add per-API-key rate limiting using `x-agentseam-key-id` after auth.
+**Remediation:** Add per-API-key rate limiting using `x-nullspend-key-id` after auth.
 
 ---
 

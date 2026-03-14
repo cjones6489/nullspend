@@ -317,7 +317,7 @@ if (bodyText.length > MAX_BODY_SIZE) {
 
 ```jsonc
 // wrangler.jsonc
-{ "queues": { "producers": [{ "binding": "COST_QUEUE", "queue": "agentseam-cost-events" }] } }
+{ "queues": { "producers": [{ "binding": "COST_QUEUE", "queue": "nullspend-cost-events" }] } }
 ```
 
 ```ts
@@ -476,7 +476,7 @@ import { Redis } from "@upstash/redis";
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
   limiter: Ratelimit.slidingWindow(60, "1 m"),
-  prefix: "agentseam:ratelimit",
+  prefix: "nullspend:ratelimit",
   ephemeralCache: new Map(), // reduces Redis calls for repeat offenders
 });
 

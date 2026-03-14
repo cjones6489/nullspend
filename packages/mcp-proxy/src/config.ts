@@ -1,6 +1,6 @@
 export interface ProxyConfig {
-  agentseamUrl: string;
-  agentseamApiKey: string;
+  nullspendUrl: string;
+  nullspendApiKey: string;
   agentId: string;
   upstreamCommand: string;
   upstreamArgs: string[];
@@ -14,13 +14,13 @@ const DEFAULT_AGENT_ID = "mcp-proxy";
 const DEFAULT_APPROVAL_TIMEOUT_SECONDS = 300;
 
 export function loadConfig(): ProxyConfig {
-  const agentseamUrl = process.env.AGENTSEAM_URL;
-  const agentseamApiKey = process.env.AGENTSEAM_API_KEY;
+  const nullspendUrl = process.env.NULLSPEND_URL;
+  const nullspendApiKey = process.env.NULLSPEND_API_KEY;
   const upstreamCommand = process.env.UPSTREAM_COMMAND;
 
   const missing: string[] = [];
-  if (!agentseamUrl) missing.push("AGENTSEAM_URL");
-  if (!agentseamApiKey) missing.push("AGENTSEAM_API_KEY");
+  if (!nullspendUrl) missing.push("NULLSPEND_URL");
+  if (!nullspendApiKey) missing.push("NULLSPEND_API_KEY");
   if (!upstreamCommand) missing.push("UPSTREAM_COMMAND");
 
   if (missing.length > 0) {
@@ -47,9 +47,9 @@ export function loadConfig(): ProxyConfig {
   }
 
   return {
-    agentseamUrl: agentseamUrl!,
-    agentseamApiKey: agentseamApiKey!,
-    agentId: process.env.AGENTSEAM_AGENT_ID ?? DEFAULT_AGENT_ID,
+    nullspendUrl: nullspendUrl!,
+    nullspendApiKey: nullspendApiKey!,
+    agentId: process.env.NULLSPEND_AGENT_ID ?? DEFAULT_AGENT_ID,
     upstreamCommand: upstreamCommand!,
     upstreamArgs,
     upstreamEnv,

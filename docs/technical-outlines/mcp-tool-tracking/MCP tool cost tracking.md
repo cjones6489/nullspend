@@ -1,6 +1,6 @@
 # MCP tool cost tracking: complete implementation reference
 
-**A local Node.js stdio proxy can intercept every MCP `tools/call` request, measure its duration, enforce budget limits via a Cloudflare Workers backend, and report cost events — all with under 100ms of added latency on warm connections.** This reference covers the full protocol surface, SDK patterns, proxy architecture, HTTP communication design, budget enforcement algorithms, client configuration, and production hardening needed to implement "Option C" in AgentSeam. The MCP TypeScript SDK (v1.27.1) provides all necessary primitives through its low-level `Server` and `Client` classes, though it lacks native middleware support (open issue #1238), requiring the dual Server+Client proxy architecture documented below.
+**A local Node.js stdio proxy can intercept every MCP `tools/call` request, measure its duration, enforce budget limits via a Cloudflare Workers backend, and report cost events — all with under 100ms of added latency on warm connections.** This reference covers the full protocol surface, SDK patterns, proxy architecture, HTTP communication design, budget enforcement algorithms, client configuration, and production hardening needed to implement "Option C" in NullSpend. The MCP TypeScript SDK (v1.27.1) provides all necessary primitives through its low-level `Server` and `Client` classes, though it lacks native middleware support (open issue #1238), requiring the dual Server+Client proxy architecture documented below.
 
 ---
 
@@ -195,14 +195,14 @@ const upstreamTransport = new StdioClientTransport({
   env: { /* forwarded env vars */ },
 });
 const upstreamClient = new Client(
-  { name: "agentseam-proxy", version: "1.0.0" },
+  { name: "nullspend-proxy", version: "1.0.0" },
   { capabilities: {} }
 );
 await upstreamClient.connect(upstreamTransport);
 
 // DOWNSTREAM: Server faces Claude/Cursor/Claude Code
 const server = new Server(
-  { name: "agentseam-proxy", version: "1.0.0" },
+  { name: "nullspend-proxy", version: "1.0.0" },
   { capabilities: { tools: { listChanged: true } } }
 );
 
@@ -258,7 +258,7 @@ interface Transport {
 
 ```typescript
 const shutdown = async () => {
-  console.error("[agentseam] shutting down...");
+  console.error("[nullspend] shutting down...");
   await upstreamClient.close();
   await server.close();
   process.exit(0);
@@ -275,7 +275,7 @@ process.stdin.on("end", shutdown);
 
 ## 3. Existing proxy implementations and lessons learned
 
-Research identified **15+ MCP proxy projects** across TypeScript, Python, Go, and Rust. The most relevant patterns for AgentSeam:
+Research identified **15+ MCP proxy projects** across TypeScript, Python, Go, and Rust. The most relevant patterns for NullSpend:
 
 **punkpeye/mcp-proxy** (TypeScript, 239 stars): The most popular TypeScript MCP proxy. Provides `proxyServer({ server, client, capabilities })` for transparent forwarding and `tapTransport()` for message observation. Operates at the transport level — does not provide tool-call-level middleware hooks.
 
@@ -285,9 +285,9 @@ Research identified **15+ MCP proxy projects** across TypeScript, Python, Go, an
 
 **agentgateway** (Rust, Linux Foundation): Enterprise-grade with built-in OpenTelemetry observability, RBAC, and structured logging with attributes like `mcp.method`, `mcp.tool.name`, `mcp.session.id`, `mcp.duration_ms`.
 
-**mcpwall** (TypeScript): The closest analogy to AgentSeam's wrapping pattern. Uses `npx mcpwall -- <original command>` and provides `mcpwall init` for auto-detecting and wrapping existing MCP server configs. YAML-defined rules for blocking/allowing tool calls.
+**mcpwall** (TypeScript): The closest analogy to NullSpend's wrapping pattern. Uses `npx mcpwall -- <original command>` and provides `mcpwall init` for auto-detecting and wrapping existing MCP server configs. YAML-defined rules for blocking/allowing tool calls.
 
-**Key lesson from all proxy implementations**: No existing TypeScript MCP proxy combines tool-call-level interception with timing measurement and external cost reporting. AgentSeam would be the first in this niche. The critical implementation patterns are: (1) use the low-level `Server` class with `setRequestHandler`, not `McpServer`; (2) track in-flight requests via `Map<requestId, metadata>`; (3) relay `notifications/progress` and `notifications/cancelled` bidirectionally; (4) handle `notifications/tools/list_changed` to invalidate cached tool lists.
+**Key lesson from all proxy implementations**: No existing TypeScript MCP proxy combines tool-call-level interception with timing measurement and external cost reporting. NullSpend would be the first in this niche. The critical implementation patterns are: (1) use the low-level `Server` class with `setRequestHandler`, not `McpServer`; (2) track in-flight requests via `Map<requestId, metadata>`; (3) relay `notifications/progress` and `notifications/cancelled` bidirectionally; (4) handle `notifications/tools/list_changed` to invalidate cached tool lists.
 
 ---
 
@@ -334,7 +334,7 @@ interface ToolCallEvent {
 
 ### How observability platforms track tool costs
 
-**Langfuse** tracks tools as first-class observation types with `startObservation("name", input, { asType: "tool" })` but does not natively support tool cost — only LLM token-based costs. This is a gap AgentSeam fills. **LangSmith** has the most explicit support, categorizing costs into "Input" (prompt tokens), "Output" (response tokens), and **"Other"** (tool calls, retrieval) — with `usage_metadata.total_cost` on any run type including tools. **Helicone** supports cost-based rate limiting via headers: `Helicone-RateLimit-Policy: "100;w=3600;u=cost;s=user"`.
+**Langfuse** tracks tools as first-class observation types with `startObservation("name", input, { asType: "tool" })` but does not natively support tool cost — only LLM token-based costs. This is a gap NullSpend fills. **LangSmith** has the most explicit support, categorizing costs into "Input" (prompt tokens), "Output" (response tokens), and **"Other"** (tool calls, retrieval) — with `usage_metadata.total_cost` on any run type including tools. **Helicone** supports cost-based rate limiting via headers: `Helicone-RateLimit-Policy: "100;w=3600;u=cost;s=user"`.
 
 All platforms use async batched export — Langfuse configures `flushAt` (events per batch) and `flushInterval` (ms). None block the main execution path for telemetry.
 
@@ -369,7 +369,7 @@ class EventBatcher {
     if (this.queue.length === 0) return;
     const batch = this.queue.splice(0, this.maxBatch);
     const p = this.sendBatch(batch).catch(err => {
-      console.error("[agentseam] flush failed:", err.message);
+      console.error("[nullspend] flush failed:", err.message);
       if (this.queue.length < 4096) this.queue.unshift(...batch);
     });
     this.inflight.add(p);
@@ -488,7 +488,7 @@ return remaining - amount
 ```typescript
 import { Pool } from "undici";
 
-const pool = new Pool(process.env.AGENTSEAM_BACKEND_URL!, {
+const pool = new Pool(process.env.NULLSPEND_BACKEND_URL!, {
   connections: 5,
   pipelining: 1,           // No pipelining for POST (non-idempotent)
   keepAliveTimeout: 30_000,
@@ -502,7 +502,7 @@ async function postJSON<T>(path: string, body: unknown, timeoutMs = 3000): Promi
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "authorization": `Bearer ${process.env.AGENTSEAM_API_KEY}`,
+      "authorization": `Bearer ${process.env.NULLSPEND_API_KEY}`,
     },
     body: JSON.stringify(body),
     headersTimeout: timeoutMs,
@@ -679,17 +679,17 @@ The established convention (used by mcpwall and mcp-proxy) is to **replace the c
 }
 ```
 
-**After** (wrapped with AgentSeam):
+**After** (wrapped with NullSpend):
 ```json
 {
   "mcpServers": {
     "github": {
       "command": "npx",
-      "args": ["-y", "agentseam", "--", "npx", "-y", "@modelcontextprotocol/server-github"],
+      "args": ["-y", "nullspend", "--", "npx", "-y", "@modelcontextprotocol/server-github"],
       "env": {
         "GITHUB_TOKEN": "ghp_xxx",
-        "AGENTSEAM_API_KEY": "as_xxx",
-        "AGENTSEAM_BACKEND_URL": "https://api.agentseam.com"
+        "NULLSPEND_API_KEY": "as_xxx",
+        "NULLSPEND_BACKEND_URL": "https://api.nullspend.com"
       }
     }
   }
@@ -701,23 +701,23 @@ The established convention (used by mcpwall and mcp-proxy) is to **replace the c
 Following mcpwall's proven pattern:
 
 ```bash
-npx agentseam init                          # Auto-detect clients, wrap all servers
-npx agentseam init --api-key as_xxx         # With pre-configured key
-npx agentseam wrap github --client cursor   # Wrap specific server
-npx agentseam unwrap github                 # Remove proxy wrapping
-npx agentseam status                        # Check current state
+npx nullspend init                          # Auto-detect clients, wrap all servers
+npx nullspend init --api-key as_xxx         # With pre-configured key
+npx nullspend wrap github --client cursor   # Wrap specific server
+npx nullspend unwrap github                 # Remove proxy wrapping
+npx nullspend status                        # Check current state
 ```
 
-The `init` command should: (1) detect installed MCP clients by checking known config paths, (2) read existing `mcpServers` entries, (3) prompt user to select servers to wrap, (4) modify configs (keeping backups), (5) merge agentseam env vars without overwriting existing ones, (6) print restart instructions.
+The `init` command should: (1) detect installed MCP clients by checking known config paths, (2) read existing `mcpServers` entries, (3) prompt user to select servers to wrap, (4) modify configs (keeping backups), (5) merge nullspend env vars without overwriting existing ones, (6) print restart instructions.
 
 ### Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `AGENTSEAM_API_KEY` | Yes | Bearer token for CF Workers backend |
-| `AGENTSEAM_BACKEND_URL` | Yes | Backend URL (e.g., `https://api.agentseam.com`) |
-| `AGENTSEAM_SESSION_ID` | No | Group tool calls into a session |
-| `AGENTSEAM_DEBUG` | No | Enable stderr debug logging |
+| `NULLSPEND_API_KEY` | Yes | Bearer token for CF Workers backend |
+| `NULLSPEND_BACKEND_URL` | Yes | Backend URL (e.g., `https://api.nullspend.com`) |
+| `NULLSPEND_SESSION_ID` | No | Group tool calls into a session |
+| `NULLSPEND_DEBUG` | No | Enable stderr debug logging |
 
 Claude Code's `.mcp.json` supports `${VAR}` syntax for referencing shell environment variables, keeping secrets out of version control. Claude Desktop requires values inline in the JSON.
 
@@ -778,10 +778,10 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
 const mockBackend = setupServer(
-  http.post("https://api.agentseam.com/api/v1/budget/check", () =>
+  http.post("https://api.nullspend.com/api/v1/budget/check", () =>
     HttpResponse.json({ allowed: true, remainingBudget: 4.50, totalBudget: 5.00, costSoFar: 0.50 })
   ),
-  http.post("https://api.agentseam.com/api/v1/events", () =>
+  http.post("https://api.nullspend.com/api/v1/events", () =>
     HttpResponse.json({ accepted: 1 })
   )
 );
@@ -876,6 +876,6 @@ Adding a synchronous HTTP round-trip for budget enforcement adds **40–100ms on
 
 ## Conclusion
 
-The implementation path is clear: a dual `Server`+`Client` architecture using the low-level SDK classes provides full interception of `tools/call` requests. The proxy measures duration with `performance.now()`, enforces budgets locally via a synchronous reservation pattern, and reports cost events asynchronously through a bounded in-memory queue flushed to CF Workers. The budget check adds **40–100ms** of latency on warm connections, mitigated by circuit breaking and local cache fallback. The `npx agentseam -- <original command>` wrapping pattern and `agentseam init` CLI align with established ecosystem conventions from mcpwall and mcp-proxy.
+The implementation path is clear: a dual `Server`+`Client` architecture using the low-level SDK classes provides full interception of `tools/call` requests. The proxy measures duration with `performance.now()`, enforces budgets locally via a synchronous reservation pattern, and reports cost events asynchronously through a bounded in-memory queue flushed to CF Workers. The budget check adds **40–100ms** of latency on warm connections, mitigated by circuit breaking and local cache fallback. The `npx nullspend -- <original command>` wrapping pattern and `nullspend init` CLI align with established ecosystem conventions from mcpwall and mcp-proxy.
 
 Three architectural insights emerged that weren't obvious before research: (1) Node.js single-threading makes local budget enforcement naturally atomic — no distributed locking needed for the common case; (2) the tool's `annotations.openWorldHint` field enables automatic cost tier classification without manual configuration; and (3) CF Workers' `ctx.waitUntil()` cleanly separates the hot path (Redis budget check → immediate response) from durable storage (async Postgres write), keeping budget check latency under 50ms of CPU time on the Worker side.

@@ -310,7 +310,7 @@ to Postgres (via Hyperdrive). No cross-service API calls needed between
 them.
 
 **Authentication concern:** The dashboard uses Supabase Auth. The proxy
-uses API key auth (`X-AgentSeam-Auth`). These are two different auth systems
+uses API key auth (`X-NullSpend-Auth`). These are two different auth systems
 accessing the same DB. This is fine — the dashboard manages keys, the proxy
 validates them. Same pattern as the current codebase.
 

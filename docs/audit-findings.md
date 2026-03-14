@@ -1,4 +1,4 @@
-# AgentSeam Security & Quality Audit Findings
+# NullSpend Security & Quality Audit Findings
 
 **Date:** March 2026
 **Method:** 6-agent parallel audit (Security, Database, API Routes, Architecture, Code Quality, Test Coverage)
@@ -69,14 +69,14 @@ No RLS policies exist in any migration or schema file. If tables are accessed wi
 **Agent:** API Routes, Security
 **Files:** `lib/auth/api-key.ts`, `lib/auth/session.ts`
 
-`resolveDevFallbackApiKeyUserId()` crashes in production if `AGENTSEAM_DEV_ACTOR` is unset. The `NODE_ENV` check alone is unreliable. All API-key-authenticated routes using `identity?.userId ?? resolveDevFallbackApiKeyUserId()` share this fragility.
+`resolveDevFallbackApiKeyUserId()` crashes in production if `NULLSPEND_DEV_ACTOR` is unset. The `NODE_ENV` check alone is unreliable. All API-key-authenticated routes using `identity?.userId ?? resolveDevFallbackApiKeyUserId()` share this fragility.
 
 **Fix applied:**
-- `AGENTSEAM_DEV_MODE=true` required as explicit opt-in (M13) — `NODE_ENV` alone is insufficient
+- `NULLSPEND_DEV_MODE=true` required as explicit opt-in (M13) — `NODE_ENV` alone is insufficient
 - `instrumentation.ts` warns at startup when dev-only env vars are set in production
-- `AGENTSEAM_STRICT_BOOT=true` hard-fails startup if dev vars detected in production
+- `NULLSPEND_STRICT_BOOT=true` hard-fails startup if dev vars detected in production
 - The throw in `resolveDevFallbackApiKeyUserId()` is correct behavior — it returns a clear `ApiKeyError` with message "Managed API keys are required"
-- Dev fallback requires BOTH `canUseDevelopmentFallback()` AND `AGENTSEAM_DEV_ACTOR` to be set — double gate prevents accidental activation
+- Dev fallback requires BOTH `canUseDevelopmentFallback()` AND `NULLSPEND_DEV_ACTOR` to be set — double gate prevents accidental activation
 
 ---
 
@@ -178,7 +178,7 @@ Any model string is forwarded to OpenAI. Unknown models get `costMicrodollars = 
 **Agent:** Security, API Routes, Code Quality
 **Files:** `app/api/slack/callback/route.ts`
 
-Any Slack workspace member who can see the channel can approve or reject any action. There is no mapping between Slack user IDs and AgentSeam action owners.
+Any Slack workspace member who can see the channel can approve or reject any action. There is no mapping between Slack user IDs and NullSpend action owners.
 
 **Remediation:**
 1. Store the Slack user ID of the action owner when sending the notification
@@ -240,8 +240,8 @@ No CSP header existed. Research confirmed `proxy.ts` is the correct Next.js 16 c
 Each file independently defines identical type unions. No single source of truth — will silently drift as types are added or removed.
 
 **Remediation:**
-1. Export canonical types from `@agentseam/db` (they already exist there)
-2. Re-export from `@agentseam/sdk` for external consumers
+1. Export canonical types from `@nullspend/db` (they already exist there)
+2. Re-export from `@nullspend/sdk` for external consumers
 3. Remove duplicate definitions in `lib/utils/status.ts`
 4. Add a lint rule or test that verifies type consistency
 
@@ -307,12 +307,12 @@ Root `pnpm test` runs `vitest run` which excludes `packages/**` and `apps/**`. N
 
 ---
 
-### H16 — `@agentseam/shared` is completely dead code [DONE]
+### H16 — `@nullspend/shared` is completely dead code [DONE]
 
 **Agent:** Architecture, Code Quality
 **Files:** `packages/shared/`
 
-Exports types (`EntityType`, `BudgetPolicy`, `BudgetRecord`, `CostEventRecord`) but nothing imports from it. Never listed as a dependency in any `package.json`. Duplicates `@agentseam/db` inferred types.
+Exports types (`EntityType`, `BudgetPolicy`, `BudgetRecord`, `CostEventRecord`) but nothing imports from it. Never listed as a dependency in any `package.json`. Duplicates `@nullspend/db` inferred types.
 
 **Remediation:**
 1. Delete `packages/shared/` entirely, or
@@ -458,7 +458,7 @@ Identical utility functions in two packages.
 
 **Fix applied:**
 - Extracted `waitWithAbort()` and `interruptibleSleep()` to `packages/sdk/src/polling.ts`
-- Exported from `@agentseam/sdk` — both packages already depend on it
+- Exported from `@nullspend/sdk` — both packages already depend on it
 - Removed duplicate implementations from `mcp-server/tools.ts` and `mcp-proxy/gate.ts`
 - Parameterized abort error message (was "Server shutting down" / "Proxy shutting down", now generic "Aborted")
 
@@ -485,9 +485,9 @@ Identical utility functions in two packages.
 Multiple auth paths use `NODE_ENV === "development"` to enable fallback auth. Misconfigured production could disable all auth.
 
 **Fix applied:**
-- Added `AGENTSEAM_DEV_MODE=true` as explicit opt-in for dev fallback auth
-- Both `api-key.ts` and `session.ts` now check `AGENTSEAM_DEV_MODE === "true" || NODE_ENV === "development"` (backwards compat)
-- `instrumentation.ts` warns if `AGENTSEAM_DEV_MODE` is set in production
+- Added `NULLSPEND_DEV_MODE=true` as explicit opt-in for dev fallback auth
+- Both `api-key.ts` and `session.ts` now check `NULLSPEND_DEV_MODE === "true" || NODE_ENV === "development"` (backwards compat)
+- `instrumentation.ts` warns if `NULLSPEND_DEV_MODE` is set in production
 - `.env.example` documents the new variable
 
 ---
@@ -497,10 +497,10 @@ Multiple auth paths use `NODE_ENV === "development"` to enable fallback auth. Mi
 **Agent:** Architecture
 **Files:** `next.config.ts`
 
-No `transpilePackages: ["@agentseam/db"]` or build script ordering. DB package must be pre-built before Next.js build.
+No `transpilePackages: ["@nullspend/db"]` or build script ordering. DB package must be pre-built before Next.js build.
 
 **Fix applied:**
-- Added `transpilePackages: ["@agentseam/db"]` to `next.config.ts`
+- Added `transpilePackages: ["@nullspend/db"]` to `next.config.ts`
 
 ---
 
@@ -774,7 +774,7 @@ Sanitized: `handleRouteError` now maps issues to `{ path, message }` only, strip
 No correlation ID between proxy, API routes, and DB queries. Accepted — infrastructure-level concern. The proxy already tracks `requestId` per cost event (from OpenAI's `x-request-id` header). Full cross-stack tracing can be added when observability tooling (e.g., OpenTelemetry) is integrated.
 
 ### L17 — No CORS headers on API routes [DONE]
-May be needed if SDK or external clients call the API directly. Not needed — dashboard routes are same-origin, and the SDK/agents authenticate via API key header (`x-agentseam-key`) from server-side code, not browser-based cross-origin requests. CORS can be added if a browser-based SDK is introduced.
+May be needed if SDK or external clients call the API directly. Not needed — dashboard routes are same-origin, and the SDK/agents authenticate via API key header (`x-nullspend-key`) from server-side code, not browser-based cross-origin requests. CORS can be added if a browser-based SDK is introduced.
 
 ### L18 — Missing Content-Security-Policy header [DONE]
 Fixed via nonce-based CSP in `proxy.ts`.
@@ -783,7 +783,7 @@ Fixed via nonce-based CSP in `proxy.ts`.
 By design — the MCP proxy runs user-configured commands from environment variables. Trust boundary is documented in the MCP proxy README. The operator controls their own env vars.
 
 ### L20 — No audit log for API key creation/revocation [DONE]
-Added `console.info` audit logging for key creation (`userId`, `keyId`, `name`) and revocation (`userId`, `keyId`) using the established `[AgentSeam]` prefix pattern. Structured logging can be upgraded to a dedicated audit table when needed.
+Added `console.info` audit logging for key creation (`userId`, `keyId`, `name`) and revocation (`userId`, `keyId`) using the established `[NullSpend]` prefix pattern. Structured logging can be upgraded to a dedicated audit table when needed.
 
 ### L21 — Redundant `conditions.length > 0` check in `listActions` [DONE]
 Removed — `conditions` always has at least the `ownerUserId` filter.
@@ -810,7 +810,7 @@ Dashboard error boundary now shows generic "An unexpected error occurred" instea
 Removed `content-type` from `UPSTREAM_FORWARD_HEADERS` — it was always overwritten to `application/json`.
 
 ### L27 — `assertApiKey()` function is dead code [DONE]
-Removed from `lib/auth/api-key.ts`. Test file updated to cover `AGENTSEAM_DEV_MODE` fallback instead.
+Removed from `lib/auth/api-key.ts`. Test file updated to cover `NULLSPEND_DEV_MODE` fallback instead.
 
 ### L28 — `isTerminalActionStatus()` and `TERMINAL_ACTION_STATUSES` unused [DONE]
 Removed from `lib/utils/status.ts`.
@@ -876,7 +876,7 @@ Smoke tests exist but are manual-only. Accepted — smoke tests require a runnin
 - **H14**: Core action function tests
 - **H15**: `test:all` monorepo script
 - **H11**: Consolidate duplicate type definitions
-- **H16**: Remove dead `@agentseam/shared` package
+- **H16**: Remove dead `@nullspend/shared` package
 
 ### Phase 4 — Database Hardening
 - **M4**: Composite cursor pagination

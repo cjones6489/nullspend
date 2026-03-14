@@ -256,7 +256,7 @@ describe("End-to-end budget enforcement", () => {
   }, 60_000);
 
   it("requests without budget headers are not affected by budget enforcement", async () => {
-    // No X-AgentSeam-User-Id or X-AgentSeam-Key-Id means no budget lookup
+    // No X-NullSpend-User-Id or X-NullSpend-Key-Id means no budget lookup
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
       headers: authHeaders(), // no userId or keyId

@@ -1,4 +1,4 @@
-# AgentSeam
+# NullSpend
 
 **The FinOps layer for AI agents.** Track every dollar your agents spend on LLM
 tokens, enforce hard budget ceilings, and get the receipts to prove it.
@@ -19,7 +19,7 @@ Redis + YAML to self-host (LiteLLM), or just exited the market entirely
 OPENAI_BASE_URL=https://api.openai.com/v1
 
 # After
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 ```
 
 That's it. Your existing code, existing SDK, existing streaming — all works
@@ -33,7 +33,7 @@ Works the same for Anthropic:
 ANTHROPIC_BASE_URL=https://api.anthropic.com
 
 # After
-ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
+ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
 ```
 
 ## What you get
@@ -55,12 +55,12 @@ ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
 ```
 ┌──────────────────────────────────────────────────────────┐
 │                   Developer / Agent                       │
-│  Uses OpenAI/Anthropic SDK with base URL → AgentSeam     │
+│  Uses OpenAI/Anthropic SDK with base URL → NullSpend     │
 └────────────┬─────────────────────────────────────────────┘
              │ LLM API calls (unchanged)
              ▼
 ┌──────────────────────────────┐
-│  AgentSeam Proxy             │
+│  NullSpend Proxy             │
 │  (Cloudflare Workers)        │
 │  Stream → tee → log          │
 │  Budget check (Upstash Redis)│
@@ -82,11 +82,11 @@ ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
 
 ## Quickstart
 
-1. **Sign up** at [agentseam.com](https://agentseam.com) and create an API key
+1. **Sign up** at [nullspend.com](https://nullspend.com) and create an API key
    in Settings
 2. **Set two environment variables** in your agent:
    ```bash
-   OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+   OPENAI_BASE_URL=https://proxy.nullspend.com/v1
    OPENAI_API_KEY=sk-your-openai-key   # your real provider key, unchanged
    ```
 3. **Run your agent** — costs appear in the dashboard within seconds
@@ -105,7 +105,7 @@ for the metering, enforcement, and intelligence layer, never for the tokens.
 
 ## Competitive comparison
 
-| Feature | AgentSeam | Portkey | LiteLLM |
+| Feature | NullSpend | Portkey | LiteLLM |
 |---|---|---|---|
 | Setup | 1 env var | 1 env var | Docker + PG + Redis + YAML |
 | Budget enforcement | All tiers | Enterprise only | Self-hosted only |
@@ -123,9 +123,9 @@ lib/               Business logic, DB, auth, validations, cost engine
 packages/
   cost-engine/     Shared pricing data and cost calculation
   db/              Drizzle ORM schema and queries
-  sdk/             @agentseam/sdk — TypeScript client (approval layer)
-  mcp-server/      @agentseam/mcp-server — MCP server adapter
-  mcp-proxy/       @agentseam/mcp-proxy — MCP tool gating proxy
+  sdk/             @nullspend/sdk — TypeScript client (approval layer)
+  mcp-server/      @nullspend/mcp-server — MCP server adapter
+  mcp-proxy/       @nullspend/mcp-proxy — MCP tool gating proxy
 drizzle/           Schema migrations
 docs/              Architecture, roadmap, competitive analysis
 ```
@@ -135,8 +135,8 @@ docs/              Architecture, roadmap, competitive analysis
 Prerequisites: Node 18+, pnpm.
 
 ```bash
-git clone https://github.com/cjones6489/AgentSeam.git
-cd AgentSeam
+git clone https://github.com/cjones6489/NullSpend.git
+cd NullSpend
 pnpm install
 cp .env.example .env.local  # fill in credentials
 pnpm db:push                # push schema to Supabase

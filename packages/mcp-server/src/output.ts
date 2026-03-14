@@ -1,4 +1,4 @@
-import type { ActionRecord } from "@agentseam/sdk";
+import type { ActionRecord } from "@nullspend/sdk";
 
 export interface ToolResult {
   content: Array<{ type: "text"; text: string }>;

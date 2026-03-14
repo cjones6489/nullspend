@@ -1,5 +1,5 @@
 {
-  "name": "@agentseam/proxy",
+  "name": "@nullspend/proxy",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,8 +13,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@agentseam/cost-engine": "workspace:*",
-    "@agentseam/db": "workspace:*",
+    "@nullspend/cost-engine": "workspace:*",
+    "@nullspend/db": "workspace:*",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.34.3",
     "drizzle-orm": "^0.45.1",

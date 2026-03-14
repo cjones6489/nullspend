@@ -139,12 +139,12 @@ describe("buildPendingMessage", () => {
   });
 
   it("uses the provided dashboard URL for links", () => {
-    const msg = buildPendingMessage(makeAction(), "https://agentseam.dev");
+    const msg = buildPendingMessage(makeAction(), "https://nullspend.dev");
     const actionsBlock = narrowBlock<{
       elements: { url?: string }[];
     }>(msg.blocks[3]);
 
-    expect(actionsBlock.elements[2].url).toContain("https://agentseam.dev");
+    expect(actionsBlock.elements[2].url).toContain("https://nullspend.dev");
   });
 });
 
@@ -234,7 +234,7 @@ describe("buildTestMessage", () => {
   it("returns text and blocks", () => {
     const msg = buildTestMessage(DASHBOARD);
 
-    expect(msg.text).toBe("AgentSeam Slack integration is working!");
+    expect(msg.text).toBe("NullSpend Slack integration is working!");
     expect(msg.blocks).toHaveLength(1);
   });
 

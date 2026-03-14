@@ -86,7 +86,7 @@ async function main() {
         {
           role: "user",
           content:
-            "Say exactly: 'AgentSeam live cost tracking test successful.' Nothing else.",
+            "Say exactly: 'NullSpend live cost tracking test successful.' Nothing else.",
         },
       ],
       max_tokens: MAX_TOKENS,
@@ -111,7 +111,7 @@ async function main() {
   console.log(`Tokens — input: ${usage.prompt_tokens}, output: ${usage.completion_tokens}, total: ${usage.total_tokens}`);
 
   // --- Step 2: Calculate cost using our cost-engine ---
-  console.log("\n--- Step 2: Calculating cost via @agentseam/cost-engine ---");
+  console.log("\n--- Step 2: Calculating cost via @nullspend/cost-engine ---");
 
   const pricing = getModelPricing("openai", MODEL);
   if (!pricing) {

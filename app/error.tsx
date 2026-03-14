@@ -10,7 +10,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[AgentSeam] Unhandled error:", error);
+    console.error("[NullSpend] Unhandled error:", error);
   }, [error]);
 
   return (

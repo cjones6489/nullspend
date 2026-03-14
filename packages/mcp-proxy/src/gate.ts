@@ -1,4 +1,4 @@
-import { AgentSeam, TimeoutError, waitWithAbort } from "@agentseam/sdk";
+import { NullSpend, TimeoutError, waitWithAbort } from "@nullspend/sdk";
 import type { ProxyConfig } from "./config.js";
 
 export interface GateResult {
@@ -18,7 +18,7 @@ export function isToolGated(toolName: string, config: ProxyConfig): boolean {
 }
 
 export async function gateToolCall(
-  sdk: AgentSeam,
+  sdk: NullSpend,
   toolName: string,
   args: Record<string, unknown> | undefined,
   config: ProxyConfig,

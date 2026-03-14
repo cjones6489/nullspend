@@ -191,7 +191,7 @@ May 2025.
 | **Neon** | Free (100 compute-hours) → $19/mo (Scale Launch). | Most aggressive free tier. Scale-to-zero is the killer feature. |
 | **PlanetScale** | Had free tier → killed it Apr 2024 → $39/mo minimum. | **Cautionary tale.** Removing free tier caused developer exodus. |
 
-### Pricing Patterns for AgentSeam
+### Pricing Patterns for NullSpend
 
 1. **Generous free tier is non-negotiable.** PlanetScale proved the cost of removing one.
 2. **Price by the unit developers naturally grow** — proxied spend is our natural unit.
@@ -241,7 +241,7 @@ $49 matches Portkey but includes budget enforcement. Zero markup on tokens.
 
 ---
 
-## Strategic Implications for AgentSeam
+## Strategic Implications for NullSpend
 
 ### Immediate Actions (This Week)
 

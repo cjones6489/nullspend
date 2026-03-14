@@ -340,7 +340,7 @@ function EmptyKeys() {
       <div>
         <p className="text-sm font-medium text-foreground">No API keys</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Create a key to start using the AgentSeam SDK.
+          Create a key to start using the NullSpend SDK.
         </p>
       </div>
     </div>

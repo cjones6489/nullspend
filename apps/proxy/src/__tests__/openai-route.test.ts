@@ -35,7 +35,7 @@ const { mockIsKnownModel } = vi.hoisted(() => {
   const mockIsKnownModel = vi.fn().mockReturnValue(true);
   return { mockIsKnownModel };
 });
-vi.mock("@agentseam/cost-engine", () => ({
+vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: mockIsKnownModel,
 }));
 
@@ -50,7 +50,7 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-test-key",
-      "X-AgentSeam-Auth": "test-platform-key",
+      "X-NullSpend-Auth": "test-platform-key",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -122,7 +122,7 @@ describe("handleChatCompletions", () => {
   it("returns 401 when platform key is wrong", async () => {
     const request = makeRequest(
       { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
-      { "X-AgentSeam-Auth": "wrong-key" },
+      { "X-NullSpend-Auth": "wrong-key" },
     );
     const res = await handleChatCompletions(request, makeEnv(), {
       model: "gpt-4o-mini",
@@ -419,7 +419,7 @@ describe("handleChatCompletions", () => {
     await res.text();
   });
 
-  it("strips x-agentseam-auth header before sending to OpenAI", async () => {
+  it("strips x-nullspend-auth header before sending to OpenAI", async () => {
     let capturedHeaders: Headers | null = null;
 
     globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
@@ -437,7 +437,7 @@ describe("handleChatCompletions", () => {
     );
 
     expect(capturedHeaders).toBeTruthy();
-    expect(capturedHeaders!.get("x-agentseam-auth")).toBeNull();
+    expect(capturedHeaders!.get("x-nullspend-auth")).toBeNull();
   });
 
   it("streaming response includes anti-buffering headers", async () => {

@@ -29,7 +29,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -53,7 +53,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -78,7 +78,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: JSON.stringify({
         model: "not-a-real-model-xyz",
@@ -98,7 +98,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-AgentSeam-Auth": "wrong-key-here",
+        "X-NullSpend-Auth": "wrong-key-here",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -111,7 +111,7 @@ describe("OpenAI proxy smoke tests", () => {
     expect(body).toHaveProperty("error", "unauthorized");
   });
 
-  it("missing X-AgentSeam-Auth returns 401", async () => {
+  it("missing X-NullSpend-Auth returns 401", async () => {
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
       headers: {
@@ -132,7 +132,7 @@ describe("OpenAI proxy smoke tests", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: JSON.stringify({ model: "text-embedding-3-small", input: "test" }),
     });
@@ -147,7 +147,7 @@ describe("OpenAI proxy smoke tests", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: "{this is not valid json!!!",
     });

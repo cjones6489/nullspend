@@ -8,7 +8,7 @@ import {
 import { isActionExpired } from "@/lib/actions/expiration";
 import { assertActionTransition } from "@/lib/actions/transitions";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@agentseam/db";
+import { actions } from "@nullspend/db";
 import type { ActionStatus } from "@/lib/utils/status";
 
 export async function resolveAction(

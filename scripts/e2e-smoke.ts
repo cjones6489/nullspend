@@ -1,9 +1,9 @@
 /**
- * End-to-end smoke test for the AgentSeam approval lifecycle.
+ * End-to-end smoke test for the NullSpend approval lifecycle.
  *
  * Requires:
  *   - Dev server running at http://127.0.0.1:3000
- *   - DATABASE_URL, AGENTSEAM_API_KEY, AGENTSEAM_DEV_ACTOR in .env.local
+ *   - DATABASE_URL, NULLSPEND_API_KEY, NULLSPEND_DEV_ACTOR in .env.local
  *
  * Run: pnpm e2e
  */
@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postgres from "postgres";
-import { AgentSeam } from "@agentseam/sdk";
+import { NullSpend } from "@nullspend/sdk";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -48,20 +48,20 @@ function loadEnvLocal() {
 loadEnvLocal();
 
 const DATABASE_URL = process.env.DATABASE_URL;
-const API_KEY = process.env.AGENTSEAM_API_KEY;
-const DEV_ACTOR = process.env.AGENTSEAM_DEV_ACTOR;
-const BASE_URL = process.env.AGENTSEAM_BASE_URL ?? "http://127.0.0.1:3000";
+const API_KEY = process.env.NULLSPEND_API_KEY;
+const DEV_ACTOR = process.env.NULLSPEND_DEV_ACTOR;
+const BASE_URL = process.env.NULLSPEND_BASE_URL ?? "http://127.0.0.1:3000";
 
 if (!DATABASE_URL) {
   console.error("DATABASE_URL is not set.");
   process.exit(1);
 }
 if (!API_KEY) {
-  console.error("AGENTSEAM_API_KEY is not set.");
+  console.error("NULLSPEND_API_KEY is not set.");
   process.exit(1);
 }
 if (!DEV_ACTOR) {
-  console.error("AGENTSEAM_DEV_ACTOR is not set.");
+  console.error("NULLSPEND_DEV_ACTOR is not set.");
   process.exit(1);
 }
 
@@ -70,7 +70,7 @@ if (!DEV_ACTOR) {
 // ---------------------------------------------------------------------------
 
 const sql = postgres(DATABASE_URL, { prepare: false });
-const sdk = new AgentSeam({ baseUrl: BASE_URL, apiKey: API_KEY });
+const sdk = new NullSpend({ baseUrl: BASE_URL, apiKey: API_KEY });
 
 // ---------------------------------------------------------------------------
 // Direct DB helpers (bypass session auth)
@@ -316,7 +316,7 @@ async function testExecutionFailure() {
 // ---------------------------------------------------------------------------
 
 async function testInvalidApiKey() {
-  const badSdk = new AgentSeam({ baseUrl: BASE_URL, apiKey: "ask_bogus_key_12345" });
+  const badSdk = new NullSpend({ baseUrl: BASE_URL, apiKey: "ask_bogus_key_12345" });
 
   let threw = false;
   let statusCode: number | undefined;
@@ -1030,7 +1030,7 @@ async function testApproveAfterExpiration() {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("\n=== AgentSeam E2E Smoke Test ===\n");
+  console.log("\n=== NullSpend E2E Smoke Test ===\n");
   console.log(`  Server:  ${BASE_URL}`);
   console.log(`  Actor:   ${DEV_ACTOR}`);
   console.log("");
@@ -1038,7 +1038,7 @@ async function main() {
   // Verify the server is reachable
   try {
     const res = await fetch(`${BASE_URL}/api/actions?limit=1`, {
-      headers: { "x-agentseam-key": API_KEY! },
+      headers: { "x-nullspend-key": API_KEY! },
     });
     if (!res.ok) {
       console.error(`Server returned ${res.status}. Is the dev server running?`);

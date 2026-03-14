@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import { apiKeys, costEvents } from "@agentseam/db";
+import { apiKeys, costEvents } from "@nullspend/db";
 
 function baseConditions(userId: string, cutoffDate: Date) {
   return and(

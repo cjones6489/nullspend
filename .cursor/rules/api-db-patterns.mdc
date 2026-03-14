@@ -1,5 +1,5 @@
 ---
-description: API, cost tracking, budget enforcement, and database patterns for AgentSeam
+description: API, cost tracking, budget enforcement, and database patterns for NullSpend
 globs: "app/api/**/*.ts,lib/**/*.ts,drizzle/**/*.ts,apps/proxy/src/**/*.ts,packages/db/src/**/*.ts"
 alwaysApply: false
 ---
@@ -30,7 +30,7 @@ const cost = inputTokens * 0.000003;
 ## Database
 
 - Schema source of truth: `packages/db/src/schema.ts`.
-- Import from `@agentseam/db`, never from a relative path to the schema.
+- Import from `@nullspend/db`, never from a relative path to the schema.
 - Use Drizzle typed queries and inserts.
 - Prefer additive schema changes and boring column names.
 

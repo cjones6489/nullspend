@@ -89,7 +89,7 @@ describe("Anthropic proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${ANTHROPIC_API_KEY}`,
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
@@ -120,13 +120,13 @@ describe("Anthropic proxy smoke tests", () => {
     expect(body.error).toBe("invalid_model");
   });
 
-  it("invalid X-AgentSeam-Auth returns 401", async () => {
+  it("invalid X-NullSpend-Auth returns 401", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-AgentSeam-Auth": "wrong-key-here",
+        "X-NullSpend-Auth": "wrong-key-here",
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
@@ -140,7 +140,7 @@ describe("Anthropic proxy smoke tests", () => {
     expect(body).toHaveProperty("error", "unauthorized");
   });
 
-  it("missing X-AgentSeam-Auth returns 401", async () => {
+  it("missing X-NullSpend-Auth returns 401", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: {
@@ -162,7 +162,7 @@ describe("Anthropic proxy smoke tests", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: "{this is not valid json!!!",
     });

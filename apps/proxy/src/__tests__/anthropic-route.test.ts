@@ -25,7 +25,7 @@ const { mockIsKnownModel } = vi.hoisted(() => {
   const mockIsKnownModel = vi.fn().mockReturnValue(true);
   return { mockIsKnownModel };
 });
-vi.mock("@agentseam/cost-engine", () => ({
+vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: mockIsKnownModel,
   getModelPricing: vi.fn().mockReturnValue(null),
   costComponent: vi.fn().mockReturnValue(0),
@@ -42,7 +42,7 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-ant-api03-test",
-      "X-AgentSeam-Auth": "test-platform-key",
+      "X-NullSpend-Auth": "test-platform-key",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -101,7 +101,7 @@ describe("handleAnthropicMessages", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns 401 when X-AgentSeam-Auth is missing", async () => {
+  it("returns 401 when X-NullSpend-Auth is missing", async () => {
     const request = new Request("http://localhost/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -114,10 +114,10 @@ describe("handleAnthropicMessages", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 401 when X-AgentSeam-Auth is invalid", async () => {
+  it("returns 401 when X-NullSpend-Auth is invalid", async () => {
     const request = makeRequest(
       { model: "claude-sonnet-4-20250514", max_tokens: 100, messages: [{ role: "user", content: "hi" }] },
-      { "X-AgentSeam-Auth": "wrong-key" },
+      { "X-NullSpend-Auth": "wrong-key" },
     );
     const res = await handleAnthropicMessages(request, makeEnv(), {
       model: "claude-sonnet-4-20250514",

@@ -163,7 +163,7 @@ describe("End-to-end cost verification", () => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "X-AgentSeam-Auth": "wrong-key-for-cost-test",
+        "X-NullSpend-Auth": "wrong-key-for-cost-test",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",

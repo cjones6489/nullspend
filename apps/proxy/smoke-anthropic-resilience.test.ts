@@ -28,7 +28,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-invalid-key-for-resilience-test",
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: smallAnthropicRequest(),
     });
@@ -45,7 +45,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-totally-bogus",
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: smallAnthropicRequest(),
     });
@@ -61,7 +61,7 @@ describe("Anthropic resilience", () => {
         headers: {
           "Content-Type": "application/json",
           "x-api-key": "sk-ant-bad-key-burst",
-          "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
         },
         body: smallAnthropicRequest(),
       }),
@@ -83,7 +83,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-bad-key-ready",
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: smallAnthropicRequest(),
     });
@@ -141,7 +141,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-bad-isolation",
-        "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
       },
       body: smallAnthropicRequest(),
     });
@@ -189,7 +189,7 @@ describe("Anthropic resilience", () => {
         headers: {
           "Content-Type": "application/json",
           "x-api-key": "sk-ant-bad-concurrent",
-          "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
         },
         body: smallAnthropicRequest(),
       }),

@@ -92,7 +92,7 @@ describe("Anthropic end-to-end budget enforcement", () => {
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
 
@@ -107,7 +107,7 @@ describe("Anthropic end-to-end budget enforcement", () => {
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
 
@@ -123,7 +123,7 @@ describe("Anthropic end-to-end budget enforcement", () => {
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
 
@@ -138,7 +138,7 @@ describe("Anthropic end-to-end budget enforcement", () => {
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
     expect(res.status).toBe(200);
@@ -161,7 +161,7 @@ describe("Anthropic end-to-end budget enforcement", () => {
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
 

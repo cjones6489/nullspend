@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { AgentSeam, TimeoutError, waitWithAbort } from "@agentseam/sdk";
-import type { ActionRecord } from "@agentseam/sdk";
+import { NullSpend, TimeoutError, waitWithAbort } from "@nullspend/sdk";
+import type { ActionRecord } from "@nullspend/sdk";
 import type { McpServerConfig } from "./config.js";
 import {
   successResult,
@@ -21,9 +21,9 @@ export function registerTools(
   config: McpServerConfig,
   shutdownSignal: AbortSignal,
 ) {
-  const sdk = new AgentSeam({
-    baseUrl: config.agentseamUrl,
-    apiKey: config.agentseamApiKey,
+  const sdk = new NullSpend({
+    baseUrl: config.nullspendUrl,
+    apiKey: config.nullspendApiKey,
   });
 
   registerProposeAction(server, sdk, config, shutdownSignal);
@@ -32,7 +32,7 @@ export function registerTools(
 
 function registerProposeAction(
   server: McpServer,
-  sdk: AgentSeam,
+  sdk: NullSpend,
   config: McpServerConfig,
   shutdownSignal: AbortSignal,
 ) {
@@ -111,14 +111,14 @@ function registerProposeAction(
         }
       } catch (err) {
         return errorResult(
-          `AgentSeam API error: ${err instanceof Error ? err.message : String(err)}`,
+          `NullSpend API error: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     },
   );
 }
 
-function registerCheckAction(server: McpServer, sdk: AgentSeam) {
+function registerCheckAction(server: McpServer, sdk: NullSpend) {
   server.tool(
     "check_action",
     "Check the current status of a previously proposed action.",
@@ -135,7 +135,7 @@ function registerCheckAction(server: McpServer, sdk: AgentSeam) {
         });
       } catch (err) {
         return errorResult(
-          `AgentSeam API error: ${err instanceof Error ? err.message : String(err)}`,
+          `NullSpend API error: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     },

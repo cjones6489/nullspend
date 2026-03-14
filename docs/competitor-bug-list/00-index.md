@@ -1,4 +1,4 @@
-# AgentSeam Technical Deep Dive: Index
+# NullSpend Technical Deep Dive: Index
 
 > **How to use these files in Cursor:** Each file is a self-contained reference
 > for a specific category of competitor bugs and our technical remediation.

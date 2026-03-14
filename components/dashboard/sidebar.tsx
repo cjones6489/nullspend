@@ -48,7 +48,7 @@ export function Sidebar() {
           href="/app/analytics"
           className="text-sm font-semibold tracking-tight text-foreground"
         >
-          AgentSeam
+          NullSpend
         </Link>
       </div>
       <nav className="flex flex-1 flex-col p-2">

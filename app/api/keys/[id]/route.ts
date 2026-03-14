@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@agentseam/db";
+import { apiKeys } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { deleteApiKeyResponseSchema, keyIdParamsSchema } from "@/lib/validations/api-keys";
 
@@ -39,7 +39,7 @@ export async function DELETE(
     }
 
     console.info(
-      `[AgentSeam] API key revoked: userId=${userId}, keyId=${revoked.id}`,
+      `[NullSpend] API key revoked: userId=${userId}, keyId=${revoked.id}`,
     );
 
     return NextResponse.json(

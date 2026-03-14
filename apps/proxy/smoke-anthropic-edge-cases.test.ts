@@ -317,13 +317,13 @@ describe("Anthropic edge cases", () => {
 
   // --- Auth edge cases ---
 
-  it("empty string X-AgentSeam-Auth returns 401", async () => {
+  it("empty string X-NullSpend-Auth returns 401", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-AgentSeam-Auth": "",
+        "X-NullSpend-Auth": "",
       },
       body: smallAnthropicRequest(),
     });
@@ -337,7 +337,7 @@ describe("Anthropic edge cases", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-AgentSeam-Auth": "x".repeat(10_000),
+        "X-NullSpend-Auth": "x".repeat(10_000),
       },
       body: smallAnthropicRequest(),
     });
@@ -351,7 +351,7 @@ describe("Anthropic edge cases", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-AgentSeam-Auth": "!@#$%^&*()_+-=[]{}|;':\",./<>?",
+        "X-NullSpend-Auth": "!@#$%^&*()_+-=[]{}|;':\",./<>?",
       },
       body: smallAnthropicRequest(),
     });

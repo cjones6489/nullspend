@@ -89,7 +89,7 @@ describe("app/api/actions/route", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agentseam-key": "ask_0123456789abcdef0123456789abcdef",
+          "x-nullspend-key": "ask_0123456789abcdef0123456789abcdef",
         },
         body: JSON.stringify({
           agentId: "agent-1",
@@ -121,7 +121,7 @@ describe("app/api/actions/route", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agentseam-key": "env-secret",
+          "x-nullspend-key": "env-secret",
         },
         body: JSON.stringify({
           agentId: "agent-1",
@@ -150,7 +150,7 @@ describe("app/api/actions/route", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-agentseam-key": "ask_0123456789abcdef0123456789abcdef",
+          "x-nullspend-key": "ask_0123456789abcdef0123456789abcdef",
         },
         body: JSON.stringify({
           agentId: "agent-1",

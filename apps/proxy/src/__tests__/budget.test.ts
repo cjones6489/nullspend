@@ -45,7 +45,7 @@ vi.mock("cloudflare:workers", () => ({
   waitUntil: mockWaitUntil,
 }));
 
-vi.mock("@agentseam/cost-engine", () => ({
+vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: vi.fn().mockReturnValue(true),
   getModelPricing: vi.fn().mockReturnValue({
     inputPerMTok: 0.15,
@@ -98,9 +98,9 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-test-key",
-      "X-AgentSeam-Auth": "test-platform-key",
-      "X-AgentSeam-Key-Id": "key-uuid-123",
-      "X-AgentSeam-User-Id": "user-uuid-456",
+      "X-NullSpend-Auth": "test-platform-key",
+      "X-NullSpend-Key-Id": "key-uuid-123",
+      "X-NullSpend-User-Id": "user-uuid-456",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -201,7 +201,7 @@ describe("Budget Enforcement", () => {
 
   // --- P0-1: Identity-based budget check ---
 
-  it("P0-1: uses x-agentseam-key-id and x-agentseam-user-id for budget lookup", async () => {
+  it("P0-1: uses x-nullspend-key-id and x-nullspend-user-id for budget lookup", async () => {
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
@@ -551,7 +551,7 @@ describe("Budget Enforcement", () => {
 
   // --- P0-25: Sensitive headers never leaked ---
 
-  it("P0-25: x-agentseam-auth never appears in budget error responses", async () => {
+  it("P0-25: x-nullspend-auth never appears in budget error responses", async () => {
     mockLookupBudgets.mockResolvedValue([keyEntity]);
     mockCheckAndReserve.mockResolvedValue({
       status: "denied",
@@ -563,7 +563,7 @@ describe("Budget Enforcement", () => {
 
     const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
     const responseText = await res.text();
-    expect(responseText).not.toContain("x-agentseam-auth");
+    expect(responseText).not.toContain("x-nullspend-auth");
     expect(responseText).not.toContain("test-platform-key");
   });
 

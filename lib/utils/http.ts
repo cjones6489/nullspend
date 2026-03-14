@@ -110,14 +110,14 @@ export function handleRouteError(error: unknown) {
   }
 
   if (error instanceof SupabaseEnvError) {
-    console.error("[AgentSeam] Supabase configuration error:", error.message);
+    console.error("[NullSpend] Supabase configuration error:", error.message);
     return NextResponse.json(
       { error: "Server configuration error." },
       { status: 500 },
     );
   }
 
-  console.error("[AgentSeam] Unhandled route error:", error);
+  console.error("[NullSpend] Unhandled route error:", error);
   return NextResponse.json(
     { error: "Internal server error." },
     { status: 500 },

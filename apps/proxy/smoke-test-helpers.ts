@@ -20,12 +20,12 @@ export function authHeaders(
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+    "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
   };
 
   if (typeof userIdOrExtra === "string") {
-    h["X-AgentSeam-User-Id"] = userIdOrExtra;
-    if (keyId) h["X-AgentSeam-Key-Id"] = keyId;
+    h["X-NullSpend-User-Id"] = userIdOrExtra;
+    if (keyId) h["X-NullSpend-Key-Id"] = keyId;
   } else if (userIdOrExtra) {
     Object.assign(h, userIdOrExtra);
   }
@@ -48,7 +48,7 @@ export function anthropicAuthHeaders(
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     "x-api-key": ANTHROPIC_API_KEY!,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+    "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
   };
   if (extra) Object.assign(h, extra);
   return h;

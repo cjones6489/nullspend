@@ -1,7 +1,7 @@
 import { computeExpiresAt } from "@/lib/actions/expiration";
 import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@agentseam/db";
+import { actions } from "@nullspend/db";
 import type { CreateActionInput, ActionRecord } from "@/lib/validations/actions";
 
 function pickMetadataField(

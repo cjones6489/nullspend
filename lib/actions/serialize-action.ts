@@ -1,4 +1,4 @@
-import type { ActionRow } from "@agentseam/db";
+import type { ActionRow } from "@nullspend/db";
 import type { ActionRecord } from "@/lib/validations/actions";
 
 function toIsoString(value: Date | null): string | null {

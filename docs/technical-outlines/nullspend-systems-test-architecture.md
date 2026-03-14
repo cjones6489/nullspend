@@ -1,4 +1,4 @@
-# AgentSeam Systems Test Architecture
+# NullSpend Systems Test Architecture
 
 > **Purpose:** Define an end-to-end test suite that exercises the full proxy pipeline — from inbound HTTP request through OpenAI, back through cost calculation, budget enforcement, and database persistence — verifying every integration boundary in a single pass.
 >
@@ -8,13 +8,13 @@
 
 ## 1. The Pipeline Under Test
 
-Every request through AgentSeam traverses 14 discrete stages. A systems test must verify each stage independently while also proving they compose correctly as a pipeline.
+Every request through NullSpend traverses 14 discrete stages. A systems test must verify each stage independently while also proving they compose correctly as a pipeline.
 
 ```
 Stage 1:  HTTP ingress         → index.ts: method/path routing
 Stage 2:  Rate limiting        → index.ts: Upstash sliding window (120/min/IP)
 Stage 3:  Body validation      → index.ts: size check (1MB), JSON parse, object check
-Stage 4:  Authentication       → auth.ts: timing-safe x-agentseam-auth comparison
+Stage 4:  Authentication       → auth.ts: timing-safe x-nullspend-auth comparison
 Stage 5:  Model validation     → openai.ts: isKnownModel() check
 Stage 6:  Stream option inject → request-utils.ts: force stream_options.include_usage
 Stage 7:  Budget lookup        → budget-lookup.ts: Redis pipeline → Postgres slow path
@@ -79,7 +79,7 @@ DATABASE_URL=postgresql://...supabase.co/postgres
 ```typescript
 interface SystemsTestContext {
   proxyBase: string;             // http://127.0.0.1:8787
-  platformAuthKey: string;       // PLATFORM_AUTH_KEY for x-agentseam-auth
+  platformAuthKey: string;       // PLATFORM_AUTH_KEY for x-nullspend-auth
   openaiKey: string;             // OPENAI_API_KEY (forwarded as Authorization)
   db: DrizzleInstance;           // Direct Postgres connection for verification
   redis: Redis;                  // Direct Redis connection for state inspection
@@ -110,7 +110,7 @@ These tests verify the proxy correctly rejects invalid requests before any cost 
 
 ```
 POST /v1/chat/completions
-Headers: (no x-agentseam-auth)
+Headers: (no x-nullspend-auth)
 Body: {"model": "gpt-4o-mini", "messages": [...]}
 
 Assert: status === 401
@@ -124,7 +124,7 @@ Assert: no cost event inserted (query DB by recent timestamp)
 
 ```
 POST /v1/chat/completions
-Headers: x-agentseam-auth: wrong-key-value
+Headers: x-nullspend-auth: wrong-key-value
 Body: {"model": "gpt-4o-mini", "messages": [...]}
 
 Assert: status === 401
@@ -137,7 +137,7 @@ Assert: body.error === "unauthorized"
 
 ```
 POST /v1/chat/completions
-Headers: x-agentseam-auth: (valid)
+Headers: x-nullspend-auth: (valid)
          Authorization: Bearer (valid OpenAI key)
 Body: {"model": "nonexistent-model-xyz", "messages": [...]}
 
@@ -153,7 +153,7 @@ Assert: no budget mutation in Redis
 
 ```
 POST /v1/chat/completions
-Headers: x-agentseam-auth: (valid)
+Headers: x-nullspend-auth: (valid)
 Body: "{not valid json!!!"
 
 Assert: status === 400
@@ -164,7 +164,7 @@ Assert: body.error === "bad_request"
 
 ```
 POST /v1/chat/completions
-Headers: x-agentseam-auth: (valid)
+Headers: x-nullspend-auth: (valid)
 Body: [{"model": "gpt-4o"}]
 
 Assert: status === 400
@@ -175,7 +175,7 @@ Assert: body.message contains "JSON object"
 
 ```
 POST /v1/chat/completions
-Headers: x-agentseam-auth: (valid)
+Headers: x-nullspend-auth: (valid)
          Content-Length: 2000000
 Body: (1.5MB of padding)
 
@@ -189,7 +189,7 @@ Assert: body.error === "payload_too_large"
 
 ```
 POST /v1/embeddings
-Headers: x-agentseam-auth: (valid)
+Headers: x-nullspend-auth: (valid)
 
 Assert: status === 404
 Assert: body.message contains "not yet supported"
@@ -219,10 +219,10 @@ This is the core pipeline test. It sends a real request through the proxy to Ope
 ```
 POST /v1/chat/completions
 Headers:
-  x-agentseam-auth: (valid platform key)
+  x-nullspend-auth: (valid platform key)
   Authorization: Bearer (valid OpenAI key)
-  x-agentseam-user-id: (userId)
-  x-agentseam-key-id: (apiKeyId)
+  x-nullspend-user-id: (userId)
+  x-nullspend-key-id: (apiKeyId)
   Content-Type: application/json
 Body:
   {
@@ -438,7 +438,7 @@ Assert: Postgres spend matches Redis spend
 
 **Request:**
 ```
-Headers: x-agentseam-key-id: nonexistent-key-id-12345
+Headers: x-nullspend-key-id: nonexistent-key-id-12345
 Body: {"model": "gpt-4o-mini", "messages": [...]}
 ```
 
@@ -506,7 +506,7 @@ Assert: no budget was over-reserved (reserved never exceeded remaining)
 ```
 Headers:
   Authorization: Bearer sk-invalid-key-that-will-fail
-  x-agentseam-auth: (valid platform key)
+  x-nullspend-auth: (valid platform key)
 Body: {"model": "gpt-4o-mini", "messages": [...]}
 ```
 
@@ -548,9 +548,9 @@ This test requires inspection of what the proxy sends to OpenAI. Since we can't 
 ```
 POST /v1/chat/completions
 Headers:
-  x-agentseam-auth: (valid)
-  x-agentseam-user-id: user-123
-  x-agentseam-key-id: key-456
+  x-nullspend-auth: (valid)
+  x-nullspend-user-id: user-123
+  x-nullspend-key-id: key-456
   Authorization: Bearer (valid)
   x-custom-header: should-not-appear
 
@@ -924,7 +924,7 @@ Each full systems test run costs approximately **one cent**. Safe to run frequen
 
 ```
 ╔══════════════════════════════════════════════════════╗
-║         AgentSeam Systems Test Suite v1.0             ║
+║         NullSpend Systems Test Suite v1.0             ║
 ╚══════════════════════════════════════════════════════╝
 Run ID: systest-1710249600000
 Proxy:  http://127.0.0.1:8787

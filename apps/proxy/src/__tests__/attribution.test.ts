@@ -9,9 +9,9 @@ describe("extractAttribution", () => {
   describe("valid headers extracted correctly", () => {
     it("extracts all three headers when present and valid", () => {
       const req = makeRequest({
-        "x-agentseam-user-id": "user_abc123",
-        "x-agentseam-key-id": "key_xyz789",
-        "x-agentseam-action-id": "action_42",
+        "x-nullspend-user-id": "user_abc123",
+        "x-nullspend-key-id": "key_xyz789",
+        "x-nullspend-action-id": "action_42",
       });
       const result = extractAttribution(req);
       expect(result).toEqual({
@@ -49,7 +49,7 @@ describe("extractAttribution", () => {
 
   describe("partially missing headers", () => {
     it("extracts only userId when others are absent", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "user_1" });
+      const req = makeRequest({ "x-nullspend-user-id": "user_1" });
       const result = extractAttribution(req);
       expect(result).toEqual({
         userId: "user_1",
@@ -59,7 +59,7 @@ describe("extractAttribution", () => {
     });
 
     it("extracts only apiKeyId when others are absent", () => {
-      const req = makeRequest({ "x-agentseam-key-id": "key_2" });
+      const req = makeRequest({ "x-nullspend-key-id": "key_2" });
       const result = extractAttribution(req);
       expect(result).toEqual({
         userId: null,
@@ -69,7 +69,7 @@ describe("extractAttribution", () => {
     });
 
     it("extracts only actionId when others are absent", () => {
-      const req = makeRequest({ "x-agentseam-action-id": "action_3" });
+      const req = makeRequest({ "x-nullspend-action-id": "action_3" });
       const result = extractAttribution(req);
       expect(result).toEqual({
         userId: null,
@@ -80,8 +80,8 @@ describe("extractAttribution", () => {
 
     it("extracts userId and actionId but not apiKeyId", () => {
       const req = makeRequest({
-        "x-agentseam-user-id": "user_4",
-        "x-agentseam-action-id": "action_5",
+        "x-nullspend-user-id": "user_4",
+        "x-nullspend-action-id": "action_5",
       });
       const result = extractAttribution(req);
       expect(result).toEqual({
@@ -96,8 +96,8 @@ describe("extractAttribution", () => {
     it("rejects headers exceeding 128 characters", () => {
       const longValue = "a".repeat(129);
       const req = makeRequest({
-        "x-agentseam-user-id": longValue,
-        "x-agentseam-key-id": "valid_key",
+        "x-nullspend-user-id": longValue,
+        "x-nullspend-key-id": "valid_key",
       });
       const result = extractAttribution(req);
       expect(result.userId).toBeNull();
@@ -106,14 +106,14 @@ describe("extractAttribution", () => {
 
     it("accepts headers exactly 128 characters long", () => {
       const exactValue = "a".repeat(128);
-      const req = makeRequest({ "x-agentseam-user-id": exactValue });
+      const req = makeRequest({ "x-nullspend-user-id": exactValue });
       const result = extractAttribution(req);
       expect(result.userId).toBe(exactValue);
     });
 
     it("rejects headers much longer than 128 characters", () => {
       const veryLongValue = "x".repeat(1000);
-      const req = makeRequest({ "x-agentseam-action-id": veryLongValue });
+      const req = makeRequest({ "x-nullspend-action-id": veryLongValue });
       const result = extractAttribution(req);
       expect(result.actionId).toBeNull();
     });
@@ -121,83 +121,83 @@ describe("extractAttribution", () => {
 
   describe("invalid characters rejected", () => {
     it("rejects header with spaces", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "user id with spaces" });
+      const req = makeRequest({ "x-nullspend-user-id": "user id with spaces" });
       expect(extractAttribution(req).userId).toBeNull();
     });
 
     it("rejects header with dots", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "user.id" });
+      const req = makeRequest({ "x-nullspend-user-id": "user.id" });
       expect(extractAttribution(req).userId).toBeNull();
     });
 
     it("rejects header with slashes", () => {
-      const req = makeRequest({ "x-agentseam-key-id": "key/id" });
+      const req = makeRequest({ "x-nullspend-key-id": "key/id" });
       expect(extractAttribution(req).apiKeyId).toBeNull();
     });
 
     it("rejects header with @ symbol", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "user@domain" });
+      const req = makeRequest({ "x-nullspend-user-id": "user@domain" });
       expect(extractAttribution(req).userId).toBeNull();
     });
 
     it("rejects header with unicode characters", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "user\u00e9" });
+      const req = makeRequest({ "x-nullspend-user-id": "user\u00e9" });
       expect(extractAttribution(req).userId).toBeNull();
     });
 
     it("Headers API rejects emoji (non-ByteString) — never reaches our validator", () => {
-      expect(() => makeRequest({ "x-agentseam-action-id": "action\u{1F600}" })).toThrow();
+      expect(() => makeRequest({ "x-nullspend-action-id": "action\u{1F600}" })).toThrow();
     });
 
     it("rejects header with special characters", () => {
       const specialChars = ["!", "#", "$", "%", "^", "&", "*", "(", ")", "+", "=", "~", "`"];
       for (const char of specialChars) {
-        const req = makeRequest({ "x-agentseam-user-id": `user${char}id` });
+        const req = makeRequest({ "x-nullspend-user-id": `user${char}id` });
         expect(extractAttribution(req).userId).toBeNull();
       }
     });
 
     it("rejects header with colon", () => {
-      const req = makeRequest({ "x-agentseam-key-id": "key:id" });
+      const req = makeRequest({ "x-nullspend-key-id": "key:id" });
       expect(extractAttribution(req).apiKeyId).toBeNull();
     });
   });
 
   describe("valid characters accepted", () => {
     it("accepts lowercase alphanumeric", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "abc123" });
+      const req = makeRequest({ "x-nullspend-user-id": "abc123" });
       expect(extractAttribution(req).userId).toBe("abc123");
     });
 
     it("accepts uppercase alphanumeric", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "ABC123" });
+      const req = makeRequest({ "x-nullspend-user-id": "ABC123" });
       expect(extractAttribution(req).userId).toBe("ABC123");
     });
 
     it("accepts mixed case with underscores and hyphens", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "User_123-ABC" });
+      const req = makeRequest({ "x-nullspend-user-id": "User_123-ABC" });
       expect(extractAttribution(req).userId).toBe("User_123-ABC");
     });
 
     it("accepts all-underscore value", () => {
-      const req = makeRequest({ "x-agentseam-key-id": "___" });
+      const req = makeRequest({ "x-nullspend-key-id": "___" });
       expect(extractAttribution(req).apiKeyId).toBe("___");
     });
 
     it("accepts all-hyphen value", () => {
-      const req = makeRequest({ "x-agentseam-action-id": "---" });
+      const req = makeRequest({ "x-nullspend-action-id": "---" });
       expect(extractAttribution(req).actionId).toBe("---");
     });
 
     it("accepts single character", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "a" });
+      const req = makeRequest({ "x-nullspend-user-id": "a" });
       expect(extractAttribution(req).userId).toBe("a");
     });
   });
 
   describe("empty string rejected", () => {
     it("rejects empty string header (fails regex)", () => {
-      const req = makeRequest({ "x-agentseam-user-id": "" });
+      const req = makeRequest({ "x-nullspend-user-id": "" });
       expect(extractAttribution(req).userId).toBeNull();
     });
   });
@@ -208,25 +208,25 @@ describe("extractAttribution", () => {
     // even if headers somehow arrived, our regex would reject them.
 
     it("Headers API rejects newline — never reaches our validator", () => {
-      expect(() => makeRequest({ "x-agentseam-user-id": "user\nid" })).toThrow();
+      expect(() => makeRequest({ "x-nullspend-user-id": "user\nid" })).toThrow();
     });
 
     it("Headers API rejects carriage return — never reaches our validator", () => {
-      expect(() => makeRequest({ "x-agentseam-user-id": "user\rid" })).toThrow();
+      expect(() => makeRequest({ "x-nullspend-user-id": "user\rid" })).toThrow();
     });
 
     it("Headers API rejects CRLF — never reaches our validator", () => {
-      expect(() => makeRequest({ "x-agentseam-user-id": "user\r\nid" })).toThrow();
+      expect(() => makeRequest({ "x-nullspend-user-id": "user\r\nid" })).toThrow();
     });
 
     it("rejects header with tab character via regex", () => {
       // Tab is allowed by HTTP spec but rejected by our pattern
-      const req = makeRequest({ "x-agentseam-user-id": "user\tid" });
+      const req = makeRequest({ "x-nullspend-user-id": "user\tid" });
       expect(extractAttribution(req).userId).toBeNull();
     });
 
     it("Headers API rejects null byte — never reaches our validator", () => {
-      expect(() => makeRequest({ "x-agentseam-user-id": "user\0id" })).toThrow();
+      expect(() => makeRequest({ "x-nullspend-user-id": "user\0id" })).toThrow();
     });
   });
 });

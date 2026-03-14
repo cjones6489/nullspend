@@ -20,7 +20,7 @@ export async function validatePlatformKey(
 
 export function unauthorizedResponse(): Response {
   return Response.json(
-    { error: "unauthorized", message: "Invalid or missing X-AgentSeam-Auth header" },
+    { error: "unauthorized", message: "Invalid or missing X-NullSpend-Auth header" },
     { status: 401 },
   );
 }

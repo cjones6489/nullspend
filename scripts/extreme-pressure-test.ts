@@ -1,5 +1,5 @@
 /**
- * Extreme pressure test for the AgentSeam cost-tracking pipeline.
+ * Extreme pressure test for the NullSpend cost-tracking pipeline.
  *
  * Targets the hardest edge cases:
  *  1. Floating-point precision torture (IEEE 754 traps)
@@ -1027,7 +1027,7 @@ async function main() {
 
   const apiKey = existingKeys[0];
   console.log("╔══════════════════════════════════════════════════════╗");
-  console.log("║   AgentSeam EXTREME Pressure Test Suite              ║");
+  console.log("║   NullSpend EXTREME Pressure Test Suite              ║");
   console.log("╚══════════════════════════════════════════════════════╝");
   console.log(`API Key: "${apiKey.name}" (${apiKey.id.slice(0, 8)}...)`);
   console.log(`User: ${apiKey.userId}`);

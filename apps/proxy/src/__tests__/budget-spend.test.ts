@@ -51,7 +51,7 @@ vi.mock("drizzle-orm", () => {
   };
 });
 
-vi.mock("@agentseam/db", () => ({
+vi.mock("@nullspend/db", () => ({
   budgets: {
     entityType: "entityType",
     entityId: "entityId",

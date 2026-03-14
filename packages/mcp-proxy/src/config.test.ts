@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { loadConfig, ConfigError } from "./config.js";
 
 const REQUIRED_ENV = {
-  AGENTSEAM_URL: "http://127.0.0.1:3000",
-  AGENTSEAM_API_KEY: "ask_test123",
+  NULLSPEND_URL: "http://127.0.0.1:3000",
+  NULLSPEND_API_KEY: "ask_test123",
   UPSTREAM_COMMAND: "node",
 };
 
@@ -14,7 +14,7 @@ describe("loadConfig", () => {
     originalEnv = { ...process.env };
     for (const key of Object.keys(process.env)) {
       if (
-        key.startsWith("AGENTSEAM_") ||
+        key.startsWith("NULLSPEND_") ||
         key.startsWith("UPSTREAM_") ||
         key === "GATED_TOOLS" ||
         key === "PASSTHROUGH_TOOLS" ||
@@ -31,16 +31,16 @@ describe("loadConfig", () => {
 
   it("throws ConfigError when required vars are missing", () => {
     expect(() => loadConfig()).toThrow(ConfigError);
-    expect(() => loadConfig()).toThrow("AGENTSEAM_URL");
+    expect(() => loadConfig()).toThrow("NULLSPEND_URL");
   });
 
   it("throws ConfigError listing all missing vars", () => {
-    process.env.AGENTSEAM_URL = "http://test.com";
+    process.env.NULLSPEND_URL = "http://test.com";
     try {
       loadConfig();
     } catch (err) {
       expect(err).toBeInstanceOf(ConfigError);
-      expect((err as ConfigError).message).toContain("AGENTSEAM_API_KEY");
+      expect((err as ConfigError).message).toContain("NULLSPEND_API_KEY");
       expect((err as ConfigError).message).toContain("UPSTREAM_COMMAND");
     }
   });
@@ -49,8 +49,8 @@ describe("loadConfig", () => {
     Object.assign(process.env, REQUIRED_ENV);
     const config = loadConfig();
 
-    expect(config.agentseamUrl).toBe("http://127.0.0.1:3000");
-    expect(config.agentseamApiKey).toBe("ask_test123");
+    expect(config.nullspendUrl).toBe("http://127.0.0.1:3000");
+    expect(config.nullspendApiKey).toBe("ask_test123");
     expect(config.upstreamCommand).toBe("node");
     expect(config.upstreamArgs).toEqual([]);
     expect(config.upstreamEnv).toEqual({});
@@ -136,9 +136,9 @@ describe("loadConfig", () => {
     expect(config.passthroughTools).toEqual(new Set(["read_file", "list_directory"]));
   });
 
-  it("parses custom AGENTSEAM_AGENT_ID", () => {
+  it("parses custom NULLSPEND_AGENT_ID", () => {
     Object.assign(process.env, REQUIRED_ENV);
-    process.env.AGENTSEAM_AGENT_ID = "my-proxy";
+    process.env.NULLSPEND_AGENT_ID = "my-proxy";
     const config = loadConfig();
     expect(config.agentId).toBe("my-proxy");
   });

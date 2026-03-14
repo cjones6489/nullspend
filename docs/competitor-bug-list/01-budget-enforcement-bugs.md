@@ -1,13 +1,13 @@
 # Technical Deep Dive: Budget Enforcement Bugs & Remediation
 
 > **Purpose:** Working reference for Cursor. Every bug below is from a production
-> competitor tool. Each has a technical remediation and test spec for AgentSeam.
+> competitor tool. Each has a technical remediation and test spec for NullSpend.
 >
 > **Scope filter:** Only bugs that affect budget enforcement — the V1 differentiator.
 > Excludes cost calculation accuracy (see `02-anthropic-cost-bugs.md` and
 > `03-openai-cost-bugs.md`) and streaming parsing (see `04-streaming-bugs.md`).
 >
-> **Strategic alignment:** Budget enforcement is AgentSeam's #1 competitive wedge.
+> **Strategic alignment:** Budget enforcement is NullSpend's #1 competitive wedge.
 > OpenClaw (250K+ stars) has zero budget enforcement. LiteLLM's enforcement has
 > 7+ documented bypass vulnerabilities. Portkey gates enforcement to $5K+/month.
 > Getting this right at $49/month is the entire product thesis.
@@ -17,9 +17,9 @@
 ## Anti-Patterns to Internalize
 
 Before the bugs: five architectural mistakes that cause them all. These are the
-design constraints for AgentSeam's budget system.
+design constraints for NullSpend's budget system.
 
-| Anti-Pattern | Competitor | AgentSeam Rule |
+| Anti-Pattern | Competitor | NullSpend Rule |
 |---|---|---|
 | Route-based enforcement | LiteLLM | Identity-based. Tied to API key, checked before routing. |
 | Mutually exclusive entity checks | LiteLLM | Check ALL entities (key, user). Enforce most restrictive. |
@@ -51,7 +51,7 @@ like this:
 ```typescript
 // Simplified request flow — budget check happens BEFORE provider detection
 async function handleRequest(request: Request): Promise<Response> {
-  // 1. Authenticate — extract AgentSeam API key
+  // 1. Authenticate — extract NullSpend API key
   const auth = await authenticateRequest(request);
   if (!auth.ok) return errorResponse(401, auth.error);
 
@@ -82,7 +82,7 @@ describe("BE-1: Identity-based enforcement, not route-based", () => {
     await spendBudget(key.id, 49_500_000); // $49.50 spent
 
     const res = await proxy("/v1/chat/completions", {
-      headers: { "X-AgentSeam-Auth": key.token },
+      headers: { "X-NullSpend-Auth": key.token },
       body: { model: "gpt-4o", messages: [{ role: "user", content: "hi" }], max_tokens: 500 }
     });
 
@@ -96,7 +96,7 @@ describe("BE-1: Identity-based enforcement, not route-based", () => {
     await spendBudget(key.id, 49_500_000);
 
     const res = await proxy("/v1/messages", {
-      headers: { "X-AgentSeam-Auth": key.token },
+      headers: { "X-NullSpend-Auth": key.token },
       body: { model: "claude-sonnet-4-6", messages: [{ role: "user", content: "hi" }], max_tokens: 500 }
     });
 
@@ -110,7 +110,7 @@ describe("BE-1: Identity-based enforcement, not route-based", () => {
 
     // Even a made-up path gets budget-checked because check is pre-routing
     const res = await proxy("/v1/some-future-endpoint", {
-      headers: { "X-AgentSeam-Auth": key.token },
+      headers: { "X-NullSpend-Auth": key.token },
       body: { model: "gpt-future", messages: [{ role: "user", content: "hi" }], max_tokens: 100 }
     });
 
@@ -231,7 +231,7 @@ use a different code path that bypasses middleware entirely.
 
 **Root cause:** Multiple code paths to upstream, not all budget-checked.
 
-**Remediation:** Same as BE-1 — single code path. In AgentSeam's architecture,
+**Remediation:** Same as BE-1 — single code path. In NullSpend's architecture,
 every request goes through the same handler:
 
 ```
@@ -296,11 +296,11 @@ describe("BE-5: Atomic budget reset", () => {
     // Fire 5 concurrent requests while reset happens
     const [resetResult, ...requestResults] = await Promise.all([
       resetBudget(key.id),
-      proxy("/v1/chat/completions", { headers: { "X-AgentSeam-Auth": key.token }, body: smallRequest }),
-      proxy("/v1/chat/completions", { headers: { "X-AgentSeam-Auth": key.token }, body: smallRequest }),
-      proxy("/v1/chat/completions", { headers: { "X-AgentSeam-Auth": key.token }, body: smallRequest }),
-      proxy("/v1/chat/completions", { headers: { "X-AgentSeam-Auth": key.token }, body: smallRequest }),
-      proxy("/v1/chat/completions", { headers: { "X-AgentSeam-Auth": key.token }, body: smallRequest }),
+      proxy("/v1/chat/completions", { headers: { "X-NullSpend-Auth": key.token }, body: smallRequest }),
+      proxy("/v1/chat/completions", { headers: { "X-NullSpend-Auth": key.token }, body: smallRequest }),
+      proxy("/v1/chat/completions", { headers: { "X-NullSpend-Auth": key.token }, body: smallRequest }),
+      proxy("/v1/chat/completions", { headers: { "X-NullSpend-Auth": key.token }, body: smallRequest }),
+      proxy("/v1/chat/completions", { headers: { "X-NullSpend-Auth": key.token }, body: smallRequest }),
     ]);
 
     // After reset, remaining should be $10 minus cost of any requests that
@@ -323,8 +323,8 @@ budgets are silently ignored.
 
 **Root cause:** Conditional check ordering drops budget checks.
 
-**Remediation (V1):** AgentSeam V1 uses API key auth only (no JWT). The
-`X-AgentSeam-Auth` header identifies the key. Budget is looked up by key ID.
+**Remediation (V1):** NullSpend V1 uses API key auth only (no JWT). The
+`X-NullSpend-Auth` header identifies the key. Budget is looked up by key ID.
 No precedence confusion possible with a single auth method and single entity
 type.
 
@@ -333,7 +333,7 @@ type.
 ```
 BE-6: Auth method does not affect budget enforcement
   GIVEN: API key with $10 budget, $10 spent
-  WHEN: Authenticated via X-AgentSeam-Auth header
+  WHEN: Authenticated via X-NullSpend-Auth header
   THEN: 429 returned
   (Future: when JWT/OAuth added, same budget must apply)
 ```
@@ -433,7 +433,7 @@ describe("BE-8: Concurrent request budget enforcement", () => {
     const results = await Promise.all(
       Array(20).fill(null).map(() =>
         proxy("/v1/chat/completions", {
-          headers: { "X-AgentSeam-Auth": key.token },
+          headers: { "X-NullSpend-Auth": key.token },
           body: { model: "gpt-4o", messages: [{ role: "user", content: "hi" }], max_tokens: 50 }
         })
       )
@@ -586,7 +586,7 @@ BE-10b: Known model uses exact pricing
 has 250K+ stars and no budget caps. DenchClaw users spent $3K in a day. ClawMetry
 shows costs but can't stop them.
 
-**Remediation:** This IS AgentSeam. The entire product. The one-line base URL
+**Remediation:** This IS NullSpend. The entire product. The one-line base URL
 change that adds budget enforcement to any OpenClaw, DenchClaw, or LLM-calling
 agent.
 
@@ -594,10 +594,10 @@ agent.
 
 ```
 OpenClaw integration test:
-  GIVEN: OpenClaw configured with OPENAI_BASE_URL=https://proxy.agentseam.com/v1
-  AND: AgentSeam API key with $5/day budget
+  GIVEN: OpenClaw configured with OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+  AND: NullSpend API key with $5/day budget
   WHEN: OpenClaw agent runs tasks that accumulate >$5 in API costs
-  THEN: Agent receives 429 from AgentSeam proxy
+  THEN: Agent receives 429 from NullSpend proxy
   AND: Agent's error handling displays budget exceeded message
   AND: No further API costs are incurred
 ```

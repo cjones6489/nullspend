@@ -1,7 +1,7 @@
 # Unified Policy Engine: Technical Specification
 
 > **Status:** Draft. This document defines the architecture for unifying
-> AgentSeam's LLM proxy (cost tracking + budget enforcement) with its approval
+> NullSpend's LLM proxy (cost tracking + budget enforcement) with its approval
 > system (human-in-the-loop gating) into a single policy-driven platform.
 >
 > **The simplicity rule still applies.** The default developer experience
@@ -11,14 +11,14 @@
 >
 > **Reference documents:**
 > - `docs/finops-pivot-roadmap.md` — Master roadmap
-> - `docs/claude-research/agentseam-fintech-patterns-research.md` — Fintech patterns
+> - `docs/claude-research/nullspend-fintech-patterns-research.md` — Fintech patterns
 > - `docs/frontend-gap-analysis.md` — Dashboard phase breakdown
 
 ---
 
 ## 1. Problem Statement
 
-AgentSeam currently has two independent systems that serve related but
+NullSpend currently has two independent systems that serve related but
 disconnected purposes:
 
 ```
@@ -118,7 +118,7 @@ Developer's Agent
 ┌─────────────────────────────────────────────────────────┐
 │                    LLM PROXY                             │
 │                                                         │
-│  1. Auth (x-agentseam-auth)                             │
+│  1. Auth (x-nullspend-auth)                             │
 │  2. Estimate cost (existing cost estimator)              │
 │  3. Look up budget + policy (existing budget lookup)     │
 │  4. ┌─────────────────────────────────────────────┐     │
@@ -186,13 +186,13 @@ const response = await fetch(proxyUrl + "/v1/chat/completions", {
 if (response.status === 202) {
   const { action_id, poll_url } = await response.json();
 
-  // Poll until approved (or use AgentSeam SDK helper)
+  // Poll until approved (or use NullSpend SDK helper)
   const approved = await waitForApproval(poll_url);
   if (!approved) throw new Error("LLM call rejected");
 
   // Re-submit with approval token
   const retryResponse = await fetch(proxyUrl + "/v1/chat/completions", {
-    headers: { ...authHeaders, "x-agentseam-approval": action_id },
+    headers: { ...authHeaders, "x-nullspend-approval": action_id },
     body: JSON.stringify({ model: "gpt-4o", messages }),
   });
   return retryResponse;
@@ -214,7 +214,7 @@ For developers who don't want to write the 202 handling manually, the SDK
 provides a wrapper:
 
 ```typescript
-import { withApproval } from "@agentseam/sdk";
+import { withApproval } from "@nullspend/sdk";
 
 // Wraps fetch to automatically handle 202 → poll → retry
 const safeFetch = withApproval(fetch, {
@@ -514,10 +514,10 @@ If the policy says HOLD, we skip the reservation and forward entirely.
 
 ### 6.3 Approval Token Validation
 
-When a re-submitted request includes `x-agentseam-approval`:
+When a re-submitted request includes `x-nullspend-approval`:
 
 ```typescript
-const approvalToken = request.headers.get("x-agentseam-approval");
+const approvalToken = request.headers.get("x-nullspend-approval");
 if (approvalToken) {
   // Validate: action exists, status = "approved", belongs to this user
   // Skip policy check (already approved)
@@ -595,7 +595,7 @@ The budgets page shows the active policy for each budget:
 
 ```bash
 # .env
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 ```
 
 The agent's existing OpenAI SDK calls work identically. Budget enforcement
@@ -609,7 +609,7 @@ already handles with retry logic or error reporting.
 **Option A: SDK helper (recommended)**
 
 ```typescript
-import { withApproval } from "@agentseam/sdk";
+import { withApproval } from "@nullspend/sdk";
 
 const safeFetch = withApproval(fetch, { apiKey: "ask_..." });
 
@@ -635,10 +635,10 @@ if (response.status === 202) {
 
 ```typescript
 import OpenAI from "openai";
-import { withApproval } from "@agentseam/sdk";
+import { withApproval } from "@nullspend/sdk";
 
 const client = new OpenAI({
-  baseURL: "https://proxy.agentseam.com/v1",
+  baseURL: "https://proxy.nullspend.com/v1",
   fetch: withApproval(fetch, { apiKey: "ask_..." }),
 });
 
@@ -659,7 +659,7 @@ the webhook.
 
 ## 9. Competitive Analysis
 
-| Capability | Helicone | LiteLLM | Portkey | BudgetGuard | **AgentSeam** |
+| Capability | Helicone | LiteLLM | Portkey | BudgetGuard | **NullSpend** |
 |---|---|---|---|---|---|
 | Cost tracking | Yes | Yes | Yes | Yes | **Yes** |
 | Hard budget cap | No | Yes (buggy) | Enterprise | Yes | **Yes** |
@@ -670,9 +670,9 @@ the webhook.
 | **Cost-based approval** | No | No | No | No | **Yes (Tier 2)** |
 | **Human-in-the-loop** | No | No | No | No | **Yes** |
 
-**AgentSeam's unique position:** The only platform that offers human-in-the-loop
+**NullSpend's unique position:** The only platform that offers human-in-the-loop
 approval at the proxy level. Every competitor treats the proxy as a pass/block
-gate. AgentSeam adds a third option: hold for human decision. This is the
+gate. NullSpend adds a third option: hold for human decision. This is the
 Marqeta model applied to LLM calls.
 
 ---
@@ -701,7 +701,7 @@ Estimated effort: 2-3 days
 
 - Define the 202 response schema
 - Implement action creation in the proxy for HOLD decisions
-- Implement `x-agentseam-approval` header validation on re-submission
+- Implement `x-nullspend-approval` header validation on re-submission
 - Auto-link cost events to the action via `actionId`
 - Update Inbox to display `llm_call` actions with estimated cost
 
@@ -716,7 +716,7 @@ Estimated effort: 2-3 days
 
 Estimated effort: 1 day
 
-- Implement `withApproval(fetch, options)` in `@agentseam/sdk`
+- Implement `withApproval(fetch, options)` in `@nullspend/sdk`
 - Handles 202 → poll → re-submit transparently
 - Works as a drop-in for OpenAI SDK's custom `fetch` option
 - Add examples and tests
@@ -768,7 +768,7 @@ Track as a future enhancement based on user demand.
 
 ### Approval Token Validation
 
-The `x-agentseam-approval` header contains an action ID. The proxy validates:
+The `x-nullspend-approval` header contains an action ID. The proxy validates:
 
 1. Action exists in the database
 2. Action status is `approved`

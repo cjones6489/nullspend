@@ -5,7 +5,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { AgentSeam } from "@agentseam/sdk";
+import type { NullSpend } from "@nullspend/sdk";
 import type { ProxyConfig } from "./config.js";
 import { isToolGated, gateToolCall } from "./gate.js";
 
@@ -29,7 +29,7 @@ export async function discoverUpstreamTools(
 export function registerProxyHandlers(
   server: Server,
   upstreamClient: Client,
-  sdk: AgentSeam,
+  sdk: NullSpend,
   config: ProxyConfig,
   cachedTools: Tool[],
   shutdownSignal: AbortSignal,
@@ -75,7 +75,7 @@ async function forwardToUpstream(
 
 async function handleGatedCall(
   upstreamClient: Client,
-  sdk: AgentSeam,
+  sdk: NullSpend,
   name: string,
   args: Record<string, unknown> | undefined,
   config: ProxyConfig,

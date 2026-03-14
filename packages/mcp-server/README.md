@@ -1,11 +1,11 @@
-# @agentseam/mcp-server
+# @nullspend/mcp-server
 
-MCP (Model Context Protocol) server that exposes AgentSeam approval tools to any MCP client — Claude Desktop, Cursor, or any other MCP-compatible host.
+MCP (Model Context Protocol) server that exposes NullSpend approval tools to any MCP client — Claude Desktop, Cursor, or any other MCP-compatible host.
 
 ## How it works
 
 ```
-LLM / MCP Client  ──stdio──▶  AgentSeam MCP Server  ──HTTP──▶  AgentSeam API
+LLM / MCP Client  ──stdio──▶  NullSpend MCP Server  ──HTTP──▶  NullSpend API
                                                                      ▲
                                                        Human reviews in Dashboard
 ```
@@ -24,8 +24,8 @@ The MCP server exposes two tools:
 From the repo root:
 
 ```bash
-pnpm --filter @agentseam/sdk build
-pnpm --filter @agentseam/mcp-server build
+pnpm --filter @nullspend/sdk build
+pnpm --filter @nullspend/mcp-server build
 ```
 
 ### 2. Configure environment
@@ -34,9 +34,9 @@ The server requires two environment variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `AGENTSEAM_URL` | Yes | Base URL of your AgentSeam API (e.g. `http://127.0.0.1:3000`) |
-| `AGENTSEAM_API_KEY` | Yes | API key created from the AgentSeam dashboard |
-| `AGENTSEAM_AGENT_ID` | No | Default agent ID for actions (default: `mcp-agent`) |
+| `NULLSPEND_URL` | Yes | Base URL of your NullSpend API (e.g. `http://127.0.0.1:3000`) |
+| `NULLSPEND_API_KEY` | Yes | API key created from the NullSpend dashboard |
+| `NULLSPEND_AGENT_ID` | No | Default agent ID for actions (default: `mcp-agent`) |
 
 ### 3. Connect to an MCP client
 
@@ -47,12 +47,12 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "agentseam": {
+    "nullspend": {
       "command": "node",
-      "args": ["C:/path/to/AgentSeam/packages/mcp-server/dist/index.js"],
+      "args": ["C:/path/to/NullSpend/packages/mcp-server/dist/index.js"],
       "env": {
-        "AGENTSEAM_URL": "http://127.0.0.1:3000",
-        "AGENTSEAM_API_KEY": "ask_your-api-key-here"
+        "NULLSPEND_URL": "http://127.0.0.1:3000",
+        "NULLSPEND_API_KEY": "ask_your-api-key-here"
       }
     }
   }
@@ -66,12 +66,12 @@ Add to your Cursor MCP settings:
 ```json
 {
   "mcpServers": {
-    "agentseam": {
+    "nullspend": {
       "command": "node",
-      "args": ["C:/path/to/AgentSeam/packages/mcp-server/dist/index.js"],
+      "args": ["C:/path/to/NullSpend/packages/mcp-server/dist/index.js"],
       "env": {
-        "AGENTSEAM_URL": "http://127.0.0.1:3000",
-        "AGENTSEAM_API_KEY": "ask_your-api-key-here"
+        "NULLSPEND_URL": "http://127.0.0.1:3000",
+        "NULLSPEND_API_KEY": "ask_your-api-key-here"
       }
     }
   }
@@ -96,7 +96,7 @@ Propose a risky action for human approval before execution.
 | `timeoutSeconds` | number | No | Seconds to wait for a decision (default: 300) |
 | `waitForDecision` | boolean | No | If `true` (default), block until decided. If `false`, return immediately. |
 
-**Blocking mode** (`waitForDecision: true`, the default): The tool blocks and polls the AgentSeam API until the action is approved, rejected, or the timeout expires. The LLM receives the final decision and can act on it.
+**Blocking mode** (`waitForDecision: true`, the default): The tool blocks and polls the NullSpend API until the action is approved, rejected, or the timeout expires. The LLM receives the final decision and can act on it.
 
 **Non-blocking mode** (`waitForDecision: false`): The tool returns immediately with the `actionId` and `pending` status. The LLM can use `check_action` to poll for the decision later. Use this when the MCP client has strict tool timeout limits.
 
@@ -114,11 +114,11 @@ Check the current status of a previously proposed action.
 
 ```bash
 # Run tests
-pnpm --filter @agentseam/mcp-server test
+pnpm --filter @nullspend/mcp-server test
 
 # Watch mode
-pnpm --filter @agentseam/mcp-server test:watch
+pnpm --filter @nullspend/mcp-server test:watch
 
 # Rebuild
-pnpm --filter @agentseam/mcp-server build
+pnpm --filter @nullspend/mcp-server build
 ```

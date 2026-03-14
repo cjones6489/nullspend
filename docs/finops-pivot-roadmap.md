@@ -1,6 +1,6 @@
-# AgentSeam FinOps Pivot: Build Roadmap
+# NullSpend FinOps Pivot: Build Roadmap
 
-> **Status: Active.** This is the master roadmap for AgentSeam — the FinOps
+> **Status: Active.** This is the master roadmap for NullSpend — the FinOps
 > layer for AI agents.
 >
 > **How to use this document:** Each phase has scope, acceptance criteria, and
@@ -25,7 +25,7 @@ The developer experience is ONE thing: **change your base URL.**
 OPENAI_BASE_URL=https://api.openai.com/v1
 
 # After
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 ```
 
 That's it. Their existing code, existing SDK, existing streaming — all works
@@ -40,7 +40,7 @@ the real server.
 
 **The complexity trap to avoid:** LiteLLM requires Docker + PostgreSQL + Redis +
 YAML config. That's why developers complain about it despite 38K stars. If
-setting up AgentSeam ever requires more than an API key and a base URL change,
+setting up NullSpend ever requires more than an API key and a base URL change,
 we've gone wrong.
 
 ## Core principles
@@ -78,7 +78,7 @@ payloads require affirmative action to enable.
 
 ## Product vision (one sentence)
 
-AgentSeam is the FinOps layer for AI agents — a proxy that tracks every dollar
+NullSpend is the FinOps layer for AI agents — a proxy that tracks every dollar
 your agents spend on LLM tokens and tool calls, enforces hard budget ceilings,
 and gives you the receipts to prove it.
 
@@ -140,7 +140,7 @@ intelligence layer — never for the tokens themselves.
 ## Market context
 
 **The structural thesis:** Just as AgentMail built email for agents because Gmail's
-API isn't agent-native, AgentSeam builds financial infrastructure for agents because
+API isn't agent-native, NullSpend builds financial infrastructure for agents because
 existing cost tools aren't built for autonomous, high-frequency, multi-provider agent
 workflows that need real-time enforcement, not after-the-fact dashboards.
 
@@ -170,7 +170,7 @@ with a one-line setup.
 
 **The AgentMail parallel:** Just as AgentMail built email infrastructure that
 is agent-native (when Gmail's API technically works but isn't built for agent
-workflows), AgentSeam builds financial infrastructure that is agent-native.
+workflows), NullSpend builds financial infrastructure that is agent-native.
 Existing tools (Stripe, Datadog, observability platforms) can technically track
 costs, but none provide identity-based budget enforcement, cryptographic
 receipts, or unified LLM + tool metering designed for autonomous agents.
@@ -180,8 +180,8 @@ receipts, or unified LLM + tool metering designed for autonomous agents.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Developer / Agent                           │
-│  Uses OpenAI/Anthropic SDK with base URL pointed at AgentSeam  │
-│  OR connects MCP client through AgentSeam MCP proxy            │
+│  Uses OpenAI/Anthropic SDK with base URL pointed at NullSpend  │
+│  OR connects MCP client through NullSpend MCP proxy            │
 └────────────┬──────────────────────────────┬─────────────────────┘
              │ LLM API calls               │ MCP tool calls
              ▼                             ▼
@@ -273,7 +273,7 @@ schema migration required.
 4. **Sidebar reorder** — Analytics above Activity, Settings at bottom
 5. **Documentation** — quickstart guide, provider setup guides (OpenAI,
    Anthropic), budget configuration guide, API reference
-6. **HN post draft** — "Show HN: AgentSeam – FinOps for AI agents (budget
+6. **HN post draft** — "Show HN: NullSpend – FinOps for AI agents (budget
    enforcement that actually works)." Lead with the problem, show the gaps,
    link to live demo.
 7. **Helicone migration guide (TIME-SENSITIVE)** — Helicone was acquired by
@@ -523,13 +523,13 @@ Bridge between internal FinOps and external agent commerce.
 
 If agents have identity, budgets, and verifiable cost histories — build
 the financial infrastructure for agents transacting with each other. Agent
-A discovers Agent B, negotiates price, escrows payment through AgentSeam,
+A discovers Agent B, negotiates price, escrows payment through NullSpend,
 releases on verified completion. "Stripe for the agent economy" end state.
 
 ### Phase 21: Embedded FinOps
 
 Stop making developers come to a dashboard. VS Code/Cursor extension,
-CLI tool (`agentseam status`), git hook for cost impact, CI/CD gate, Slack
+CLI tool (`nullspend status`), git hook for cost impact, CI/CD gate, Slack
 bot with daily digests. The best financial infrastructure is invisible.
 
 ### Phase 22: Self-Hosted Enterprise Deployment

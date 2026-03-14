@@ -174,7 +174,7 @@ the response content.
 
 **Remediation:**
 
-AgentSeam reads `completion_tokens` directly from the usage object — never
+NullSpend reads `completion_tokens` directly from the usage object — never
 infers from response text. Reasoning tokens are a display concern, not a
 cost concern.
 

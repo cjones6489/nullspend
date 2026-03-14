@@ -182,13 +182,13 @@ keeps the boundary clean: parsing happens once, calculation uses clean types.
 This mirrors the existing `cost-calculator.ts` (which handles OpenAI). Each
 provider gets its own calculator file. They share the `CostEventInsert`
 return type and use the same `getModelPricing()` and `costComponent()` from
-`@agentseam/cost-engine`.
+`@nullspend/cost-engine`.
 
 ### 4.2 Function Signature
 
 ```typescript
-import { getModelPricing, costComponent } from "@agentseam/cost-engine";
-import type { NewCostEventRow } from "@agentseam/db";
+import { getModelPricing, costComponent } from "@nullspend/cost-engine";
+import type { NewCostEventRow } from "@nullspend/db";
 import type { AnthropicRawUsage, AnthropicCacheCreationDetail } from "./anthropic-types.js";
 
 type CostEventInsert = Omit<NewCostEventRow, "id" | "createdAt">;

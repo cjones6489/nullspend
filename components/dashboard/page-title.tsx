@@ -21,7 +21,7 @@ export function PageTitle() {
   }
 
   if (!title) {
-    title = "AgentSeam";
+    title = "NullSpend";
   }
 
   return (

@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const action = await createAction(input, ownerUserId);
 
     sendSlackNotification(action, ownerUserId).catch((err) => {
-      console.error("[AgentSeam] Slack notification failed:", err);
+      console.error("[NullSpend] Slack notification failed:", err);
     });
 
     return NextResponse.json(

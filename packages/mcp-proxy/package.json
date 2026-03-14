@@ -1,14 +1,14 @@
 {
-  "name": "@agentseam/mcp-proxy",
+  "name": "@nullspend/mcp-proxy",
   "private": true,
   "version": "0.1.0",
-  "description": "MCP proxy that gates risky tool calls through AgentSeam approval before forwarding to an upstream MCP server",
+  "description": "MCP proxy that gates risky tool calls through NullSpend approval before forwarding to an upstream MCP server",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "agentseam-mcp-proxy": "./dist/index.js"
+    "nullspend-mcp-proxy": "./dist/index.js"
   },
   "exports": {
     ".": {
@@ -30,7 +30,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@agentseam/sdk": "workspace:*",
+    "@nullspend/sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.27.0"
   },
   "devDependencies": {

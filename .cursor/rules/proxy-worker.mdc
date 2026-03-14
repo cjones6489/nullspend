@@ -32,7 +32,7 @@ Request → Auth → Forward to OpenAI → Parse response/stream → Extract usa
 ## Code Conventions
 
 - Use `.js` extensions in relative imports (ESM requirement).
-- Import schema from `@agentseam/db`, never relative paths.
+- Import schema from `@nullspend/db`, never relative paths.
 
 ## Testing
 

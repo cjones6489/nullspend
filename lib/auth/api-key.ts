@@ -3,10 +3,10 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { eq, and, isNull } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@agentseam/db";
+import { apiKeys } from "@nullspend/db";
 import { getDevActor } from "@/lib/auth/session";
 
-export const API_KEY_HEADER = "x-agentseam-key";
+export const API_KEY_HEADER = "x-nullspend-key";
 export const API_KEY_PREFIX = "ask_";
 
 export class ApiKeyError extends Error {
@@ -39,12 +39,12 @@ function constantTimeCompare(a: string, b: string): boolean {
 }
 
 function canUseDevelopmentFallback(): boolean {
-  return process.env.AGENTSEAM_DEV_MODE === "true";
+  return process.env.NULLSPEND_DEV_MODE === "true";
 }
 
 function getEnvFallbackKey(): string | undefined {
   if (!canUseDevelopmentFallback()) return undefined;
-  return process.env.AGENTSEAM_API_KEY;
+  return process.env.NULLSPEND_API_KEY;
 }
 
 async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
@@ -85,6 +85,6 @@ export function resolveDevFallbackApiKeyUserId(): string {
   }
 
   throw new ApiKeyError(
-    "Managed API keys are required. The AGENTSEAM_API_KEY fallback is development-only.",
+    "Managed API keys are required. The NULLSPEND_API_KEY fallback is development-only.",
   );
 }

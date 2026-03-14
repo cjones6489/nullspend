@@ -1,8 +1,8 @@
-# AgentSeam technical build spec: trust-first AI agent FinOps proxy
+# NullSpend technical build spec: trust-first AI agent FinOps proxy
 
-**AgentSeam requires a proxy that intercepts LLM API calls and MCP tool invocations, enforces budgets atomically, and tracks costs with sub-cent accuracy across every major provider.** This spec covers the exact API response formats, known bugs to avoid, protocol details, and architecture patterns needed to build it. Every field name, pricing multiplier, and edge case documented below has been verified against official provider documentation and real-world implementations as of March 2026.
+**NullSpend requires a proxy that intercepts LLM API calls and MCP tool invocations, enforces budgets atomically, and tracks costs with sub-cent accuracy across every major provider.** This spec covers the exact API response formats, known bugs to avoid, protocol details, and architecture patterns needed to build it. Every field name, pricing multiplier, and edge case documented below has been verified against official provider documentation and real-world implementations as of March 2026.
 
-The competitive landscape reveals a critical gap: LiteLLM's budget enforcement has **at least 5 documented bypass vulnerabilities** rooted in architectural flaws. Helicone and Portkey solve observability but not proactive budget enforcement. Google's BATS framework demonstrates that budget-aware agents outperform budget-blind ones by 22%, but it operates at the prompt level with no infrastructure-layer enforcement. AgentSeam can own the intersection — a proxy that enforces hard budget ceilings while enabling BATS-style budget awareness in the agent's context.
+The competitive landscape reveals a critical gap: LiteLLM's budget enforcement has **at least 5 documented bypass vulnerabilities** rooted in architectural flaws. Helicone and Portkey solve observability but not proactive budget enforcement. Google's BATS framework demonstrates that budget-aware agents outperform budget-blind ones by 22%, but it operates at the prompt level with no infrastructure-layer enforcement. NullSpend can own the intersection — a proxy that enforces hard budget ceilings while enabling BATS-style budget awareness in the agent's context.
 
 ---
 
@@ -126,7 +126,7 @@ Reasoning tokens appear inside `completion_tokens_details.reasoning_tokens`. The
 
 ### Cache token double-counting bugs to avoid
 
-Five documented bugs that AgentSeam must not replicate:
+Five documented bugs that NullSpend must not replicate:
 
 - **Langfuse #12306**: OTel semantic convention defines `gen_ai.usage.input_tokens` as total input. Tools like pydantic-ai correctly sum Anthropic's three fields to get total. Langfuse then adds cache counts again on top, producing **2× the real cost**.
 - **LangChain.js #10249**: Anthropic streaming sends cache counts in both `message_start` and cumulative `message_delta`. LangChain's `mergeInputTokenDetails` adds them: `output.cache_read = (a?.cache_read ?? 0) + (b?.cache_read ?? 0)`, yielding **exactly double**.
@@ -278,7 +278,7 @@ Content types in results: `text`, `image` (base64 + mimeType), `audio`, `resourc
 ### Proxy architecture pattern
 
 ```
-Client (MCP Host) ←stdio/HTTP→ AgentSeam Proxy ←stdio/HTTP→ Real MCP Server
+Client (MCP Host) ←stdio/HTTP→ NullSpend Proxy ←stdio/HTTP→ Real MCP Server
 ```
 
 The proxy is an **MCP server** to the client and an **MCP client** to the real server. Key interception points:
@@ -405,7 +405,7 @@ For the client SDK circuit breaker, use **opossum** (Red Hat-maintained, 70K+ we
 
 Two modes, following Helicone's proven pattern:
 
-**BYOK (pass-through)**: User sends `Authorization: Bearer {PROVIDER_KEY}` + `X-AgentSeam-Auth: Bearer {PLATFORM_KEY}`. The provider key passes through the proxy, is **hashed with SHA-256** for account matching, and is never persisted. The V8 isolate provides per-request memory isolation; the key exists only during request processing.
+**BYOK (pass-through)**: User sends `Authorization: Bearer {PROVIDER_KEY}` + `X-NullSpend-Auth: Bearer {PLATFORM_KEY}`. The provider key passes through the proxy, is **hashed with SHA-256** for account matching, and is never persisted. The V8 isolate provides per-request memory isolation; the key exists only during request processing.
 
 **Vault mode**: Provider keys stored with **XChaCha20 encryption** + nonce at rest. Users interact via virtual keys that map to encrypted provider keys at runtime. Virtual keys can be rotated/revoked without touching provider keys.
 
@@ -625,7 +625,7 @@ For reasoning models, budget `max_completion_tokens` worth of output tokens, sin
 | **Helicone** | Apache 2.0 (main) + GPL v3 (gateway) | SOC 2 infra, dedicated support | Cloud + enterprise |
 | **Portkey** | OSS gateway | Full platform (observability, governance, vault) | SaaS + enterprise private cloud |
 
-### Recommended licensing for AgentSeam
+### Recommended licensing for NullSpend
 
 **Proxy/gateway**: **Apache 2.0** — permissive enough for maximum adoption, patent grant gives enterprise confidence, slightly more protective than MIT against wholesale copying without attribution. Following Helicone's model.
 
@@ -674,9 +674,9 @@ BATS and proxy-based budget enforcement are **complementary, not competing**:
 - **BATS** makes agents spend wisely — adapting search strategy as budget depletes, pruning plan branches, stopping early when evidence is sufficient. It operates at the prompt level with no infrastructure requirements.
 - **Proxy-based enforcement** provides hard budget ceilings, multi-tenant governance, audit trails, and cost attribution. It operates at the infrastructure layer.
 
-AgentSeam can integrate both: the proxy enforces hard budget limits and tracks costs, while optionally injecting BATS-style budget awareness into the agent's context (e.g., adding a `<budget>` block to system prompts showing remaining budget, informing the agent to be more conservative as budget depletes). This is a unique differentiator — no existing tool combines infrastructure-level enforcement with agent-level budget awareness.
+NullSpend can integrate both: the proxy enforces hard budget limits and tracks costs, while optionally injecting BATS-style budget awareness into the agent's context (e.g., adding a `<budget>` block to system prompts showing remaining budget, informing the agent to be more conservative as budget depletes). This is a unique differentiator — no existing tool combines infrastructure-level enforcement with agent-level budget awareness.
 
-BATS is currently a **research paper only**, not integrated into any Google production platform (Vertex AI, ADK, Agent Builder). AgentSeam can be first to productize this pattern.
+BATS is currently a **research paper only**, not integrated into any Google production platform (Vertex AI, ADK, Agent Builder). NullSpend can be first to productize this pattern.
 
 ---
 

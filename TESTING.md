@@ -1,6 +1,6 @@
 # Testing
 
-AgentSeam has ~1,590 tests across 106 files organized into four tiers.
+NullSpend has ~1,590 tests across 106 files organized into four tiers.
 
 ## Quick Reference
 

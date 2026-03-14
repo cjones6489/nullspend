@@ -4,7 +4,7 @@ import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
-import { apiKeys, budgets } from "@agentseam/db";
+import { apiKeys, budgets } from "@nullspend/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
 import {
   createBudgetInputSchema,

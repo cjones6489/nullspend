@@ -2,7 +2,7 @@ import type { Redis } from "@upstash/redis/cloudflare";
 import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql, eq, and, getTableColumns } from "drizzle-orm";
-import { budgets } from "@agentseam/db";
+import { budgets } from "@nullspend/db";
 import { populateCache } from "./budget.js";
 
 const BUDGET_CACHE_TTL = 60;

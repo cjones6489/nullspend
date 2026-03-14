@@ -139,7 +139,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
     const controller = new AbortController();
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
         max_tokens: 20,
@@ -295,7 +295,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
 
@@ -311,7 +311,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
     const controller = new AbortController();
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
         max_tokens: 15,
@@ -352,7 +352,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
 
     const res1 = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
 
@@ -363,7 +363,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
 
     const res2 = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-AgentSeam-User-Id": userId }),
+      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
       body: smallAnthropicRequest(),
     });
 

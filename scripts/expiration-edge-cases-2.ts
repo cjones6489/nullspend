@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postgres from "postgres";
-import { AgentSeam } from "@agentseam/sdk";
+import { NullSpend } from "@nullspend/sdk";
 
 function loadEnvLocal() {
   const envPath = resolve(process.cwd(), ".env.local");
@@ -39,11 +39,11 @@ function loadEnvLocal() {
 loadEnvLocal();
 
 const DATABASE_URL = process.env.DATABASE_URL!;
-const API_KEY = process.env.AGENTSEAM_API_KEY!;
-const BASE_URL = process.env.AGENTSEAM_BASE_URL ?? "http://127.0.0.1:3000";
+const API_KEY = process.env.NULLSPEND_API_KEY!;
+const BASE_URL = process.env.NULLSPEND_BASE_URL ?? "http://127.0.0.1:3000";
 
 const sql = postgres(DATABASE_URL, { prepare: false });
-const sdk = new AgentSeam({ baseUrl: BASE_URL, apiKey: API_KEY });
+const sdk = new NullSpend({ baseUrl: BASE_URL, apiKey: API_KEY });
 
 const cleanupIds: string[] = [];
 
@@ -228,8 +228,8 @@ async function testRejectExpiredAction409() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-agentseam-key": API_KEY,
-      cookie: "agentseam-dev-actor=dev-user",
+      "x-nullspend-key": API_KEY,
+      cookie: "nullspend-dev-actor=dev-user",
     },
     body: JSON.stringify({}),
   });
@@ -262,8 +262,8 @@ async function testApproveExpiredAction409() {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-agentseam-key": API_KEY,
-      cookie: "agentseam-dev-actor=dev-user",
+      "x-nullspend-key": API_KEY,
+      cookie: "nullspend-dev-actor=dev-user",
     },
     body: JSON.stringify({}),
   });
@@ -298,7 +298,7 @@ async function testBulkExpireSelectivity() {
 
   // List actions triggers bulkExpireActions
   const response = await fetch(`${BASE_URL}/api/actions?limit=50`, {
-    headers: { "x-agentseam-key": API_KEY },
+    headers: { "x-nullspend-key": API_KEY },
   });
   const body = await response.json() as { data: { id: string; status: string }[] };
 

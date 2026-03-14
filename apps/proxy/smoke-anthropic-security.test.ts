@@ -48,7 +48,7 @@ describe("Anthropic security", () => {
     await res.text();
   }, 30_000);
 
-  it("X-AgentSeam-Auth is not leaked in response headers", async () => {
+  it("X-NullSpend-Auth is not leaked in response headers", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: anthropicAuthHeaders(),
@@ -60,7 +60,7 @@ describe("Anthropic security", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("x-agentseam-auth")).toBeNull();
+    expect(res.headers.get("x-nullspend-auth")).toBeNull();
     await res.text();
   }, 30_000);
 
@@ -68,8 +68,8 @@ describe("Anthropic security", () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: anthropicAuthHeaders({
-        "X-AgentSeam-User-Id": "sec-test-user",
-        "X-AgentSeam-Key-Id": "sec-test-key",
+        "X-NullSpend-User-Id": "sec-test-user",
+        "X-NullSpend-Key-Id": "sec-test-key",
       }),
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
@@ -136,7 +136,7 @@ describe("Anthropic security", () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: anthropicAuthHeaders({
-        "X-AgentSeam-User-Id": userId,
+        "X-NullSpend-User-Id": userId,
       }),
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
@@ -233,7 +233,7 @@ describe("Anthropic security", () => {
           headers: {
             "Content-Type": "application/json",
             "x-api-key": ANTHROPIC_API_KEY!,
-            "X-AgentSeam-Auth": key,
+            "X-NullSpend-Auth": key,
           },
           body: JSON.stringify({
             model: "claude-3-haiku-20240307",

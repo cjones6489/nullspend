@@ -1,6 +1,6 @@
 # Anthropic Provider Implementation — Master Sub-Phase Plan
 
-> **Parent scope:** Phase 4 of the AgentSeam FinOps roadmap.
+> **Parent scope:** Phase 4 of the NullSpend FinOps roadmap.
 >
 > **Goal:** Add full Anthropic Claude API support to the proxy with accurate
 > cost tracking, streaming passthrough, and budget enforcement — using the
@@ -482,7 +482,7 @@ value (e.g., `req_018EeWyXxfu5pfWkrYcMdjWG`) is used as the
 Mirrors the structure of `routes/openai.ts` but without budget
 enforcement (added in 4D). The handler:
 
-1. Validates `X-AgentSeam-Auth` platform key (reuses `auth.ts`)
+1. Validates `X-NullSpend-Auth` platform key (reuses `auth.ts`)
 2. Extracts `model` from request body
 3. Validates model against `isKnownModel("anthropic", model)`
 4. Builds upstream headers via `buildAnthropicUpstreamHeaders()`
@@ -587,7 +587,7 @@ There is no need for header-sniffing or config-based provider selection.
 - `anthropic-version: 2023-06-01` always set
 - `content-type: application/json` always set
 - `anthropic-beta` forwarded when present
-- Proxy-specific headers (`x-agentseam-auth`, `host`) NOT forwarded
+- Proxy-specific headers (`x-nullspend-auth`, `host`) NOT forwarded
 - Missing auth results in no `x-api-key` header (Anthropic will return 401)
 
 **Client header construction:**
@@ -602,8 +602,8 @@ There is no need for header-sniffing or config-based provider selection.
 These will use mocked fetch and cost calculator (same pattern as OpenAI
 route tests if they exist, otherwise establish the pattern):
 
-- Missing `X-AgentSeam-Auth` → 401
-- Invalid `X-AgentSeam-Auth` → 401
+- Missing `X-NullSpend-Auth` → 401
+- Invalid `X-NullSpend-Auth` → 401
 - Unknown model → 400 with `invalid_model` error
 - Valid non-streaming request → 200, cost event logged
 - Valid streaming request → 200 SSE, cost event logged after stream
@@ -816,7 +816,7 @@ export function anthropicAuthHeaders(
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     "x-api-key": ANTHROPIC_API_KEY!,
-    "X-AgentSeam-Auth": PLATFORM_AUTH_KEY,
+    "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
   };
   if (extra) Object.assign(h, extra);
   return h;
@@ -891,12 +891,12 @@ hardcoding `'openai'`.
 ### Deployment Steps
 
 1. Ensure all unit tests pass: `pnpm --filter proxy test`
-2. Ensure all cost-engine tests pass: `pnpm --filter @agentseam/cost-engine test`
+2. Ensure all cost-engine tests pass: `pnpm --filter @nullspend/cost-engine test`
 3. Deploy: `cd apps/proxy && npx wrangler deploy`
 4. Set Anthropic-related secrets if needed (TBD based on auth architecture)
 5. Run smoke tests against deployed proxy:
    ```
-   PROXY_URL=https://agent-seam.<account>.workers.dev \
+   PROXY_URL=https://nullspend.<account>.workers.dev \
    ANTHROPIC_API_KEY=sk-ant-... \
    PLATFORM_AUTH_KEY=... \
    DATABASE_URL=... \

@@ -1,6 +1,6 @@
-# AgentSeam competitor bug database: every documented weakness, with test cases
+# NullSpend competitor bug database: every documented weakness, with test cases
 
-**Purpose:** Catalog every known bug, complaint, and failure mode across competitor platforms. For each, derive a test case that proves AgentSeam handles it correctly. This document is both competitive intelligence and a QA specification.
+**Purpose:** Catalog every known bug, complaint, and failure mode across competitor platforms. For each, derive a test case that proves NullSpend handles it correctly. This document is both competitive intelligence and a QA specification.
 
 **Last updated:** March 9, 2026
 
@@ -18,7 +18,7 @@ LiteLLM is the primary competitive target. As of March 2026, it has 800+ open Gi
 
 **Root cause:** Budget enforcement tied to URL pattern matching rather than authentication identity.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Budget enforcement is identity-based, not route-based
 GIVEN: A budget of $50 set for API key "sk-test"
@@ -35,7 +35,7 @@ VERIFY: Budget check runs before any routing decision
 
 **Root cause:** End-user identity decoupled from key identity; budget enforcement only runs for the primary auth entity.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: All budget entities are checked independently
 GIVEN: API key "sk-test" has a $100 budget, user "user-123" has a $10 budget
@@ -52,7 +52,7 @@ VERIFY: User "user-123" is blocked at $10 even though the key has $90 remaining
 
 **Root cause:** Mutually exclusive entity hierarchy — checks only one entity instead of all applicable entities.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Budget hierarchy enforces most restrictive across all entities
 GIVEN: User budget = $10, team budget = $100, key budget = $50
@@ -69,7 +69,7 @@ VERIFY: No entity association bypasses any other entity's budget
 
 **Root cause:** Budget enforcement tied to route matching; new routes can bypass it.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Budget enforcement applies to all provider routes
 GIVEN: Budget of $20 for API key "sk-test"
@@ -86,7 +86,7 @@ VERIFY: No path exists that reaches a paid provider without budget checking
 
 **Root cause:** Non-atomic budget state transitions.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Budget reset is atomic
 GIVEN: Budget with spend = $45 and reset_at approaching
@@ -103,7 +103,7 @@ VERIFY: Lua script performs reset as single atomic operation
 
 **Root cause:** Budget check ordering creates implicit priority that drops checks silently.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: All applicable budget entities are checked regardless of auth method
 GIVEN: User, team, and org all have budgets
@@ -117,7 +117,7 @@ THEN: All entity budgets are evaluated; most restrictive wins
 
 **What happens:** Once a user has been assigned a numeric budget, attempting to set it back to unlimited fails with a `float_parsing` error. The API rejects empty string values for `max_budget`.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Budget can be created, modified, and removed cleanly
 GIVEN: User with budget = $50
@@ -140,7 +140,7 @@ These bugs directly affect the accuracy of spend tracking, which in turn affects
 
 **Root cause:** `generic_cost_per_token` doesn't subtract cached tokens before applying the base input rate.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: OpenAI cached tokens billed at cached rate, not base rate
 GIVEN: 8,477,162 prompt tokens, 7,715,693 cached, 10,699 output
@@ -158,7 +158,7 @@ VERIFY: NOT 8,477,162 × 2.50 + 10,699 × 10.00 (the LiteLLM bug)
 
 **Root cause:** Cache write tokens charged at base rate PLUS cache write premium instead of only cache write rate.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Anthropic cache write tokens charged at write rate only, not double-counted
 GIVEN: input_tokens=3, cache_creation_input_tokens=12304, output_tokens=550
@@ -174,7 +174,7 @@ VERIFY: NOT (12304 × 3.00) + (12304 × 3.75) + (550 × 15.00) (~$0.091, the Lit
 
 **What happens:** When streaming is enabled with Anthropic passthrough, cache read tokens are counted as regular input tokens. LiteLLM reported $0.002059 for a response that actually cost $0.000292 — roughly 7× overcharge.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Streaming and non-streaming produce identical cost calculations
 GIVEN: Identical Anthropic request with cache_read_input_tokens=2438
@@ -188,7 +188,7 @@ THEN: Both produce the same cost within 1 microdollar
 
 **What happens:** LiteLLM only counted non-cached tokens and applied the standard input rate. Cache read and cache write costs were entirely missing from the calculation.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: All token categories produce non-zero costs when tokens > 0
 GIVEN: Any request with cache_read_input_tokens > 0 or cache_creation_input_tokens > 0
@@ -203,7 +203,7 @@ VERIFY: Cache write cost > 0 when cache_creation_input_tokens > 0
 
 **What happens:** When using OpenAI's Flex service tier (service_tier="flex"), pricing is approximately half the standard rate. LiteLLM doesn't account for this and charges standard rates, resulting in 2× overcharge. User confirmed LiteLLM cost was double OpenAI's actual billing.
 
-**AgentSeam test case (future, when we add Flex support):**
+**NullSpend test case (future, when we add Flex support):**
 ```
 TEST: Service tier pricing applied correctly
 GIVEN: Request with service_tier="flex" to gpt-5-nano
@@ -217,7 +217,7 @@ VERIFY: Reported cost matches OpenAI billing within 5%
 
 **What happens:** Gemini models have tiered pricing (different rates for ≤200K vs >200K tokens). LiteLLM applies input token pricing tiers to output tokens, calculating the wrong rate.
 
-**AgentSeam test case (future, when we add Gemini):**
+**NullSpend test case (future, when we add Gemini):**
 ```
 TEST: Gemini tiered pricing applies correct tier to each token type
 GIVEN: 250K input tokens, 10K output tokens on gemini-2.5-pro
@@ -231,7 +231,7 @@ AND: Output cost uses correct output tier (independent of input tier)
 
 **What happens:** For multimodal models generating images, LiteLLM treats image output tokens as text output tokens. Image tokens are 12× more expensive than text tokens. This causes massive undercharging for image generation.
 
-**AgentSeam test case (future consideration):**
+**NullSpend test case (future consideration):**
 ```
 TEST: Multimodal token types charged at correct rates
 GIVEN: completion_tokens_details.image_tokens = 1290
@@ -244,7 +244,7 @@ THEN: Image tokens charged at image output rate, not text output rate
 
 **What happens:** xAI returns `prompt_tokens_details.text_tokens` as total prompt tokens (including cached) instead of non-cached only. LiteLLM's generic handler treats this as non-cached tokens, then also adds cached tokens — double-counting.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Provider-specific token semantics handled correctly
 GIVEN: Provider returns cached tokens as subset of total (OpenAI style)
@@ -259,7 +259,7 @@ VERIFY: No provider combination produces double-counted tokens
 
 **What happens:** LiteLLM reported $26.74 for Claude 3.5 Sonnet V2 on Bedrock for the month, while AWS showed $770 — a 29× undercount. The issue appears when Roo Code sends requests that cause token count discrepancies.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Cost calculation uses usage from actual API response, not estimates
 GIVEN: Any proxy request
@@ -277,7 +277,7 @@ VERIFY: Over 100 sequential requests, sum of per-request costs matches expected 
 
 **What happens:** LiteLLM broke at 300 RPS in production, with some requests experiencing 6-minute latency. Python's GIL, combined with synchronous database logging, creates a throughput ceiling.
 
-**AgentSeam advantage:** CF Workers architecture has no GIL, no process-level concurrency limits, and async log processing via `waitUntil()`. Cost logging never blocks the response stream.
+**NullSpend advantage:** CF Workers architecture has no GIL, no process-level concurrency limits, and async log processing via `waitUntil()`. Cost logging never blocks the response stream.
 
 ### Bug 3.2: Performance degradation over time (memory leak)
 
@@ -285,7 +285,7 @@ VERIFY: Over 100 sequential requests, sum of per-request costs matches expected 
 
 **What happens:** LiteLLM gradually slows down over time, requiring periodic service restarts. Teams report needing worker recycling after 10,000 requests to manage memory leaks. A September 2025 release caused OOM errors on Kubernetes.
 
-**AgentSeam advantage:** CF Workers are stateless V8 isolates — no memory leaks possible across requests.
+**NullSpend advantage:** CF Workers are stateless V8 isolates — no memory leaks possible across requests.
 
 ### Bug 3.3: Database bottleneck at 1M logs
 
@@ -293,7 +293,7 @@ VERIFY: Over 100 sequential requests, sum of per-request costs matches expected 
 
 **What happens:** Performance degrades significantly once PostgreSQL accumulates over 1M request logs. At 100K requests/day, this threshold is hit in 10 days. LiteLLM docs acknowledge this.
 
-**AgentSeam advantage:** Cost events use Postgres for the append-only ledger but analytics will move to ClickHouse. The proxy itself (CF Workers) has no database in the hot path for cost logging — it uses `waitUntil()` for async writes.
+**NullSpend advantage:** Cost events use Postgres for the append-only ledger but analytics will move to ClickHouse. The proxy itself (CF Workers) has no database in the hot path for cost logging — it uses `waitUntil()` for async writes.
 
 ### Bug 3.4: 3+ second cold start in serverless
 
@@ -301,7 +301,7 @@ VERIFY: Over 100 sequential requests, sum of per-request costs matches expected 
 
 **What happens:** LiteLLM's import time exceeds 3 seconds, creating noticeable latency on serverless cold starts.
 
-**AgentSeam advantage:** CF Workers cold start is <5ms.
+**NullSpend advantage:** CF Workers cold start is <5ms.
 
 ---
 
@@ -313,7 +313,7 @@ VERIFY: Over 100 sequential requests, sum of per-request costs matches expected 
 
 **What happens:** When using pydantic-ai with Anthropic, Langfuse shows ~2× the real input token count. The OTel spec defines `gen_ai.usage.input_tokens` as the total (cached + uncached). Langfuse then adds cache_read and cache_write on top: `usage.input = input_tokens + cache_read + cache_write = 260,421` (double the actual 130,213). The pydantic-ai team confirmed this is a Langfuse bug, not theirs.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Anthropic input_tokens semantics handled correctly
 GIVEN: Anthropic returns input_tokens=5 (uncached only), cache_read=128955, cache_write=1253
@@ -328,7 +328,7 @@ VERIFY: Total is NOT 130213 + 128955 + 1253 = 260,421 (the Langfuse bug)
 
 **What happens:** When Anthropic rejects a request (prompt too long), the provider charges $0. But Langfuse infers and assigns a cost based on the input parameters. Users report seeing "hundreds of dollars" for single failed traces that cost nothing. Manually deleting these traces is the only workaround.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Failed/rejected requests produce zero cost
 GIVEN: Upstream returns 4xx or 5xx error
@@ -342,7 +342,7 @@ VERIFY: Only successful responses with usage data produce cost events
 
 **What happens:** Despite docs claiming automatic token counting, the TypeScript SDK doesn't capture Anthropic token usage when creating spans manually. Users must manually map Anthropic's field names to Langfuse's schema.
 
-**AgentSeam advantage:** Proxy intercepts the response directly — no SDK-level token mapping needed. The SSE parser captures usage from the actual API response.
+**NullSpend advantage:** Proxy intercepts the response directly — no SDK-level token mapping needed. The SSE parser captures usage from the actual API response.
 
 ### Bug 4.4: No tiered pricing support
 
@@ -350,7 +350,7 @@ VERIFY: Only successful responses with usage data produce cost events
 
 **What happens:** Anthropic and Gemini both have tiered pricing (e.g., different rates above 200K input tokens). Langfuse doesn't support this, meaning cost reports to leadership are inaccurate for long-context usage — the exact scenario where costs are highest and accuracy matters most.
 
-**AgentSeam test case (future):**
+**NullSpend test case (future):**
 ```
 TEST: Long-context rate doubling applied for Anthropic >200K input
 GIVEN: Anthropic request with 250K input tokens
@@ -363,7 +363,7 @@ THEN: First 200K charged at base rate, remaining 50K at 2× rate
 
 **What happens:** ClickHouse storage grows from 300MB to 800MB in 5 hours with zero traces. One user hit storage exhaustion in 1 day with no activity. The ZooKeeper + ClickHouse combination causes background storage inflation. A user with only 5 traces saw storage grow from 400MB to 1.2GB in 2 days.
 
-**AgentSeam advantage:** No ClickHouse requirement. Postgres for transactional data, with ClickHouse as an optional future analytics layer.
+**NullSpend advantage:** No ClickHouse requirement. Postgres for transactional data, with ClickHouse as an optional future analytics layer.
 
 ### Bug 4.6: ClickHouse versions above 25.5.2 cause exabyte memory allocation
 
@@ -371,7 +371,7 @@ THEN: First 200K charged at base rate, remaining 50K at 2× rate
 
 **What happens:** Certain ClickHouse versions above 25.5.2 trigger extreme memory usage during deletions, sometimes attempting to allocate exabytes of memory. Langfuse recommends staying at 25.5.2 or below.
 
-**AgentSeam advantage:** No ClickHouse dependency.
+**NullSpend advantage:** No ClickHouse dependency.
 
 ---
 
@@ -383,7 +383,7 @@ THEN: First 200K charged at base rate, remaining 50K at 2× rate
 
 **What happens:** In `@langchain/anthropic`, the `message_delta` handler passes cumulative cache token values as if they were incremental deltas. `mergeInputTokenDetails` then adds `message_start` and `message_delta` cache tokens together, producing exactly 2× the actual values. Cache_read + cache_creation exceeds input_tokens, which is mathematically impossible.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Streaming Anthropic message_delta values treated as cumulative, not incremental
 GIVEN: message_start has cache_read=5000
@@ -402,7 +402,7 @@ VERIFY: NOT 10000 (the LangChain bug of summing start + delta)
 
 **What happens:** Same root cause as LangChain #10249. Cline treats `message_delta` usage values as incremental, doubling cache token counts.
 
-**AgentSeam test case:** Same as Bug 5.1 — tests derive from the same streaming semantics.
+**NullSpend test case:** Same as Bug 5.1 — tests derive from the same streaming semantics.
 
 ---
 
@@ -420,7 +420,7 @@ VERIFY: NOT 10000 (the LangChain bug of summing start + delta)
 
 **What happens:** When you exceed your log quota, the gateway keeps routing but stops recording. You lose cost visibility during high-traffic periods — exactly when you need it most. This means budget tracking stops during spikes, creating an enforcement gap.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Cost tracking never stops regardless of volume
 GIVEN: 10M requests in a month (well above any tier limit)
@@ -446,7 +446,7 @@ VERIFY: No request passes through the proxy without cost being calculated
 
 **What happens:** "If a specific request log shows 0 cents in the COST column, it means that Portkey does not currently track pricing for that model, and it will not count towards the provider's budget limit." Unknown models bypass budget enforcement entirely.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Unknown models still count against budget (at estimated or zero cost)
 GIVEN: Request for model "some-new-model-not-in-pricing-db"
@@ -496,7 +496,7 @@ Recurring themes: "a lot of bugs," "complexity for newcomers too high," "missing
 
 **What happens:** Uses monkey patching to intercept LangChain, CrewAI, AutoGen internals. This breaks across framework version upgrades and misses non-framework LLM calls.
 
-**AgentSeam advantage:** Proxy interception works at the HTTP level — framework-agnostic, version-agnostic.
+**NullSpend advantage:** Proxy interception works at the HTTP level — framework-agnostic, version-agnostic.
 
 ---
 
@@ -555,7 +555,7 @@ These are real, documented numbers from competitor bug reports that can be cited
 - **6-minute latency at 300 RPS** — LiteLLM #13541 (performance ceiling)
 - **800+ open issues** — LiteLLM GitHub (Jan 2026 count)
 - **Exabytes of memory** — ClickHouse versions above 25.5.2 with Langfuse (Discussion #10314)
-# AgentSeam competitor bug database — ADDENDUM: Expanded findings
+# NullSpend competitor bug database — ADDENDUM: Expanded findings
 
 **This addendum extends the original bug database with findings from a wider search across stability, security, streaming, enterprise, and developer experience issues.**
 
@@ -571,9 +571,9 @@ These are real, documented numbers from competitor bug reports that can be cited
 
 **Root cause:** `reset_budget_for_litellm_keys` loads entire table into memory instead of using batched/streaming queries.
 
-**AgentSeam advantage:** Redis Lua scripts perform budget resets atomically per-key. No batch loading, no OOM risk. A reset is a single `SET` command per key.
+**NullSpend advantage:** Redis Lua scripts perform budget resets atomically per-key. No batch loading, no OOM risk. A reset is a single `SET` command per key.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Budget reset under concurrent load does not cause memory spikes
 GIVEN: 10,000 active budgets all scheduled for reset at the same time
@@ -590,7 +590,7 @@ AND: All budgets reset correctly within 60 seconds
 
 **Root cause:** Multiple suspected sources — async streaming completion leaks (#6404), virtual key tracking (#5695), callback handler accumulation.
 
-**AgentSeam advantage:** CF Workers are stateless V8 isolates. Each request runs in a fresh isolate — no memory can accumulate across requests. Impossible to have memory leaks by architecture.
+**NullSpend advantage:** CF Workers are stateless V8 isolates. Each request runs in a fresh isolate — no memory can accumulate across requests. Impossible to have memory leaks by architecture.
 
 ### Bug 11.3: September 2025 release causes Kubernetes OOM errors
 
@@ -598,7 +598,7 @@ AND: All budgets reset correctly within 60 seconds
 
 **What happens:** A production release shipped a known issue where startup leads to Out of Memory errors on Kubernetes deployments. Users discovered this in production.
 
-**AgentSeam advantage:** CF Workers have no startup cost — cold start is <5ms. No container, no startup memory, no OOM risk.
+**NullSpend advantage:** CF Workers have no startup cost — cold start is <5ms. No container, no startup memory, no OOM risk.
 
 ### Bug 11.4: Database log accumulation degrades performance at 1M rows
 
@@ -606,7 +606,7 @@ AND: All budgets reset correctly within 60 seconds
 
 **What happens:** LiteLLM stores request logs in PostgreSQL. Performance degrades significantly once the table exceeds 1M rows. At 100K requests/day, this threshold is hit in 10 days. The LiteLLM docs acknowledge this limitation.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Cost event log performance doesn't degrade with volume
 GIVEN: cost_events table with 10M rows
@@ -621,7 +621,7 @@ AND: Dashboard queries remain responsive (<500ms for recent data)
 
 **What happens:** A user documented deploying `litellm-pgvector` on ARM64 Kubernetes requiring a full day of debugging across 9 distinct failure phases. Required building a custom Docker image, manually bootstrapping the database schema, patching database records by hand, reverse-engineering the API flow, and applying multiple workarounds.
 
-**AgentSeam advantage:** One env var change. No Docker, no Kubernetes, no PostgreSQL setup, no Redis to manage.
+**NullSpend advantage:** One env var change. No Docker, no Kubernetes, no PostgreSQL setup, no Redis to manage.
 
 ---
 
@@ -633,13 +633,13 @@ AND: Dashboard queries remain responsive (<500ms for recent data)
 
 **What happens:** When streaming Azure Responses API requests through LiteLLM, it sends `response.output_text.delta` events but omits required setup events (`response.created`, `response.in_progress`, `response.output_item.added`, `response.content_part.added`). Clients reject the deltas because protocol setup events are missing. Discovered when using Codex through LiteLLM.
 
-**AgentSeam advantage:** AgentSeam passes SSE bytes through unmodified — the TransformStream only observes, never modifies. Client receives exactly what the provider sends.
+**NullSpend advantage:** NullSpend passes SSE bytes through unmodified — the TransformStream only observes, never modifies. Client receives exactly what the provider sends.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: SSE passthrough is byte-identical to upstream
 GIVEN: Any streaming response from OpenAI
-WHEN: Proxied through AgentSeam
+WHEN: Proxied through NullSpend
 THEN: Client receives byte-for-byte identical SSE stream
 VERIFY: No events added, removed, reordered, or modified
 ```
@@ -652,7 +652,7 @@ VERIFY: No events added, removed, reordered, or modified
 
 **Root cause:** Exception handler defaults `supports_native_streaming` to `false` for unknown models.
 
-**AgentSeam advantage:** Proxy doesn't rewrite or reconstruct streams. Unknown models pass through identically.
+**NullSpend advantage:** Proxy doesn't rewrite or reconstruct streams. Unknown models pass through identically.
 
 ### Bug 12.3: Out-of-order thinking_delta blocks crash downstream clients
 
@@ -662,11 +662,11 @@ VERIFY: No events added, removed, reordered, or modified
 
 **Root cause:** Stream reconstruction doesn't preserve ordering from the upstream provider.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Stream event ordering preserved exactly as received from provider
 GIVEN: Provider sends events in order [A, B, C, D]
-WHEN: Proxied through AgentSeam
+WHEN: Proxied through NullSpend
 THEN: Client receives events in order [A, B, C, D]
 VERIFY: No buffering or reconstruction changes event ordering
 ```
@@ -677,7 +677,7 @@ VERIFY: No buffering or reconstruction changes event ordering
 
 **What happens:** When a streaming request fails during parameter validation (before streaming starts), LiteLLM returns the error in SSE format instead of standard JSON. Clients expecting a normal JSON error response fail to parse the SSE-formatted error.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Upstream errors forwarded with correct content-type
 GIVEN: Request with invalid parameters
@@ -691,7 +691,7 @@ THEN: Error response passes through with original content-type and status code
 
 **What happens:** Despite configuring `timeout: 300` and `stream_timeout: 120` in config.yaml, some requests don't timeout until reaching the default 6000 seconds (100 minutes). The configured timeouts are silently overridden or ignored.
 
-**AgentSeam advantage:** CF Workers have hard CPU time limits enforced by the runtime itself. Proxy requests to OpenAI can use `AbortSignal.timeout()` for explicit control.
+**NullSpend advantage:** CF Workers have hard CPU time limits enforced by the runtime itself. Proxy requests to OpenAI can use `AbortSignal.timeout()` for explicit control.
 
 ### Bug 12.6: Excessive warning logging — 20× log volume
 
@@ -741,7 +741,7 @@ LiteLLM has a significant catalog of CVEs — material for enterprise security t
 
 **What happens:** Improper authorization allows unauthorized users to gain administrative access to the proxy.
 
-**AgentSeam security posture:**
+**NullSpend security posture:**
 - CF Workers V8 isolates provide per-request memory isolation
 - No arbitrary code execution paths (no Python eval, no YAML config parsing)
 - No SQL injection surface (parameterized Drizzle ORM queries)
@@ -749,10 +749,10 @@ LiteLLM has a significant catalog of CVEs — material for enterprise security t
 - Timing-safe auth comparison (crypto.subtle.timingSafeEqual)
 - No file system access (V8 isolate sandbox)
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Platform auth key never appears in logs or error messages
-GIVEN: Request with X-AgentSeam-Auth header
+GIVEN: Request with X-NullSpend-Auth header
 WHEN: Any error occurs during processing
 THEN: Error logs contain NO auth credentials
 VERIFY: Grep all log output for platform key value — zero matches
@@ -768,7 +768,7 @@ VERIFY: Grep all log output for platform key value — zero matches
 
 **What happens:** SSO (beyond 5 users), RBAC, audit logging, and team-level budget enforcement all require the enterprise license. The open-source version lacks built-in authentication, which means teams share master keys. One TrueFoundry reviewer noted: "If you want the stuff your CISO asks for — SSO, RBAC, team-level budget enforcement — you hit a paywall."
 
-**AgentSeam positioning:** Budget enforcement included in the $49/month Pro tier. No enterprise gate for core safety features.
+**NullSpend positioning:** Budget enforcement included in the $49/month Pro tier. No enterprise gate for core safety features.
 
 ### Pain 14.2: 2-4 week production deployment
 
@@ -776,7 +776,7 @@ VERIFY: Grep all log output for platform key value — zero matches
 
 **What happens:** Setting up LiteLLM for production requires Docker + PostgreSQL + Redis configuration, load balancing, monitoring, and security hardening. Multiple sources estimate 2-4 weeks of engineering time for a production-ready deployment.
 
-**AgentSeam positioning:** One env var change, working in 60 seconds.
+**NullSpend positioning:** One env var change, working in 60 seconds.
 
 ### Pain 14.3: Spend log request truncation
 
@@ -812,7 +812,7 @@ VERIFY: Grep all log output for platform key value — zero matches
 
 **What happens:** When you exceed your log quota, "your requests continue to be routed normally to LLM providers, and the gateway doesn't stop working. What stops is recording new logs." This means during high-traffic periods, you lose cost tracking, performance metrics, latency data, and error monitoring — exactly when you need it most. Budget enforcement that depends on logs also becomes unreliable.
 
-**AgentSeam test case:**
+**NullSpend test case:**
 ```
 TEST: Cost tracking operates independently of any quotas
 GIVEN: 10M requests proxied in a month
@@ -832,7 +832,7 @@ VERIFY: No gap between "requests served" and "cost events logged"
 
 **What happens:** "As of 2026, Portkey has limited MCP support and hasn't prioritized Portkey MCP gateway features yet." For teams building agentic applications with tool use, this is a significant gap.
 
-**AgentSeam advantage:** Existing MCP proxy with 49 tests, ready to wire into the same budget enforcement as the LLM proxy.
+**NullSpend advantage:** Existing MCP proxy with 49 tests, ready to wire into the same budget enforcement as the LLM proxy.
 
 ---
 
@@ -844,7 +844,7 @@ VERIFY: No gap between "requests served" and "cost events logged"
 
 **What happens:** LangChain-core's `dumps()` and `dumpd()` functions don't escape user-controlled dictionaries with 'lc' keys. Attackers can exfiltrate environment variables and potentially execute code through prompt injection → serialization/deserialization cycles in streaming operations, logging, and caching. 12 vulnerable patterns identified. ~847M total PyPI downloads affected.
 
-**AgentSeam positioning:** Proxy architecture means no serialization/deserialization of LLM responses — bytes pass through unmodified. No framework dependency, no framework vulnerability surface.
+**NullSpend positioning:** Proxy architecture means no serialization/deserialization of LLM responses — bytes pass through unmodified. No framework dependency, no framework vulnerability surface.
 
 ### CVE 16.2: Parallel JS vulnerability (CVE-2025-68665, CVSS 8.6)
 
@@ -852,7 +852,7 @@ VERIFY: No gap between "requests served" and "cost events logged"
 
 ---
 
-## 17. Cross-cutting themes for AgentSeam messaging
+## 17. Cross-cutting themes for NullSpend messaging
 
 ### Theme A: "Observation vs. enforcement" — the security camera problem
 
@@ -860,15 +860,15 @@ Every competitor except LiteLLM and TrueFoundry is observation-only. They show y
 
 ### Theme B: "The infrastructure tax"
 
-LiteLLM requires Docker + PostgreSQL + Redis + 2-4 weeks of setup. Langfuse requires PostgreSQL + ClickHouse + Redis + blob storage. TrueFoundry requires $499/month minimum. Portkey requires enterprise contract for enforcement. AgentSeam requires one environment variable.
+LiteLLM requires Docker + PostgreSQL + Redis + 2-4 weeks of setup. Langfuse requires PostgreSQL + ClickHouse + Redis + blob storage. TrueFoundry requires $499/month minimum. Portkey requires enterprise contract for enforcement. NullSpend requires one environment variable.
 
 ### Theme C: "The accuracy gap"
 
-Every cost calculation tool has documented bugs with cached token math. LiteLLM has 7+ cost calculation bugs filed in the last year alone. Langfuse double-counts via OTel. LangChain doubles via cumulative deltas. AgentSeam's cost engine has tests derived from each of these exact bugs.
+Every cost calculation tool has documented bugs with cached token math. LiteLLM has 7+ cost calculation bugs filed in the last year alone. Langfuse double-counts via OTel. LangChain doubles via cumulative deltas. NullSpend's cost engine has tests derived from each of these exact bugs.
 
 ### Theme D: "The security surface"
 
-LiteLLM has 10+ CVEs including SQL injection, SSRF, arbitrary file deletion, and API key leakage. It's a Python process with full filesystem and network access. AgentSeam runs in a V8 isolate sandbox with no filesystem access, no arbitrary code execution, and parameterized queries only.
+LiteLLM has 10+ CVEs including SQL injection, SSRF, arbitrary file deletion, and API key leakage. It's a Python process with full filesystem and network access. NullSpend runs in a V8 isolate sandbox with no filesystem access, no arbitrary code execution, and parameterized queries only.
 
 ---
 

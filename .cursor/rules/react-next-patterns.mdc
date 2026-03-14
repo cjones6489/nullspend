@@ -1,5 +1,5 @@
 ---
-description: Next.js and React patterns for AgentSeam app code
+description: Next.js and React patterns for NullSpend app code
 globs: "app/**/*.tsx,components/**/*.ts,components/**/*.tsx"
 alwaysApply: false
 ---

@@ -12,7 +12,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@agentseam/db"],
+  transpilePackages: ["@nullspend/db"],
   async headers() {
     return [
       {

@@ -1,4 +1,4 @@
-# AgentSeam Roadmap
+# NullSpend Roadmap
 
 > **Note:** The master roadmap for the FinOps pivot is at
 > `docs/finops-pivot-roadmap.md`. This file preserves the history of the
@@ -33,14 +33,14 @@
 - DB-backed API key auth for SDK routes
 
 ### Phase 4 — SDK Package
-- `@agentseam/sdk` TypeScript package at `packages/sdk/`
-- `AgentSeam` client with `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`
-- Custom error types: `AgentSeamError`, `TimeoutError`, `RejectedError`
+- `@nullspend/sdk` TypeScript package at `packages/sdk/`
+- `NullSpend` client with `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`
+- Custom error types: `NullSpendError`, `TimeoutError`, `RejectedError`
 - 19 unit tests, tsup build (ESM + CJS + types)
 
 ### Phase 5 — MCP Adapters
-- `@agentseam/mcp-server` — tools: `propose_action`, `check_action`
-- `@agentseam/mcp-proxy` — stdio proxy with selective tool gating
+- `@nullspend/mcp-server` — tools: `propose_action`, `check_action`
+- `@nullspend/mcp-proxy` — stdio proxy with selective tool gating
 - 49 unit tests across config, gate, and proxy modules
 
 ### Action Expiration

@@ -93,7 +93,7 @@ function mockDbSelect(
 describe("POST /api/slack/callback", () => {
   beforeEach(() => {
     vi.stubEnv("SLACK_SIGNING_SECRET", TEST_SECRET);
-    vi.stubEnv("AGENTSEAM_URL", "http://localhost:3000");
+    vi.stubEnv("NULLSPEND_URL", "http://localhost:3000");
   });
 
   afterEach(() => {

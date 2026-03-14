@@ -96,12 +96,12 @@ cache_creation=1253`. OTel correctly reported total=130,213. Langfuse computed
 
 **Root cause:** No way to know if upstream already normalized the values.
 
-**Remediation:** AgentSeam parses from the RAW provider response — the actual
+**Remediation:** NullSpend parses from the RAW provider response — the actual
 SSE events or JSON body from Anthropic's API. No OTel layer, no framework
 translation. This class of bug is structurally impossible.
 
 ```typescript
-// AgentSeam ALWAYS reads from the raw Anthropic response, never from OTel
+// NullSpend ALWAYS reads from the raw Anthropic response, never from OTel
 function parseAnthropicUsage(responseBody: AnthropicResponse): AnthropicUsage {
   const usage = responseBody.usage;
   return {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { AgentSeam } from "./client.js";
-import { AgentSeamError, RejectedError, TimeoutError } from "./errors.js";
+import { NullSpend } from "./client.js";
+import { NullSpendError, RejectedError, TimeoutError } from "./errors.js";
 import type { ActionRecord, CreateActionResponse } from "./types.js";
 
 function mockAction(overrides: Partial<ActionRecord> = {}): ActionRecord {
@@ -34,8 +34,8 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function createClient(fetchFn: typeof globalThis.fetch): AgentSeam {
-  return new AgentSeam({
+function createClient(fetchFn: typeof globalThis.fetch): NullSpend {
+  return new NullSpend({
     baseUrl: "http://localhost:3000",
     apiKey: "ask_test123",
     fetch: fetchFn,
@@ -46,22 +46,22 @@ function createClient(fetchFn: typeof globalThis.fetch): AgentSeam {
 // Constructor
 // ---------------------------------------------------------------------------
 
-describe("AgentSeam constructor", () => {
+describe("NullSpend constructor", () => {
   it("throws if baseUrl is missing", () => {
     expect(
-      () => new AgentSeam({ baseUrl: "", apiKey: "ask_x" }),
+      () => new NullSpend({ baseUrl: "", apiKey: "ask_x" }),
     ).toThrow("baseUrl is required");
   });
 
   it("throws if apiKey is missing", () => {
     expect(
-      () => new AgentSeam({ baseUrl: "http://localhost", apiKey: "" }),
+      () => new NullSpend({ baseUrl: "http://localhost", apiKey: "" }),
     ).toThrow("apiKey is required");
   });
 
   it("strips trailing slashes from baseUrl", () => {
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "1", status: "pending" }));
-    const client = new AgentSeam({
+    const client = new NullSpend({
       baseUrl: "http://localhost:3000///",
       apiKey: "ask_x",
       fetch: fetchFn,
@@ -97,7 +97,7 @@ describe("createAction", () => {
     const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe("http://localhost:3000/api/actions");
     expect(init.method).toBe("POST");
-    expect(init.headers["x-agentseam-key"]).toBe("ask_test123");
+    expect(init.headers["x-nullspend-key"]).toBe("ask_test123");
     expect(JSON.parse(init.body)).toEqual({
       agentId: "my-agent",
       actionType: "send_email",
@@ -106,7 +106,7 @@ describe("createAction", () => {
     });
   });
 
-  it("throws AgentSeamError on non-OK response", async () => {
+  it("throws NullSpendError on non-OK response", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       jsonResponse({ error: "Bad input" }, 400),
     );
@@ -114,7 +114,7 @@ describe("createAction", () => {
 
     await expect(
       client.createAction({ agentId: "a", actionType: "send_email", payload: {} }),
-    ).rejects.toThrow(AgentSeamError);
+    ).rejects.toThrow(NullSpendError);
   });
 });
 
@@ -459,7 +459,7 @@ describe("proposeAndWait", () => {
 // ---------------------------------------------------------------------------
 
 describe("request error wrapping", () => {
-  it("wraps network errors in AgentSeamError", async () => {
+  it("wraps network errors in NullSpendError", async () => {
     const fetchFn = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
     const client = createClient(fetchFn);
 
@@ -467,13 +467,13 @@ describe("request error wrapping", () => {
       .getAction("act-1")
       .catch((e: unknown) => e);
 
-    expect(error).toBeInstanceOf(AgentSeamError);
-    expect((error as AgentSeamError).message).toContain("network error");
-    expect((error as AgentSeamError).message).toContain("fetch failed");
-    expect((error as AgentSeamError).statusCode).toBeUndefined();
+    expect(error).toBeInstanceOf(NullSpendError);
+    expect((error as NullSpendError).message).toContain("network error");
+    expect((error as NullSpendError).message).toContain("fetch failed");
+    expect((error as NullSpendError).statusCode).toBeUndefined();
   });
 
-  it("wraps invalid 2xx JSON in AgentSeamError", async () => {
+  it("wraps invalid 2xx JSON in NullSpendError", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response("not json", { status: 200 }),
     );
@@ -483,8 +483,8 @@ describe("request error wrapping", () => {
       .getAction("act-1")
       .catch((e: unknown) => e);
 
-    expect(error).toBeInstanceOf(AgentSeamError);
-    expect((error as AgentSeamError).message).toContain("invalid JSON");
-    expect((error as AgentSeamError).statusCode).toBe(200);
+    expect(error).toBeInstanceOf(NullSpendError);
+    expect((error as NullSpendError).message).toContain("invalid JSON");
+    expect((error as NullSpendError).statusCode).toBe(200);
   });
 });

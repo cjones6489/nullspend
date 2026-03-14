@@ -6,9 +6,9 @@ import type { GateResult } from "./gate.js";
 let mockCreateAction = vi.fn();
 let mockGetAction = vi.fn();
 
-vi.mock("@agentseam/sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@agentseam/sdk")>();
-  class MockAgentSeam {
+vi.mock("@nullspend/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@nullspend/sdk")>();
+  class MockNullSpend {
     constructor() {}
     createAction(...args: unknown[]) {
       return mockCreateAction(...args);
@@ -22,14 +22,14 @@ vi.mock("@agentseam/sdk", async (importOriginal) => {
   }
   return {
     ...actual,
-    AgentSeam: MockAgentSeam,
+    NullSpend: MockNullSpend,
   };
 });
 
 function makeConfig(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
   return {
-    agentseamUrl: "http://127.0.0.1:3000",
-    agentseamApiKey: "ask_test",
+    nullspendUrl: "http://127.0.0.1:3000",
+    nullspendApiKey: "ask_test",
     agentId: "test-proxy",
     upstreamCommand: "node",
     upstreamArgs: [],
@@ -90,8 +90,8 @@ describe("gateToolCall", () => {
     mockCreateAction.mockResolvedValue({ id: "act-1", status: "pending" });
     mockGetAction.mockResolvedValue({ status: "approved" });
 
-    const { AgentSeam } = await import("@agentseam/sdk");
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const { NullSpend } = await import("@nullspend/sdk");
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
     const config = makeConfig();
 
     const result: GateResult = await gateToolCall(
@@ -110,8 +110,8 @@ describe("gateToolCall", () => {
     mockCreateAction.mockResolvedValue({ id: "act-2", status: "pending" });
     mockGetAction.mockResolvedValue({ status: "rejected" });
 
-    const { AgentSeam } = await import("@agentseam/sdk");
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const { NullSpend } = await import("@nullspend/sdk");
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
     const config = makeConfig();
 
     const result = await gateToolCall(
@@ -130,8 +130,8 @@ describe("gateToolCall", () => {
     mockCreateAction.mockResolvedValue({ id: "act-3", status: "pending" });
     mockGetAction.mockResolvedValue({ status: "pending" });
 
-    const { AgentSeam } = await import("@agentseam/sdk");
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const { NullSpend } = await import("@nullspend/sdk");
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
     const config = makeConfig({ approvalTimeoutSeconds: 0 });
 
     const result = await gateToolCall(
@@ -150,8 +150,8 @@ describe("gateToolCall", () => {
     mockCreateAction.mockResolvedValue({ id: "act-4", status: "pending" });
     mockGetAction.mockResolvedValue({ status: "approved" });
 
-    const { AgentSeam } = await import("@agentseam/sdk");
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const { NullSpend } = await import("@nullspend/sdk");
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
     const config = makeConfig();
 
     await gateToolCall(
@@ -181,8 +181,8 @@ describe("gateToolCall", () => {
     mockCreateAction.mockResolvedValue({ id: "act-5", status: "pending" });
     mockGetAction.mockResolvedValue({ status: "approved" });
 
-    const { AgentSeam } = await import("@agentseam/sdk");
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const { NullSpend } = await import("@nullspend/sdk");
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
     const config = makeConfig();
 
     const result = await gateToolCall(
@@ -202,8 +202,8 @@ describe("gateToolCall", () => {
   it("throws when SDK createAction fails", async () => {
     mockCreateAction.mockRejectedValue(new Error("Connection refused"));
 
-    const { AgentSeam } = await import("@agentseam/sdk");
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const { NullSpend } = await import("@nullspend/sdk");
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
     const config = makeConfig();
 
     await expect(
@@ -215,8 +215,8 @@ describe("gateToolCall", () => {
     mockCreateAction.mockResolvedValue({ id: "act-abort", status: "pending" });
     mockGetAction.mockResolvedValue({ status: "pending" });
 
-    const { AgentSeam } = await import("@agentseam/sdk");
-    const sdk = new AgentSeam({ baseUrl: "http://test", apiKey: "key" });
+    const { NullSpend } = await import("@nullspend/sdk");
+    const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
     const config = makeConfig({ approvalTimeoutSeconds: 600 });
     const controller = new AbortController();
 

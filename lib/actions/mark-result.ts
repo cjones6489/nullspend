@@ -6,7 +6,7 @@ import {
 } from "@/lib/actions/errors";
 import { assertActionTransition } from "@/lib/actions/transitions";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@agentseam/db";
+import { actions } from "@nullspend/db";
 import type { MarkResultInput } from "@/lib/validations/actions";
 
 export async function markResult(

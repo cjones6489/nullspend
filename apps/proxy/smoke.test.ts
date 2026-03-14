@@ -34,7 +34,7 @@ describe("proxy smoke tests", () => {
       expect(res.headers.get("content-type")).toContain("application/json");
 
       const body = await res.json();
-      expect(body).toEqual({ status: "ok", service: "agentseam-proxy" });
+      expect(body).toEqual({ status: "ok", service: "nullspend-proxy" });
     });
 
     it("responds within 100ms (lightweight no-op)", async () => {

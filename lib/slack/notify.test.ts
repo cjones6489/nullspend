@@ -61,7 +61,7 @@ function mockDbSelect(result: typeof activeConfig | undefined) {
 
 describe("sendSlackNotification", () => {
   beforeEach(() => {
-    vi.stubEnv("AGENTSEAM_URL", "http://localhost:3000");
+    vi.stubEnv("NULLSPEND_URL", "http://localhost:3000");
     mockFetch.mockResolvedValue({ ok: true });
   });
 
@@ -136,9 +136,9 @@ describe("sendSlackNotification", () => {
     ).rejects.toThrow("Network timeout");
   });
 
-  it("falls back to NEXT_PUBLIC_SITE_URL when AGENTSEAM_URL is not set", async () => {
-    vi.stubEnv("AGENTSEAM_URL", "");
-    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://staging.agentseam.dev");
+  it("falls back to NEXT_PUBLIC_SITE_URL when NULLSPEND_URL is not set", async () => {
+    vi.stubEnv("NULLSPEND_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://staging.nullspend.dev");
     mockDbSelect(activeConfig);
     mockFetch.mockResolvedValue({ ok: true });
 
@@ -146,11 +146,11 @@ describe("sendSlackNotification", () => {
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     const viewButton = body.blocks[3].elements[2];
-    expect(viewButton.url).toContain("https://staging.agentseam.dev");
+    expect(viewButton.url).toContain("https://staging.nullspend.dev");
   });
 
   it("falls back to localhost when neither URL env is set", async () => {
-    vi.stubEnv("AGENTSEAM_URL", "");
+    vi.stubEnv("NULLSPEND_URL", "");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "");
     mockDbSelect(activeConfig);
     mockFetch.mockResolvedValue({ ok: true });
@@ -165,7 +165,7 @@ describe("sendSlackNotification", () => {
 
 describe("sendSlackTestNotification", () => {
   beforeEach(() => {
-    vi.stubEnv("AGENTSEAM_URL", "http://localhost:3000");
+    vi.stubEnv("NULLSPEND_URL", "http://localhost:3000");
     mockFetch.mockResolvedValue({ ok: true });
   });
 

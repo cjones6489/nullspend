@@ -1,10 +1,10 @@
-# AgentSeam — Project Brief
+# NullSpend — Project Brief
 
 ## One-line summary
 
-AgentSeam is a lightweight approval layer for AI agent actions.
+NullSpend is a lightweight approval layer for AI agent actions.
 
-It sits between an agent and any risky side effect, such as sending an email, making an HTTP POST request, writing to a database, running a shell command, or deleting a file. Instead of letting the action execute immediately, AgentSeam turns it into a proposed action, shows it in an approval inbox, waits for approval or rejection, and then either executes or blocks the action.
+It sits between an agent and any risky side effect, such as sending an email, making an HTTP POST request, writing to a database, running a shell command, or deleting a file. Instead of letting the action execute immediately, NullSpend turns it into a proposed action, shows it in an approval inbox, waits for approval or rejection, and then either executes or blocks the action.
 
 The goal for v1 is not to build a giant governance platform. The goal is to build the smallest useful developer tool that proves this loop works.
 
@@ -36,7 +36,7 @@ That works for one-off prototypes, but it becomes messy quickly.
 
 ### Solution
 
-AgentSeam provides:
+NullSpend provides:
 - a dead-simple approval inbox
 - a tiny SDK/wrapper
 - a backend that stores pending actions
@@ -55,8 +55,8 @@ Wrap risky agent actions in minutes, preview them in a dashboard, approve or rej
 ### Core loop
 
 1. An agent wants to perform a risky action.
-2. The developer has wrapped that action using AgentSeam.
-3. AgentSeam creates a pending action in the backend.
+2. The developer has wrapped that action using NullSpend.
+3. NullSpend creates a pending action in the backend.
 4. The action appears in the dashboard.
 5. A human approves or rejects it.
 6. If approved, the original function executes.
@@ -123,9 +123,9 @@ Do **not** over-engineer the monorepo on day one.
 ```text
 Agent Runtime
     ↓
-AgentSeam SDK / Wrapper
+NullSpend SDK / Wrapper
     ↓
-AgentSeam Backend API
+NullSpend Backend API
     ↓
 Database
     ↓
@@ -143,7 +143,7 @@ Approval Dashboard
                │ wrapped risky action
                ▼
 ┌──────────────────────────────┐
-│      AgentSeam SDK Layer     │
+│      NullSpend SDK Layer     │
 │ propose_action()             │
 │ wait_for_decision()          │
 └──────────────┬───────────────┘
@@ -166,7 +166,7 @@ Approval Dashboard
                │
                ▼
 ┌──────────────────────────────┐
-│        AgentSeam UI          │
+│        NullSpend UI          │
 │ inbox / detail / history     │
 └──────────────────────────────┘
 ```
@@ -175,17 +175,17 @@ Approval Dashboard
 
 ## Mental model
 
-AgentSeam is not the agent and not the tool.
+NullSpend is not the agent and not the tool.
 
-AgentSeam is the checkpoint between the agent and the real world.
+NullSpend is the checkpoint between the agent and the real world.
 
-Without AgentSeam:
+Without NullSpend:
 
 ```text
 Agent → risky action executes immediately
 ```
 
-With AgentSeam:
+With NullSpend:
 
 ```text
 Agent → proposed action → approval decision → execute or block
@@ -727,7 +727,7 @@ Suggested approach:
 Start with a single Next.js app.
 
 ```text
-agentseam/
+nullspend/
   app/
     (marketing)/
     app/
@@ -954,7 +954,7 @@ That is enough.
 
 1. User runs a local demo script.
 2. Script attempts `send_email`.
-3. AgentSeam SDK creates a pending action.
+3. NullSpend SDK creates a pending action.
 4. Inbox UI shows:
 
    * action type
@@ -972,7 +972,7 @@ This demo should be your first milestone.
 
 Existing platforms and frameworks may already support human approval in pieces.
 
-AgentSeam’s value is:
+NullSpend’s value is:
 
 * simple
 * cross-stack
@@ -995,7 +995,7 @@ Do pitch:
 
 ### Good positioning
 
-AgentSeam is the approval layer for risky AI agent actions.
+NullSpend is the approval layer for risky AI agent actions.
 
 ### Better positioning
 

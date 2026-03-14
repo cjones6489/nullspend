@@ -10,7 +10,7 @@ export default function DashboardError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[AgentSeam] Dashboard error:", error);
+    console.error("[NullSpend] Dashboard error:", error);
   }, [error]);
 
   return (

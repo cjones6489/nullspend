@@ -372,7 +372,7 @@ callback. Cost shows as $0.00 for all requests with WebSearch.
 
 **Remediation:**
 
-AgentSeam's cost extraction is the LAST step, operating on the final
+NullSpend's cost extraction is the LAST step, operating on the final
 response. It never depends on request-side middleware or callbacks. The
 proxy handler structure:
 

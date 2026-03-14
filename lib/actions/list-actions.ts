@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { bulkExpireActions } from "@/lib/actions/expiration";
 import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
-import { actions } from "@agentseam/db";
+import { actions } from "@nullspend/db";
 import type { ActionStatus } from "@/lib/utils/status";
 
 interface ListActionsOptions {

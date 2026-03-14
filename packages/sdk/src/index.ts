@@ -1,10 +1,10 @@
-export { AgentSeam } from "./client.js";
-export { AgentSeamError, TimeoutError, RejectedError } from "./errors.js";
+export { NullSpend } from "./client.js";
+export { NullSpendError, TimeoutError, RejectedError } from "./errors.js";
 export { waitWithAbort, interruptibleSleep } from "./polling.js";
 export type {
   ActionStatus,
   ActionType,
-  AgentSeamConfig,
+  NullSpendConfig,
   CreateActionInput,
   CreateActionResponse,
   ExecuteContext,

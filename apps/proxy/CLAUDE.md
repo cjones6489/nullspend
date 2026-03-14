@@ -1,4 +1,4 @@
-# Proxy Worker (@agentseam/proxy)
+# Proxy Worker (@nullspend/proxy)
 
 Cloudflare Workers proxy that sits between agents and OpenAI. Authenticates requests, tracks costs, and enforces budgets.
 

@@ -2,30 +2,30 @@
  * Demo: Propose a "send_email" action and wait for approval.
  *
  * Usage:
- *   1. Start the AgentSeam app:        pnpm dev
+ *   1. Start the NullSpend app:        pnpm dev
  *   2. Run this script in another terminal:
  *      pnpm tsx packages/sdk/examples/demo-send-email.ts
  *   3. Open http://localhost:3000/app/inbox and approve the action.
  *   4. Watch this terminal — the "email" will send after approval.
  *
  * Environment variables:
- *   AGENTSEAM_URL     Base URL of your AgentSeam instance (default: http://localhost:3000)
- *   AGENTSEAM_API_KEY Your API key from the Settings page (or AGENTSEAM_API_KEY env var)
+ *   NULLSPEND_URL     Base URL of your NullSpend instance (default: http://localhost:3000)
+ *   NULLSPEND_API_KEY Your API key from the Settings page (or NULLSPEND_API_KEY env var)
  */
 
-import { AgentSeam, RejectedError, TimeoutError } from "../src/index.js";
+import { NullSpend, RejectedError, TimeoutError } from "../src/index.js";
 
-const baseUrl = process.env.AGENTSEAM_URL ?? "http://localhost:3000";
-const apiKey = process.env.AGENTSEAM_API_KEY ?? "";
+const baseUrl = process.env.NULLSPEND_URL ?? "http://localhost:3000";
+const apiKey = process.env.NULLSPEND_API_KEY ?? "";
 
 if (!apiKey) {
   console.error(
-    "Set AGENTSEAM_API_KEY to a valid key from your Settings page.",
+    "Set NULLSPEND_API_KEY to a valid key from your Settings page.",
   );
   process.exit(1);
 }
 
-const seam = new AgentSeam({ baseUrl, apiKey });
+const seam = new NullSpend({ baseUrl, apiKey });
 
 async function fakeSendEmail(to: string, subject: string, body: string) {
   console.log(`  [email] To: ${to}`);

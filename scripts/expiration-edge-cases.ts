@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import postgres from "postgres";
-import { AgentSeam } from "@agentseam/sdk";
+import { NullSpend } from "@nullspend/sdk";
 
 function loadEnvLocal() {
   const envPath = resolve(process.cwd(), ".env.local");
@@ -42,11 +42,11 @@ function loadEnvLocal() {
 loadEnvLocal();
 
 const DATABASE_URL = process.env.DATABASE_URL!;
-const API_KEY = process.env.AGENTSEAM_API_KEY!;
-const BASE_URL = process.env.AGENTSEAM_BASE_URL ?? "http://127.0.0.1:3000";
+const API_KEY = process.env.NULLSPEND_API_KEY!;
+const BASE_URL = process.env.NULLSPEND_BASE_URL ?? "http://127.0.0.1:3000";
 
 const sql = postgres(DATABASE_URL, { prepare: false });
-const sdk = new AgentSeam({ baseUrl: BASE_URL, apiKey: API_KEY });
+const sdk = new NullSpend({ baseUrl: BASE_URL, apiKey: API_KEY });
 
 const cleanupIds: string[] = [];
 
@@ -276,7 +276,7 @@ async function testListActionsAfterExpiration() {
 
   // List with status=pending — should NOT include expired action
   const response = await fetch(`${BASE_URL}/api/actions?status=pending&limit=50`, {
-    headers: { "x-agentseam-key": API_KEY },
+    headers: { "x-nullspend-key": API_KEY },
   });
   const body = await response.json() as { data: { id: string; status: string }[] };
   const found = body.data.find((a: { id: string }) => a.id === created.id);
@@ -284,7 +284,7 @@ async function testListActionsAfterExpiration() {
 
   // List with status=expired — should include it
   const response2 = await fetch(`${BASE_URL}/api/actions?status=expired&limit=50`, {
-    headers: { "x-agentseam-key": API_KEY },
+    headers: { "x-nullspend-key": API_KEY },
   });
   const body2 = await response2.json() as { data: { id: string; status: string }[] };
   const found2 = body2.data.find((a: { id: string }) => a.id === created.id);

@@ -21,7 +21,7 @@ function getRatelimit(): Ratelimit | null {
   _limiter = new Ratelimit({
     redis: Redis.fromEnv(),
     limiter: Ratelimit.slidingWindow(100, "1 m"),
-    prefix: "agentseam:api:rl",
+    prefix: "nullspend:api:rl",
     ephemeralCache: new Map(),
   });
   return _limiter;
@@ -32,8 +32,7 @@ export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/api/")) {
     const limiter = getRatelimit();
     if (limiter) {
-      const ip = request.ip
-        ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
         ?? request.headers.get("x-real-ip")
         ?? "127.0.0.1";
       try {
@@ -53,7 +52,7 @@ export async function proxy(request: NextRequest) {
           );
         }
       } catch (err) {
-        console.error("[AgentSeam] Rate limiter error:", err);
+        console.error("[NullSpend] Rate limiter error:", err);
         // M1: Fail closed — block request when rate limiter is unavailable
         return NextResponse.json(
           { error: "Service temporarily unavailable" },

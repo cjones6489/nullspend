@@ -2,12 +2,12 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { AgentSeam } from "@agentseam/sdk";
+import { NullSpend } from "@nullspend/sdk";
 import { loadConfig, ConfigError } from "./config.js";
 import { discoverUpstreamTools, registerProxyHandlers } from "./proxy.js";
 import { isToolGated } from "./gate.js";
 
-const LOG_PREFIX = "[agentseam-proxy]";
+const LOG_PREFIX = "[nullspend-proxy]";
 
 function log(message: string): void {
   process.stderr.write(`${LOG_PREFIX} ${message}\n`);
@@ -34,7 +34,7 @@ async function main() {
   });
 
   const upstreamClient = new Client(
-    { name: "agentseam-proxy", version: "0.1.0" },
+    { name: "nullspend-proxy", version: "0.1.0" },
     {
       capabilities: {},
       listChanged: {
@@ -82,13 +82,13 @@ async function main() {
     }
   }
 
-  const sdk = new AgentSeam({
-    baseUrl: config.agentseamUrl,
-    apiKey: config.agentseamApiKey,
+  const sdk = new NullSpend({
+    baseUrl: config.nullspendUrl,
+    apiKey: config.nullspendApiKey,
   });
 
   const server = new Server(
-    { name: "agentseam-proxy", version: "0.1.0" },
+    { name: "nullspend-proxy", version: "0.1.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -103,7 +103,7 @@ async function main() {
 
   const serverTransport = new StdioServerTransport();
   await server.connect(serverTransport);
-  log(`Proxy running (stdio). API → ${config.agentseamUrl}`);
+  log(`Proxy running (stdio). API → ${config.nullspendUrl}`);
 
   upstreamTransport.onclose = () => {
     log("Upstream server disconnected. Shutting down.");

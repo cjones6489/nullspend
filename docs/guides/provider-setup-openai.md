@@ -1,10 +1,10 @@
 # OpenAI Provider Setup
 
-Detailed guide for routing OpenAI API calls through AgentSeam.
+Detailed guide for routing OpenAI API calls through NullSpend.
 
 ## Supported models
 
-AgentSeam tracks costs for all current OpenAI models:
+NullSpend tracks costs for all current OpenAI models:
 
 | Model | Input (per 1M tokens) | Output (per 1M tokens) |
 |---|---|---|
@@ -30,9 +30,9 @@ where applicable.
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  baseURL: "https://proxy.agentseam.com/v1",
+  baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: {
-    "X-AgentSeam-Auth": process.env.PLATFORM_AUTH_KEY,
+    "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
   },
 });
 
@@ -49,9 +49,9 @@ from openai import OpenAI
 import os
 
 client = OpenAI(
-    base_url="https://proxy.agentseam.com/v1",
+    base_url="https://proxy.nullspend.com/v1",
     default_headers={
-        "X-AgentSeam-Auth": os.environ["PLATFORM_AUTH_KEY"],
+        "X-NullSpend-Auth": os.environ["PLATFORM_AUTH_KEY"],
     },
 )
 
@@ -64,17 +64,17 @@ response = client.chat.completions.create(
 ### Environment variables
 
 ```bash
-OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 OPENAI_API_KEY=sk-your-real-openai-key
-PLATFORM_AUTH_KEY=your-agentseam-platform-key
+PLATFORM_AUTH_KEY=your-nullspend-platform-key
 ```
 
 ### cURL
 
 ```bash
-curl https://proxy.agentseam.com/v1/chat/completions \
+curl https://proxy.nullspend.com/v1/chat/completions \
   -H "Authorization: Bearer sk-your-openai-key" \
-  -H "X-AgentSeam-Auth: your-platform-key" \
+  -H "X-NullSpend-Auth: your-platform-key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",

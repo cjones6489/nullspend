@@ -1,13 +1,13 @@
-# @agentseam/sdk
+# @nullspend/sdk
 
-TypeScript SDK for [AgentSeam](https://github.com/cjones6489/AgentSeam) — propose, approve, and execute risky AI agent actions.
+TypeScript SDK for [NullSpend](https://github.com/cjones6489/NullSpend) — propose, approve, and execute risky AI agent actions.
 
 ## Quick start
 
 ```typescript
-import { AgentSeam } from "@agentseam/sdk";
+import { NullSpend } from "@nullspend/sdk";
 
-const seam = new AgentSeam({
+const seam = new NullSpend({
   baseUrl: "http://localhost:3000",
   apiKey: "ask_...", // from your Settings page
 });
@@ -22,15 +22,15 @@ const result = await seam.proposeAndWait({
 });
 ```
 
-The SDK creates a pending action in AgentSeam, polls until a human approves or rejects it, then either runs your `execute` callback or throws.
+The SDK creates a pending action in NullSpend, polls until a human approves or rejects it, then either runs your `execute` callback or throws.
 
 ## API
 
-### `new AgentSeam(config)`
+### `new NullSpend(config)`
 
 | Option             | Type     | Required | Description                                      |
 | ------------------ | -------- | -------- | ------------------------------------------------ |
-| `baseUrl`          | `string` | Yes      | URL of your AgentSeam instance                   |
+| `baseUrl`          | `string` | Yes      | URL of your NullSpend instance                   |
 | `apiKey`           | `string` | Yes      | API key from Settings                            |
 | `fetch`            | `fetch`  | No       | Custom fetch implementation (defaults to global)  |
 | `requestTimeoutMs` | `number` | No       | Per-request timeout in ms (default: 30000). Set to 0 to disable. |
@@ -63,7 +63,7 @@ await seam.markResult(actionId, { status: "executed", result: { ... } });
 
 ### Cost correlation
 
-When using the AgentSeam proxy for LLM calls, pass the `actionId` from the execute context as a header to link cost events to the action:
+When using the NullSpend proxy for LLM calls, pass the `actionId` from the execute context as a header to link cost events to the action:
 
 ```typescript
 const result = await seam.proposeAndWait({
@@ -71,11 +71,11 @@ const result = await seam.proposeAndWait({
   actionType: "http_post",
   payload: { prompt: "Summarize this document" },
   execute: async (context) => {
-    const res = await fetch("https://proxy.agentseam.dev/v1/chat/completions", {
+    const res = await fetch("https://proxy.nullspend.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-agentseam-action-id": context?.actionId ?? "",
+        "x-nullspend-action-id": context?.actionId ?? "",
       },
       body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "Hello" }] }),
     });
@@ -89,7 +89,7 @@ The linked cost data will appear on the action detail page in the dashboard.
 ## Error handling
 
 ```typescript
-import { RejectedError, TimeoutError, AgentSeamError } from "@agentseam/sdk";
+import { RejectedError, TimeoutError, NullSpendError } from "@nullspend/sdk";
 
 try {
   await seam.proposeAndWait({ ... });
@@ -98,7 +98,7 @@ try {
     // Human rejected (or action expired)
   } else if (err instanceof TimeoutError) {
     // No decision within timeoutMs
-  } else if (err instanceof AgentSeamError) {
+  } else if (err instanceof NullSpendError) {
     // API error (err.statusCode has the HTTP status)
   }
 }
@@ -119,9 +119,9 @@ Three runnable demos in [`examples/`](examples/) show the approval loop for diff
 pnpm dev
 
 # Terminal 2: run any demo
-AGENTSEAM_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-send-email.ts
-AGENTSEAM_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-http-post.ts
-AGENTSEAM_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-shell-command.ts
+NULLSPEND_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-send-email.ts
+NULLSPEND_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-http-post.ts
+NULLSPEND_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-shell-command.ts
 ```
 
 Then open <http://localhost:3000/app/inbox> and approve the action.

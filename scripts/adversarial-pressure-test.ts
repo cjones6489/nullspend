@@ -996,7 +996,7 @@ async function main() {
 
   const apiKey = existingKeys[0];
   console.log("╔══════════════════════════════════════════════════════╗");
-  console.log("║   AgentSeam ADVERSARIAL Pressure Test Suite          ║");
+  console.log("║   NullSpend ADVERSARIAL Pressure Test Suite          ║");
   console.log("╚══════════════════════════════════════════════════════╝");
   console.log(`API Key: "${apiKey.name}" (${apiKey.id.slice(0, 8)}...)`);
 

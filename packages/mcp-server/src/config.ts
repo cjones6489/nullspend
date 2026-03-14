@@ -1,17 +1,17 @@
 export interface McpServerConfig {
-  agentseamUrl: string;
-  agentseamApiKey: string;
+  nullspendUrl: string;
+  nullspendApiKey: string;
   agentId: string;
 }
 
 export function loadConfig(): McpServerConfig {
-  const agentseamUrl = process.env.AGENTSEAM_URL;
-  const agentseamApiKey = process.env.AGENTSEAM_API_KEY;
-  const agentId = process.env.AGENTSEAM_AGENT_ID ?? "mcp-agent";
+  const nullspendUrl = process.env.NULLSPEND_URL;
+  const nullspendApiKey = process.env.NULLSPEND_API_KEY;
+  const agentId = process.env.NULLSPEND_AGENT_ID ?? "mcp-agent";
 
   const missing: string[] = [];
-  if (!agentseamUrl) missing.push("AGENTSEAM_URL");
-  if (!agentseamApiKey) missing.push("AGENTSEAM_API_KEY");
+  if (!nullspendUrl) missing.push("NULLSPEND_URL");
+  if (!nullspendApiKey) missing.push("NULLSPEND_API_KEY");
 
   if (missing.length > 0) {
     throw new ConfigError(
@@ -21,8 +21,8 @@ export function loadConfig(): McpServerConfig {
   }
 
   return {
-    agentseamUrl: agentseamUrl!,
-    agentseamApiKey: agentseamApiKey!,
+    nullspendUrl: nullspendUrl!,
+    nullspendApiKey: nullspendApiKey!,
     agentId,
   };
 }
