@@ -55,7 +55,7 @@ describe("POST /api/stripe/checkout", () => {
     mockedGetOrigin.mockReturnValue("http://localhost:3000");
     mockedIsValidPriceId.mockReturnValue(true);
     mockedTierFromPriceId.mockReturnValue("pro");
-    mockedGetSubscription.mockResolvedValue(null);
+    mockedGetSubscription.mockResolvedValue(null as never);
 
     mockCheckoutCreate = vi.fn().mockResolvedValue({
       url: "https://checkout.stripe.com/session_123",

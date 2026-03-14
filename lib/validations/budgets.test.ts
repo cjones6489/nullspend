@@ -163,10 +163,9 @@ describe("handleRouteError Zod sanitization", () => {
       {
         code: "invalid_type",
         expected: "number",
-        received: "string",
         path: ["maxBudgetMicrodollars"],
         message: "Expected number, received string",
-      },
+      } as any,
     ]);
 
     const response = handleRouteError(zodError);

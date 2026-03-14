@@ -37,16 +37,10 @@ function makeRequest(
 }
 
 describe("proxy()", () => {
-  const originalEnv = process.env;
-
-  beforeEach(() => {
-    process.env = { ...originalEnv };
-  });
-
   afterEach(() => {
-    process.env = originalEnv;
     _resetRatelimitForTesting();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   describe("CSP header", () => {
@@ -115,7 +109,7 @@ describe("proxy()", () => {
 
   describe("development mode", () => {
     it("uses Report-Only CSP in development", async () => {
-      process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
 
       const response = await proxy(makeRequest() as any);
       expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeTruthy();
@@ -123,7 +117,7 @@ describe("proxy()", () => {
     });
 
     it("includes unsafe-eval in script-src during development", async () => {
-      process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
 
       const response = await proxy(makeRequest() as any);
       const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
@@ -132,7 +126,7 @@ describe("proxy()", () => {
     });
 
     it("includes unsafe-inline in style-src during development", async () => {
-      process.env.NODE_ENV = "development";
+      vi.stubEnv("NODE_ENV", "development");
 
       const response = await proxy(makeRequest() as any);
       const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
@@ -145,7 +139,7 @@ describe("proxy()", () => {
 
   describe("production mode", () => {
     it("excludes unsafe-eval in production", async () => {
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
 
       const response = await proxy(makeRequest() as any);
       const csp = response.headers.get("Content-Security-Policy")!;
@@ -154,7 +148,7 @@ describe("proxy()", () => {
     });
 
     it("excludes unsafe-inline from style-src in production", async () => {
-      process.env.NODE_ENV = "production";
+      vi.stubEnv("NODE_ENV", "production");
 
       const response = await proxy(makeRequest() as any);
       const csp = response.headers.get("Content-Security-Policy")!;
@@ -166,7 +160,7 @@ describe("proxy()", () => {
 
   describe("Supabase URL handling", () => {
     it("includes Supabase origin in connect-src when configured", async () => {
-      process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abc.supabase.co";
+      vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://abc.supabase.co");
 
       const response = await proxy(makeRequest() as any);
       const csp = response.headers.get("Content-Security-Policy")!;
@@ -187,7 +181,7 @@ describe("proxy()", () => {
     });
 
     it("handles invalid Supabase URL gracefully", async () => {
-      process.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
+      vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "not-a-url");
 
       const response = await proxy(makeRequest() as any);
       const csp = response.headers.get("Content-Security-Policy")!;
@@ -377,8 +371,8 @@ describe("proxy()", () => {
 
   describe("rate limiting", () => {
     beforeEach(() => {
-      process.env.UPSTASH_REDIS_REST_URL = "https://fake.upstash.io";
-      process.env.UPSTASH_REDIS_REST_TOKEN = "fake-token";
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake.upstash.io");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "fake-token");
     });
 
     it("returns 429 when rate limit is exceeded on /api/ routes", async () => {

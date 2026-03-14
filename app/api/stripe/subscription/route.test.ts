@@ -26,7 +26,7 @@ describe("GET /api/stripe/subscription", () => {
   });
 
   it("returns null when no subscription exists", async () => {
-    mockedGetSubscription.mockResolvedValue(null);
+    mockedGetSubscription.mockResolvedValue(null as never);
 
     const res = await GET();
     expect(res.status).toBe(200);

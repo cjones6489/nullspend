@@ -231,7 +231,7 @@ describe("POST /api/stripe/webhook", () => {
         },
       });
       mockConstructEvent.mockReturnValue(event);
-      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null);
+      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null as never);
       mockCustomersRetrieve.mockResolvedValue({
         deleted: false,
         metadata: { userId: "user-456" },
@@ -298,7 +298,7 @@ describe("POST /api/stripe/webhook", () => {
         customer: "cus_unknown",
       });
       mockConstructEvent.mockReturnValue(event);
-      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null);
+      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null as never);
 
       const res = await POST(makeRequest("{}"));
       expect(res.status).toBe(200);
@@ -381,7 +381,7 @@ describe("POST /api/stripe/webhook", () => {
         customer: "cus_unknown",
       });
       mockConstructEvent.mockReturnValue(event);
-      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null);
+      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null as never);
 
       const res = await POST(makeRequest("{}"));
       expect(res.status).toBe(200);
@@ -395,7 +395,7 @@ describe("POST /api/stripe/webhook", () => {
         customer: "cus_unknown",
       });
       mockConstructEvent.mockReturnValue(event);
-      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null);
+      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null as never);
 
       const res = await POST(makeRequest("{}"));
       expect(res.status).toBe(200);
@@ -457,7 +457,7 @@ describe("POST /api/stripe/webhook", () => {
         },
       });
       mockConstructEvent.mockReturnValue(event);
-      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null);
+      mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null as never);
       mockCustomersRetrieve.mockResolvedValue({ deleted: true });
 
       const res = await POST(makeRequest("{}"));

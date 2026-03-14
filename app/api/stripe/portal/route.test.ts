@@ -66,7 +66,7 @@ describe("POST /api/stripe/portal", () => {
   });
 
   it("returns 400 when no subscription exists", async () => {
-    mockedGetSubscription.mockResolvedValue(null);
+    mockedGetSubscription.mockResolvedValue(null as never);
 
     const res = await POST(makeRequest());
     expect(res.status).toBe(400);
