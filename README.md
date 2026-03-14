@@ -140,8 +140,8 @@ docs/              Architecture, roadmap, competitive analysis
 Prerequisites: Node 18+, pnpm.
 
 ```bash
-git clone https://github.com/cjones6489/AgentSeam.git
-cd AgentSeam
+git clone https://github.com/cjones6489/NullSpend.git
+cd NullSpend
 pnpm install
 cp .env.example .env.local  # fill in credentials
 pnpm db:push                # push schema to Supabase
