@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   buildUpstreamHeaders,
   buildClientHeaders,
-  buildFailoverHeaders,
 } from "../lib/headers.js";
 
 function makeRequest(headers: Record<string, string> = {}): Request {
@@ -164,67 +163,3 @@ describe("buildClientHeaders edge cases", () => {
   });
 });
 
-describe("buildFailoverHeaders edge cases", () => {
-  it("strips x-agentseam-auth from failover request", () => {
-    const req = makeRequest({
-      authorization: "Bearer sk-test",
-      "x-agentseam-auth": "platform-secret",
-      "content-type": "application/json",
-    });
-    const headers = buildFailoverHeaders(req);
-
-    expect(headers.get("x-agentseam-auth")).toBeNull();
-    expect(headers.get("authorization")).toBe("Bearer sk-test");
-    expect(headers.get("content-type")).toBe("application/json");
-  });
-
-  it("strips host header from failover request", () => {
-    const req = makeRequest({
-      authorization: "Bearer sk-test",
-      host: "proxy.local:8787",
-    });
-    const headers = buildFailoverHeaders(req);
-
-    expect(headers.get("host")).toBeNull();
-  });
-
-  it("strips content-length from failover request", () => {
-    const req = makeRequest({
-      authorization: "Bearer sk-test",
-      "content-length": "256",
-    });
-    const headers = buildFailoverHeaders(req);
-
-    expect(headers.get("content-length")).toBeNull();
-  });
-
-  it("preserves all other headers in failover (user-agent, accept, etc.)", () => {
-    const req = makeRequest({
-      authorization: "Bearer sk-test",
-      "user-agent": "my-app/1.0",
-      accept: "application/json",
-      "x-custom-header": "custom-value",
-    });
-    const headers = buildFailoverHeaders(req);
-
-    expect(headers.get("user-agent")).toBe("my-app/1.0");
-    expect(headers.get("accept")).toBe("application/json");
-    expect(headers.get("x-custom-header")).toBe("custom-value");
-  });
-
-  it("handles case-insensitive stripping (X-AgentSeam-Auth vs x-agentseam-auth)", () => {
-    const req = new Request("https://proxy.example.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer sk-test",
-        "X-AgentSeam-Auth": "platform-secret",
-        Host: "proxy.local",
-      },
-      body: "{}",
-    });
-    const headers = buildFailoverHeaders(req);
-
-    expect(headers.get("x-agentseam-auth")).toBeNull();
-    expect(headers.get("authorization")).toBe("Bearer sk-test");
-  });
-});

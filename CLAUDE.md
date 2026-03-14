@@ -57,6 +57,14 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 - Use `apply_migration` (not `execute_sql`) for DDL via MCP
 - RLS policies scope to `auth.uid()::text` for `authenticated` role
 
+## Testing
+
+See `TESTING.md` for the full test map (106 files, ~1,590 tests across 4 tiers). Key points:
+
+- Proxy tests: `apps/proxy/src/__tests__/` — naming convention: `{module}.test.ts`, `-edge-cases.test.ts`, `-all-models.test.ts`
+- Dashboard tests: co-located with source files
+- When adding a new model to pricing-data.json, update the `-all-models.test.ts` files too
+
 ## Audit
 
 Active security audit in `docs/audit-findings.md` with research in `docs/audit-research.md`.

@@ -8,6 +8,9 @@
  */
 
 const MAX_CONCURRENT = 2;
+const MAX_QUEUE_DEPTH = 20;
+const QUEUE_TIMEOUT_MS = 10_000;
+
 let active = 0;
 const queue: Array<() => void> = [];
 
@@ -15,7 +18,22 @@ export async function withDbConnection<T>(fn: () => Promise<T>): Promise<T> {
   if (active < MAX_CONCURRENT) {
     active++;
   } else {
-    await new Promise<void>((resolve) => queue.push(resolve));
+    if (queue.length >= MAX_QUEUE_DEPTH) {
+      throw new Error("[db-semaphore] Queue full — dropping task");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = queue.indexOf(resolve);
+        if (idx !== -1) queue.splice(idx, 1);
+        reject(new Error("[db-semaphore] Timed out waiting for connection slot"));
+      }, QUEUE_TIMEOUT_MS);
+
+      queue.push(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
 
   try {

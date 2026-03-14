@@ -121,7 +121,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
-    expect(body.details.entity_key).toContain(userId);
+    expect(body.message).toContain("budget");
   }, 15_000);
 
   it("budget enforced with X-AgentSeam-Key-Id header", async () => {
@@ -137,7 +137,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
-    expect(body.details.entity_key).toContain(keyId);
+    expect(body.message).toContain("budget");
   }, 15_000);
 
   it("both user and key budgets checked — tightest one blocks", async () => {
@@ -157,7 +157,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
-    expect(body.details.entity_key).toContain(keyId);
+    expect(body.message).toContain("budget");
   }, 15_000);
 
   it("stream abort does not double-count spend (actual vs reservation)", async () => {

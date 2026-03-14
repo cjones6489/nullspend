@@ -5,7 +5,7 @@ import {
   buildAnthropicUpstreamHeaders,
   buildAnthropicClientHeaders,
 } from "../lib/anthropic-headers.js";
-import { extractModelFromBody } from "../lib/request-utils.js";
+import { extractModelFromBody, extractAttribution } from "../lib/request-utils.js";
 import { createAnthropicSSEParser } from "../lib/anthropic-sse-parser.js";
 import { calculateAnthropicCost } from "../lib/anthropic-cost-calculator.js";
 import type { AnthropicCacheCreationDetail } from "../lib/anthropic-types.js";
@@ -16,6 +16,7 @@ import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
 import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { estimateAnthropicMaxCost } from "../lib/anthropic-cost-estimator.js";
 import { reconcileReservation } from "../lib/budget-reconcile.js";
+import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 
 const UPSTREAM_TIMEOUT_MS = 120_000;
 
@@ -37,11 +38,7 @@ export async function handleAnthropicMessages(
   if (!isAuthed) return unauthorizedResponse();
 
   const requestModel = extractModelFromBody(body);
-  const attribution: Attribution = {
-    userId: request.headers.get("x-agentseam-user-id"),
-    apiKeyId: request.headers.get("x-agentseam-key-id"),
-    actionId: request.headers.get("x-agentseam-action-id"),
-  };
+  const attribution = extractAttribution(request);
 
   if (!isKnownModel("anthropic", requestModel)) {
     return Response.json(
@@ -94,13 +91,6 @@ export async function handleAnthropicMessages(
         {
           error: "budget_exceeded",
           message: "Request blocked: estimated cost exceeds remaining budget",
-          details: {
-            entity_key: checkResult.entityKey,
-            remaining_microdollars: checkResult.remaining,
-            estimated_microdollars: estimate,
-            budget_limit_microdollars: checkResult.maxBudget,
-            spent_microdollars: checkResult.spend,
-          },
         },
         { status: 429 },
       );
@@ -131,7 +121,9 @@ export async function handleAnthropicMessages(
         );
       }
       const clientHeaders = buildAnthropicClientHeaders(upstreamResponse);
-      return new Response(upstreamResponse.body, {
+      const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "anthropic");
+      clientHeaders.set("content-type", "application/json");
+      return new Response(sanitizedBody, {
         status: upstreamResponse.status,
         headers: clientHeaders,
       });

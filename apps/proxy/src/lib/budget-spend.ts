@@ -43,20 +43,22 @@ export async function updateBudgetSpend(
       await client.connect();
       const db = drizzle({ client });
 
-      for (const entity of entities) {
-        await db
-          .update(budgets)
-          .set({
-            spendMicrodollars: sql`${budgets.spendMicrodollars} + ${actualCostMicrodollars}`,
-            updatedAt: sql`NOW()`,
-          })
-          .where(
-            and(
-              eq(budgets.entityType, entity.entityType),
-              eq(budgets.entityId, entity.entityId),
-            ),
-          );
-      }
+      await db.transaction(async (tx) => {
+        for (const entity of entities) {
+          await tx
+            .update(budgets)
+            .set({
+              spendMicrodollars: sql`${budgets.spendMicrodollars} + ${actualCostMicrodollars}`,
+              updatedAt: sql`NOW()`,
+            })
+            .where(
+              and(
+                eq(budgets.entityType, entity.entityType),
+                eq(budgets.entityId, entity.entityId),
+              ),
+            );
+        }
+      });
     } catch (err) {
       console.error(
         "[budget-spend] Failed to update spend:",

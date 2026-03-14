@@ -56,7 +56,7 @@ describe("calculateOpenAICost edge cases", () => {
     expect(result.costMicrodollars).toBe(2250);
   });
 
-  it("handles negative cached_tokens gracefully (treats as-is)", () => {
+  it("clamps negative cached_tokens to 0 (prevents cost inflation)", () => {
     const result = calculateOpenAICost(
       "gpt-4o",
       null,
@@ -69,9 +69,11 @@ describe("calculateOpenAICost edge cases", () => {
       50,
     );
 
-    // normalInput = 100 - (-10) = 110
-    // This is a malformed input; the calculator shouldn't crash
-    expect(Number.isFinite(result.costMicrodollars)).toBe(true);
+    // cached clamped to 0, so normalInput = 100 - 0 = 100
+    // input: 100 * 2.50 = 250, output: 50 * 10.00 = 500
+    // total: 750
+    expect(result.cachedInputTokens).toBe(0);
+    expect(result.costMicrodollars).toBe(750);
   });
 
   it("handles all-reasoning completion tokens", () => {

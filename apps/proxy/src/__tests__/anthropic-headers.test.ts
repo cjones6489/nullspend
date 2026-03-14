@@ -35,11 +35,18 @@ describe("buildAnthropicUpstreamHeaders", () => {
     expect(headers.get("x-api-key")).toBe("sk-ant-api03-direct");
   });
 
-  it("always sets anthropic-version: 2023-06-01", () => {
+  it("defaults to anthropic-version: 2023-06-01 when client omits it", () => {
     const req = makeRequest({});
     const headers = buildAnthropicUpstreamHeaders(req);
 
     expect(headers.get("anthropic-version")).toBe("2023-06-01");
+  });
+
+  it("forwards client-specified anthropic-version", () => {
+    const req = makeRequest({ "anthropic-version": "2024-10-22" });
+    const headers = buildAnthropicUpstreamHeaders(req);
+
+    expect(headers.get("anthropic-version")).toBe("2024-10-22");
   });
 
   it("always sets content-type: application/json", () => {

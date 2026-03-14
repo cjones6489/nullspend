@@ -95,12 +95,12 @@ export type SlackConfigRow = typeof slackConfigs.$inferSelect;
 
 export const budgets = pgTable("budgets", {
   id: uuid("id").defaultRandom().primaryKey(),
-  entityType: text("entity_type").notNull(),
+  entityType: text("entity_type").$type<"user" | "agent" | "api_key" | "team">().notNull(),
   entityId: text("entity_id").notNull(),
   maxBudgetMicrodollars: bigint("max_budget_microdollars", { mode: "number" }).notNull(),
   spendMicrodollars: bigint("spend_microdollars", { mode: "number" }).notNull().default(0),
-  policy: text("policy").notNull().default("strict_block"),
-  resetInterval: text("reset_interval"),
+  policy: text("policy").$type<"strict_block" | "soft_block" | "warn">().notNull().default("strict_block"),
+  resetInterval: text("reset_interval").$type<"daily" | "weekly" | "monthly" | "yearly" | null>(),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

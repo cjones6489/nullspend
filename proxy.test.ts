@@ -21,7 +21,7 @@ vi.mock("@upstash/redis", () => ({
   Redis: { fromEnv: vi.fn() },
 }));
 
-import { proxy } from "./proxy";
+import { proxy, _resetRatelimitForTesting } from "./proxy";
 
 function makeRequest(
   url = "https://example.com/dashboard",
@@ -45,20 +45,22 @@ describe("proxy()", () => {
 
   afterEach(() => {
     process.env = originalEnv;
+    _resetRatelimitForTesting();
     vi.restoreAllMocks();
   });
 
   describe("CSP header", () => {
-    it("sets Content-Security-Policy-Report-Only header", async () => {
+    it("sets enforcing Content-Security-Policy header in non-dev mode", async () => {
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only");
+      const csp = response.headers.get("Content-Security-Policy");
 
       expect(csp).toBeTruthy();
+      expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
     });
 
     it("includes a nonce in script-src and style-src", async () => {
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       // Extract nonce from script-src
       const nonceMatch = csp.match(/'nonce-([^']+)'/);
@@ -80,8 +82,8 @@ describe("proxy()", () => {
       const res1 = await proxy(makeRequest() as any);
       const res2 = await proxy(makeRequest() as any);
 
-      const csp1 = res1.headers.get("Content-Security-Policy-Report-Only")!;
-      const csp2 = res2.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp1 = res1.headers.get("Content-Security-Policy")!;
+      const csp2 = res2.headers.get("Content-Security-Policy")!;
 
       const nonce1 = csp1.match(/'nonce-([^']+)'/)![1];
       const nonce2 = csp2.match(/'nonce-([^']+)'/)![1];
@@ -91,14 +93,14 @@ describe("proxy()", () => {
 
     it("includes strict-dynamic in script-src", async () => {
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       expect(csp).toContain("'strict-dynamic'");
     });
 
     it("includes all security directives", async () => {
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       expect(csp).toContain("default-src 'self'");
       expect(csp).toContain("object-src 'none'");
@@ -112,6 +114,14 @@ describe("proxy()", () => {
   });
 
   describe("development mode", () => {
+    it("uses Report-Only CSP in development", async () => {
+      process.env.NODE_ENV = "development";
+
+      const response = await proxy(makeRequest() as any);
+      expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeTruthy();
+      expect(response.headers.get("Content-Security-Policy")).toBeNull();
+    });
+
     it("includes unsafe-eval in script-src during development", async () => {
       process.env.NODE_ENV = "development";
 
@@ -138,7 +148,7 @@ describe("proxy()", () => {
       process.env.NODE_ENV = "production";
 
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       expect(csp).not.toContain("'unsafe-eval'");
     });
@@ -147,7 +157,7 @@ describe("proxy()", () => {
       process.env.NODE_ENV = "production";
 
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       const styleSrc = csp.split(";").find((d) => d.trim().startsWith("style-src"));
       expect(styleSrc).not.toContain("'unsafe-inline'");
@@ -159,7 +169,7 @@ describe("proxy()", () => {
       process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abc.supabase.co";
 
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       const connectSrc = csp.split(";").find((d) => d.trim().startsWith("connect-src"));
       expect(connectSrc).toContain("https://abc.supabase.co");
@@ -170,7 +180,7 @@ describe("proxy()", () => {
       delete process.env.NEXT_PUBLIC_SUPABASE_URL;
 
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       const connectSrc = csp.split(";").find((d) => d.trim().startsWith("connect-src"));
       expect(connectSrc!.trim()).toBe("connect-src 'self'");
@@ -180,7 +190,7 @@ describe("proxy()", () => {
       process.env.NEXT_PUBLIC_SUPABASE_URL = "not-a-url";
 
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
 
       // Should not throw, just fall back to 'self' only
       const connectSrc = csp.split(";").find((d) => d.trim().startsWith("connect-src"));
@@ -191,7 +201,7 @@ describe("proxy()", () => {
   describe("nonce propagation", () => {
     it("sets x-nonce request header for downstream Server Components", async () => {
       const response = await proxy(makeRequest() as any);
-      const csp = response.headers.get("Content-Security-Policy-Report-Only")!;
+      const csp = response.headers.get("Content-Security-Policy")!;
       const nonce = csp.match(/'nonce-([^']+)'/)![1];
 
       // The response should have been created with the modified request headers
@@ -231,12 +241,38 @@ describe("proxy()", () => {
       expect(response.status).not.toBe(403);
     });
 
-    it("allows POST to /api/ routes without Origin header (non-browser)", async () => {
+    it("allows POST to /api/ routes without Origin or Referer header (non-browser)", async () => {
       const req = makeRequest("https://example.com/api/actions", {
         method: "POST",
         headers: new Headers({
           cookie: "session=abc",
           host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(403);
+    });
+
+    it("blocks cross-origin Referer when Origin is absent", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          referer: "https://evil.com/page",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(403);
+    });
+
+    it("allows same-origin Referer when Origin is absent", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          referer: "https://example.com/dashboard",
         }),
       });
       const response = await proxy(req as any);
@@ -370,6 +406,26 @@ describe("proxy()", () => {
       expect(response.status).not.toBe(429);
     });
 
+    it("returns 503 when rate limiter throws an error (fail-closed)", async () => {
+      mockLimit.mockReset();
+      MockRatelimit.mockImplementation(function () { return { limit: mockLimit }; });
+      (MockRatelimit as any).slidingWindow = vi.fn();
+      mockLimit.mockRejectedValueOnce(new Error("Redis connection failed"));
+
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "x-forwarded-for": "1.2.3.4",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(503);
+      const body = await response.json();
+      expect(body.error).toBe("Service temporarily unavailable");
+    });
+
     it("skips rate limiting when Upstash env vars are not set", async () => {
       delete process.env.UPSTASH_REDIS_REST_URL;
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -401,7 +457,7 @@ describe("proxy()", () => {
       const response = await proxy(makeRequest() as any);
 
       // Should still return a valid response with CSP
-      expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeTruthy();
+      expect(response.headers.get("Content-Security-Policy")).toBeTruthy();
     });
   });
 });

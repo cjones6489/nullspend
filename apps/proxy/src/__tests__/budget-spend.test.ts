@@ -25,6 +25,9 @@ const mockUpdateChain = {
 };
 const mockDrizzleDb = {
   update: vi.fn().mockReturnValue(mockUpdateChain),
+  transaction: vi.fn(async (cb: (tx: any) => Promise<void>) => {
+    await cb(mockDrizzleDb);
+  }),
 };
 
 vi.mock("pg", () => {

@@ -59,11 +59,12 @@ export function Sidebar() {
             </p>
             <div className="flex flex-col gap-0.5">
               {section.items.map((item) => {
-                const isActive = pathname.startsWith(item.href);
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={isActive ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
                       isActive

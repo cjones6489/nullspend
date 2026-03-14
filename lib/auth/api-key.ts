@@ -39,7 +39,7 @@ function constantTimeCompare(a: string, b: string): boolean {
 }
 
 function canUseDevelopmentFallback(): boolean {
-  return process.env.AGENTSEAM_DEV_MODE === "true" || process.env.NODE_ENV === "development";
+  return process.env.AGENTSEAM_DEV_MODE === "true";
 }
 
 function getEnvFallbackKey(): string | undefined {

@@ -139,6 +139,7 @@ export async function POST(request: Request) {
     }
   } catch (err) {
     console.error("[AgentSeam] Slack authorization lookup error:", err);
+    return ephemeralDenial("Could not verify your authorization. Please try again.");
   }
 
   const dashboardUrl = getDashboardUrl();

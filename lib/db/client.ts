@@ -2,26 +2,15 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 
 import * as schema from "@agentseam/db";
+import { getEnv } from "@/lib/env";
 
 declare global {
   var __agentseamSql: postgres.Sql | undefined;
 }
 
-function getDatabaseUrl(): string {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error(
-      "DATABASE_URL is not set. Point it at your Supabase Postgres connection string.",
-    );
-  }
-
-  return databaseUrl;
-}
-
 function getSqlClient(): postgres.Sql {
   if (!globalThis.__agentseamSql) {
-    globalThis.__agentseamSql = postgres(getDatabaseUrl(), {
+    globalThis.__agentseamSql = postgres(getEnv().DATABASE_URL, {
       prepare: false,
     });
   }

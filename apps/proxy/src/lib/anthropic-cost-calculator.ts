@@ -30,11 +30,11 @@ export function calculateAnthropicCost(
     actionId: string | null;
   },
 ): CostEventInsert {
-  const inputTokens = Number(usage.input_tokens) || 0;
-  const outputTokens = Number(usage.output_tokens) || 0;
+  const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
+  const outputTokens = Math.max(0, Number(usage.output_tokens) || 0);
   const cacheCreationTokens =
-    Number(usage.cache_creation_input_tokens) || 0;
-  const cacheReadTokens = Number(usage.cache_read_input_tokens) || 0;
+    Math.max(0, Number(usage.cache_creation_input_tokens) || 0);
+  const cacheReadTokens = Math.max(0, Number(usage.cache_read_input_tokens) || 0);
 
   const totalInputTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
 
@@ -67,9 +67,9 @@ export function calculateAnthropicCost(
 
   if (cacheCreationDetail?.ephemeral_5m_input_tokens !== undefined) {
     const tokens5m =
-      Number(cacheCreationDetail.ephemeral_5m_input_tokens) || 0;
+      Math.max(0, Number(cacheCreationDetail.ephemeral_5m_input_tokens) || 0);
     const tokens1h =
-      Number(cacheCreationDetail.ephemeral_1h_input_tokens) || 0;
+      Math.max(0, Number(cacheCreationDetail.ephemeral_1h_input_tokens) || 0);
     cacheWriteCost =
       costComponent(tokens5m, cacheWrite5mRate) +
       costComponent(tokens1h, cacheWrite1hRate);

@@ -115,8 +115,7 @@ describe("End-to-end budget enforcement", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
-    expect(body.details).toBeDefined();
-    expect(body.details.remaining_microdollars).toBeLessThanOrEqual(0);
+    expect(body.message).toContain("budget");
   }, 15_000);
 
   it("blocks request when spend already equals maxBudget", async () => {
@@ -215,12 +214,7 @@ describe("End-to-end budget enforcement", () => {
 
     expect(body.error).toBe("budget_exceeded");
     expect(body.message).toContain("budget");
-    expect(body.details).toHaveProperty("entity_key");
-    expect(body.details).toHaveProperty("remaining_microdollars");
-    expect(body.details).toHaveProperty("estimated_microdollars");
-    expect(body.details).toHaveProperty("budget_limit_microdollars");
-    expect(body.details).toHaveProperty("spent_microdollars");
-    expect(body.details.budget_limit_microdollars).toBe(1);
+    expect(body.details).toBeUndefined();
   }, 15_000);
 
   it("concurrent requests against tight budget don't overspend", async () => {

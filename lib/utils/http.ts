@@ -41,6 +41,10 @@ export async function readJsonBody(
 
   const rawBody = await request.text();
 
+  if (new TextEncoder().encode(rawBody).byteLength > maxBytes) {
+    throw new PayloadTooLargeError(maxBytes);
+  }
+
   if (!rawBody.trim()) {
     throw new InvalidJsonBodyError();
   }

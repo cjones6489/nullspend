@@ -7,7 +7,6 @@ export async function rejectAction(
   ownerUserId: string,
 ) {
   const result = await resolveAction(actionId, ownerUserId, "rejected", {
-    rejectedAt: new Date(),
     rejectedBy: input.rejectedBy,
   });
 

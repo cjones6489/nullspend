@@ -68,8 +68,13 @@ export function estimateAnthropicMaxCost(
   const outputTokenEstimate =
     explicitOutputCap ?? (MODEL_OUTPUT_CAPS[model] ?? DEFAULT_OUTPUT_CAP);
 
-  const inputCost = costComponent(inputTokenEstimate, pricing.inputPerMTok);
-  const outputCost = costComponent(outputTokenEstimate, pricing.outputPerMTok);
+  // Apply long-context multipliers (matches anthropic-cost-calculator.ts logic)
+  const isLongContext = inputTokenEstimate > 200_000;
+  const inputRate = isLongContext ? pricing.inputPerMTok * 2 : pricing.inputPerMTok;
+  const outputRate = isLongContext ? pricing.outputPerMTok * 1.5 : pricing.outputPerMTok;
+
+  const inputCost = costComponent(inputTokenEstimate, inputRate);
+  const outputCost = costComponent(outputTokenEstimate, outputRate);
 
   return Math.round((inputCost + outputCost) * SAFETY_MARGIN);
 }

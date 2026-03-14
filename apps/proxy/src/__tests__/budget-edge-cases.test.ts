@@ -323,13 +323,7 @@ describe("Budget Edge Cases", () => {
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
     expect(body.message).toBe("Request blocked: estimated cost exceeds remaining budget");
-    expect(body.details).toEqual({
-      entity_key: "{budget}:api_key:key-uuid-123",
-      remaining_microdollars: 100_000,
-      estimated_microdollars: 999_999,
-      budget_limit_microdollars: 50_000_000,
-      spent_microdollars: 49_400_000,
-    });
+    expect(body.details).toBeUndefined();
   });
 
   it("429 response does not contain sensitive data", async () => {

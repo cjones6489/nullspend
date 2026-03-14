@@ -173,8 +173,8 @@ describe("Anthropic budget enforcement", () => {
     expect(res.status).toBe(429);
     const json = await res.json();
     expect(json.error).toBe("budget_exceeded");
-    expect(json.details.entity_key).toBe(BUDGET_ENTITY.entityKey);
-    expect(json.details.estimated_microdollars).toBe(500_000);
+    expect(json.message).toContain("budget");
+    expect(json.details).toBeUndefined();
   });
 
   it("successful non-streaming request reconciles with actual cost", async () => {

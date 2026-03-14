@@ -1,5 +1,6 @@
 {
   "name": "@agentseam/sdk",
+  "private": true,
   "version": "0.1.0",
   "description": "TypeScript SDK for AgentSeam — propose, approve, and execute risky AI agent actions",
   "type": "module",

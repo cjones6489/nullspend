@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint, Typecheck & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @agentseam/db
+        run: pnpm db:build
+
+      - name: Build @agentseam/cost-engine
+        run: pnpm cost-engine:build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Root tests
+        run: pnpm test
+
+      - name: Proxy tests
+        run: pnpm proxy:test
+
+      - name: SDK tests
+        run: pnpm sdk:test
+
+      - name: MCP server tests
+        run: pnpm mcp:test
+
+      - name: Cost engine tests
+        run: pnpm cost-engine:test
+
+      - name: DB tests
+        run: pnpm db:test

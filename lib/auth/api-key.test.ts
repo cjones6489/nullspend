@@ -32,12 +32,12 @@ describe("AGENTSEAM_DEV_MODE fallback", () => {
     expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
   });
 
-  it("allows dev fallback when NODE_ENV=development (backwards compat)", () => {
+  it("rejects dev fallback when only NODE_ENV=development (requires AGENTSEAM_DEV_MODE)", () => {
     setEnv("NODE_ENV", "development");
     setEnv("AGENTSEAM_DEV_MODE", undefined);
     setEnv("AGENTSEAM_DEV_ACTOR", "dev-user");
 
-    expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
+    expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);
   });
 
   it("rejects dev fallback in production without AGENTSEAM_DEV_MODE", () => {

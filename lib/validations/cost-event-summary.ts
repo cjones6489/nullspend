@@ -6,13 +6,13 @@ export const costSummaryQuerySchema = z.object({
 
 export const dailySpendSchema = z.object({
   date: z.string(),
-  totalCostMicrodollars: z.number(),
+  totalCostMicrodollars: z.number().nonnegative(),
 });
 
 export const modelBreakdownSchema = z.object({
   provider: z.string(),
   model: z.string(),
-  totalCostMicrodollars: z.number(),
+  totalCostMicrodollars: z.number().nonnegative(),
   requestCount: z.number().int(),
   inputTokens: z.number().int(),
   outputTokens: z.number().int(),
@@ -22,20 +22,20 @@ export const modelBreakdownSchema = z.object({
 
 export const providerBreakdownSchema = z.object({
   provider: z.string(),
-  totalCostMicrodollars: z.number(),
+  totalCostMicrodollars: z.number().nonnegative(),
   requestCount: z.number().int(),
 });
 
 export const keyBreakdownSchema = z.object({
   apiKeyId: z.string().uuid(),
   keyName: z.string(),
-  totalCostMicrodollars: z.number(),
+  totalCostMicrodollars: z.number().nonnegative(),
   requestCount: z.number().int(),
 });
 
 export const totalsSchema = z.object({
-  totalCostMicrodollars: z.number(),
-  totalRequests: z.number().int(),
+  totalCostMicrodollars: z.number().nonnegative(),
+  totalRequests: z.number().int().nonnegative(),
 });
 
 export const costSummaryResponseSchema = z.object({
@@ -43,7 +43,7 @@ export const costSummaryResponseSchema = z.object({
   models: z.array(modelBreakdownSchema),
   providers: z.array(providerBreakdownSchema),
   keys: z.array(keyBreakdownSchema),
-  totals: totalsSchema.extend({ period: z.string() }),
+  totals: totalsSchema.extend({ period: z.enum(["7d", "30d", "90d"]) }),
 });
 
 export type CostSummaryQuery = z.infer<typeof costSummaryQuerySchema>;

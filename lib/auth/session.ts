@@ -5,7 +5,7 @@ import {
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 
 function canUseDevelopmentFallback(): boolean {
-  return process.env.AGENTSEAM_DEV_MODE === "true" || process.env.NODE_ENV === "development";
+  return process.env.AGENTSEAM_DEV_MODE === "true";
 }
 
 export function getDevActor(): string | undefined {
@@ -14,13 +14,13 @@ export function getDevActor(): string | undefined {
 
 export async function getCurrentUserId(): Promise<string | null> {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.auth.getClaims();
+  const { data: { user }, error } = await supabase.auth.getUser();
 
   if (error) {
     throw new AuthenticationRequiredError(error.message);
   }
 
-  return (data?.claims?.sub as string) ?? null;
+  return user?.id ?? null;
 }
 
 function tryDevFallback(warn?: boolean): string | undefined {

@@ -6,16 +6,25 @@ import { createProxySupabaseClient } from "@/lib/auth/supabase";
 
 const MAX_BODY_BYTES = 1_048_576; // 1MB
 
-// Returns null if Upstash env vars are not configured
+// Singleton rate limiter — initialized once, reused across requests.
+// Returns null if Upstash env vars are not configured.
+let _limiter: Ratelimit | null | undefined;
+
+/** @internal Reset singleton for testing only */
+export function _resetRatelimitForTesting() { _limiter = undefined; }
 function getRatelimit(): Ratelimit | null {
+  if (_limiter !== undefined) return _limiter;
   if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    _limiter = null;
     return null;
   }
-  return new Ratelimit({
+  _limiter = new Ratelimit({
     redis: Redis.fromEnv(),
     limiter: Ratelimit.slidingWindow(100, "1 m"),
     prefix: "agentseam:api:rl",
+    ephemeralCache: new Map(),
   });
+  return _limiter;
 }
 
 export async function proxy(request: NextRequest) {
@@ -23,7 +32,8 @@ export async function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/api/")) {
     const limiter = getRatelimit();
     if (limiter) {
-      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      const ip = request.ip
+        ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
         ?? request.headers.get("x-real-ip")
         ?? "127.0.0.1";
       try {
@@ -42,8 +52,13 @@ export async function proxy(request: NextRequest) {
             },
           );
         }
-      } catch {
-        // Rate limiter failure should not block requests
+      } catch (err) {
+        console.error("[AgentSeam] Rate limiter error:", err);
+        // M1: Fail closed — block request when rate limiter is unavailable
+        return NextResponse.json(
+          { error: "Service temporarily unavailable" },
+          { status: 503 },
+        );
       }
     }
   }
@@ -53,7 +68,7 @@ export async function proxy(request: NextRequest) {
     request.nextUrl.pathname.startsWith("/api/") &&
     ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
   ) {
-    const origin = request.headers.get("origin");
+    const origin = request.headers.get("origin") ?? request.headers.get("referer");
     if (origin) {
       const host =
         request.headers.get("x-forwarded-host") || request.headers.get("host");
@@ -115,9 +130,9 @@ export async function proxy(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
 
-  // Set CSP header — start with Report-Only for safe rollout
+  // Enforce CSP in production, report-only in development
   response.headers.set(
-    "Content-Security-Policy-Report-Only",
+    isDev ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy",
     cspDirectives.join("; ")
   );
 

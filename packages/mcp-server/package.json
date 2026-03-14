@@ -1,5 +1,6 @@
 {
   "name": "@agentseam/mcp-server",
+  "private": true,
   "version": "0.1.0",
   "description": "MCP server that exposes AgentSeam approval tools to MCP clients",
   "type": "module",

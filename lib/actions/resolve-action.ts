@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import {
   ActionExpiredError,
@@ -15,7 +15,7 @@ export async function resolveAction(
   actionId: string,
   ownerUserId: string,
   targetStatus: ActionStatus,
-  setFields: Record<string, unknown>,
+  setFields: { approvedBy: string } | { rejectedBy: string },
 ) {
   const db = getDb();
 
@@ -38,7 +38,7 @@ export async function resolveAction(
     if (isActionExpired(existingAction)) {
       await tx
         .update(actions)
-        .set({ status: "expired", expiredAt: new Date() })
+        .set({ status: "expired", expiredAt: sql`NOW()` })
         .where(
           and(
             eq(actions.id, actionId),
@@ -51,9 +51,14 @@ export async function resolveAction(
 
     assertActionTransition(existingAction.status, targetStatus);
 
+    const timestampField =
+      targetStatus === "approved"
+        ? { approvedAt: sql`NOW()` }
+        : { rejectedAt: sql`NOW()` };
+
     const updatedRows = await tx
       .update(actions)
-      .set({ status: targetStatus, ...setFields })
+      .set({ ...setFields, ...timestampField, status: targetStatus })
       .where(
         and(
           eq(actions.id, actionId),

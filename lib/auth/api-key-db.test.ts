@@ -33,16 +33,12 @@ function mockDb(updateResult: unknown[]) {
 }
 
 describe("DB-backed API key auth", () => {
-  const originalNodeEnv = process.env.NODE_ENV;
+  const originalDevMode = process.env.AGENTSEAM_DEV_MODE;
   const originalApiKey = process.env.AGENTSEAM_API_KEY;
   const originalDevActor = process.env.AGENTSEAM_DEV_ACTOR;
 
-  function setNodeEnv(value: string | undefined) {
-    Object.assign(process.env, { NODE_ENV: value });
-  }
-
   afterEach(() => {
-    setNodeEnv(originalNodeEnv);
+    process.env.AGENTSEAM_DEV_MODE = originalDevMode;
     process.env.AGENTSEAM_API_KEY = originalApiKey;
     process.env.AGENTSEAM_DEV_ACTOR = originalDevActor;
     vi.resetAllMocks();
@@ -61,8 +57,8 @@ describe("DB-backed API key auth", () => {
     });
   });
 
-  it("falls back to the env key only when no managed key matches", async () => {
-    setNodeEnv("development");
+  it("falls back to the env key only when AGENTSEAM_DEV_MODE is enabled", async () => {
+    process.env.AGENTSEAM_DEV_MODE = "true";
     process.env.AGENTSEAM_API_KEY = "env-secret";
 
     mockDb([]);
@@ -84,15 +80,15 @@ describe("DB-backed API key auth", () => {
     ).rejects.toBeInstanceOf(ApiKeyError);
   });
 
-  it("resolves the dev actor for env fallback only in development", () => {
-    setNodeEnv("development");
+  it("resolves the dev actor for env fallback when AGENTSEAM_DEV_MODE=true", () => {
+    process.env.AGENTSEAM_DEV_MODE = "true";
     process.env.AGENTSEAM_DEV_ACTOR = "dev-user";
 
     expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
   });
 
-  it("rejects env fallback ownership resolution outside development", () => {
-    setNodeEnv("production");
+  it("rejects env fallback ownership resolution without AGENTSEAM_DEV_MODE", () => {
+    delete process.env.AGENTSEAM_DEV_MODE;
     process.env.AGENTSEAM_DEV_ACTOR = "dev-user";
 
     expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);

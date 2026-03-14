@@ -428,7 +428,7 @@ describe("POST /api/slack/callback", () => {
     expect(mockedRejectAction).not.toHaveBeenCalled();
   });
 
-  it("allows action when authorization lookup fails (fail-open for availability)", async () => {
+  it("denies action when authorization lookup fails (fail-closed for security)", async () => {
     const actionChain = {
       select: vi.fn().mockReturnThis(),
       from: vi.fn().mockReturnThis(),
@@ -444,14 +444,15 @@ describe("POST /api/slack/callback", () => {
     mockedGetDb
       .mockReturnValueOnce(actionChain as never)
       .mockReturnValueOnce(configChain as never);
-    mockedApproveAction.mockResolvedValue(undefined as never);
 
     const body = makePayload();
     const res = await POST(makeSignedRequest(body));
     const json = await res.json();
 
-    expect(mockedApproveAction).toHaveBeenCalledTimes(1);
-    expect(json.text).toContain("approved");
+    expect(mockedApproveAction).not.toHaveBeenCalled();
+    expect(json.response_type).toBe("ephemeral");
+    expect(json.replace_original).toBe(false);
+    expect(json.text).toContain("Could not verify your authorization");
   });
 
   // ── All responses return 200 ──────────────────────────────────

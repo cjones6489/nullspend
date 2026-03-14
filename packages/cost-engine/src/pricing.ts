@@ -1,7 +1,7 @@
 import type { ModelPricing } from "./types.js";
 import pricingData from "./pricing-data.json";
 
-const pricingMap = pricingData as Record<string, ModelPricing>;
+const pricingMap = Object.freeze(pricingData as Record<string, ModelPricing>);
 
 /**
  * Look up pricing for a model. Returns null if the model is not in the

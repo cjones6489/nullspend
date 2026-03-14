@@ -232,7 +232,7 @@ describe("Budget Enforcement", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
-    expect(body.details.entity_key).toBe("{budget}:user:user-uuid-456");
+    expect(body.message).toContain("budget");
   });
 
   // --- P0-3: Concurrent requests ---
@@ -298,9 +298,8 @@ describe("Budget Enforcement", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
-    expect(body.details.remaining_microdollars).toBe(0);
-    expect(body.details.budget_limit_microdollars).toBe(50_000_000);
-    expect(body.details.estimated_microdollars).toBe(500_000);
+    expect(body.message).toContain("budget");
+    expect(body.details).toBeUndefined();
   });
 
   // --- Budget has room ---

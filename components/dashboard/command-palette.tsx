@@ -36,13 +36,13 @@ export function CommandPalette() {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setOpen(!open);
+        setOpen((prev) => !prev);
       }
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, setOpen]);
+  }, [setOpen]);
 
   function navigate(href: string) {
     setOpen(false);

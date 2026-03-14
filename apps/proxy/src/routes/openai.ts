@@ -2,7 +2,7 @@ import { waitUntil } from "cloudflare:workers";
 import { Redis } from "@upstash/redis/cloudflare";
 import { validatePlatformKey, unauthorizedResponse } from "../lib/auth.js";
 import { buildUpstreamHeaders, buildClientHeaders } from "../lib/headers.js";
-import { ensureStreamOptions, extractModelFromBody } from "../lib/request-utils.js";
+import { ensureStreamOptions, extractModelFromBody, extractAttribution } from "../lib/request-utils.js";
 import { createSSEParser } from "../lib/sse-parser.js";
 import { calculateOpenAICost } from "../lib/cost-calculator.js";
 import { isKnownModel } from "@agentseam/cost-engine";
@@ -12,6 +12,7 @@ import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
 import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { estimateMaxCost } from "../lib/cost-estimator.js";
 import { reconcileReservation } from "../lib/budget-reconcile.js";
+import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 
 export async function handleChatCompletions(
   request: Request,
@@ -25,11 +26,7 @@ export async function handleChatCompletions(
   if (!isAuthed) return unauthorizedResponse();
 
   const requestModel = extractModelFromBody(body);
-  const attribution = {
-    userId: request.headers.get("x-agentseam-user-id"),
-    apiKeyId: request.headers.get("x-agentseam-key-id"),
-    actionId: request.headers.get("x-agentseam-action-id"),
-  };
+  const attribution = extractAttribution(request);
 
   if (!isKnownModel("openai", requestModel)) {
     return Response.json(
@@ -84,13 +81,6 @@ export async function handleChatCompletions(
         {
           error: "budget_exceeded",
           message: "Request blocked: estimated cost exceeds remaining budget",
-          details: {
-            entity_key: checkResult.entityKey,
-            remaining_microdollars: checkResult.remaining,
-            estimated_microdollars: estimate,
-            budget_limit_microdollars: checkResult.maxBudget,
-            spent_microdollars: checkResult.spend,
-          },
         },
         { status: 429 },
       );
@@ -121,7 +111,9 @@ export async function handleChatCompletions(
         );
       }
       const clientHeaders = buildClientHeaders(upstreamResponse);
-      return new Response(upstreamResponse.body, {
+      const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "openai");
+      clientHeaders.set("content-type", "application/json");
+      return new Response(sanitizedBody, {
         status: upstreamResponse.status,
         headers: clientHeaders,
       });

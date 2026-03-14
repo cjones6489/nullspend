@@ -7,7 +7,6 @@ export async function approveAction(
   ownerUserId: string,
 ) {
   const result = await resolveAction(actionId, ownerUserId, "approved", {
-    approvedAt: new Date(),
     approvedBy: input.approvedBy,
   });
 

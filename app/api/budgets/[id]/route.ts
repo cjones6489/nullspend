@@ -15,22 +15,28 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
     const { id } = await readRouteParams(params);
     const db = getDb();
 
-    const rows = await db
-      .select()
-      .from(budgets)
-      .where(eq(budgets.id, id));
+    await db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(budgets)
+        .where(eq(budgets.id, id))
+        .for("update");
 
-    if (rows.length === 0) {
-      return NextResponse.json({ error: "Budget not found." }, { status: 404 });
-    }
+      if (rows.length === 0) {
+        throw new NotFoundError("Budget not found.");
+      }
 
-    const budget = rows[0];
-    await verifyBudgetOwnership(userId, budget.entityType, budget.entityId);
+      const budget = rows[0];
+      await verifyBudgetOwnership(tx, userId, budget.entityType, budget.entityId);
 
-    await db.delete(budgets).where(eq(budgets.id, id));
+      await tx.delete(budgets).where(eq(budgets.id, id));
+    });
 
     return NextResponse.json({ deleted: true });
   } catch (error) {
+    if (error instanceof NotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     return handleRouteError(error);
   }
 }
@@ -44,27 +50,32 @@ export async function POST(_request: Request, { params }: RouteParams) {
     const { id } = await readRouteParams(params);
     const db = getDb();
 
-    const rows = await db
-      .select()
-      .from(budgets)
-      .where(eq(budgets.id, id));
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .select()
+        .from(budgets)
+        .where(eq(budgets.id, id))
+        .for("update");
 
-    if (rows.length === 0) {
-      return NextResponse.json({ error: "Budget not found." }, { status: 404 });
-    }
+      if (rows.length === 0) {
+        throw new NotFoundError("Budget not found.");
+      }
 
-    const budget = rows[0];
-    await verifyBudgetOwnership(userId, budget.entityType, budget.entityId);
+      const budget = rows[0];
+      await verifyBudgetOwnership(tx, userId, budget.entityType, budget.entityId);
 
-    const [updated] = await db
-      .update(budgets)
-      .set({
-        spendMicrodollars: 0,
-        currentPeriodStart: sql`NOW()`,
-        updatedAt: sql`NOW()`,
-      })
-      .where(eq(budgets.id, id))
-      .returning();
+      const [result] = await tx
+        .update(budgets)
+        .set({
+          spendMicrodollars: 0,
+          currentPeriodStart: sql`NOW()`,
+          updatedAt: sql`NOW()`,
+        })
+        .where(eq(budgets.id, id))
+        .returning();
+
+      return result;
+    });
 
     return NextResponse.json({
       ...updated,
@@ -73,11 +84,24 @@ export async function POST(_request: Request, { params }: RouteParams) {
       updatedAt: updated.updatedAt.toISOString(),
     });
   } catch (error) {
+    if (error instanceof NotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
     return handleRouteError(error);
   }
 }
 
+class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotFoundError";
+  }
+}
+
+type TxOrDb = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+
 async function verifyBudgetOwnership(
+  tx: TxOrDb,
   userId: string,
   entityType: string,
   entityId: string,
@@ -90,8 +114,7 @@ async function verifyBudgetOwnership(
   }
 
   if (entityType === "api_key") {
-    const db = getDb();
-    const rows = await db
+    const rows = await tx
       .select({ id: apiKeys.id })
       .from(apiKeys)
       .where(

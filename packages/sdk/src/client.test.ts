@@ -15,6 +15,7 @@ function mockAction(overrides: Partial<ActionRecord> = {}): ActionRecord {
     approvedAt: null,
     rejectedAt: null,
     executedAt: null,
+    expiresAt: null,
     expiredAt: null,
     approvedBy: null,
     rejectedBy: null,

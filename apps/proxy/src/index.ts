@@ -5,6 +5,7 @@ import { handleAnthropicMessages } from "./routes/anthropic.js";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
 const DEFAULT_RATE_LIMIT = 120;
+const DEFAULT_KEY_RATE_LIMIT = 600;
 
 async function applyRateLimit(
   request: Request,
@@ -12,36 +13,59 @@ async function applyRateLimit(
 ): Promise<Response | null> {
   const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
   try {
+    const redis = Redis.fromEnv(env);
     const rateLimit =
       Number((env as Record<string, unknown>).PROXY_RATE_LIMIT) ||
       DEFAULT_RATE_LIMIT;
-    const ratelimit = new Ratelimit({
-      redis: Redis.fromEnv(env),
+
+    // Per-IP rate limit
+    const ipLimiter = new Ratelimit({
+      redis,
       limiter: Ratelimit.slidingWindow(rateLimit, "1 m"),
-      prefix: "agentseam:proxy:rl",
+      prefix: "agentseam:proxy:rl:ip",
     });
-    const { success, limit, remaining, reset } =
-      await ratelimit.limit(clientIp);
-    if (!success) {
-      return Response.json(
-        { error: "rate_limited", message: "Too many requests" },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit": String(limit),
-            "X-RateLimit-Remaining": String(remaining),
-            "X-RateLimit-Reset": String(reset),
-            "Retry-After": String(
-              Math.ceil((reset - Date.now()) / 1000),
-            ),
-          },
-        },
-      );
+    const ipResult = await ipLimiter.limit(clientIp);
+    if (!ipResult.success) {
+      return rateLimitResponse(ipResult);
+    }
+
+    // Per-key rate limit (if key-id header is present)
+    const keyId = request.headers.get("x-agentseam-key-id");
+    if (keyId && keyId.length <= 128) {
+      const keyRateLimit =
+        Number((env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT) ||
+        DEFAULT_KEY_RATE_LIMIT;
+      const keyLimiter = new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(keyRateLimit, "1 m"),
+        prefix: "agentseam:proxy:rl:key",
+      });
+      const keyResult = await keyLimiter.limit(keyId);
+      if (!keyResult.success) {
+        return rateLimitResponse(keyResult);
+      }
     }
   } catch (err) {
     console.error("[proxy] Rate limiter error:", err);
   }
   return null;
+}
+
+function rateLimitResponse(result: { limit: number; remaining: number; reset: number }): Response {
+  return Response.json(
+    { error: "rate_limited", message: "Too many requests" },
+    {
+      status: 429,
+      headers: {
+        "X-RateLimit-Limit": String(result.limit),
+        "X-RateLimit-Remaining": String(result.remaining),
+        "X-RateLimit-Reset": String(result.reset),
+        "Retry-After": String(
+          Math.ceil((result.reset - Date.now()) / 1000),
+        ),
+      },
+    },
+  );
 }
 
 async function parseRequestBody(

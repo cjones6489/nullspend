@@ -37,6 +37,7 @@ function mockAction(overrides: Record<string, unknown> = {}) {
     approvedAt: null,
     rejectedAt: null,
     executedAt: null,
+    expiresAt: null,
     expiredAt: null,
     approvedBy: null,
     rejectedBy: null,

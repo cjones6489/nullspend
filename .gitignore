@@ -12,6 +12,7 @@ tsconfig.tsbuildinfo
 .env.production.local
 .dev.vars
 .dev.vars.local
+.env.smoke
 .wrangler
 worker-configuration.d.ts
 

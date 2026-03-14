@@ -1,12 +1,11 @@
-import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { apiKeys, costEvents } from "@agentseam/db";
 
 function baseConditions(userId: string, cutoffDate: Date) {
   return and(
-    eq(apiKeys.userId, userId),
-    isNull(apiKeys.revokedAt),
+    or(eq(costEvents.userId, userId), eq(apiKeys.userId, userId)),
     gte(costEvents.createdAt, cutoffDate),
   );
 }
@@ -31,7 +30,7 @@ export async function getDailySpend(userId: string, periodDays: number) {
         sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
     })
     .from(costEvents)
-    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff))
     .groupBy(dateExpr)
     .orderBy(dateExpr);
@@ -47,7 +46,7 @@ export async function getModelBreakdown(userId: string, periodDays: number) {
       model: costEvents.model,
       totalCostMicrodollars:
         sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
-      requestCount: sql<number>`cast(count(*) as int)`,
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
       inputTokens:
         sql`cast(coalesce(sum(${costEvents.inputTokens}), 0) as bigint)`.mapWith(Number),
       outputTokens:
@@ -58,7 +57,7 @@ export async function getModelBreakdown(userId: string, periodDays: number) {
         sql`cast(coalesce(sum(${costEvents.reasoningTokens}), 0) as bigint)`.mapWith(Number),
     })
     .from(costEvents)
-    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff))
     .groupBy(costEvents.provider, costEvents.model)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
@@ -73,10 +72,10 @@ export async function getProviderBreakdown(userId: string, periodDays: number) {
       provider: costEvents.provider,
       totalCostMicrodollars:
         sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
-      requestCount: sql<number>`cast(count(*) as int)`,
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff))
     .groupBy(costEvents.provider)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
@@ -92,10 +91,10 @@ export async function getKeyBreakdown(userId: string, periodDays: number) {
       keyName: apiKeys.name,
       totalCostMicrodollars:
         sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
-      requestCount: sql<number>`cast(count(*) as int)`,
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff))
     .groupBy(costEvents.apiKeyId, apiKeys.name)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
@@ -109,10 +108,10 @@ export async function getTotals(userId: string, periodDays: number) {
     .select({
       totalCostMicrodollars:
         sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
-      totalRequests: sql<number>`cast(count(*) as int)`,
+      totalRequests: sql`cast(count(*) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff));
 
   return row ?? { totalCostMicrodollars: 0, totalRequests: 0 };

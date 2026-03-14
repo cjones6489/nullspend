@@ -14,7 +14,7 @@ export function buildAnthropicUpstreamHeaders(request: Request): Headers {
     if (xApiKey) headers.set("x-api-key", xApiKey);
   }
 
-  headers.set("anthropic-version", "2023-06-01");
+  headers.set("anthropic-version", request.headers.get("anthropic-version") ?? "2023-06-01");
   headers.set("content-type", "application/json");
 
   const beta = request.headers.get("anthropic-beta");

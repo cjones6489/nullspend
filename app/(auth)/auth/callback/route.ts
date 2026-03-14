@@ -5,7 +5,7 @@ import { createServerSupabaseClient } from "@/lib/auth/supabase";
 function sanitizeRedirectPath(raw: string | null): string {
   const fallback = "/app/analytics";
   if (!raw) return fallback;
-  if (!raw.startsWith("/") || raw.startsWith("//")) return fallback;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return fallback;
   return raw;
 }
 

@@ -4,12 +4,6 @@ const UPSTREAM_FORWARD_HEADERS = [
   "openai-project",
 ] as const;
 
-const UPSTREAM_STRIP_HEADERS = new Set([
-  "x-agentseam-auth",
-  "host",
-  "content-length",
-]);
-
 /**
  * Build headers for the upstream OpenAI request.
  * Forwards auth and content headers, strips proxy-specific and unsafe headers.
@@ -55,18 +49,5 @@ export function buildClientHeaders(upstreamResponse: Response): Headers {
     headers.set("retry-after", retryAfter);
   }
 
-  return headers;
-}
-
-/**
- * Build headers for the failover request (strips only proxy-specific headers).
- */
-export function buildFailoverHeaders(request: Request): Headers {
-  const headers = new Headers();
-  for (const [name, value] of request.headers) {
-    if (!UPSTREAM_STRIP_HEADERS.has(name.toLowerCase())) {
-      headers.set(name, value);
-    }
-  }
   return headers;
 }

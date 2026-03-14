@@ -7,7 +7,6 @@ const eslintConfig = [
     "packages/mcp-server/dist/**",
     "packages/mcp-proxy/dist/**",
     "packages/cost-engine/dist/**",
-    "packages/shared/dist/**",
     "packages/db/dist/**",
     "apps/*/dist/**",
     "apps/*/.wrangler/**",
