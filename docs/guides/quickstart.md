@@ -4,7 +4,7 @@ Get cost tracking and budget enforcement for your AI agent in under 5 minutes.
 
 ## Prerequisites
 
-- An NullSpend account ([sign up at nullspend.com](https://nullspend.com/signup))
+- A NullSpend account ([sign up at nullspend.com](https://nullspend.com/signup))
 - An existing application that calls OpenAI or Anthropic APIs
 
 ## Step 1: Create an API key

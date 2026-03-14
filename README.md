@@ -84,11 +84,16 @@ ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
 
 1. **Sign up** at [nullspend.com](https://nullspend.com) and create an API key
    in Settings
-2. **Set two environment variables** in your agent:
-   ```bash
-   OPENAI_BASE_URL=https://proxy.nullspend.com/v1
-   OPENAI_API_KEY=sk-your-openai-key   # your real provider key, unchanged
+2. **Point your SDK at the NullSpend proxy** and add the auth header:
+   ```typescript
+   const client = new OpenAI({
+     baseURL: "https://proxy.nullspend.com/v1",
+     defaultHeaders: {
+       "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
+     },
+   });
    ```
+   Your real OpenAI/Anthropic API key stays unchanged — pass it as usual.
 3. **Run your agent** — costs appear in the dashboard within seconds
 
 ## Pricing
@@ -135,8 +140,8 @@ docs/              Architecture, roadmap, competitive analysis
 Prerequisites: Node 18+, pnpm.
 
 ```bash
-git clone https://github.com/cjones6489/NullSpend.git
-cd NullSpend
+git clone https://github.com/cjones6489/AgentSeam.git
+cd AgentSeam
 pnpm install
 cp .env.example .env.local  # fill in credentials
 pnpm db:push                # push schema to Supabase

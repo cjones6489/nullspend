@@ -9,10 +9,13 @@ agent can rack up thousands in minutes. Existing solutions either gate budget
 enforcement behind enterprise pricing, require you to self-host Docker + Postgres
 + Redis + YAML, or just got acquired and shut down.
 
-**NullSpend is one environment variable change:**
+**NullSpend is two config changes — a base URL and an auth header:**
 
-```bash
-OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+```typescript
+const client = new OpenAI({
+  baseURL: "https://proxy.nullspend.com/v1",
+  defaultHeaders: { "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY },
+});
 ```
 
 Your existing OpenAI/Anthropic SDK, streaming, error handling — all works

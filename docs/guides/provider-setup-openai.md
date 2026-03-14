@@ -107,10 +107,9 @@ final SSE chunk.
 | Endpoint | Status |
 |---|---|
 | `POST /v1/chat/completions` | Supported |
-| `POST /v1/responses` | Supported |
 
-Other OpenAI endpoints (embeddings, images, audio, fine-tuning) are not
-currently proxied. Requests to unsupported endpoints return `404`.
+Other OpenAI endpoints (responses, embeddings, images, audio, fine-tuning) are
+not currently proxied. Requests to unsupported endpoints return `404`.
 
 ## Cost calculation details
 
