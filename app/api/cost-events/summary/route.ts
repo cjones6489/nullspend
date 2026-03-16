@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import {
+  getCostBreakdownTotals,
   getDailySpend,
   getKeyBreakdown,
   getModelBreakdown,
@@ -24,13 +25,14 @@ export async function GET(request: Request) {
     });
     const periodDays = parseInt(period, 10);
 
-    const [daily, models, providers, keys, tools, totals] = await Promise.all([
+    const [daily, models, providers, keys, tools, totals, costBreakdown] = await Promise.all([
       getDailySpend(userId, periodDays),
       getModelBreakdown(userId, periodDays),
       getProviderBreakdown(userId, periodDays),
       getKeyBreakdown(userId, periodDays),
       getToolBreakdown(userId, periodDays),
       getTotals(userId, periodDays),
+      getCostBreakdownTotals(userId, periodDays),
     ]);
 
     const response = costSummaryResponseSchema.parse({
@@ -40,6 +42,7 @@ export async function GET(request: Request) {
       keys,
       tools,
       totals: { ...totals, period },
+      costBreakdown,
     });
 
     return NextResponse.json(response);

@@ -198,6 +198,12 @@ describe("costSummaryResponseSchema", () => {
       totalRequests: 10,
       period: "30d",
     },
+    costBreakdown: {
+      inputCost: 300_000,
+      outputCost: 600_000,
+      cachedCost: 100_000,
+      reasoningCost: 0,
+    },
   };
 
   it("accepts valid complete response", () => {
@@ -216,6 +222,7 @@ describe("costSummaryResponseSchema", () => {
       keys: [],
       tools: [],
       totals: { totalCostMicrodollars: 0, totalRequests: 0, period: "7d" },
+      costBreakdown: { inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 },
     });
     expect(result.daily).toHaveLength(0);
     expect(result.models).toHaveLength(0);

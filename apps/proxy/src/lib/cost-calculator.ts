@@ -38,12 +38,37 @@ export function calculateOpenAICost(
   }
 
   let costMicrodollars = 0;
+  let costBreakdown: CostEventInsert["costBreakdown"] = null;
   if (pricing) {
-    costMicrodollars = Math.round(
-      costComponent(normalInputTokens, pricing.inputPerMTok) +
-      costComponent(cachedTokens, pricing.cachedInputPerMTok) +
-      costComponent(completionTokens, pricing.outputPerMTok),
-    );
+    const input = costComponent(normalInputTokens, pricing.inputPerMTok);
+    const cached = costComponent(cachedTokens, pricing.cachedInputPerMTok);
+    const output = costComponent(completionTokens, pricing.outputPerMTok);
+    costMicrodollars = Math.round(input + cached + output);
+
+    // Round components, then distribute rounding residual to largest to guarantee exact sum
+    const roundedInput = Math.round(input);
+    const roundedCached = Math.round(cached);
+    const roundedOutput = Math.round(output);
+    const residual = costMicrodollars - (roundedInput + roundedCached + roundedOutput);
+    let adjInput = roundedInput;
+    let adjCached = roundedCached;
+    let adjOutput = roundedOutput;
+    if (residual !== 0) {
+      // Apply residual to the largest component
+      if (output >= input && output >= cached) adjOutput += residual;
+      else if (input >= cached) adjInput += residual;
+      else adjCached += residual;
+    }
+    const bd: { input: number; output: number; cached: number; reasoning?: number } = {
+      input: adjInput, output: adjOutput, cached: adjCached,
+    };
+
+    // Reasoning is a SUBSET of output cost (already counted in output), stored for informational display
+    if (reasoningTokens > 0) {
+      bd.reasoning = Math.round(costComponent(reasoningTokens, pricing.outputPerMTok));
+    }
+
+    costBreakdown = bd;
   }
 
   return {
@@ -55,6 +80,7 @@ export function calculateOpenAICost(
     cachedInputTokens: cachedTokens,
     reasoningTokens,
     costMicrodollars,
+    costBreakdown,
     durationMs,
     userId: attribution?.userId ?? null,
     apiKeyId: attribution?.apiKeyId ?? null,

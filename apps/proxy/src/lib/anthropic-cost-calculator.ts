@@ -78,13 +78,28 @@ export function calculateAnthropicCost(
   }
 
   let costMicrodollars = 0;
+  let costBreakdown: CostEventInsert["costBreakdown"] = null;
   if (pricing) {
-    costMicrodollars = Math.round(
-      costComponent(inputTokens, inputRate) +
-        cacheWriteCost +
-        costComponent(cacheReadTokens, cacheReadRate) +
-        costComponent(outputTokens, outputRate),
-    );
+    const input = costComponent(inputTokens, inputRate);
+    const cached = cacheWriteCost + costComponent(cacheReadTokens, cacheReadRate);
+    const output = costComponent(outputTokens, outputRate);
+    costMicrodollars = Math.round(input + cached + output);
+
+    // Round components, then distribute rounding residual to largest to guarantee exact sum
+    const roundedInput = Math.round(input);
+    const roundedCached = Math.round(cached);
+    const roundedOutput = Math.round(output);
+    const residual = costMicrodollars - (roundedInput + roundedCached + roundedOutput);
+    let adjInput = roundedInput;
+    let adjCached = roundedCached;
+    let adjOutput = roundedOutput;
+    if (residual !== 0) {
+      // Apply residual to the largest component
+      if (output >= input && output >= cached) adjOutput += residual;
+      else if (input >= cached) adjInput += residual;
+      else adjCached += residual;
+    }
+    costBreakdown = { input: adjInput, output: adjOutput, cached: adjCached };
   }
 
   return {
@@ -96,6 +111,7 @@ export function calculateAnthropicCost(
     cachedInputTokens: cacheReadTokens,
     reasoningTokens: 0,
     costMicrodollars,
+    costBreakdown,
     durationMs,
     userId: attribution?.userId ?? null,
     apiKeyId: attribution?.apiKeyId ?? null,

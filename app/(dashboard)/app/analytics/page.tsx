@@ -3,6 +3,7 @@
 import { BarChart3 } from "lucide-react";
 import { useState } from "react";
 
+import { CostBreakdown } from "@/components/analytics/cost-breakdown";
 import { KeyBreakdown } from "@/components/analytics/key-breakdown";
 import { ModelBreakdown } from "@/components/analytics/model-breakdown";
 import { ProviderBreakdown } from "@/components/analytics/provider-breakdown";
@@ -92,6 +93,8 @@ export default function AnalyticsPage() {
               }
             />
           </div>
+
+          <CostBreakdown data={data.costBreakdown} />
 
           <SpendChart data={data.daily} />
 

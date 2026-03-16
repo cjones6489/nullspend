@@ -120,6 +120,24 @@ export async function getToolBreakdown(userId: string, periodDays: number) {
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 
+export async function getCostBreakdownTotals(userId: string, periodDays: number) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+
+  const [row] = await db
+    .select({
+      inputCost: sql`cast(coalesce(sum((${costEvents.costBreakdown}->>'input')::numeric), 0) as bigint)`.mapWith(Number),
+      outputCost: sql`cast(coalesce(sum((${costEvents.costBreakdown}->>'output')::numeric), 0) as bigint)`.mapWith(Number),
+      cachedCost: sql`cast(coalesce(sum((${costEvents.costBreakdown}->>'cached')::numeric), 0) as bigint)`.mapWith(Number),
+      reasoningCost: sql`cast(coalesce(sum((${costEvents.costBreakdown}->>'reasoning')::numeric), 0) as bigint)`.mapWith(Number),
+    })
+    .from(costEvents)
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .where(baseConditions(userId, cutoff));
+
+  return row ?? { inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 };
+}
+
 export async function getTotals(userId: string, periodDays: number) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);

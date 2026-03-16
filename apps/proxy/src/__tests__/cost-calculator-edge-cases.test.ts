@@ -12,6 +12,7 @@ describe("calculateOpenAICost edge cases", () => {
     );
 
     expect(result.costMicrodollars).toBe(0);
+    expect(result.costBreakdown).toEqual({ input: 0, cached: 0, output: 0 });
     expect(result.inputTokens).toBe(0);
     expect(result.outputTokens).toBe(0);
     expect(result.cachedInputTokens).toBe(0);
@@ -179,6 +180,7 @@ describe("calculateOpenAICost edge cases", () => {
     );
 
     expect(result.costMicrodollars).toBe(0);
+    expect(result.costBreakdown).toBeNull();
     expect(result.model).toBe("some-custom-model");
   });
 

@@ -20,6 +20,8 @@ describe("calculateAnthropicCost — bug avoidance (AC-1 through AC-7)", () => {
 
     expect(result.inputTokens).toBe(5 + 1253 + 128955);
     expect(result.costMicrodollars).toBe(50945);
+    expect(result.costBreakdown).not.toBeNull();
+    expect(result.costBreakdown!.input! + result.costBreakdown!.cached! + result.costBreakdown!.output!).toBe(50945);
   });
 
   it("AC-2: cache write uses independent rate, not base+premium (LiteLLM #6575)", () => {
@@ -282,6 +284,7 @@ describe("calculateAnthropicCost — edge cases", () => {
     );
 
     expect(result.costMicrodollars).toBe(0);
+    expect(result.costBreakdown).toBeNull();
     expect(result.model).toBe("nonexistent-model");
     expect(result.inputTokens).toBe(100);
     expect(result.outputTokens).toBe(50);
@@ -376,6 +379,92 @@ describe("calculateAnthropicCost — edge cases", () => {
 
     // 1000*1.00 + 500*5.00 = 1000 + 2500 = 3500
     expect(result.costMicrodollars).toBe(3500);
+    expect(result.costBreakdown).toEqual({ input: 1000, cached: 0, output: 2500 });
+  });
+});
+
+describe("calculateAnthropicCost costBreakdown invariants", () => {
+  it("costBreakdown is null when model is unknown", () => {
+    const result = calculateAnthropicCost(
+      "nonexistent-model",
+      null,
+      { input_tokens: 100, output_tokens: 50 },
+      null,
+      "req-null-bd",
+      50,
+    );
+    expect(result.costBreakdown).toBeNull();
+    expect(result.costMicrodollars).toBe(0);
+  });
+
+  it("costBreakdown components sum exactly to costMicrodollars", () => {
+    const result = calculateAnthropicCost(
+      "claude-sonnet-4-6",
+      null,
+      {
+        input_tokens: 500,
+        output_tokens: 300,
+        cache_creation_input_tokens: 2000,
+        cache_read_input_tokens: 10000,
+      },
+      null,
+      "req-sum-check",
+      100,
+    );
+
+    expect(result.costBreakdown).not.toBeNull();
+    const bd = result.costBreakdown!;
+    expect(bd.input! + bd.output! + bd.cached!).toBe(result.costMicrodollars);
+  });
+
+  it("residual distribution preserves exact sum with fractional components", () => {
+    // claude-haiku-3: in=0.25, cached=0.03, w5m=0.30, out=1.25
+    // 3 input * 0.25 = 0.75, cache_write 7 * 0.30 = 2.1, cache_read 11 * 0.03 = 0.33, 5 output * 1.25 = 6.25
+    // cached = 2.1 + 0.33 = 2.43
+    // total = Math.round(0.75 + 2.43 + 6.25) = Math.round(9.43) = 9
+    // rounded: 1 + 2 + 6 = 9 → residual = 0
+    const result = calculateAnthropicCost(
+      "claude-haiku-3",
+      null,
+      {
+        input_tokens: 3,
+        output_tokens: 5,
+        cache_creation_input_tokens: 7,
+        cache_read_input_tokens: 11,
+      },
+      null,
+      "req-frac-anthropic",
+      50,
+    );
+    expect(result.costBreakdown).not.toBeNull();
+    const bd = result.costBreakdown!;
+    expect(bd.input! + bd.output! + bd.cached!).toBe(result.costMicrodollars);
+  });
+
+  it("costBreakdown keys are always in input/output/cached order", () => {
+    const result = calculateAnthropicCost(
+      "claude-sonnet-4-6",
+      null,
+      { input_tokens: 100, output_tokens: 50 },
+      null,
+      "req-key-order",
+      50,
+    );
+    expect(Object.keys(result.costBreakdown!)).toEqual(["input", "output", "cached"]);
+  });
+
+  it("reasoning is never present for Anthropic", () => {
+    const result = calculateAnthropicCost(
+      "claude-sonnet-4-6",
+      null,
+      { input_tokens: 100, output_tokens: 5000 },
+      null,
+      "req-no-reasoning",
+      300,
+    );
+
+    expect(result.costBreakdown).not.toBeNull();
+    expect(result.costBreakdown!.reasoning).toBeUndefined();
   });
 });
 
