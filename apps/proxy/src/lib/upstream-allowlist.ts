@@ -10,6 +10,6 @@ const DEFAULT_ALLOWED = new Set([
 // not compatible with our ${base}/v1/chat/completions URL construction.
 
 export function isAllowedUpstream(url: string): boolean {
-  const normalized = url.replace(/\/+$/, "");
+  const normalized = url.replace(/\/+$/, "").toLowerCase();
   return DEFAULT_ALLOWED.has(normalized);
 }

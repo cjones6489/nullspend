@@ -50,7 +50,8 @@ describe("isAllowedUpstream", () => {
     expect(isAllowedUpstream("http://api.groq.com/openai")).toBe(false);
   });
 
-  it("returns false for uppercase domain (case-sensitive)", () => {
-    expect(isAllowedUpstream("https://API.GROQ.COM/openai")).toBe(false);
+  it("returns true for uppercase domain (case-insensitive, DNS is case-insensitive)", () => {
+    expect(isAllowedUpstream("https://API.GROQ.COM/openai")).toBe(true);
+    expect(isAllowedUpstream("https://Api.OpenAI.Com")).toBe(true);
   });
 });

@@ -43,6 +43,9 @@ export async function logCostEvent(
       outputTokens: event.outputTokens,
       costMicrodollars: event.costMicrodollars,
       durationMs: event.durationMs,
+      eventType: event.eventType,
+      toolName: event.toolName,
+      sessionId: event.sessionId,
     });
     return;
   }

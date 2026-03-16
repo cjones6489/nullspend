@@ -132,6 +132,7 @@ export const costEvents = pgTable("cost_events", {
   toolDefinitionTokens: integer("tool_definition_tokens").default(0),
   upstreamDurationMs: integer("upstream_duration_ms"),
   sessionId: text("session_id"),
+  costBreakdown: jsonb("cost_breakdown").$type<{ input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("cost_events_request_id_provider_idx").on(table.requestId, table.provider),

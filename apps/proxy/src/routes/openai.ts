@@ -204,7 +204,7 @@ function handleStreaming(
         reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
       );
     }
-    return new Response("No response body from upstream", { status: 502 });
+    return errorResponse("upstream_error", "No response body from upstream", 502);
   }
 
   const { readable, resultPromise } = createSSEParser(upstreamBody);
