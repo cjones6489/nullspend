@@ -85,17 +85,8 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
-}));
-
 import { handleChatCompletions } from "../routes/openai.js";
+import type { RequestContext } from "../lib/context.js";
 
 // --- Test Helpers ---
 
@@ -108,9 +99,6 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-test-key",
-      "X-NullSpend-Auth": "test-platform-key",
-      "X-NullSpend-Key-Id": "key-uuid-123",
-      "X-NullSpend-User-Id": "user-uuid-456",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -119,7 +107,6 @@ function makeRequest(
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -143,6 +130,20 @@ function makeSuccessResponse(usage = { prompt_tokens: 10, completion_tokens: 5 }
       headers: { "content-type": "application/json", "x-request-id": "req-test" },
     },
   );
+}
+
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+    redis: {} as any,
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    sessionId: null,
+    ...overrides,
+  };
 }
 
 const defaultBody = {
@@ -185,16 +186,9 @@ describe("Budget Enforcement", () => {
     mockReconcile.mockReset();
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
-    mockAuthenticateRequest.mockReset();
-
     mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-uuid-456",
-      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
-      method: "api_key",
-    });
   });
 
   afterEach(() => {
@@ -208,7 +202,7 @@ describe("Budget Enforcement", () => {
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(res.status).toBe(200);
     expect(mockCheckAndReserve).not.toHaveBeenCalled();
@@ -221,7 +215,7 @@ describe("Budget Enforcement", () => {
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
@@ -242,7 +236,7 @@ describe("Budget Enforcement", () => {
       spend: 1_000_000,
     });
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(res.status).toBe(429);
     const body = await res.json();
@@ -262,7 +256,7 @@ describe("Budget Enforcement", () => {
     });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    const res1 = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res1 = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res1.status).toBe(200);
 
     // Second request denied (simulating post-reservation state)
@@ -274,7 +268,7 @@ describe("Budget Enforcement", () => {
       spend: 49_400_000,
     });
 
-    const res2 = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res2 = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res2.status).toBe(429);
   });
 
@@ -291,7 +285,7 @@ describe("Budget Enforcement", () => {
       spend: 49_500_000,
     });
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res.status).toBe(429);
     expect(mockEstimateMaxCost).toHaveBeenCalled();
   });
@@ -308,7 +302,7 @@ describe("Budget Enforcement", () => {
       spend: 50_000_000,
     });
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(res.status).toBe(429);
     const body = await res.json();
@@ -327,7 +321,7 @@ describe("Budget Enforcement", () => {
     });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(res.status).toBe(200);
     // waitUntil should be called for cost logging + reconciliation
@@ -339,7 +333,7 @@ describe("Budget Enforcement", () => {
   it("returns 503 when Redis is down during budget lookup", async () => {
     mockLookupBudgets.mockRejectedValue(new Error("Redis connection failed"));
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(res.status).toBe(503);
     const body = await res.json();
@@ -350,7 +344,7 @@ describe("Budget Enforcement", () => {
     mockLookupBudgets.mockResolvedValue([keyEntity]);
     mockCheckAndReserve.mockRejectedValue(new Error("Redis eval failed"));
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(res.status).toBe(503);
     const body = await res.json();
@@ -372,7 +366,7 @@ describe("Budget Enforcement", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(res.status).toBe(400);
     expect(mockWaitUntil).toHaveBeenCalled();
@@ -403,7 +397,7 @@ describe("Budget Enforcement", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res.status).toBe(500);
 
     await Promise.all(
@@ -433,7 +427,7 @@ describe("Budget Enforcement", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res.status).toBe(200);
 
     await Promise.all(
@@ -459,7 +453,7 @@ describe("Budget Enforcement", () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError"));
 
     await expect(
-      handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody),
+      handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody)),
     ).rejects.toThrow();
 
     await Promise.all(
@@ -483,7 +477,7 @@ describe("Budget Enforcement", () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("network failure"));
 
     await expect(
-      handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody),
+      handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody)),
     ).rejects.toThrow("network failure");
 
     await Promise.all(
@@ -509,7 +503,7 @@ describe("Budget Enforcement", () => {
     mockReconcile.mockRejectedValue(new Error("Redis went away"));
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res.status).toBe(200);
 
     // waitUntil fires but failure is swallowed
@@ -529,7 +523,7 @@ describe("Budget Enforcement", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     const bodyWithMaxTokens = { ...defaultBody, max_tokens: 100 };
-    await handleChatCompletions(makeRequest(bodyWithMaxTokens), makeEnv(), bodyWithMaxTokens);
+    await handleChatCompletions(makeRequest(bodyWithMaxTokens), makeEnv(), makeCtx(bodyWithMaxTokens));
 
     expect(mockEstimateMaxCost).toHaveBeenCalledWith("gpt-4o-mini", bodyWithMaxTokens);
   });
@@ -549,7 +543,7 @@ describe("Budget Enforcement", () => {
       }),
     );
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     await Promise.all(
       mockWaitUntil.mock.calls.map(([p]: [Promise<unknown>]) => p.catch(() => {})),
@@ -576,7 +570,7 @@ describe("Budget Enforcement", () => {
       spend: 50_000_000,
     });
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     const responseText = await res.text();
     expect(responseText).not.toContain("x-nullspend-auth");
     expect(responseText).not.toContain("test-platform-key");
@@ -592,7 +586,7 @@ describe("Budget Enforcement", () => {
     });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res.status).toBe(200);
 
     await Promise.all(
@@ -629,7 +623,7 @@ describe("Budget Enforcement", () => {
       ),
     );
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     await Promise.all(
       mockWaitUntil.mock.calls.map(([p]: [Promise<unknown>]) => p.catch(() => {})),
@@ -653,7 +647,7 @@ describe("Budget Enforcement", () => {
     });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(mockCheckAndReserve).toHaveBeenCalledWith(
       expect.anything(),
@@ -672,7 +666,7 @@ describe("Budget Enforcement", () => {
     });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     await Promise.all(
       mockWaitUntil.mock.calls.map(([p]: [Promise<unknown>]) => p.catch(() => {})),
@@ -700,7 +694,7 @@ describe("Budget Enforcement", () => {
       }),
     );
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     await Promise.all(
       mockWaitUntil.mock.calls.map(([p]: [Promise<unknown>]) => p.catch(() => {})),
@@ -717,7 +711,7 @@ describe("Budget Enforcement", () => {
     });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(mockEstimateMaxCost).toHaveBeenCalledWith("gpt-4o-mini", defaultBody);
   });

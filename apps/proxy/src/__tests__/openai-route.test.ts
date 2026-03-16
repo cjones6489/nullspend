@@ -8,6 +8,7 @@
  * requiring a live OpenAI API key or running proxy server.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
+import type { RequestContext } from "../lib/context.js";
 
 // crypto.subtle.timingSafeEqual is a CF Workers API; polyfill for Node.js tests
 beforeAll(() => {
@@ -31,22 +32,19 @@ vi.mock("cloudflare:workers", () => ({
   }),
 }));
 
-const { mockIsKnownModel } = vi.hoisted(() => {
+const { mockIsKnownModel, mockLogCostEvent } = vi.hoisted(() => {
   const mockIsKnownModel = vi.fn().mockReturnValue(true);
-  return { mockIsKnownModel };
+  const mockLogCostEvent = vi.fn().mockResolvedValue(undefined);
+  return { mockIsKnownModel, mockLogCostEvent };
 });
 vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: mockIsKnownModel,
+  getModelPricing: vi.fn().mockReturnValue(null),
+  costComponent: vi.fn().mockReturnValue(0),
 }));
-
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
+vi.mock("../lib/cost-logger.js", () => ({
+  logCostEvent: (...args: unknown[]) => mockLogCostEvent(...args),
+  isLocalConnection: () => false,
 }));
 
 import { handleChatCompletions } from "../routes/openai.js";
@@ -60,7 +58,6 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-test-key",
-      "X-NullSpend-Auth": "test-platform-key",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -69,7 +66,6 @@ function makeRequest(
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -92,18 +88,26 @@ function makeSSEStream(chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-1", keyId: "key-1", hasBudgets: false },
+    redis: null,
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    sessionId: null,
+    ...overrides,
+  };
+}
+
 describe("handleChatCompletions", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockAuthenticateRequest.mockReset();
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-1",
-      keyId: "key-1",
-      method: "platform_key",
-    });
   });
 
   afterEach(() => {
@@ -114,26 +118,13 @@ describe("handleChatCompletions", () => {
   it("returns 400 for unknown models", async () => {
     mockIsKnownModel.mockReturnValueOnce(false);
     const request = makeRequest({ model: "unknown-model", messages: [] });
-    const res = await handleChatCompletions(request, makeEnv(), {
+    const res = await handleChatCompletions(request, makeEnv(), makeCtx({
       model: "unknown-model",
       messages: [],
-    });
+    }));
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("invalid_model");
-  });
-
-  it("returns 401 when authentication fails", async () => {
-    mockAuthenticateRequest.mockResolvedValue(null);
-    const request = makeRequest({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: "hi" }],
-    });
-    const res = await handleChatCompletions(request, makeEnv(), {
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: "hi" }],
-    });
-    expect(res.status).toBe(401);
   });
 
   it("forwards upstream error responses with correct status", async () => {
@@ -147,7 +138,7 @@ describe("handleChatCompletions", () => {
     const res = await handleChatCompletions(
       makeRequest({ model: "fake-model", messages: [{ role: "user", content: "hi" }] }),
       makeEnv(),
-      { model: "fake-model", messages: [{ role: "user", content: "hi" }] },
+      makeCtx({ model: "fake-model", messages: [{ role: "user", content: "hi" }] }),
     );
 
     expect(res.status).toBe(404);
@@ -173,11 +164,11 @@ describe("handleChatCompletions", () => {
         stream: true,
       }),
       makeEnv(),
-      {
+      makeCtx({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: "hi" }],
         stream: true,
-      },
+      }),
     );
 
     expect(res.status).toBe(502);
@@ -210,11 +201,11 @@ describe("handleChatCompletions", () => {
         stream: false,
       }),
       makeEnv(),
-      {
+      makeCtx({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: "hi" }],
         stream: false,
-      },
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -242,11 +233,11 @@ describe("handleChatCompletions", () => {
         stream: false,
       }),
       makeEnv(),
-      {
+      makeCtx({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: "hi" }],
         stream: false,
-      },
+      }),
     );
 
     // Should still return the raw text to the client
@@ -278,10 +269,10 @@ describe("handleChatCompletions", () => {
         messages: [{ role: "user", content: "hi" }],
       }),
       makeEnv(),
-      {
+      makeCtx({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: "hi" }],
-      },
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -313,11 +304,11 @@ describe("handleChatCompletions", () => {
         stream: true,
       }),
       makeEnv(),
-      {
+      makeCtx({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: "hi" }],
         stream: true,
-      },
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -352,7 +343,7 @@ describe("handleChatCompletions", () => {
       stream_options: { include_usage: false },
     };
 
-    const res = await handleChatCompletions(makeRequest(body), makeEnv(), body);
+    const res = await handleChatCompletions(makeRequest(body), makeEnv(), makeCtx(body));
     expect(res.status).toBe(200);
     await res.text();
 
@@ -372,7 +363,7 @@ describe("handleChatCompletions", () => {
     const res = await handleChatCompletions(
       makeRequest({ messages: [{ role: "user", content: "hi" }] }),
       makeEnv(),
-      { messages: [{ role: "user", content: "hi" }] },
+      makeCtx({ messages: [{ role: "user", content: "hi" }] }),
     );
 
     // OpenAI will reject this, proxy forwards the error
@@ -393,7 +384,7 @@ describe("handleChatCompletions", () => {
     const res = await handleChatCompletions(
       makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       makeEnv(),
-      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+      makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
     );
 
     expect(res.headers.get("x-request-id")).toBe("req-unique-id-abc");
@@ -416,7 +407,7 @@ describe("handleChatCompletions", () => {
     const res = await handleChatCompletions(
       makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       makeEnv(),
-      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+      makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
     );
 
     expect(res.headers.get("x-ratelimit-limit-requests")).toBe("500");
@@ -438,7 +429,7 @@ describe("handleChatCompletions", () => {
     await handleChatCompletions(
       makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       makeEnv(),
-      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+      makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
     );
 
     expect(capturedHeaders).toBeTruthy();
@@ -469,11 +460,11 @@ describe("handleChatCompletions", () => {
         stream: true,
       }),
       makeEnv(),
-      {
+      makeCtx({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: "hi" }],
         stream: true,
-      },
+      }),
     );
 
     expect(res.status).toBe(200);
@@ -494,7 +485,7 @@ describe("handleChatCompletions", () => {
     const res = await handleChatCompletions(
       makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       makeEnv(),
-      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+      makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
     );
 
     expect(res.status).toBe(200);
@@ -517,11 +508,297 @@ describe("handleChatCompletions", () => {
     await handleChatCompletions(
       makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       makeEnv(),
-      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
+      makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
     );
 
     expect(capturedSignal).toBeTruthy();
     expect(capturedSignal!.aborted).toBe(false);
+  });
+
+  it("includes enrichment fields in non-streaming cost event", async () => {
+    mockLogCostEvent.mockClear();
+
+    const mockResponse = {
+      id: "chatcmpl-enrich",
+      model: "gpt-4o-mini-2024-07-18",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            { id: "call_abc", type: "function", function: { name: "get_weather", arguments: '{"city":"SF"}' } },
+          ],
+        },
+        finish_reason: "tool_calls",
+      }],
+      usage: { prompt_tokens: 50, completion_tokens: 20 },
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "req-enrich",
+        },
+      }),
+    );
+
+    const tools = [{ type: "function", function: { name: "get_weather", parameters: { type: "object" } } }];
+    const body = {
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "weather?" }],
+      tools,
+    };
+
+    const res = await handleChatCompletions(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body, { sessionId: "sess-123" }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    // Give waitUntil microtask a tick
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockLogCostEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sessionId: "sess-123",
+        upstreamDurationMs: expect.any(Number),
+        toolDefinitionTokens: expect.any(Number),
+        toolCallsRequested: [{ name: "get_weather", id: "call_abc" }],
+      }),
+    );
+    const callArgs = mockLogCostEvent.mock.calls[0][1];
+    expect(callArgs.toolDefinitionTokens).toBeGreaterThan(0);
+    expect(callArgs.upstreamDurationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("includes toolCallsRequested from streaming response", async () => {
+    mockLogCostEvent.mockClear();
+
+    const sseChunks = [
+      'data: {"id":"chatcmpl-stc","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_s1","type":"function","function":{"name":"search","arguments":""}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-stc","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"q\\":\\"test\\"}"}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-stc","model":"gpt-4o-mini","choices":[],"usage":{"prompt_tokens":30,"completion_tokens":10}}\n\n',
+      "data: [DONE]\n\n",
+    ];
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(makeSSEStream(sseChunks), {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "x-request-id": "req-stream-tc",
+        },
+      }),
+    );
+
+    const body = {
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "search" }],
+      stream: true,
+    };
+
+    const res = await handleChatCompletions(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    // Give waitUntil + SSE parser time to finish
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockLogCostEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        toolCallsRequested: [{ name: "search", id: "call_s1" }],
+      }),
+    );
+  });
+
+  describe("upstream routing", () => {
+    it("routes to custom upstream when x-nullspend-upstream is set", async () => {
+      let capturedUrl: string | null = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+        capturedUrl = url;
+        return new Response(JSON.stringify({ model: "llama-3.1-70b-versatile", choices: [], usage: { prompt_tokens: 10, completion_tokens: 5 } }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-groq" },
+        });
+      });
+
+      const body = { model: "llama-3.1-70b-versatile", messages: [{ role: "user", content: "hi" }] };
+      const res = await handleChatCompletions(
+        makeRequest(body, { "x-nullspend-upstream": "https://api.groq.com/openai" }),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(res.status).toBe(200);
+      expect(capturedUrl).toBe("https://api.groq.com/openai/v1/chat/completions");
+      await res.text();
+    });
+
+    it("returns 400 for disallowed upstream URL", async () => {
+      const fetchSpy = vi.fn();
+      globalThis.fetch = fetchSpy;
+
+      const body = { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] };
+      const res = await handleChatCompletions(
+        makeRequest(body, { "x-nullspend-upstream": "https://evil.example.com" }),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("invalid_upstream");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("allows unknown models when custom upstream is set", async () => {
+      mockIsKnownModel.mockClear();
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ model: "llama-3.1-70b-versatile", choices: [], usage: { prompt_tokens: 10, completion_tokens: 5 } }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-unknown-model" },
+        }),
+      );
+
+      const body = { model: "llama-3.1-70b-versatile", messages: [{ role: "user", content: "hi" }] };
+      const res = await handleChatCompletions(
+        makeRequest(body, { "x-nullspend-upstream": "https://api.groq.com/openai" }),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockIsKnownModel).not.toHaveBeenCalled();
+      await res.text();
+    });
+
+    it("logs $0 cost for unknown model on custom upstream", async () => {
+      mockLogCostEvent.mockClear();
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ model: "llama-3.1-70b-versatile", choices: [], usage: { prompt_tokens: 10, completion_tokens: 5 } }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-zero-cost" },
+        }),
+      );
+
+      const body = { model: "llama-3.1-70b-versatile", messages: [{ role: "user", content: "hi" }] };
+      const res = await handleChatCompletions(
+        makeRequest(body, { "x-nullspend-upstream": "https://api.groq.com/openai" }),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(res.status).toBe(200);
+      await res.text();
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(mockLogCostEvent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          costMicrodollars: 0,
+          model: "llama-3.1-70b-versatile",
+        }),
+      );
+    });
+
+    it("defaults to OpenAI when no upstream header is set", async () => {
+      let capturedUrl: string | null = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+        capturedUrl = url;
+        return new Response(JSON.stringify({ model: "gpt-4o-mini", choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-default" },
+        });
+      });
+
+      const body = { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] };
+      const res = await handleChatCompletions(
+        makeRequest(body),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(res.status).toBe(200);
+      expect(capturedUrl).toBe("https://api.openai.com/v1/chat/completions");
+      await res.text();
+    });
+
+    it("normalizes trailing slash in upstream URL", async () => {
+      let capturedUrl: string | null = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+        capturedUrl = url;
+        return new Response(JSON.stringify({ model: "llama-3.1-70b-versatile", choices: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-slash" },
+        });
+      });
+
+      const body = { model: "llama-3.1-70b-versatile", messages: [{ role: "user", content: "hi" }] };
+      const res = await handleChatCompletions(
+        makeRequest(body, { "x-nullspend-upstream": "https://api.groq.com/openai/" }),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(res.status).toBe(200);
+      expect(capturedUrl).toBe("https://api.groq.com/openai/v1/chat/completions");
+      await res.text();
+    });
+
+    it("does not forward x-nullspend-upstream header to upstream", async () => {
+      let capturedHeaders: Headers | null = null;
+
+      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+        capturedHeaders = init.headers as Headers;
+        return new Response(JSON.stringify({ model: "llama-3.1-70b-versatile", choices: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-no-fwd" },
+        });
+      });
+
+      const body = { model: "llama-3.1-70b-versatile", messages: [{ role: "user", content: "hi" }] };
+      await handleChatCompletions(
+        makeRequest(body, { "x-nullspend-upstream": "https://api.groq.com/openai" }),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(capturedHeaders).toBeTruthy();
+      expect(capturedHeaders!.get("x-nullspend-upstream")).toBeNull();
+    });
+
+    it("still rejects unknown models when no upstream header is set", async () => {
+      mockIsKnownModel.mockReturnValueOnce(false);
+
+      const body = { model: "unknown-model", messages: [{ role: "user", content: "hi" }] };
+      const res = await handleChatCompletions(
+        makeRequest(body),
+        makeEnv(),
+        makeCtx(body),
+      );
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("invalid_model");
+    });
   });
 
   it("cost calculation failure in streaming waitUntil does not affect response", async () => {
@@ -548,11 +825,11 @@ describe("handleChatCompletions", () => {
         stream: true,
       }),
       makeEnv(),
-      {
+      makeCtx({
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: "hi" }],
         stream: true,
-      },
+      }),
     );
 
     // Response should still be delivered regardless of cost calc issues

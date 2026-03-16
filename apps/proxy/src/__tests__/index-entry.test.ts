@@ -51,18 +51,12 @@ vi.mock("@nullspend/cost-engine", () => ({
 const mockAuthenticateRequest = vi.fn();
 vi.mock("../lib/auth.js", () => ({
   authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
 }));
 
 import entrypoint from "../index.js";
 
 function makeEnv(): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test",
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres" },
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
@@ -87,7 +81,7 @@ describe("Worker entry point routing", () => {
     mockAuthenticateRequest.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
-      method: "platform_key",
+      hasBudgets: false,
     });
   });
 
@@ -120,7 +114,7 @@ describe("Worker entry point routing", () => {
     it("empty body returns 400 with bad_request", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-NullSpend-Auth": "test-platform-key" },
+        headers: { "Content-Type": "application/json" },
         body: "",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -132,7 +126,7 @@ describe("Worker entry point routing", () => {
     it("non-JSON body returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-NullSpend-Auth": "test-platform-key" },
+        headers: { "Content-Type": "application/json" },
         body: "not json {{{",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -145,7 +139,7 @@ describe("Worker entry point routing", () => {
     it("JSON array returns 400 (must be object)", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-NullSpend-Auth": "test-platform-key" },
+        headers: { "Content-Type": "application/json" },
         body: "[1, 2, 3]",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -157,7 +151,7 @@ describe("Worker entry point routing", () => {
     it("JSON null returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-NullSpend-Auth": "test-platform-key" },
+        headers: { "Content-Type": "application/json" },
         body: "null",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -167,7 +161,7 @@ describe("Worker entry point routing", () => {
     it("JSON string returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-NullSpend-Auth": "test-platform-key" },
+        headers: { "Content-Type": "application/json" },
         body: '"hello"',
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -177,7 +171,7 @@ describe("Worker entry point routing", () => {
     it("JSON number returns 400", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
-        headers: { "X-NullSpend-Auth": "test-platform-key" },
+        headers: { "Content-Type": "application/json" },
         body: "42",
       });
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
@@ -195,7 +189,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -270,7 +263,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/messages", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-ant-test",
           "Content-Type": "application/json",
         },
@@ -295,7 +287,7 @@ describe("Worker entry point routing", () => {
   });
 
   describe("fail-closed behavior", () => {
-    it("returns 502 when route handler throws (never forwards to origin)", async () => {
+    it("returns 500 when route handler throws (never forwards to origin)", async () => {
       globalThis.fetch = vi.fn().mockImplementation(async () => {
         throw new Error("Simulated internal error");
       });
@@ -303,7 +295,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -314,7 +305,7 @@ describe("Worker entry point routing", () => {
       });
 
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
-      expect(res.status).toBe(502);
+      expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.error).toBe("internal_error");
     });
@@ -325,6 +316,19 @@ describe("Worker entry point routing", () => {
       await entrypoint.fetch(req, makeEnv(), ctx);
       expect(ctx.passThroughOnException).not.toHaveBeenCalled();
     });
+
+    it("returns 401 when authentication fails", async () => {
+      mockAuthenticateRequest.mockResolvedValueOnce(null);
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(401);
+      const body = await res.json();
+      expect(body.error).toBe("unauthorized");
+    });
   });
 
   describe("body size limits", () => {
@@ -332,7 +336,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           "Content-Type": "application/json",
           "Content-Length": "2000000",
         },
@@ -356,7 +359,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -375,7 +377,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ model: "gpt-4o-mini", messages: [] }),
@@ -400,7 +401,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
@@ -424,7 +424,6 @@ describe("Worker entry point routing", () => {
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
         headers: {
-          "X-NullSpend-Auth": "test-platform-key",
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },

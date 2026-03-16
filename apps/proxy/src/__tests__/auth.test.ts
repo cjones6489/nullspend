@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // Mock pg and db-semaphore so that importing auth.ts (which imports api-key-auth.ts) works
 vi.mock("pg", () => ({
@@ -11,53 +11,65 @@ vi.mock("../lib/db-semaphore.js", () => ({
   withDbConnection: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
-import { validatePlatformKey } from "../lib/auth.js";
+const mockAuthenticateApiKey = vi.fn();
+vi.mock("../lib/api-key-auth.js", () => ({
+  authenticateApiKey: (...args: unknown[]) => mockAuthenticateApiKey(...args),
+}));
 
-// crypto.subtle.timingSafeEqual is a CF Workers API; polyfill for Node.js tests
-beforeAll(() => {
-  if (!crypto.subtle.timingSafeEqual) {
-    (crypto.subtle as any).timingSafeEqual = (a: ArrayBuffer, b: ArrayBuffer) => {
-      const viewA = new Uint8Array(a);
-      const viewB = new Uint8Array(b);
-      if (viewA.byteLength !== viewB.byteLength) return false;
-      let result = 0;
-      for (let i = 0; i < viewA.byteLength; i++) {
-        result |= viewA[i] ^ viewB[i];
-      }
-      return result === 0;
-    };
-  }
-});
+import { authenticateRequest } from "../lib/auth.js";
+import { beforeEach } from "vitest";
 
-describe("validatePlatformKey", () => {
-  const secret = "sk-test-secret-key-12345";
-
-  it("returns true for a valid matching key", async () => {
-    expect(await validatePlatformKey(secret, secret)).toBe(true);
+describe("authenticateRequest", () => {
+  beforeEach(() => {
+    mockAuthenticateApiKey.mockReset();
   });
 
-  it("returns false for an invalid key", async () => {
-    expect(await validatePlatformKey("wrong-key-same-length!!", secret)).toBe(false);
+  it("returns identity for valid API key", async () => {
+    mockAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      hasBudgets: true,
+    });
+
+    const request = new Request("http://localhost/v1/chat/completions", {
+      headers: { "x-nullspend-key": "ask_valid_key" },
+    });
+
+    const result = await authenticateRequest(request, "postgresql://localhost");
+    expect(result).toEqual({ userId: "user-1", keyId: "key-1", hasBudgets: true });
   });
 
-  it("returns false for a different-length key (no timing leak)", async () => {
-    expect(await validatePlatformKey("short", secret)).toBe(false);
-    expect(await validatePlatformKey(secret + "-extra-long-suffix", secret)).toBe(false);
+  it("returns null when x-nullspend-key header is missing", async () => {
+    const request = new Request("http://localhost/v1/chat/completions");
+
+    const result = await authenticateRequest(request, "postgresql://localhost");
+    expect(result).toBeNull();
+    expect(mockAuthenticateApiKey).not.toHaveBeenCalled();
   });
 
-  it("returns false for a null key", async () => {
-    expect(await validatePlatformKey(null, secret)).toBe(false);
+  it("returns null when API key is invalid", async () => {
+    mockAuthenticateApiKey.mockResolvedValue(null);
+
+    const request = new Request("http://localhost/v1/chat/completions", {
+      headers: { "x-nullspend-key": "ask_invalid_key" },
+    });
+
+    const result = await authenticateRequest(request, "postgresql://localhost");
+    expect(result).toBeNull();
   });
 
-  it("returns false for an empty string key", async () => {
-    expect(await validatePlatformKey("", secret)).toBe(false);
-  });
+  it("propagates hasBudgets: false from identity", async () => {
+    mockAuthenticateApiKey.mockResolvedValue({
+      userId: "user-2",
+      keyId: "key-2",
+      hasBudgets: false,
+    });
 
-  it("returns false when secret is undefined (env var not set)", async () => {
-    expect(await validatePlatformKey("any-key", undefined)).toBe(false);
-  });
+    const request = new Request("http://localhost/v1/chat/completions", {
+      headers: { "x-nullspend-key": "ask_no_budgets" },
+    });
 
-  it("returns false when both provided and secret are undefined", async () => {
-    expect(await validatePlatformKey(null, undefined)).toBe(false);
+    const result = await authenticateRequest(request, "postgresql://localhost");
+    expect(result).toEqual({ userId: "user-2", keyId: "key-2", hasBudgets: false });
   });
 });

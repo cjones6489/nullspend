@@ -88,17 +88,8 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
-}));
-
 import { handleChatCompletions } from "../routes/openai.js";
+import type { RequestContext } from "../lib/context.js";
 
 function makeRequest(
   body: Record<string, unknown>,
@@ -109,9 +100,6 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-test-key",
-      "X-NullSpend-Auth": "test-platform-key",
-      "X-NullSpend-Key-Id": "key-uuid-123",
-      "X-NullSpend-User-Id": "user-uuid-456",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -120,7 +108,6 @@ function makeRequest(
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -147,6 +134,20 @@ async function drainWaitUntil() {
   await Promise.all(
     mockWaitUntil.mock.calls.map(([p]: [Promise<unknown>]) => p.catch(() => {})),
   );
+}
+
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+    redis: {} as any,
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    sessionId: null,
+    ...overrides,
+  };
 }
 
 const streamBody = {
@@ -190,16 +191,9 @@ describe("Streaming + Budget Integration", () => {
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
     mockCalculateOpenAICost.mockReset();
-    mockAuthenticateRequest.mockReset();
-
     mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-uuid-456",
-      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
-      method: "api_key",
-    });
   });
 
   afterEach(() => {
@@ -219,7 +213,7 @@ describe("Streaming + Budget Integration", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(200);
     await res.text();
     await drainWaitUntil();
@@ -244,7 +238,7 @@ describe("Streaming + Budget Integration", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(200);
     await res.text();
     await drainWaitUntil();
@@ -267,7 +261,7 @@ describe("Streaming + Budget Integration", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(200);
     await res.text();
     await drainWaitUntil();
@@ -291,7 +285,7 @@ describe("Streaming + Budget Integration", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(200);
     await res.text();
     await drainWaitUntil();
@@ -310,7 +304,7 @@ describe("Streaming + Budget Integration", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(502);
     await drainWaitUntil();
 
@@ -336,7 +330,7 @@ describe("Streaming + Budget Integration", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(200);
     await res.text();
     await drainWaitUntil();
@@ -357,7 +351,7 @@ describe("Streaming + Budget Integration", () => {
       spend: 49_400_000,
     });
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("budget_exceeded");
@@ -373,7 +367,7 @@ describe("Streaming + Budget Integration", () => {
       }),
     );
 
-    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), streamBody);
+    const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(200);
     await res.text();
 

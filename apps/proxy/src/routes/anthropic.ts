@@ -1,11 +1,12 @@
 import { waitUntil } from "cloudflare:workers";
-import { Redis } from "@upstash/redis/cloudflare";
-import { authenticateRequest, unauthorizedResponse } from "../lib/auth.js";
+import type { Redis } from "@upstash/redis/cloudflare";
+import type { RequestContext } from "../lib/context.js";
+import { errorResponse } from "../lib/errors.js";
 import {
   buildAnthropicUpstreamHeaders,
   buildAnthropicClientHeaders,
 } from "../lib/anthropic-headers.js";
-import { extractModelFromBody, extractAttribution } from "../lib/request-utils.js";
+import { extractModelFromBody } from "../lib/request-utils.js";
 import { createAnthropicSSEParser } from "../lib/anthropic-sse-parser.js";
 import { calculateAnthropicCost } from "../lib/anthropic-cost-calculator.js";
 import type { AnthropicCacheCreationDetail } from "../lib/anthropic-types.js";
@@ -19,7 +20,6 @@ import { reconcileReservation } from "../lib/budget-reconcile.js";
 import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 
 const UPSTREAM_TIMEOUT_MS = 120_000;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Attribution = {
   userId: string | null;
@@ -27,80 +27,67 @@ type Attribution = {
   actionId: string | null;
 };
 
+interface EnrichmentFields {
+  upstreamDurationMs: number;
+  sessionId: string | null;
+  toolDefinitionTokens: number;
+}
+
 export async function handleAnthropicMessages(
   request: Request,
   env: Env,
-  body: Record<string, unknown>,
+  ctx: RequestContext,
 ): Promise<Response> {
-  const connectionString = env.HYPERDRIVE.connectionString;
-  const auth = await authenticateRequest(request, connectionString, env.PLATFORM_AUTH_KEY);
-  if (!auth) return unauthorizedResponse();
+  const requestModel = extractModelFromBody(ctx.body);
 
-  const requestModel = extractModelFromBody(body);
-
-  const legacyAttribution = auth.method === "platform_key" ? extractAttribution(request) : null;
-  const rawApiKeyId = auth.method === "api_key" ? auth.keyId : legacyAttribution?.apiKeyId ?? null;
   const attribution: Attribution = {
-    userId: auth.method === "api_key" ? auth.userId : legacyAttribution?.userId ?? null,
-    apiKeyId: rawApiKeyId && UUID_RE.test(rawApiKeyId) ? rawApiKeyId : null,
+    userId: ctx.auth.userId,
+    apiKeyId: ctx.auth.keyId,
     actionId: request.headers.get("x-nullspend-action-id"),
   };
 
   if (!isKnownModel("anthropic", requestModel)) {
-    return Response.json(
-      {
-        error: "invalid_model",
-        message: `Model "${requestModel}" is not in the allowed model list`,
-      },
-      { status: 400 },
-    );
+    return errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
   }
 
-  const isStreaming = body.stream === true;
+  const toolDefinitionTokens = Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0
+    ? Math.ceil(JSON.stringify(ctx.body.tools).length / 4)
+    : 0;
+
+  const isStreaming = ctx.body.stream === true;
 
   // --- Budget enforcement ---
-  const redis = Redis.fromEnv(env);
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
 
-  try {
-    budgetEntities = await lookupBudgets(
-      redis,
-      connectionString,
-      { keyId: attribution.apiKeyId, userId: attribution.userId },
-    );
-  } catch {
-    return Response.json(
-      { error: "budget_unavailable", message: "Budget service unavailable" },
-      { status: 503 },
-    );
-  }
-
-  if (budgetEntities.length > 0) {
-    const estimate = estimateAnthropicMaxCost(requestModel, body);
-    const entityKeys = budgetEntities.map((e) => e.entityKey);
-
-    let checkResult: BudgetCheckResult;
+  if (ctx.auth.hasBudgets && ctx.redis) {
     try {
-      checkResult = await checkAndReserve(redis, entityKeys, estimate);
+      budgetEntities = await lookupBudgets(
+        ctx.redis,
+        ctx.connectionString,
+        { keyId: ctx.auth.keyId, userId: ctx.auth.userId },
+      );
     } catch {
-      return Response.json(
-        { error: "budget_unavailable", message: "Budget service unavailable" },
-        { status: 503 },
-      );
+      return errorResponse("budget_unavailable", "Budget service unavailable", 503);
     }
 
-    if (checkResult.status === "denied") {
-      return Response.json(
-        {
-          error: "budget_exceeded",
-          message: "Request blocked: estimated cost exceeds remaining budget",
-        },
-        { status: 429 },
-      );
-    }
+    if (budgetEntities.length > 0) {
+      const estimate = estimateAnthropicMaxCost(requestModel, ctx.body);
+      const entityKeys = budgetEntities.map((e) => e.entityKey);
 
-    reservationId = checkResult.reservationId;
+      let checkResult: BudgetCheckResult;
+      try {
+        checkResult = await checkAndReserve(ctx.redis, entityKeys, estimate);
+      } catch {
+        return errorResponse("budget_unavailable", "Budget service unavailable", 503);
+      }
+
+      if (checkResult.status === "denied") {
+        return errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
+      }
+
+      reservationId = checkResult.reservationId;
+    }
   }
 
   // --- Forward to upstream ---
@@ -113,15 +100,22 @@ export async function handleAnthropicMessages(
       {
         method: "POST",
         headers: upstreamHeaders,
-        body: JSON.stringify(body),
+        body: JSON.stringify(ctx.body),
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       },
     );
+    const upstreamDurationMs = Math.round(performance.now() - startTime);
+
+    const enrichment: EnrichmentFields = {
+      upstreamDurationMs,
+      sessionId: ctx.sessionId,
+      toolDefinitionTokens,
+    };
 
     if (!upstreamResponse.ok) {
-      if (reservationId) {
+      if (reservationId && ctx.redis) {
         waitUntil(
-          reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+          reconcileReservation(ctx.redis, reservationId, 0, budgetEntities, ctx.connectionString),
         );
       }
       const clientHeaders = buildAnthropicClientHeaders(upstreamResponse);
@@ -146,10 +140,11 @@ export async function handleAnthropicMessages(
         startTime,
         env,
         attribution,
-        redis,
+        ctx.redis,
         reservationId,
         budgetEntities,
-        connectionString,
+        ctx.connectionString,
+        enrichment,
       );
     }
 
@@ -161,15 +156,16 @@ export async function handleAnthropicMessages(
       startTime,
       env,
       attribution,
-      redis,
+      ctx.redis,
       reservationId,
       budgetEntities,
-      connectionString,
+      ctx.connectionString,
+      enrichment,
     );
   } catch (err) {
-    if (reservationId) {
+    if (reservationId && ctx.redis) {
       waitUntil(
-        reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+        reconcileReservation(ctx.redis, reservationId, 0, budgetEntities, ctx.connectionString),
       );
     }
     throw err;
@@ -184,14 +180,15 @@ function handleStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
-  redis: Redis,
+  redis: Redis | null,
   reservationId: string | null,
   budgetEntities: BudgetEntity[],
   connectionString: string,
+  enrichment: EnrichmentFields,
 ): Response {
   const upstreamBody = upstreamResponse.body;
   if (!upstreamBody) {
-    if (reservationId) {
+    if (reservationId && redis) {
       waitUntil(
         reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
       );
@@ -212,7 +209,7 @@ function handleStreaming(
               " data — cost event not recorded.",
             { requestId, model: requestModel, durationMs },
           );
-          if (reservationId) {
+          if (reservationId && redis) {
             await reconcileReservation(
               redis, reservationId, 0, budgetEntities, connectionString,
             );
@@ -230,9 +227,13 @@ function handleStreaming(
           attribution,
         );
 
-        await logCostEvent(env.HYPERDRIVE.connectionString, costEvent);
+        await logCostEvent(connectionString, {
+          ...costEvent,
+          ...enrichment,
+          toolCallsRequested: result.toolCalls,
+        });
 
-        if (reservationId) {
+        if (reservationId && redis) {
           await reconcileReservation(
             redis, reservationId, costEvent.costMicrodollars,
             budgetEntities, connectionString,
@@ -243,7 +244,7 @@ function handleStreaming(
           "[anthropic-route] Failed to process streaming cost event:",
           err,
         );
-        if (reservationId) {
+        if (reservationId && redis) {
           try {
             await reconcileReservation(
               redis, reservationId, 0, budgetEntities, connectionString,
@@ -272,10 +273,11 @@ async function handleNonStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
-  redis: Redis,
+  redis: Redis | null,
   reservationId: string | null,
   budgetEntities: BudgetEntity[],
   connectionString: string,
+  enrichment: EnrichmentFields,
 ): Promise<Response> {
   const responseText = await upstreamResponse.text();
   const durationMs = Math.round(performance.now() - startTime);
@@ -284,6 +286,19 @@ async function handleNonStreaming(
     const parsed = JSON.parse(responseText);
     const responseModel: string | null = parsed.model ?? null;
     const usage = parsed.usage;
+
+    let toolCallsRequested: { name: string; id: string }[] | null = null;
+    try {
+      if (Array.isArray(parsed.content)) {
+        const toolUseBlocks = parsed.content
+          .filter((b: { type: string }) => b.type === "tool_use");
+        if (toolUseBlocks.length > 0) {
+          toolCallsRequested = toolUseBlocks.map(
+            (b: { id: string; name: string }) => ({ name: b.name, id: b.id }),
+          );
+        }
+      }
+    } catch { /* malformed content blocks — proceed without */ }
 
     if (usage) {
       const cacheCreationDetail: AnthropicCacheCreationDetail | null =
@@ -302,9 +317,13 @@ async function handleNonStreaming(
         attribution,
       );
 
-      waitUntil(logCostEvent(env.HYPERDRIVE.connectionString, costEvent));
+      waitUntil(logCostEvent(connectionString, {
+        ...costEvent,
+        ...enrichment,
+        toolCallsRequested,
+      }));
 
-      if (reservationId) {
+      if (reservationId && redis) {
         waitUntil(
           reconcileReservation(
             redis, reservationId, costEvent.costMicrodollars,
@@ -312,7 +331,7 @@ async function handleNonStreaming(
           ),
         );
       }
-    } else if (reservationId) {
+    } else if (reservationId && redis) {
       waitUntil(
         reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
       );
@@ -321,7 +340,7 @@ async function handleNonStreaming(
     console.error(
       "[anthropic-route] Failed to parse non-streaming response for cost tracking",
     );
-    if (reservationId) {
+    if (reservationId && redis) {
       waitUntil(
         reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
       );

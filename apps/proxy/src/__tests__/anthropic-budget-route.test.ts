@@ -69,17 +69,8 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
-}));
-
 import { handleAnthropicMessages } from "../routes/anthropic.js";
+import type { RequestContext } from "../lib/context.js";
 
 const BUDGET_ENTITY = {
   entityKey: "{budget}:api_key:test-key-id",
@@ -113,8 +104,6 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-ant-api03-test",
-      "X-NullSpend-Auth": "test-platform-key",
-      "X-NullSpend-Key-Id": "test-key-id",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -123,7 +112,6 @@ function makeRequest(
 
 function makeEnv(): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -131,6 +119,20 @@ function makeEnv(): Env {
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
     UPSTASH_REDIS_REST_TOKEN: "fake-token",
   } as Env;
+}
+
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-1", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+    redis: {} as any,
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    sessionId: null,
+    ...overrides,
+  };
 }
 
 function makeSSEStream(chunks: string[]): ReadableStream<Uint8Array> {
@@ -156,12 +158,6 @@ describe("Anthropic budget enforcement", () => {
     mockCheckAndReserve.mockReset();
     mockReconcileReservation.mockReset().mockResolvedValue(undefined);
     mockEstimateAnthropicMaxCost.mockReset().mockReturnValue(500_000);
-    mockAuthenticateRequest.mockReset();
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-1",
-      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
-      method: "api_key",
-    });
   });
 
   afterEach(() => {
@@ -184,7 +180,7 @@ describe("Anthropic budget enforcement", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(429);
     const json = await res.json();
@@ -215,7 +211,7 @@ describe("Anthropic budget enforcement", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
 
@@ -250,7 +246,7 @@ describe("Anthropic budget enforcement", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(400);
 
@@ -270,7 +266,7 @@ describe("Anthropic budget enforcement", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(503);
     const json = await res.json();
@@ -295,7 +291,7 @@ describe("Anthropic budget enforcement", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
     expect(mockCheckAndReserve).not.toHaveBeenCalled();
@@ -332,7 +328,7 @@ describe("Anthropic budget enforcement", () => {
       messages: [{ role: "user", content: "hi" }],
       stream: true,
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
     // Consume the stream to trigger the waitUntil callback
@@ -362,7 +358,7 @@ describe("Anthropic budget enforcement", () => {
     };
 
     await expect(
-      handleAnthropicMessages(makeRequest(body), makeEnv(), body),
+      handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body)),
     ).rejects.toThrow("fetch timeout");
 
     await vi.waitFor(() => {

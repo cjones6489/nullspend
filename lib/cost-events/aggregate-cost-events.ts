@@ -115,7 +115,7 @@ export async function getToolBreakdown(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(and(baseConditions(userId, cutoff), eq(costEvents.provider, "mcp")))
+    .where(and(baseConditions(userId, cutoff), or(eq(costEvents.eventType, "tool"), eq(costEvents.provider, "mcp"))))
     .groupBy(costEvents.model)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }

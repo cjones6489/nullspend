@@ -1,10 +1,9 @@
 import { waitUntil } from "cloudflare:workers";
-import { Redis } from "@upstash/redis/cloudflare";
-import { authenticateRequest, unauthorizedResponse } from "../lib/auth.js";
+import type { Redis } from "@upstash/redis/cloudflare";
+import type { RequestContext } from "../lib/context.js";
+import { errorResponse } from "../lib/errors.js";
 import { buildUpstreamHeaders, buildClientHeaders } from "../lib/headers.js";
-import { ensureStreamOptions, extractModelFromBody, extractAttribution } from "../lib/request-utils.js";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { ensureStreamOptions, extractModelFromBody } from "../lib/request-utils.js";
 import { createSSEParser } from "../lib/sse-parser.js";
 import { calculateOpenAICost } from "../lib/cost-calculator.js";
 import { isKnownModel } from "@nullspend/cost-engine";
@@ -15,84 +14,82 @@ import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { estimateMaxCost } from "../lib/cost-estimator.js";
 import { reconcileReservation } from "../lib/budget-reconcile.js";
 import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
+import { isAllowedUpstream } from "../lib/upstream-allowlist.js";
 
 export async function handleChatCompletions(
   request: Request,
   env: Env,
-  body: Record<string, unknown>,
+  ctx: RequestContext,
 ): Promise<Response> {
-  const connectionString = env.HYPERDRIVE.connectionString;
-  const auth = await authenticateRequest(request, connectionString, env.PLATFORM_AUTH_KEY);
-  if (!auth) return unauthorizedResponse();
+  const requestModel = extractModelFromBody(ctx.body);
 
-  const requestModel = extractModelFromBody(body);
-
-  // Build attribution from auth result or legacy headers
-  const legacyAttribution = auth.method === "platform_key" ? extractAttribution(request) : null;
-  const rawApiKeyId = auth.method === "api_key" ? auth.keyId : legacyAttribution?.apiKeyId ?? null;
   const attribution: Attribution = {
-    userId: auth.method === "api_key" ? auth.userId : legacyAttribution?.userId ?? null,
-    apiKeyId: rawApiKeyId && UUID_RE.test(rawApiKeyId) ? rawApiKeyId : null,
+    userId: ctx.auth.userId,
+    apiKeyId: ctx.auth.keyId,
     actionId: request.headers.get("x-nullspend-action-id"),
   };
 
-  if (!isKnownModel("openai", requestModel)) {
-    return Response.json(
-      { error: "invalid_model", message: `Model "${requestModel}" is not in the allowed model list` },
-      { status: 400 },
-    );
+  // --- Upstream resolution ---
+  const upstreamHeader = request.headers.get("x-nullspend-upstream");
+  let resolvedUpstream = OPENAI_BASE_URL;
+
+  if (upstreamHeader) {
+    if (!isAllowedUpstream(upstreamHeader)) {
+      return errorResponse(
+        "invalid_upstream",
+        "The specified upstream URL is not supported",
+        400,
+      );
+    }
+    resolvedUpstream = upstreamHeader.replace(/\/+$/, "");
   }
 
-  const isStreaming = body.stream === true;
+  if (!upstreamHeader && !isKnownModel("openai", requestModel)) {
+    return errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
+  }
+
+  const toolDefinitionTokens = Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0
+    ? Math.ceil(JSON.stringify(ctx.body.tools).length / 4)
+    : 0;
+
+  const isStreaming = ctx.body.stream === true;
 
   if (isStreaming) {
-    ensureStreamOptions(body);
+    ensureStreamOptions(ctx.body);
   }
 
   // --- Budget enforcement ---
-  const redis = Redis.fromEnv(env);
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
 
-  try {
-    budgetEntities = await lookupBudgets(
-      redis,
-      connectionString,
-      { keyId: attribution.apiKeyId, userId: attribution.userId },
-    );
-  } catch {
-    // Budget lookup failed — fail-closed (budget is a safety feature)
-    return Response.json(
-      { error: "budget_unavailable", message: "Budget service unavailable" },
-      { status: 503 },
-    );
-  }
-
-  if (budgetEntities.length > 0) {
-    const estimate = estimateMaxCost(requestModel, body);
-    const entityKeys = budgetEntities.map((e) => e.entityKey);
-
-    let checkResult: BudgetCheckResult;
+  if (ctx.auth.hasBudgets && ctx.redis) {
     try {
-      checkResult = await checkAndReserve(redis, entityKeys, estimate);
+      budgetEntities = await lookupBudgets(
+        ctx.redis,
+        ctx.connectionString,
+        { keyId: ctx.auth.keyId, userId: ctx.auth.userId },
+      );
     } catch {
-      return Response.json(
-        { error: "budget_unavailable", message: "Budget service unavailable" },
-        { status: 503 },
-      );
+      return errorResponse("budget_unavailable", "Budget service unavailable", 503);
     }
 
-    if (checkResult.status === "denied") {
-      return Response.json(
-        {
-          error: "budget_exceeded",
-          message: "Request blocked: estimated cost exceeds remaining budget",
-        },
-        { status: 429 },
-      );
-    }
+    if (budgetEntities.length > 0) {
+      const estimate = estimateMaxCost(requestModel, ctx.body);
+      const entityKeys = budgetEntities.map((e) => e.entityKey);
 
-    reservationId = checkResult.reservationId;
+      let checkResult: BudgetCheckResult;
+      try {
+        checkResult = await checkAndReserve(ctx.redis, entityKeys, estimate);
+      } catch {
+        return errorResponse("budget_unavailable", "Budget service unavailable", 503);
+      }
+
+      if (checkResult.status === "denied") {
+        return errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
+      }
+
+      reservationId = checkResult.reservationId;
+    }
   }
 
   // --- Forward to upstream ---
@@ -102,18 +99,25 @@ export async function handleChatCompletions(
 
   // Fix 11: wrap all post-reservation code in try/catch to ensure cleanup
   try {
-    const upstreamResponse = await fetch(`${OPENAI_BASE_URL}/v1/chat/completions`, {
+    const upstreamResponse = await fetch(`${resolvedUpstream}/v1/chat/completions`, {
       method: "POST",
       headers: upstreamHeaders,
-      body: JSON.stringify(body),
+      body: JSON.stringify(ctx.body),
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
+    const upstreamDurationMs = Math.round(performance.now() - startTime);
+
+    const enrichment: EnrichmentFields = {
+      upstreamDurationMs,
+      sessionId: ctx.sessionId,
+      toolDefinitionTokens,
+    };
 
     if (!upstreamResponse.ok) {
       // Fix 6: reconcile with actualCost=0 on upstream error
-      if (reservationId) {
+      if (reservationId && ctx.redis) {
         waitUntil(
-          reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+          reconcileReservation(ctx.redis, reservationId, 0, budgetEntities, ctx.connectionString),
         );
       }
       const clientHeaders = buildClientHeaders(upstreamResponse);
@@ -138,10 +142,11 @@ export async function handleChatCompletions(
         startTime,
         env,
         attribution,
-        redis,
+        ctx.redis,
         reservationId,
         budgetEntities,
-        connectionString,
+        ctx.connectionString,
+        enrichment,
       );
     }
 
@@ -153,16 +158,17 @@ export async function handleChatCompletions(
       startTime,
       env,
       attribution,
-      redis,
+      ctx.redis,
       reservationId,
       budgetEntities,
-      connectionString,
+      ctx.connectionString,
+      enrichment,
     );
   } catch (err) {
     // Fix 11: clean up reservation on fetch timeout or unexpected error
-    if (reservationId) {
+    if (reservationId && ctx.redis) {
       waitUntil(
-        reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+        reconcileReservation(ctx.redis, reservationId, 0, budgetEntities, ctx.connectionString),
       );
     }
     throw err;
@@ -170,6 +176,12 @@ export async function handleChatCompletions(
 }
 
 type Attribution = { userId: string | null; apiKeyId: string | null; actionId: string | null };
+
+interface EnrichmentFields {
+  upstreamDurationMs: number;
+  sessionId: string | null;
+  toolDefinitionTokens: number;
+}
 
 function handleStreaming(
   upstreamResponse: Response,
@@ -179,14 +191,15 @@ function handleStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
-  redis: Redis,
+  redis: Redis | null,
   reservationId: string | null,
   budgetEntities: BudgetEntity[],
   connectionString: string,
+  enrichment: EnrichmentFields,
 ): Response {
   const upstreamBody = upstreamResponse.body;
   if (!upstreamBody) {
-    if (reservationId) {
+    if (reservationId && redis) {
       waitUntil(
         reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
       );
@@ -208,7 +221,7 @@ function handleStreaming(
             { requestId, model: requestModel, durationMs },
           );
           // Fix 6: reconcile with 0 when no usage data available
-          if (reservationId) {
+          if (reservationId && redis) {
             await reconcileReservation(
               redis, reservationId, 0, budgetEntities, connectionString,
             );
@@ -225,9 +238,13 @@ function handleStreaming(
           attribution,
         );
 
-        await logCostEvent(env.HYPERDRIVE.connectionString, costEvent);
+        await logCostEvent(connectionString, {
+          ...costEvent,
+          ...enrichment,
+          toolCallsRequested: result.toolCalls,
+        });
 
-        if (reservationId) {
+        if (reservationId && redis) {
           await reconcileReservation(
             redis, reservationId, costEvent.costMicrodollars,
             budgetEntities, connectionString,
@@ -236,7 +253,7 @@ function handleStreaming(
       } catch (err) {
         console.error("[openai-route] Failed to process streaming cost event:", err);
         // Last-resort: try to reconcile with 0 on unexpected error
-        if (reservationId) {
+        if (reservationId && redis) {
           try {
             await reconcileReservation(
               redis, reservationId, 0, budgetEntities, connectionString,
@@ -265,10 +282,11 @@ async function handleNonStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
-  redis: Redis,
+  redis: Redis | null,
   reservationId: string | null,
   budgetEntities: BudgetEntity[],
   connectionString: string,
+  enrichment: EnrichmentFields,
 ): Promise<Response> {
   const responseText = await upstreamResponse.text();
   const durationMs = Math.round(performance.now() - startTime);
@@ -277,6 +295,16 @@ async function handleNonStreaming(
     const parsed = JSON.parse(responseText);
     const responseModel = parsed.model ?? null;
     const usage = parsed.usage;
+
+    let toolCallsRequested: { name: string; id: string }[] | null = null;
+    try {
+      toolCallsRequested = parsed.choices?.[0]?.message?.tool_calls?.map(
+        (tc: { id: string; function: { name: string } }) => ({
+          name: tc.function.name,
+          id: tc.id,
+        })
+      ) ?? null;
+    } catch { /* malformed tool_calls — proceed without */ }
 
     if (usage) {
       const costEvent = calculateOpenAICost(
@@ -288,9 +316,13 @@ async function handleNonStreaming(
         attribution,
       );
 
-      waitUntil(logCostEvent(env.HYPERDRIVE.connectionString, costEvent));
+      waitUntil(logCostEvent(connectionString, {
+        ...costEvent,
+        ...enrichment,
+        toolCallsRequested,
+      }));
 
-      if (reservationId) {
+      if (reservationId && redis) {
         waitUntil(
           reconcileReservation(
             redis, reservationId, costEvent.costMicrodollars,
@@ -298,7 +330,7 @@ async function handleNonStreaming(
           ),
         );
       }
-    } else if (reservationId) {
+    } else if (reservationId && redis) {
       // No usage in parsed response — reconcile with 0
       waitUntil(
         reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
@@ -307,7 +339,7 @@ async function handleNonStreaming(
   } catch {
     console.error("[openai-route] Failed to parse non-streaming response for cost tracking");
     // Fix 6: reconcile on parse failure
-    if (reservationId) {
+    if (reservationId && redis) {
       waitUntil(
         reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
       );

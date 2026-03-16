@@ -177,6 +177,68 @@ describe("SSE parser", () => {
     expect(result!.model).toBe("gpt-4o");
   });
 
+  it("extracts single tool call from streaming response", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-tc","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":null,"tool_calls":[{"index":0,"id":"call_xyz","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-tc","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"city\\":\\"SF\\"}"}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-tc","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result.toolCalls).toEqual([{ name: "get_weather", id: "call_xyz" }]);
+  });
+
+  it("extracts multiple parallel tool calls", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-mt","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"get_weather","arguments":""}},{"index":1,"id":"call_2","type":"function","function":{"name":"get_time","arguments":""}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-mt","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result.toolCalls).toEqual([
+      { name: "get_weather", id: "call_1" },
+      { name: "get_time", id: "call_2" },
+    ]);
+  });
+
+  it("returns null toolCalls when no tool calls in stream", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hello"}}]}\n\n',
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result.toolCalls).toBeNull();
+  });
+
+  it("ignores argument-only chunks without id/name", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-tc2","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"search","arguments":""}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-tc2","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"q\\":\\"test\\"}"}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-tc2","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-tc2","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result.toolCalls).toEqual([{ name: "search", id: "call_a" }]);
+  });
+
   it("captures model from first chunk", async () => {
     const stream = makeStream([
       'data: {"id":"chatcmpl-1","model":"gpt-4o-2024-11-20","choices":[{"index":0,"delta":{"role":"assistant"}}]}\n\n',

@@ -32,9 +32,9 @@ vi.mock("../lib/budget.js", () => ({
   checkAndReserve: (...args: unknown[]) => mockCheckAndReserve(...args),
 }));
 
-const mockLogCostEvent = vi.fn();
+const mockLogCostEventsBatch = vi.fn();
 vi.mock("../lib/cost-logger.js", () => ({
-  logCostEvent: (...args: unknown[]) => mockLogCostEvent(...args),
+  logCostEventsBatch: (...args: unknown[]) => mockLogCostEventsBatch(...args),
 }));
 
 const mockReconcileReservation = vi.fn();
@@ -42,21 +42,12 @@ vi.mock("../lib/budget-reconcile.js", () => ({
   reconcileReservation: (...args: unknown[]) => mockReconcileReservation(...args),
 }));
 
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
-}));
-
 vi.mock("@upstash/redis/cloudflare", () => ({
   Redis: { fromEnv: () => ({}) },
 }));
 
 import { handleMcpBudgetCheck, handleMcpEvents } from "../routes/mcp.js";
+import type { RequestContext } from "../lib/context.js";
 
 function makeRequest(
   path: string,
@@ -67,7 +58,6 @@ function makeRequest(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-NullSpend-Auth": "test-platform-key",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -76,7 +66,6 @@ function makeRequest(
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     },
@@ -86,67 +75,40 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
   } as Env;
 }
 
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-1", keyId: "key-1", hasBudgets: true },
+    redis: {} as any,
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    sessionId: null,
+    ...overrides,
+  };
+}
+
 describe("handleMcpBudgetCheck", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockLookupBudgets.mockReset();
     mockCheckAndReserve.mockReset();
-    mockAuthenticateRequest.mockReset();
-    // Default: authenticated as platform key user
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-1",
-      keyId: "key-1",
-      method: "platform_key",
-    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns 401 when auth fails", async () => {
-    mockAuthenticateRequest.mockResolvedValue(null);
-    const request = makeRequest("/v1/mcp/budget/check", {
-      toolName: "run_query",
-      serverName: "supabase",
-      estimateMicrodollars: 10000,
-    });
-    const env = makeEnv();
-
-    const response = await handleMcpBudgetCheck(request, env, {
-      toolName: "run_query",
-      serverName: "supabase",
-      estimateMicrodollars: 10000,
-    });
-
-    expect(response.status).toBe(401);
-  });
-
-  it("returns 401 when auth header is wrong", async () => {
-    mockAuthenticateRequest.mockResolvedValue(null);
-    const request = makeRequest("/v1/mcp/budget/check", {}, {
-      "X-NullSpend-Auth": "wrong-key",
-    });
-    const env = makeEnv();
-
-    const response = await handleMcpBudgetCheck(request, env, {
-      toolName: "run_query",
-      serverName: "supabase",
-      estimateMicrodollars: 10000,
-    });
-
-    expect(response.status).toBe(401);
-  });
-
   it("returns 400 when body is missing toolName", async () => {
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       serverName: "supabase",
       estimateMicrodollars: 10000,
-    });
+    }));
 
     expect(response.status).toBe(400);
     const json = await response.json();
@@ -157,11 +119,11 @@ describe("handleMcpBudgetCheck", () => {
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "",
       serverName: "supabase",
       estimateMicrodollars: 10000,
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -170,11 +132,11 @@ describe("handleMcpBudgetCheck", () => {
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "",
       estimateMicrodollars: 10000,
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -183,11 +145,11 @@ describe("handleMcpBudgetCheck", () => {
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: NaN,
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -196,11 +158,11 @@ describe("handleMcpBudgetCheck", () => {
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: Infinity,
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -209,11 +171,11 @@ describe("handleMcpBudgetCheck", () => {
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: -100,
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -221,17 +183,14 @@ describe("handleMcpBudgetCheck", () => {
   it("returns allowed: true when no budget entities exist", async () => {
     mockLookupBudgets.mockResolvedValue([]);
 
-    const request = makeRequest("/v1/mcp/budget/check", {}, {
-      "x-nullspend-user-id": "user-1",
-      "x-nullspend-key-id": "key-1",
-    });
+    const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: 10000,
-    });
+    }));
 
     expect(response.status).toBe(200);
     const json = await response.json();
@@ -255,17 +214,14 @@ describe("handleMcpBudgetCheck", () => {
       reservationId: "rsv-123",
     });
 
-    const request = makeRequest("/v1/mcp/budget/check", {}, {
-      "x-nullspend-user-id": "user-1",
-      "x-nullspend-key-id": "key-1",
-    });
+    const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: 10000,
-    });
+    }));
 
     expect(response.status).toBe(200);
     const json = await response.json();
@@ -293,16 +249,14 @@ describe("handleMcpBudgetCheck", () => {
       spend: 90,
     });
 
-    const request = makeRequest("/v1/mcp/budget/check", {}, {
-      "x-nullspend-user-id": "user-1",
-    });
+    const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "expensive_call",
       serverName: "github",
       estimateMicrodollars: 100000,
-    });
+    }));
 
     expect(response.status).toBe(200);
     const json = await response.json();
@@ -314,16 +268,14 @@ describe("handleMcpBudgetCheck", () => {
   it("returns 503 when budget lookup fails", async () => {
     mockLookupBudgets.mockRejectedValue(new Error("Redis down"));
 
-    const request = makeRequest("/v1/mcp/budget/check", {}, {
-      "x-nullspend-user-id": "user-1",
-    });
+    const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: 10000,
-    });
+    }));
 
     expect(response.status).toBe(503);
     const json = await response.json();
@@ -344,39 +296,29 @@ describe("handleMcpBudgetCheck", () => {
     ]);
     mockCheckAndReserve.mockRejectedValue(new Error("Lua script error"));
 
-    const request = makeRequest("/v1/mcp/budget/check", {}, {
-      "x-nullspend-user-id": "user-1",
-    });
+    const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    const response = await handleMcpBudgetCheck(request, env, {
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: 10000,
-    });
+    }));
 
     expect(response.status).toBe(503);
   });
 
   it("passes userId and keyId from auth result to lookupBudgets", async () => {
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-abc",
-      keyId: "key-xyz",
-      method: "platform_key",
-    });
     mockLookupBudgets.mockResolvedValue([]);
 
-    const request = makeRequest("/v1/mcp/budget/check", {}, {
-      "x-nullspend-user-id": "user-abc",
-      "x-nullspend-key-id": "key-xyz",
-    });
+    const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
 
-    await handleMcpBudgetCheck(request, env, {
-      toolName: "t",
-      serverName: "s",
-      estimateMicrodollars: 0,
-    });
+    const ctx = makeCtx(
+      { toolName: "t", serverName: "s", estimateMicrodollars: 0 },
+      { auth: { userId: "user-abc", keyId: "key-xyz", hasBudgets: true } },
+    );
+    await handleMcpBudgetCheck(request, env, ctx);
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
@@ -390,38 +332,20 @@ describe("handleMcpEvents", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockLogCostEvent.mockReset();
+    mockLogCostEventsBatch.mockReset();
     mockReconcileReservation.mockReset();
     mockLookupBudgets.mockReset();
-    mockAuthenticateRequest.mockReset();
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-1",
-      keyId: "key-1",
-      method: "platform_key",
-    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns 401 when auth fails", async () => {
-    mockAuthenticateRequest.mockResolvedValue(null);
-    const request = makeRequest("/v1/mcp/events", {});
-    const env = makeEnv();
-
-    const response = await handleMcpEvents(request, env, {
-      events: [{ toolName: "t", serverName: "s", durationMs: 100, costMicrodollars: 10000, status: "success" }],
-    });
-
-    expect(response.status).toBe(401);
-  });
-
   it("returns 400 when events array is missing", async () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, {});
+    const response = await handleMcpEvents(request, env, makeCtx({}));
 
     expect(response.status).toBe(400);
     const json = await response.json();
@@ -432,7 +356,7 @@ describe("handleMcpEvents", () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, { events: [] });
+    const response = await handleMcpEvents(request, env, makeCtx({ events: [] }));
 
     expect(response.status).toBe(400);
   });
@@ -449,7 +373,7 @@ describe("handleMcpEvents", () => {
       status: "success",
     }));
 
-    const response = await handleMcpEvents(request, env, { events });
+    const response = await handleMcpEvents(request, env, makeCtx({ events }));
 
     expect(response.status).toBe(400);
   });
@@ -458,9 +382,9 @@ describe("handleMcpEvents", () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, {
+    const response = await handleMcpEvents(request, env, makeCtx({
       events: [{ toolName: "", serverName: "s", durationMs: 100, costMicrodollars: 10000, status: "success" }],
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -469,9 +393,9 @@ describe("handleMcpEvents", () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, {
+    const response = await handleMcpEvents(request, env, makeCtx({
       events: [{ toolName: "t", serverName: "", durationMs: 100, costMicrodollars: 10000, status: "success" }],
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -480,9 +404,9 @@ describe("handleMcpEvents", () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, {
+    const response = await handleMcpEvents(request, env, makeCtx({
       events: [{ toolName: "t", serverName: "s", durationMs: NaN, costMicrodollars: 10000, status: "success" }],
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -491,9 +415,9 @@ describe("handleMcpEvents", () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, {
+    const response = await handleMcpEvents(request, env, makeCtx({
       events: [{ toolName: "t", serverName: "s", durationMs: 100, costMicrodollars: -1, status: "success" }],
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -502,9 +426,9 @@ describe("handleMcpEvents", () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, {
+    const response = await handleMcpEvents(request, env, makeCtx({
       events: [{ toolName: "t", serverName: "s", durationMs: Infinity, costMicrodollars: 10000, status: "success" }],
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
@@ -513,20 +437,17 @@ describe("handleMcpEvents", () => {
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
-    const response = await handleMcpEvents(request, env, {
+    const response = await handleMcpEvents(request, env, makeCtx({
       events: [{ toolName: "t" }],
-    });
+    }));
 
     expect(response.status).toBe(400);
   });
 
   it("returns accepted count for valid events", async () => {
-    mockLogCostEvent.mockResolvedValue(undefined);
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
 
-    const request = makeRequest("/v1/mcp/events", {}, {
-      "x-nullspend-user-id": "user-1",
-      "x-nullspend-key-id": "key-1",
-    });
+    const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
     const events = [
@@ -534,73 +455,112 @@ describe("handleMcpEvents", () => {
       { toolName: "list_files", serverName: "github", durationMs: 200, costMicrodollars: 10000, status: "success" },
     ];
 
-    const response = await handleMcpEvents(request, env, { events });
+    const response = await handleMcpEvents(request, env, makeCtx({ events }));
 
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.accepted).toBe(2);
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mockLogCostEventsBatch).toHaveBeenCalledTimes(1);
+    expect(mockLogCostEventsBatch.mock.calls[0][1]).toHaveLength(2);
   });
 
   it("maps events to cost_events with provider=mcp and model=server/tool", async () => {
-    mockLogCostEvent.mockResolvedValue(undefined);
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
 
-    const request = makeRequest("/v1/mcp/events", {}, {
-      "x-nullspend-user-id": "user-1",
-      "x-nullspend-key-id": "550e8400-e29b-41d4-a716-446655440000",
-    });
+    const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
     const events = [
       { toolName: "run_query", serverName: "supabase", durationMs: 150, costMicrodollars: 10000, status: "success" },
     ];
 
-    await handleMcpEvents(request, env, { events });
+    const ctx = makeCtx(
+      { events },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasBudgets: true } },
+    );
+    await handleMcpEvents(request, env, ctx);
 
     // waitUntil fires the promise; since it's mocked synchronously we can check
     // Give the microtask a tick
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockLogCostEvent).toHaveBeenCalledWith(
+    expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
       env.HYPERDRIVE.connectionString,
-      expect.objectContaining({
-        provider: "mcp",
-        model: "supabase/run_query",
-        inputTokens: 0,
-        outputTokens: 0,
-        cachedInputTokens: 0,
-        reasoningTokens: 0,
-        costMicrodollars: 10000,
-        durationMs: 150,
-        userId: "user-1",
-        apiKeyId: "550e8400-e29b-41d4-a716-446655440000",
-      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: "mcp",
+          model: "supabase/run_query",
+          inputTokens: 0,
+          outputTokens: 0,
+          cachedInputTokens: 0,
+          reasoningTokens: 0,
+          costMicrodollars: 10000,
+          durationMs: 150,
+          userId: "user-1",
+          apiKeyId: "550e8400-e29b-41d4-a716-446655440000",
+          toolName: "run_query",
+          toolServer: "supabase",
+          sessionId: null,
+        }),
+      ]),
+    );
+    expect(mockLogCostEventsBatch.mock.calls[0][1]).toHaveLength(1);
+  });
+
+  it("includes sessionId when set in context", async () => {
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
+
+    const request = makeRequest("/v1/mcp/events", {});
+    const env = makeEnv();
+
+    const events = [
+      { toolName: "run_query", serverName: "supabase", durationMs: 100, costMicrodollars: 5000, status: "success" },
+    ];
+
+    const ctx = makeCtx(
+      { events },
+      { sessionId: "sess-mcp-1" },
+    );
+    await handleMcpEvents(request, env, ctx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining([
+        expect.objectContaining({
+          sessionId: "sess-mcp-1",
+          toolName: "run_query",
+          toolServer: "supabase",
+        }),
+      ]),
     );
   });
 
-  it("nulls out invalid apiKeyId to prevent FK constraint failure", async () => {
-    mockLogCostEvent.mockResolvedValue(undefined);
+  it("apiKeyId comes from auth result directly (always valid UUID from DB)", async () => {
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
 
-    const request = makeRequest("/v1/mcp/events", {}, {
-      "x-nullspend-user-id": "user-1",
-      "x-nullspend-key-id": "not-a-uuid",
-    });
+    const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
     const events = [
       { toolName: "t", serverName: "s", durationMs: 100, costMicrodollars: 10000, status: "success" },
     ];
 
-    await handleMcpEvents(request, env, { events });
+    await handleMcpEvents(request, env, makeCtx({ events }));
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockLogCostEvent).toHaveBeenCalledWith(
+    expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ apiKeyId: null }),
+      expect.arrayContaining([
+        expect.objectContaining({ apiKeyId: "key-1" }),
+      ]),
     );
   });
 
   it("nulls out invalid actionId to prevent FK constraint failure", async () => {
-    mockLogCostEvent.mockResolvedValue(undefined);
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
 
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
@@ -616,17 +576,19 @@ describe("handleMcpEvents", () => {
       },
     ];
 
-    await handleMcpEvents(request, env, { events });
+    await handleMcpEvents(request, env, makeCtx({ events }));
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockLogCostEvent).toHaveBeenCalledWith(
+    expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ actionId: null }),
+      expect.arrayContaining([
+        expect.objectContaining({ actionId: null }),
+      ]),
     );
   });
 
   it("preserves valid UUID actionId", async () => {
-    mockLogCostEvent.mockResolvedValue(undefined);
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
 
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
@@ -642,17 +604,19 @@ describe("handleMcpEvents", () => {
       },
     ];
 
-    await handleMcpEvents(request, env, { events });
+    await handleMcpEvents(request, env, makeCtx({ events }));
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockLogCostEvent).toHaveBeenCalledWith(
+    expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ actionId: "550e8400-e29b-41d4-a716-446655440000" }),
+      expect.arrayContaining([
+        expect.objectContaining({ actionId: "550e8400-e29b-41d4-a716-446655440000" }),
+      ]),
     );
   });
 
   it("reconciles reservation when reservationId is present", async () => {
-    mockLogCostEvent.mockResolvedValue(undefined);
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
     mockLookupBudgets.mockResolvedValue([
       {
         entityKey: "{budget}:user:user-1",
@@ -666,10 +630,7 @@ describe("handleMcpEvents", () => {
     ]);
     mockReconcileReservation.mockResolvedValue(undefined);
 
-    const request = makeRequest("/v1/mcp/events", {}, {
-      "x-nullspend-user-id": "user-1",
-      "x-nullspend-key-id": "550e8400-e29b-41d4-a716-446655440000",
-    });
+    const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
     const events = [
@@ -683,7 +644,11 @@ describe("handleMcpEvents", () => {
       },
     ];
 
-    await handleMcpEvents(request, env, { events });
+    const ctx = makeCtx(
+      { events },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasBudgets: true } },
+    );
+    await handleMcpEvents(request, env, ctx);
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockReconcileReservation).toHaveBeenCalledWith(
@@ -697,25 +662,43 @@ describe("handleMcpEvents", () => {
     );
   });
 
-  it("does not throw when logCostEvent fails", async () => {
-    mockLogCostEvent.mockRejectedValue(new Error("DB down"));
+  it("does not throw when logCostEventsBatch fails", async () => {
+    mockLogCostEventsBatch.mockRejectedValue(new Error("DB down"));
 
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
     const events = [
-      { toolName: "t", serverName: "s", durationMs: 100, costMicrodollars: 10000, status: "success" },
+      {
+        toolName: "t", serverName: "s", durationMs: 100, costMicrodollars: 10000, status: "success",
+        reservationId: "rsv-fail-test",
+      },
     ];
 
-    const response = await handleMcpEvents(request, env, { events });
+    mockLookupBudgets.mockResolvedValue([
+      { entityKey: "{budget}:user:user-1", entityType: "user", entityId: "user-1", maxBudget: 1_000_000, spend: 0, reserved: 10000, policy: "strict_block" },
+    ]);
+    mockReconcileReservation.mockResolvedValue(undefined);
+
+    const response = await handleMcpEvents(request, env, makeCtx({ events }));
 
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.accepted).toBe(1);
+
+    // Reconciliation should still run even though batch insert failed
+    await new Promise((r) => setTimeout(r, 10));
+    expect(mockReconcileReservation).toHaveBeenCalledWith(
+      expect.anything(),
+      "rsv-fail-test",
+      10000,
+      expect.any(Array),
+      expect.any(String),
+    );
   });
 
   it("accepts events with valid UUID actionId", async () => {
-    mockLogCostEvent.mockResolvedValue(undefined);
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
 
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
@@ -731,12 +714,69 @@ describe("handleMcpEvents", () => {
       },
     ];
 
-    await handleMcpEvents(request, env, { events });
+    await handleMcpEvents(request, env, makeCtx({ events }));
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockLogCostEvent).toHaveBeenCalledWith(
+    expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ actionId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
+      expect.arrayContaining([
+        expect.objectContaining({ actionId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
+      ]),
     );
+  });
+
+  it("calls lookupBudgets only once for multiple events with reservations", async () => {
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
+    mockLookupBudgets.mockResolvedValue([
+      { entityKey: "{budget}:user:user-1", entityType: "user", entityId: "user-1", maxBudget: 1_000_000, spend: 0, reserved: 20000, policy: "strict_block" },
+    ]);
+    mockReconcileReservation.mockResolvedValue(undefined);
+
+    const request = makeRequest("/v1/mcp/events", {});
+    const env = makeEnv();
+
+    const events = [
+      { toolName: "t1", serverName: "s", durationMs: 100, costMicrodollars: 5000, status: "success", reservationId: "rsv-1" },
+      { toolName: "t2", serverName: "s", durationMs: 200, costMicrodollars: 8000, status: "success", reservationId: "rsv-2" },
+      { toolName: "t3", serverName: "s", durationMs: 50, costMicrodollars: 2000, status: "success" },
+    ];
+
+    await handleMcpEvents(request, env, makeCtx({ events }));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // One batch insert for all 3 events
+    expect(mockLogCostEventsBatch).toHaveBeenCalledTimes(1);
+    expect(mockLogCostEventsBatch.mock.calls[0][1]).toHaveLength(3);
+
+    // lookupBudgets called exactly once (not per-event)
+    expect(mockLookupBudgets).toHaveBeenCalledTimes(1);
+
+    // reconcileReservation called once per event WITH a reservationId (2, not 3)
+    expect(mockReconcileReservation).toHaveBeenCalledTimes(2);
+    expect(mockReconcileReservation).toHaveBeenCalledWith(
+      expect.anything(), "rsv-1", 5000, expect.any(Array), expect.any(String),
+    );
+    expect(mockReconcileReservation).toHaveBeenCalledWith(
+      expect.anything(), "rsv-2", 8000, expect.any(Array), expect.any(String),
+    );
+  });
+
+  it("does not call lookupBudgets when no events have reservations", async () => {
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
+
+    const request = makeRequest("/v1/mcp/events", {});
+    const env = makeEnv();
+
+    const events = [
+      { toolName: "t1", serverName: "s", durationMs: 100, costMicrodollars: 5000, status: "success" },
+      { toolName: "t2", serverName: "s", durationMs: 200, costMicrodollars: 8000, status: "success" },
+    ];
+
+    await handleMcpEvents(request, env, makeCtx({ events }));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockLogCostEventsBatch).toHaveBeenCalledTimes(1);
+    expect(mockLookupBudgets).not.toHaveBeenCalled();
+    expect(mockReconcileReservation).not.toHaveBeenCalled();
   });
 });

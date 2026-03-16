@@ -51,6 +51,11 @@ vi.mock("@upstash/ratelimit", () => {
   };
 });
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+}));
+
 // Mock route handlers to avoid needing full auth/budget mocks
 vi.mock("../routes/openai.js", () => ({
   handleChatCompletions: vi.fn().mockResolvedValue(
@@ -90,7 +95,6 @@ function makeRequest(
 
 function makeEnv(): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-key",
     OPENAI_API_KEY: "sk-test",
     HYPERDRIVE: { connectionString: "postgresql://localhost:5432/test" },
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
@@ -138,9 +142,14 @@ describe("per-key rate limiting edge cases", () => {
   beforeEach(() => {
     mockIpLimit.mockReset().mockResolvedValue(ipAllowed);
     mockKeyLimit.mockReset().mockResolvedValue(keyAllowed);
+    mockAuthenticateRequest.mockReset().mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      hasBudgets: false,
+    });
   });
 
-  it("key-id header absent — only IP rate limit applied", async () => {
+  it("key header absent — only IP rate limit applied", async () => {
     const req = makeRequest("/v1/chat/completions");
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -149,9 +158,9 @@ describe("per-key rate limiting edge cases", () => {
     expect(res.status).toBe(200);
   });
 
-  it("key-id header present — both IP and key rate limits applied", async () => {
+  it("key header present — both IP and key rate limits applied", async () => {
     const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key-id": "key-123",
+      "x-nullspend-key": "key-123",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -165,7 +174,7 @@ describe("per-key rate limiting edge cases", () => {
     mockIpLimit.mockResolvedValue(ipDenied);
 
     const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key-id": "key-123",
+      "x-nullspend-key": "key-123",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -186,7 +195,7 @@ describe("per-key rate limiting edge cases", () => {
     mockKeyLimit.mockResolvedValue(keyDenied);
 
     const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key-id": "key-456",
+      "x-nullspend-key": "key-456",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -198,10 +207,10 @@ describe("per-key rate limiting edge cases", () => {
     expect(res.headers.has("Retry-After")).toBe(true);
   });
 
-  it("key-id header exceeds 128 chars — key rate limit skipped", async () => {
+  it("key header exceeds 128 chars — key rate limit skipped", async () => {
     const longKeyId = "a".repeat(129);
     const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key-id": longKeyId,
+      "x-nullspend-key": longKeyId,
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -209,10 +218,10 @@ describe("per-key rate limiting edge cases", () => {
     expect(res.status).toBe(200);
   });
 
-  it("key-id header exactly 128 chars — key rate limit applied", async () => {
+  it("key header exactly 128 chars — key rate limit applied", async () => {
     const exactKeyId = "a".repeat(128);
     const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key-id": exactKeyId,
+      "x-nullspend-key": exactKeyId,
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -221,9 +230,9 @@ describe("per-key rate limiting edge cases", () => {
     expect(res.status).toBe(200);
   });
 
-  it("empty key-id header — key rate limit skipped", async () => {
+  it("empty key header — key rate limit skipped", async () => {
     const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key-id": "",
+      "x-nullspend-key": "",
     });
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
@@ -236,7 +245,7 @@ describe("per-key rate limiting edge cases", () => {
     (env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT = "1000";
 
     const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key-id": "key-custom",
+      "x-nullspend-key": "key-custom",
     });
     const res = await handler.fetch(req, env, makeCtx());
 

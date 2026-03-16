@@ -125,6 +125,13 @@ export const costEvents = pgTable("cost_events", {
   costMicrodollars: bigint("cost_microdollars", { mode: "number" }).notNull(),
   durationMs: integer("duration_ms"),
   actionId: uuid("action_id").references(() => actions.id, { onDelete: "set null" }),
+  eventType: text("event_type").$type<"llm" | "tool">().notNull().default("llm"),
+  toolName: text("tool_name"),
+  toolServer: text("tool_server"),
+  toolCallsRequested: jsonb("tool_calls_requested").$type<{ name: string; id: string }[] | null>(),
+  toolDefinitionTokens: integer("tool_definition_tokens").default(0),
+  upstreamDurationMs: integer("upstream_duration_ms"),
+  sessionId: text("session_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("cost_events_request_id_provider_idx").on(table.requestId, table.provider),
@@ -132,6 +139,8 @@ export const costEvents = pgTable("cost_events", {
   index("cost_events_api_key_id_created_at_idx").on(table.apiKeyId, table.createdAt),
   index("cost_events_provider_model_created_at_idx").on(table.provider, table.model, table.createdAt),
   index("cost_events_action_id_idx").on(table.actionId),
+  index("cost_events_event_type_idx").on(table.eventType),
+  index("cost_events_session_id_idx").on(table.sessionId),
 ]);
 
 export type CostEventRow = typeof costEvents.$inferSelect;

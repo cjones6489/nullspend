@@ -47,36 +47,106 @@ export async function logCostEvent(
     return;
   }
 
-  await withDbConnection(async () => {
-    let client: Client | null = null;
+  try {
+    await withDbConnection(async () => {
+      let client: Client | null = null;
 
-    try {
-      client = new Client({
-        connectionString,
-        connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-      });
+      try {
+        client = new Client({
+          connectionString,
+          connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+        });
 
-      client.on("error", (err) => {
-        console.error("[cost-logger] pg client error event:", err.message);
-      });
+        client.on("error", (err) => {
+          console.error("[cost-logger] pg client error event:", err.message);
+        });
 
-      await client.connect();
+        await client.connect();
 
-      const db = drizzle({ client });
-      await db.insert(costEvents).values(event);
-    } catch (err) {
-      console.error(
-        "[cost-logger] Failed to write cost event:",
-        err instanceof Error ? err.message : "Unknown error",
-      );
-    } finally {
-      if (client) {
-        try {
-          await client.end();
-        } catch {
-          // already closed or never connected
+        const db = drizzle({ client });
+        await db.insert(costEvents).values(event);
+      } catch (err) {
+        console.error(
+          "[cost-logger] Failed to write cost event:",
+          err instanceof Error ? err.message : "Unknown error",
+        );
+      } finally {
+        if (client) {
+          try {
+            await client.end();
+          } catch {
+            // already closed or never connected
+          }
         }
       }
+    });
+  } catch (err) {
+    console.error(
+      "[cost-logger] Semaphore rejected cost event:",
+      err instanceof Error ? err.message : "Unknown error",
+    );
+  }
+}
+
+/**
+ * Persist multiple cost events in a single multi-row INSERT.
+ * Same guarantees as logCostEvent: uses withDbConnection semaphore,
+ * never throws, falls back to console in local dev.
+ */
+export async function logCostEventsBatch(
+  connectionString: string,
+  events: Omit<NewCostEventRow, "id" | "createdAt">[],
+): Promise<void> {
+  if (events.length === 0) return;
+
+  if (isLocalConnection(connectionString)) {
+    for (const event of events) {
+      console.log("[cost-logger] Local dev — cost event (not persisted):", {
+        requestId: event.requestId,
+        provider: event.provider,
+        model: event.model,
+        costMicrodollars: event.costMicrodollars,
+        durationMs: event.durationMs,
+      });
     }
-  });
+    return;
+  }
+
+  try {
+    await withDbConnection(async () => {
+      let client: Client | null = null;
+      try {
+        client = new Client({
+          connectionString,
+          connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+        });
+        client.on("error", (err) => {
+          console.error("[cost-logger] pg client error event:", err.message);
+        });
+        await client.connect();
+        const db = drizzle({ client });
+        await db.insert(costEvents).values(events);
+      } catch (err) {
+        console.error(
+          "[cost-logger] Failed to write cost event batch:",
+          err instanceof Error ? err.message : "Unknown error",
+          `(${events.length} events)`,
+        );
+      } finally {
+        if (client) {
+          try {
+            await client.end();
+          } catch {
+            // already closed or never connected
+          }
+        }
+      }
+    });
+  } catch (err) {
+    console.error(
+      "[cost-logger] Semaphore rejected cost event batch:",
+      err instanceof Error ? err.message : "Unknown error",
+      `(${events.length} events)`,
+    );
+  }
 }

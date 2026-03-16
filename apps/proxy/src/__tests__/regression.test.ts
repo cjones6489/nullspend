@@ -61,6 +61,7 @@ describe("Tool calling SSE format", () => {
     expect(result.usage).not.toBeNull();
     expect(result.usage!.prompt_tokens).toBe(82);
     expect(result.usage!.completion_tokens).toBe(17);
+    expect(result.toolCalls).toEqual([{ name: "get_weather", id: "call_xyz" }]);
 
     // Pass through cost calculator
     const cost = calculateOpenAICost("gpt-4o-mini", result.model, result.usage!, "req-tc", 150);
@@ -85,6 +86,10 @@ describe("Tool calling SSE format", () => {
 
     expect(result.usage!.prompt_tokens).toBe(150);
     expect(result.usage!.completion_tokens).toBe(40);
+    expect(result.toolCalls).toEqual([
+      { name: "get_weather", id: "call_1" },
+      { name: "get_time", id: "call_2" },
+    ]);
   });
 });
 

@@ -88,17 +88,8 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
-}));
-
 import { handleChatCompletions } from "../routes/openai.js";
+import type { RequestContext } from "../lib/context.js";
 
 function makeRequest(
   body: Record<string, unknown>,
@@ -109,9 +100,6 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-test-key",
-      "X-NullSpend-Auth": "test-platform-key",
-      "X-NullSpend-Key-Id": "key-uuid-123",
-      "X-NullSpend-User-Id": "user-uuid-456",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -120,7 +108,6 @@ function makeRequest(
 
 function makeEnv(): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -149,6 +136,20 @@ async function drainWaitUntil() {
   await Promise.all(
     mockWaitUntil.mock.calls.map(([p]: [Promise<unknown>]) => p.catch(() => {})),
   );
+}
+
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+    redis: {} as any,
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    sessionId: null,
+    ...overrides,
+  };
 }
 
 const defaultBody = {
@@ -180,17 +181,10 @@ describe("Budget Edge Cases", () => {
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
     mockCalculateOpenAICost.mockReset();
-    mockAuthenticateRequest.mockReset();
-
     mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-uuid-456",
-      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
-      method: "api_key",
-    });
   });
 
   afterEach(() => {
@@ -201,15 +195,12 @@ describe("Budget Edge Cases", () => {
   // --- Attribution nulls ---
 
   it("passes { keyId: null, userId } when auth result has no keyId", async () => {
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-uuid-456",
-      keyId: null,
-      method: "api_key",
-    });
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
+      auth: { userId: "user-uuid-456", keyId: null as any, hasBudgets: true },
+    }));
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
@@ -219,15 +210,12 @@ describe("Budget Edge Cases", () => {
   });
 
   it("passes { keyId, userId: null } when auth result has no userId", async () => {
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: null,
-      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
-      method: "api_key",
-    });
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
+      auth: { userId: null as any, keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+    }));
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
@@ -237,15 +225,12 @@ describe("Budget Edge Cases", () => {
   });
 
   it("passes { keyId: null, userId: null } when auth result has neither", async () => {
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: null,
-      keyId: null,
-      method: "api_key",
-    });
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
+      auth: { userId: null as any, keyId: null as any, hasBudgets: true },
+    }));
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
@@ -263,7 +248,7 @@ describe("Budget Edge Cases", () => {
     mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-zero" });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
     expect(mockCheckAndReserve).toHaveBeenCalledWith(
       expect.anything(),
@@ -280,7 +265,7 @@ describe("Budget Edge Cases", () => {
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 123_456 });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     await drainWaitUntil();
 
     expect(mockUpdateBudgetSpend).toHaveBeenCalledWith(
@@ -300,7 +285,7 @@ describe("Budget Edge Cases", () => {
       }),
     );
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     await drainWaitUntil();
 
     expect(mockUpdateBudgetSpend).not.toHaveBeenCalled();
@@ -310,7 +295,7 @@ describe("Budget Edge Cases", () => {
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     await drainWaitUntil();
 
     expect(mockUpdateBudgetSpend).not.toHaveBeenCalled();
@@ -329,7 +314,7 @@ describe("Budget Edge Cases", () => {
       spend: 49_400_000,
     });
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     expect(res.status).toBe(429);
 
     const body = await res.json();
@@ -348,7 +333,7 @@ describe("Budget Edge Cases", () => {
       spend: 50_000_000,
     });
 
-    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     const text = await res.text();
 
     expect(text).not.toContain("test-platform-key");
@@ -366,7 +351,7 @@ describe("Budget Edge Cases", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     const body = { model: "o3-mini", messages: [{ role: "user", content: "think" }] };
-    await handleChatCompletions(makeRequest(body), makeEnv(), body);
+    await handleChatCompletions(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(mockEstimateMaxCost).toHaveBeenCalledWith("o3-mini", body);
   });

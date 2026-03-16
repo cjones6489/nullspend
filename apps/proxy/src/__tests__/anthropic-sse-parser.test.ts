@@ -529,6 +529,177 @@ describe("Anthropic SSE parser", () => {
     });
   });
 
+  describe("Tool call extraction", () => {
+    it("extracts tool use from content_block_start event", async () => {
+      const stream = buildAnthropicSSEStream([
+        {
+          event: "message_start",
+          data: {
+            type: "message_start",
+            message: {
+              id: "msg_tc1",
+              model: "claude-sonnet-4-5-20250929",
+              usage: { input_tokens: 50, output_tokens: 1 },
+            },
+          },
+        },
+        {
+          event: "content_block_start",
+          data: {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "tool_use", id: "toolu_01A", name: "get_weather" },
+          },
+        },
+        {
+          event: "content_block_delta",
+          data: {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "input_json_delta", partial_json: '{"city":"SF"}' },
+          },
+        },
+        {
+          event: "content_block_stop",
+          data: { type: "content_block_stop", index: 0 },
+        },
+        {
+          event: "message_delta",
+          data: {
+            type: "message_delta",
+            delta: { stop_reason: "tool_use" },
+            usage: { output_tokens: 20 },
+          },
+        },
+        {
+          event: "message_stop",
+          data: { type: "message_stop" },
+        },
+      ]);
+
+      const { readable, resultPromise } = createAnthropicSSEParser(stream);
+      await drainStream(readable);
+      const result = await resultPromise;
+
+      expect(result.toolCalls).toEqual([{ name: "get_weather", id: "toolu_01A" }]);
+    });
+
+    it("extracts multiple tool uses", async () => {
+      const stream = buildAnthropicSSEStream([
+        {
+          event: "message_start",
+          data: {
+            type: "message_start",
+            message: {
+              id: "msg_tc2",
+              model: "claude-sonnet-4-5-20250929",
+              usage: { input_tokens: 50, output_tokens: 1 },
+            },
+          },
+        },
+        {
+          event: "content_block_start",
+          data: {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "tool_use", id: "toolu_01A", name: "get_weather" },
+          },
+        },
+        {
+          event: "content_block_stop",
+          data: { type: "content_block_stop", index: 0 },
+        },
+        {
+          event: "content_block_start",
+          data: {
+            type: "content_block_start",
+            index: 1,
+            content_block: { type: "tool_use", id: "toolu_01B", name: "get_time" },
+          },
+        },
+        {
+          event: "content_block_stop",
+          data: { type: "content_block_stop", index: 1 },
+        },
+        {
+          event: "message_delta",
+          data: {
+            type: "message_delta",
+            delta: { stop_reason: "tool_use" },
+            usage: { output_tokens: 30 },
+          },
+        },
+        {
+          event: "message_stop",
+          data: { type: "message_stop" },
+        },
+      ]);
+
+      const { readable, resultPromise } = createAnthropicSSEParser(stream);
+      await drainStream(readable);
+      const result = await resultPromise;
+
+      expect(result.toolCalls).toEqual([
+        { name: "get_weather", id: "toolu_01A" },
+        { name: "get_time", id: "toolu_01B" },
+      ]);
+    });
+
+    it("returns null toolCalls when no tool use blocks", async () => {
+      const stream = buildAnthropicSSEStream([
+        {
+          event: "message_start",
+          data: {
+            type: "message_start",
+            message: {
+              id: "msg_tc3",
+              model: "claude-sonnet-4-5-20250929",
+              usage: { input_tokens: 10, output_tokens: 1 },
+            },
+          },
+        },
+        {
+          event: "content_block_start",
+          data: {
+            type: "content_block_start",
+            index: 0,
+            content_block: { type: "text", text: "" },
+          },
+        },
+        {
+          event: "content_block_delta",
+          data: {
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "text_delta", text: "Hello!" },
+          },
+        },
+        {
+          event: "content_block_stop",
+          data: { type: "content_block_stop", index: 0 },
+        },
+        {
+          event: "message_delta",
+          data: {
+            type: "message_delta",
+            delta: { stop_reason: "end_turn" },
+            usage: { output_tokens: 5 },
+          },
+        },
+        {
+          event: "message_stop",
+          data: { type: "message_stop" },
+        },
+      ]);
+
+      const { readable, resultPromise } = createAnthropicSSEParser(stream);
+      await drainStream(readable);
+      const result = await resultPromise;
+
+      expect(result.toolCalls).toBeNull();
+    });
+  });
+
   describe("Edge cases", () => {
     it("reassembles SSE data split across chunk boundaries", async () => {
       const encoder = new TextEncoder();

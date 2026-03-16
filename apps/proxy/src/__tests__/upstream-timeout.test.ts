@@ -83,16 +83,6 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   Redis: { fromEnv: vi.fn(() => ({})) },
 }));
 
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
-}));
-
 vi.mock("../lib/sanitize-upstream-error.js", () => ({
   sanitizeUpstreamError: vi.fn().mockResolvedValue(JSON.stringify({
     error: { type: "upstream_error", message: "bad" }
@@ -100,6 +90,7 @@ vi.mock("../lib/sanitize-upstream-error.js", () => ({
 }));
 
 import { handleChatCompletions } from "../routes/openai.js";
+import type { RequestContext } from "../lib/context.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,9 +101,6 @@ function makeRequest(body: Record<string, unknown>): Request {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-NullSpend-Auth": "test-platform-key",
-      "X-NullSpend-Key-Id": "key-uuid-123",
-      "X-NullSpend-User-Id": "user-uuid-456",
     },
     body: JSON.stringify(body),
   });
@@ -120,12 +108,25 @@ function makeRequest(body: Record<string, unknown>): Request {
 
 function makeEnv(): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres" },
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
     UPSTASH_REDIS_REST_TOKEN: "fake-token",
   } as Env;
+}
+
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+    redis: {} as any,
+    connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres",
+    sessionId: null,
+    ...overrides,
+  };
 }
 
 async function drainWaitUntil() {
@@ -160,12 +161,6 @@ describe("upstream timeout / error — reservation cleanup", () => {
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
-    mockAuthenticateRequest.mockReset();
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-uuid-456",
-      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
-      method: "api_key",
-    });
   });
 
   afterEach(() => {
@@ -184,7 +179,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     );
 
     await expect(
-      handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody),
+      handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody)),
     ).rejects.toThrow();
 
     await drainWaitUntil();
@@ -210,7 +205,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     );
 
     await expect(
-      handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody),
+      handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody)),
     ).rejects.toThrow();
 
     await drainWaitUntil();
@@ -232,7 +227,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     );
 
     await expect(
-      handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody),
+      handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody)),
     ).rejects.toThrow();
 
     await drainWaitUntil();
@@ -254,7 +249,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
       ),
     );
 
-    const response = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const response = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     await drainWaitUntil();
 
     expect(response.status).toBe(400);
@@ -281,7 +276,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
       ),
     );
 
-    const response = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const response = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     await drainWaitUntil();
 
     expect(response.status).toBe(500);
@@ -317,7 +312,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
       }),
     );
 
-    const response = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+    const response = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     await drainWaitUntil();
 
     expect(response.status).toBe(200);

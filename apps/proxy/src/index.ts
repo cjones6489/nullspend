@@ -3,10 +3,19 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { handleChatCompletions } from "./routes/openai.js";
 import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
+import { authenticateRequest } from "./lib/auth.js";
+import { errorResponse } from "./lib/errors.js";
+import type { RequestContext, RouteHandler } from "./lib/context.js";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
 const DEFAULT_RATE_LIMIT = 120;
 const DEFAULT_KEY_RATE_LIMIT = 600;
+
+const routes = new Map<string, RouteHandler>();
+routes.set("/v1/chat/completions", handleChatCompletions);
+routes.set("/v1/messages", handleAnthropicMessages);
+routes.set("/v1/mcp/budget/check", handleMcpBudgetCheck);
+routes.set("/v1/mcp/events", handleMcpEvents);
 
 async function applyRateLimit(
   request: Request,
@@ -30,9 +39,8 @@ async function applyRateLimit(
       return rateLimitResponse(ipResult);
     }
 
-    // Per-key rate limit: use API key (new path) or key-id header (legacy)
-    const rateLimitKey = request.headers.get("x-nullspend-key")
-      ?? request.headers.get("x-nullspend-key-id");
+    // Per-key rate limit
+    const rateLimitKey = request.headers.get("x-nullspend-key");
     if (rateLimitKey && rateLimitKey.length <= 128) {
       const keyRateLimit =
         Number((env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT) ||
@@ -76,13 +84,7 @@ async function parseRequestBody(
   const contentLength = request.headers.get("content-length");
   if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
     return {
-      error: Response.json(
-        {
-          error: "payload_too_large",
-          message: `Body exceeds ${MAX_BODY_SIZE} bytes`,
-        },
-        { status: 413 },
-      ),
+      error: errorResponse("payload_too_large", `Body exceeds ${MAX_BODY_SIZE} bytes`, 413),
     };
   }
 
@@ -91,22 +93,13 @@ async function parseRequestBody(
     bodyText = await request.text();
   } catch {
     return {
-      error: Response.json(
-        { error: "bad_request", message: "Could not read request body" },
-        { status: 400 },
-      ),
+      error: errorResponse("bad_request", "Could not read request body", 400),
     };
   }
 
   if (new TextEncoder().encode(bodyText).byteLength > MAX_BODY_SIZE) {
     return {
-      error: Response.json(
-        {
-          error: "payload_too_large",
-          message: `Body exceeds ${MAX_BODY_SIZE} bytes`,
-        },
-        { status: 413 },
-      ),
+      error: errorResponse("payload_too_large", `Body exceeds ${MAX_BODY_SIZE} bytes`, 413),
     };
   }
 
@@ -114,22 +107,13 @@ async function parseRequestBody(
     const parsed = JSON.parse(bodyText);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return {
-        error: Response.json(
-          {
-            error: "bad_request",
-            message: "Request body must be a JSON object",
-          },
-          { status: 400 },
-        ),
+        error: errorResponse("bad_request", "Request body must be a JSON object", 400),
       };
     }
     return { body: parsed };
   } catch {
     return {
-      error: Response.json(
-        { error: "bad_request", message: "Invalid JSON body" },
-        { status: 400 },
-      ),
+      error: errorResponse("bad_request", "Invalid JSON body", 400),
     };
   }
 }
@@ -149,6 +133,7 @@ export default {
     try {
       const url = new URL(request.url);
 
+      // Health routes stay outside the pipeline (no auth needed)
       if (url.pathname === "/health") {
         return Response.json({ status: "ok", service: "nullspend-proxy" });
       }
@@ -166,60 +151,43 @@ export default {
         }
       }
 
-      if (
-        request.method === "POST" &&
-        (url.pathname === "/v1/chat/completions" ||
-          url.pathname === "/v1/messages")
-      ) {
-        const rateLimitResponse = await applyRateLimit(request, env);
-        if (rateLimitResponse) return rateLimitResponse;
-
-        const result = await parseRequestBody(request);
-        if (result.error) return result.error;
-
-        if (url.pathname === "/v1/chat/completions") {
-          return await handleChatCompletions(request, env, result.body);
+      // Route lookup
+      const handler = request.method === "POST" ? routes.get(url.pathname) : undefined;
+      if (!handler) {
+        if (url.pathname.startsWith("/v1/")) {
+          return errorResponse("not_found", "This endpoint is not yet supported", 404);
         }
-        return await handleAnthropicMessages(request, env, result.body);
+        return errorResponse("not_found", "Not found", 404);
       }
 
-      if (
-        request.method === "POST" &&
-        (url.pathname === "/v1/mcp/budget/check" ||
-          url.pathname === "/v1/mcp/events")
-      ) {
-        const rateLimitResponse = await applyRateLimit(request, env);
-        if (rateLimitResponse) return rateLimitResponse;
+      // Rate limit
+      const rateLimitResult = await applyRateLimit(request, env);
+      if (rateLimitResult) return rateLimitResult;
 
-        const result = await parseRequestBody(request);
-        if (result.error) return result.error;
+      // Body parse
+      const result = await parseRequestBody(request);
+      if (result.error) return result.error;
 
-        if (url.pathname === "/v1/mcp/budget/check") {
-          return await handleMcpBudgetCheck(request, env, result.body);
-        }
-        return await handleMcpEvents(request, env, result.body);
+      // Auth
+      const connectionString = env.HYPERDRIVE.connectionString;
+      const auth = await authenticateRequest(request, connectionString);
+      if (!auth) {
+        return errorResponse("unauthorized", "Invalid or missing authentication header", 401);
       }
 
-      if (url.pathname.startsWith("/v1/")) {
-        return Response.json(
-          {
-            error: "not_found",
-            message: "This endpoint is not yet supported",
-          },
-          { status: 404 },
-        );
-      }
+      // Build context
+      const ctx: RequestContext = {
+        body: result.body,
+        auth,
+        redis: auth.hasBudgets ? Redis.fromEnv(env) : null,
+        connectionString,
+        sessionId: request.headers.get("x-nullspend-session") ?? null,
+      };
 
-      return Response.json(
-        { error: "not_found", message: "Not found" },
-        { status: 404 },
-      );
+      return await handler(request, env, ctx);
     } catch (err) {
       console.error("[proxy] Unhandled error:", err);
-      return Response.json(
-        { error: "internal_error", message: "Internal server error" },
-        { status: 502 },
-      );
+      return errorResponse("internal_error", "Internal server error", 500);
     }
   },
 };

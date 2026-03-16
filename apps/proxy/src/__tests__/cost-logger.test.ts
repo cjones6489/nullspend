@@ -187,3 +187,76 @@ describe("logCostEvent", () => {
     consoleSpy.mockRestore();
   });
 });
+
+describe("logCostEventsBatch", () => {
+  let logCostEventsBatch: typeof import("../lib/cost-logger.js").logCostEventsBatch;
+  const globals = globalThis as Record<string, unknown>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    globals.__SKIP_DB_PERSIST = true;
+    const mod = await import("../lib/cost-logger.js");
+    logCostEventsBatch = mod.logCostEventsBatch;
+  });
+
+  afterEach(() => {
+    delete globals.__FORCE_DB_PERSIST;
+    delete globals.__SKIP_DB_PERSIST;
+  });
+
+  it("returns immediately for empty array", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await expect(
+      logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", []),
+    ).resolves.toBeUndefined();
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("does not throw when DB persistence is skipped", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await expect(
+      logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", [
+        makeCostEvent(),
+        makeCostEvent({ requestId: "req-2" }),
+      ]),
+    ).resolves.toBeUndefined();
+    consoleSpy.mockRestore();
+  });
+
+  it("logs each event to console when skipping DB", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", [
+      makeCostEvent({ requestId: "req-1", costMicrodollars: 100 }),
+      makeCostEvent({ requestId: "req-2", costMicrodollars: 200 }),
+      makeCostEvent({ requestId: "req-3", costMicrodollars: 300 }),
+    ]);
+
+    expect(consoleSpy).toHaveBeenCalledTimes(3);
+    expect((consoleSpy.mock.calls[0][1] as Record<string, unknown>).requestId).toBe("req-1");
+    expect((consoleSpy.mock.calls[1][1] as Record<string, unknown>).requestId).toBe("req-2");
+    expect((consoleSpy.mock.calls[2][1] as Record<string, unknown>).requestId).toBe("req-3");
+    consoleSpy.mockRestore();
+  });
+
+  it("handles single-element array", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", [
+      makeCostEvent(),
+    ]);
+
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    consoleSpy.mockRestore();
+  });
+
+  it("does not throw for unreachable remote connection (graceful error handling)", async () => {
+    delete globals.__SKIP_DB_PERSIST;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      logCostEventsBatch("postgresql://user:pass@192.0.2.1:5432/db", [makeCostEvent()]),
+    ).resolves.toBeUndefined();
+
+    errorSpy.mockRestore();
+  }, 15_000);
+});

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
+import type { RequestContext } from "../lib/context.js";
 
 beforeAll(() => {
   if (!crypto.subtle.timingSafeEqual) {
@@ -21,24 +22,19 @@ vi.mock("cloudflare:workers", () => ({
   }),
 }));
 
-const { mockIsKnownModel } = vi.hoisted(() => {
+const { mockIsKnownModel, mockLogCostEvent } = vi.hoisted(() => {
   const mockIsKnownModel = vi.fn().mockReturnValue(true);
-  return { mockIsKnownModel };
+  const mockLogCostEvent = vi.fn().mockResolvedValue(undefined);
+  return { mockIsKnownModel, mockLogCostEvent };
 });
 vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: mockIsKnownModel,
   getModelPricing: vi.fn().mockReturnValue(null),
   costComponent: vi.fn().mockReturnValue(0),
 }));
-
-const mockAuthenticateRequest = vi.fn();
-vi.mock("../lib/auth.js", () => ({
-  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
-  unauthorizedResponse: () =>
-    Response.json(
-      { error: "unauthorized", message: "Invalid or missing authentication header" },
-      { status: 401 },
-    ),
+vi.mock("../lib/cost-logger.js", () => ({
+  logCostEvent: (...args: unknown[]) => mockLogCostEvent(...args),
+  isLocalConnection: () => false,
 }));
 
 import { handleAnthropicMessages } from "../routes/anthropic.js";
@@ -52,7 +48,6 @@ function makeRequest(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer sk-ant-api03-test",
-      "X-NullSpend-Auth": "test-platform-key",
       ...headers,
     },
     body: JSON.stringify(body),
@@ -61,7 +56,6 @@ function makeRequest(
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    PLATFORM_AUTH_KEY: "test-platform-key",
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
@@ -70,6 +64,20 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     UPSTASH_REDIS_REST_TOKEN: "fake-token",
     ...overrides,
   } as Env;
+}
+
+function makeCtx(
+  body: Record<string, unknown>,
+  overrides: Partial<RequestContext> = {},
+): RequestContext {
+  return {
+    body,
+    auth: { userId: "user-1", keyId: "key-1", hasBudgets: false },
+    redis: null,
+    connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+    sessionId: null,
+    ...overrides,
+  };
 }
 
 function makeAnthropicSSEStream(chunks: string[]): ReadableStream<Uint8Array> {
@@ -104,12 +112,6 @@ describe("handleAnthropicMessages", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockAuthenticateRequest.mockReset();
-    mockAuthenticateRequest.mockResolvedValue({
-      userId: "user-1",
-      keyId: "key-1",
-      method: "platform_key",
-    });
   });
 
   afterEach(() => {
@@ -117,25 +119,10 @@ describe("handleAnthropicMessages", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns 401 when authentication fails", async () => {
-    mockAuthenticateRequest.mockResolvedValue(null);
-    const request = makeRequest({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 100,
-      messages: [{ role: "user", content: "hi" }],
-    });
-    const res = await handleAnthropicMessages(request, makeEnv(), {
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 100,
-      messages: [{ role: "user", content: "hi" }],
-    });
-    expect(res.status).toBe(401);
-  });
-
   it("returns 400 for unknown model", async () => {
     mockIsKnownModel.mockReturnValueOnce(false);
     const body = { model: "claude-unknown", max_tokens: 100, messages: [] };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBe("invalid_model");
@@ -157,7 +144,7 @@ describe("handleAnthropicMessages", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -190,7 +177,7 @@ describe("handleAnthropicMessages", () => {
       messages: [{ role: "user", content: "hi" }],
       stream: true,
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-cache, no-transform");
@@ -223,7 +210,7 @@ describe("handleAnthropicMessages", () => {
       model: "claude-sonnet-4-20250514",
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(400);
     const json = await res.json();
@@ -252,7 +239,7 @@ describe("handleAnthropicMessages", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(500);
   });
@@ -274,7 +261,7 @@ describe("handleAnthropicMessages", () => {
       messages: [{ role: "user", content: "hi" }],
       stream: true,
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(502);
     const text = await res.text();
@@ -306,7 +293,7 @@ describe("handleAnthropicMessages", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -329,11 +316,71 @@ describe("handleAnthropicMessages", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toBe("this is not json at all!");
+  });
+
+  it("includes enrichment fields in non-streaming cost event with tool_use", async () => {
+    mockLogCostEvent.mockClear();
+
+    const responseWithToolUse = {
+      id: "msg_enrich",
+      type: "message",
+      role: "assistant",
+      model: "claude-sonnet-4-20250514",
+      content: [
+        { type: "text", text: "I'll check the weather." },
+        { type: "tool_use", id: "toolu_01X", name: "get_weather", input: { city: "SF" } },
+      ],
+      stop_reason: "tool_use",
+      usage: {
+        input_tokens: 60,
+        output_tokens: 25,
+      },
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(responseWithToolUse), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "request-id": "req_enrich_ant",
+        },
+      }),
+    );
+
+    const tools = [{ name: "get_weather", description: "Get weather", input_schema: { type: "object" } }];
+    const body = {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "weather?" }],
+      tools,
+    };
+    const res = await handleAnthropicMessages(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body, { sessionId: "sess-ant-1" }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockLogCostEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sessionId: "sess-ant-1",
+        upstreamDurationMs: expect.any(Number),
+        toolDefinitionTokens: expect.any(Number),
+        toolCallsRequested: [{ name: "get_weather", id: "toolu_01X" }],
+      }),
+    );
+    const callArgs = mockLogCostEvent.mock.calls[0][1];
+    expect(callArgs.toolDefinitionTokens).toBeGreaterThan(0);
   });
 
   it("extracts request-id and forwards as x-request-id", async () => {
@@ -352,7 +399,7 @@ describe("handleAnthropicMessages", () => {
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     };
-    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), body);
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.headers.get("x-request-id")).toBe("req_018EeWyXxfu5pfWkrYcMdjWG");
     await res.text();

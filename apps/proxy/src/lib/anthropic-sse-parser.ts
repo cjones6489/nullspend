@@ -8,6 +8,7 @@ export interface AnthropicSSEResult {
   cacheCreationDetail: AnthropicCacheCreationDetail | null;
   model: string | null;
   stopReason: string | null;
+  toolCalls: { name: string; id: string }[] | null;
 }
 
 /**
@@ -37,6 +38,7 @@ export function createAnthropicSSEParser(
   let capturedCacheDetail: AnthropicCacheCreationDetail | null = null;
   let capturedModel: string | null = null;
   let capturedStopReason: string | null = null;
+  let capturedToolCalls: { name: string; id: string }[] | null = null;
   let resolved = false;
 
   let currentEventType: string | null = null;
@@ -55,6 +57,7 @@ export function createAnthropicSSEParser(
       cacheCreationDetail: capturedCacheDetail,
       model: capturedModel,
       stopReason: capturedStopReason,
+      toolCalls: capturedToolCalls,
     };
   }
 
@@ -177,6 +180,12 @@ export function createAnthropicSSEParser(
 
         if (parsed.delta?.stop_reason) {
           capturedStopReason = parsed.delta.stop_reason;
+        }
+      } else if (eventType === "content_block_start") {
+        const block = parsed.content_block;
+        if (block?.type === "tool_use" && block.name && block.id) {
+          if (!capturedToolCalls) capturedToolCalls = [];
+          capturedToolCalls.push({ name: block.name, id: block.id });
         }
       } else if (eventType === "message_stop") {
         resolve(buildResult());

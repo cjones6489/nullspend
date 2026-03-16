@@ -83,12 +83,12 @@ describe("authenticateApiKey", () => {
 
   it("returns identity on valid key (cache miss → DB hit)", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_budgets: false }],
     });
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
 
-    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID });
+    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasBudgets: false });
     expect(mockConnect).toHaveBeenCalledTimes(1);
     expect(mockQuery).toHaveBeenCalledTimes(1);
 
@@ -100,17 +100,17 @@ describe("authenticateApiKey", () => {
 
   it("returns cached identity on second call (cache hit → no DB call)", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_budgets: false }],
     });
 
     // First call — cache miss, hits DB
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID });
+    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasBudgets: false });
     expect(mockConnect).toHaveBeenCalledTimes(1);
 
     // Second call — cache hit, no DB call
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID });
+    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasBudgets: false });
     expect(mockConnect).toHaveBeenCalledTimes(1); // Still 1, not 2
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
@@ -194,7 +194,7 @@ describe("authenticateApiKey", () => {
     // 257 entries → evicts key_0 (the oldest), leaving keys 1–256 (256 entries).
     for (let i = 0; i < 257; i++) {
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: `key-${i}`, user_id: `user-${i}` }],
+        rows: [{ id: `key-${i}`, user_id: `user-${i}`, has_budgets: false }],
       });
       await authenticateApiKey(`ask_key_${i}`, TEST_CONNECTION_STRING);
     }
@@ -204,16 +204,16 @@ describe("authenticateApiKey", () => {
 
     // key_0 was evicted — looking it up should require a new DB call
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: "key-0", user_id: "user-0" }],
+      rows: [{ id: "key-0", user_id: "user-0", has_budgets: false }],
     });
     const result = await authenticateApiKey("ask_key_0", TEST_CONNECTION_STRING);
-    expect(result).toEqual({ userId: "user-0", keyId: "key-0" });
+    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasBudgets: false });
     expect(mockConnect).toHaveBeenCalledTimes(258); // Had to go to DB again
 
     // Re-adding key_0 brought cache to 257 → key_1 was evicted.
     // key_2 should still be cached (it was the third entry, not evicted).
     const result2 = await authenticateApiKey("ask_key_2", TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: "user-2", keyId: "key-2" });
+    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasBudgets: false });
     expect(mockConnect).toHaveBeenCalledTimes(258); // No additional DB call — cache hit
 
     vi.restoreAllMocks();
@@ -240,20 +240,21 @@ describe("authenticateApiKey", () => {
   it("queries with the correct SQL and hashed key parameter", async () => {
     const expectedHash = await hashApiKey(TEST_RAW_KEY);
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_budgets: false }],
     });
 
     await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
 
-    expect(mockQuery).toHaveBeenCalledWith(
-      "SELECT id, user_id FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL",
-      [expectedHash],
-    );
+    const queryCall = mockQuery.mock.calls[0];
+    expect(queryCall[0]).toContain("key_hash = $1");
+    expect(queryCall[0]).toContain("revoked_at IS NULL");
+    expect(queryCall[0]).toContain("has_budgets");
+    expect(queryCall[1]).toEqual([expectedHash]);
   });
 
   it("registers a pg client error handler", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_budgets: false }],
     });
 
     await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -284,10 +285,10 @@ describe("authenticateApiKey cache expiry", () => {
 
     mockQuery
       .mockResolvedValueOnce({
-        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID }],
+        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_budgets: false }],
       })
       .mockResolvedValueOnce({
-        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID }],
+        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_budgets: false }],
       });
 
     // First call — populates cache

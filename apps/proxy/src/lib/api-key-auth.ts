@@ -4,6 +4,7 @@ import { withDbConnection } from "./db-semaphore.js";
 export interface ApiKeyIdentity {
   userId: string;
   keyId: string;
+  hasBudgets: boolean;
 }
 
 const CONNECTION_TIMEOUT_MS = 5_000;
@@ -81,7 +82,14 @@ async function lookupKeyInDb(
       await client.connect();
 
       const result = await client.query(
-        "SELECT id, user_id FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL",
+        `SELECT k.id, k.user_id,
+          EXISTS(
+            SELECT 1 FROM budgets b
+            WHERE (b.entity_type = 'api_key' AND b.entity_id = k.id::text)
+               OR (b.entity_type = 'user' AND b.entity_id = k.user_id)
+          ) AS has_budgets
+        FROM api_keys k
+        WHERE k.key_hash = $1 AND k.revoked_at IS NULL`,
         [keyHash],
       );
 
@@ -92,6 +100,7 @@ async function lookupKeyInDb(
       return {
         userId: result.rows[0].user_id as string,
         keyId: result.rows[0].id as string,
+        hasBudgets: result.rows[0].has_budgets === true,
       };
     } catch (err) {
       console.error(

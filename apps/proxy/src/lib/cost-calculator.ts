@@ -59,5 +59,6 @@ export function calculateOpenAICost(
     userId: attribution?.userId ?? null,
     apiKeyId: attribution?.apiKeyId ?? null,
     actionId: attribution?.actionId ?? null,
+    eventType: "llm" as const,
   };
 }

@@ -1,6 +1,7 @@
 export interface SSEResult {
   usage: OpenAIUsage | null;
   model: string | null;
+  toolCalls: { name: string; id: string }[] | null;
 }
 
 export interface OpenAIUsage {
@@ -28,6 +29,7 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
 
   let capturedUsage: OpenAIUsage | null = null;
   let capturedModel: string | null = null;
+  let capturedToolCalls: { name: string; id: string }[] | null = null;
   let lineBuffer = "";
   const decoder = new TextDecoder("utf-8", { fatal: false });
 
@@ -57,6 +59,7 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
       resolveResult({
         usage: capturedUsage,
         model: capturedModel,
+        toolCalls: capturedToolCalls,
       });
     },
 
@@ -64,6 +67,7 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
       resolveResult({
         usage: null,
         model: capturedModel,
+        toolCalls: capturedToolCalls,
       });
     },
   });
@@ -93,6 +97,16 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
 
       if (parsed.usage && typeof parsed.usage === "object") {
         capturedUsage = parsed.usage;
+      }
+
+      const deltaToolCalls = parsed.choices?.[0]?.delta?.tool_calls;
+      if (Array.isArray(deltaToolCalls)) {
+        for (const tc of deltaToolCalls) {
+          if (tc.id && tc.function?.name) {
+            if (!capturedToolCalls) capturedToolCalls = [];
+            capturedToolCalls.push({ name: tc.function.name, id: tc.id });
+          }
+        }
       }
     } catch {
       // Malformed JSON — skip silently
