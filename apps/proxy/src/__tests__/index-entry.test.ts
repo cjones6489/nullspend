@@ -53,6 +53,10 @@ vi.mock("../lib/auth.js", () => ({
   authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
 }));
 
+vi.mock("../lib/webhook-dispatch.js", () => ({
+  createWebhookDispatcher: vi.fn().mockReturnValue(null),
+}));
+
 import entrypoint from "../index.js";
 
 function makeEnv(): Env {
@@ -82,6 +86,7 @@ describe("Worker entry point routing", () => {
       userId: "user-1",
       keyId: "key-1",
       hasBudgets: false,
+      hasWebhooks: false,
     });
   });
 

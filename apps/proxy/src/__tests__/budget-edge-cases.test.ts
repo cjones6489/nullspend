@@ -144,10 +144,11 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true, hasWebhooks: false },
     redis: {} as any,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
+    webhookDispatcher: null,
     ...overrides,
   };
 }
@@ -199,7 +200,7 @@ describe("Budget Edge Cases", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
-      auth: { userId: "user-uuid-456", keyId: null as any, hasBudgets: true },
+      auth: { userId: "user-uuid-456", keyId: null as any, hasBudgets: true, hasWebhooks: false },
     }));
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
@@ -214,7 +215,7 @@ describe("Budget Edge Cases", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
-      auth: { userId: null as any, keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true },
+      auth: { userId: null as any, keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true, hasWebhooks: false },
     }));
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
@@ -229,7 +230,7 @@ describe("Budget Edge Cases", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
-      auth: { userId: null as any, keyId: null as any, hasBudgets: true },
+      auth: { userId: null as any, keyId: null as any, hasBudgets: true, hasWebhooks: false },
     }));
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(

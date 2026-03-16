@@ -189,3 +189,40 @@ export const toolCosts = pgTable("tool_costs", {
 
 export type ToolCostRow = typeof toolCosts.$inferSelect;
 export type NewToolCostRow = typeof toolCosts.$inferInsert;
+
+export const webhookEndpoints = pgTable("webhook_endpoints", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  url: text("url").notNull(),
+  description: text("description"),
+  signingSecret: text("signing_secret").notNull(),
+  eventTypes: text("event_types").array().notNull().default([]),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("webhook_endpoints_user_id_idx").on(table.userId),
+]);
+
+export type WebhookEndpointRow = typeof webhookEndpoints.$inferSelect;
+export type NewWebhookEndpointRow = typeof webhookEndpoints.$inferInsert;
+
+export const webhookDeliveries = pgTable("webhook_deliveries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  endpointId: uuid("endpoint_id").notNull()
+    .references(() => webhookEndpoints.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  eventId: text("event_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  responseStatus: integer("response_status"),
+  responseBodyPreview: text("response_body_preview"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("webhook_deliveries_endpoint_id_idx").on(table.endpointId, table.createdAt),
+  index("webhook_deliveries_event_id_idx").on(table.eventId),
+]);
+
+export type WebhookDeliveryRow = typeof webhookDeliveries.$inferSelect;
+export type NewWebhookDeliveryRow = typeof webhookDeliveries.$inferInsert;

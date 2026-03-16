@@ -72,10 +72,11 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasBudgets: false },
+    auth: { userId: "user-1", keyId: "key-1", hasBudgets: false, hasWebhooks: false },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
+    webhookDispatcher: null,
     ...overrides,
   };
 }

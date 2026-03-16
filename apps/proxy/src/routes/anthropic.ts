@@ -18,6 +18,10 @@ import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { estimateAnthropicMaxCost } from "../lib/anthropic-cost-estimator.js";
 import { reconcileReservation } from "../lib/budget-reconcile.js";
 import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
+import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
+import { buildCostEventPayload, buildBudgetExceededPayload } from "../lib/webhook-events.js";
+import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
+import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 
 const UPSTREAM_TIMEOUT_MS = 120_000;
 
@@ -83,6 +87,28 @@ export async function handleAnthropicMessages(
       }
 
       if (checkResult.status === "denied") {
+        if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+          waitUntil((async () => {
+            try {
+              const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId);
+              if (cached.length > 0) {
+                const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+                const event = buildBudgetExceededPayload({
+                  budgetEntityType: budgetEntities[0].entityType,
+                  budgetEntityId: budgetEntities[0].entityId,
+                  budgetLimitMicrodollars: budgetEntities[0].maxBudget,
+                  budgetSpendMicrodollars: budgetEntities[0].spend + budgetEntities[0].reserved,
+                  estimatedRequestCostMicrodollars: estimate,
+                  model: requestModel,
+                  provider: "anthropic",
+                });
+                await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+              }
+            } catch (err) {
+              console.error("[anthropic-route] Budget webhook dispatch failed:", err);
+            }
+          })());
+        }
         return errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
       }
 
@@ -145,6 +171,7 @@ export async function handleAnthropicMessages(
         budgetEntities,
         ctx.connectionString,
         enrichment,
+        ctx,
       );
     }
 
@@ -161,6 +188,7 @@ export async function handleAnthropicMessages(
       budgetEntities,
       ctx.connectionString,
       enrichment,
+      ctx,
     );
   } catch (err) {
     if (reservationId && ctx.redis) {
@@ -185,6 +213,7 @@ function handleStreaming(
   budgetEntities: BudgetEntity[],
   connectionString: string,
   enrichment: EnrichmentFields,
+  ctx: RequestContext,
 ): Response {
   const upstreamBody = upstreamResponse.body;
   if (!upstreamBody) {
@@ -239,6 +268,34 @@ function handleStreaming(
             budgetEntities, connectionString,
           );
         }
+
+        // --- Webhook dispatch (nested try/catch — costEvent must stay in scope,
+        //     but errors here must NOT trigger the outer catch's reconciliation fallback) ---
+        try {
+          if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && redis) {
+            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
+              const webhookData = {
+                ...costEvent,
+                ...enrichment,
+                toolCallsRequested: result.toolCalls,
+                createdAt: new Date().toISOString(),
+              };
+              const whEvent = buildCostEventPayload(webhookData);
+              await dispatchToEndpoints(ctx.webhookDispatcher, endpoints, whEvent);
+
+              if (budgetEntities.length > 0) {
+                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId);
+                for (const te of thresholdEvents) {
+                  await dispatchToEndpoints(ctx.webhookDispatcher, endpoints, te);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("[anthropic-route] Webhook dispatch failed:", err);
+        }
       } catch (err) {
         console.error(
           "[anthropic-route] Failed to process streaming cost event:",
@@ -278,6 +335,7 @@ async function handleNonStreaming(
   budgetEntities: BudgetEntity[],
   connectionString: string,
   enrichment: EnrichmentFields,
+  ctx: RequestContext,
 ): Promise<Response> {
   const responseText = await upstreamResponse.text();
   const durationMs = Math.round(performance.now() - startTime);
@@ -330,6 +388,30 @@ async function handleNonStreaming(
             budgetEntities, connectionString,
           ),
         );
+      }
+
+      // Webhook dispatch (separate waitUntil)
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && redis) {
+        waitUntil((async () => {
+          try {
+            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
+              const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString() };
+              const whEvent = buildCostEventPayload(webhookData);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, whEvent);
+
+              if (budgetEntities.length > 0) {
+                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId);
+                for (const te of thresholdEvents) {
+                  await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, te);
+                }
+              }
+            }
+          } catch (err) {
+            console.error("[anthropic-route] Webhook dispatch failed:", err);
+          }
+        })());
       }
     } else if (reservationId && redis) {
       waitUntil(

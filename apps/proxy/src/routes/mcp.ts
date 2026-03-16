@@ -6,6 +6,9 @@ import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
 import { logCostEventsBatch } from "../lib/cost-logger.js";
 import { reconcileReservation } from "../lib/budget-reconcile.js";
+import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
+import { buildCostEventPayload } from "../lib/webhook-events.js";
+import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -203,6 +206,26 @@ export async function handleMcpEvents(
               console.error("[mcp-events] Failed to reconcile reservation:", err);
             }
           }
+        }
+      }
+
+      // Phase 4: Webhook dispatch (one per cost event, single secrets fetch)
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
+        try {
+          const redis = ctx.redis ?? Redis.fromEnv(env);
+          const cached = await getWebhookEndpoints(redis, ctx.connectionString, ctx.auth.userId);
+          if (cached.length > 0) {
+            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+            for (const row of costEventRows) {
+              const whEvent = buildCostEventPayload({
+                ...row,
+                createdAt: new Date().toISOString(),
+              });
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, whEvent);
+            }
+          }
+        } catch (err) {
+          console.error("[mcp-events] Webhook dispatch failed:", err);
         }
       }
     })(),

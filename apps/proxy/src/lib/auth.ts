@@ -6,6 +6,7 @@ export interface AuthResult {
   userId: string;
   keyId: string;
   hasBudgets: boolean;
+  hasWebhooks: boolean;
 }
 
 /**
@@ -22,5 +23,10 @@ export async function authenticateRequest(
   if (!apiKey) return null;
   const identity = await authenticateApiKey(apiKey, connectionString);
   if (!identity) return null;
-  return { userId: identity.userId, keyId: identity.keyId, hasBudgets: identity.hasBudgets };
+  return {
+    userId: identity.userId,
+    keyId: identity.keyId,
+    hasBudgets: identity.hasBudgets,
+    hasWebhooks: identity.hasWebhooks,
+  };
 }

@@ -5,6 +5,7 @@ import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
 import { authenticateRequest } from "./lib/auth.js";
 import { errorResponse } from "./lib/errors.js";
+import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
@@ -176,12 +177,21 @@ export default {
       }
 
       // Build context
+      const webhookDispatcher = auth.hasWebhooks
+        ? createWebhookDispatcher(env.QSTASH_TOKEN || undefined)
+        : null;
+
+      if (auth.hasWebhooks && !webhookDispatcher) {
+        console.warn("[proxy] User has webhooks but QSTASH_TOKEN is not configured");
+      }
+
       const ctx: RequestContext = {
         body: result.body,
         auth,
-        redis: auth.hasBudgets ? Redis.fromEnv(env) : null,
+        redis: (auth.hasBudgets || auth.hasWebhooks) ? Redis.fromEnv(env) : null,
         connectionString,
         sessionId: request.headers.get("x-nullspend-session") ?? null,
+        webhookDispatcher,
       };
 
       return await handler(request, env, ctx);
