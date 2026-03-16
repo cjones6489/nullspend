@@ -651,41 +651,187 @@ pnpm typecheck       # Clean
 
 **Goal:** Users can manage webhooks from the Settings page.
 
-### Files to create/modify (~4)
+### Files to create/modify (3)
 
 | File | Change |
 |------|--------|
-| `lib/queries/webhooks.ts` | React Query hooks (list, create, update, delete, test, rotate) |
+| `lib/queries/webhooks.ts` | React Query hooks |
 | `components/settings/webhooks-section.tsx` | Main UI component |
-| `app/(dashboard)/app/settings/page.tsx` | Add `<WebhooksSection />` |
+| `app/(dashboard)/app/settings/page.tsx` | Add `<WebhooksSection />` after `<SlackSection />` |
 
-### UI pattern (follow `components/settings/slack-section.tsx`)
+### Step 1: React Query hooks (`lib/queries/webhooks.ts`)
 
-- Card with title "Webhooks"
-- **Empty state:** "No webhook endpoints configured" + "Add Endpoint" button
-- **Table:** URL (truncated), enabled toggle, event type badges, description, actions
-- **Create dialog:**
-  - URL input (required)
-  - Description input (optional)
-  - Event type checkboxes (empty = all events)
-  - Submit → show raw signing secret in a copy-able alert (shown once!)
-- **Test button** per endpoint (inline, calls POST /api/webhooks/:id/test)
-- **Delete** with confirmation dialog
-- **Rotate secret** with confirmation dialog → show new secret once
+Follow the `lib/queries/slack.ts` pattern exactly.
 
-### Key UX details
+```typescript
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api/client";
+import type { WebhookRecord, CreateWebhookInput, UpdateWebhookInput } from "@/lib/validations/webhooks";
 
-- Post-create secret display: use a `<code>` block with copy button, warning that it won't be shown again
-- Event type badges: colored pills for each event type
-- Enabled toggle: instant PATCH, no save button
-- URL truncation: show domain + first path segment, full URL on hover
+interface WebhookListResponse { data: WebhookRecord[]; }
+interface WebhookCreateResponse { data: WebhookRecord & { signingSecret: string }; }
+interface WebhookUpdateResponse { data: WebhookRecord; }
+interface WebhookTestResponse { success: boolean; statusCode: number | null; responsePreview: string | null; }
+interface WebhookRotateResponse { data: { signingSecret: string }; }
 
-### Test plan
+export const webhookKeys = {
+  all: ["webhooks"] as const,
+  list: () => [...webhookKeys.all, "list"] as const,
+};
 
-- Visual: Settings → Webhooks section renders
-- Create flow: form → submit → secret shown
-- Toggle endpoint enabled/disabled
-- Delete with confirmation
+export function useWebhooks()
+  → useQuery<WebhookListResponse> queryFn: apiGet("/api/webhooks")
+
+export function useCreateWebhook()
+  → useMutation<WebhookCreateResponse, Error, CreateWebhookInput>
+    mutationFn: apiPost("/api/webhooks", input)
+    onSuccess: invalidateQueries(webhookKeys.all)
+
+export function useUpdateWebhook()
+  → useMutation<WebhookUpdateResponse, Error, { id: string } & UpdateWebhookInput>
+    mutationFn: ({ id, ...body }) => apiPatch(`/api/webhooks/${id}`, body)
+    onSuccess: invalidateQueries(webhookKeys.all)
+
+export function useDeleteWebhook()
+  → useMutation<{ success: boolean }, Error, string>
+    mutationFn: (id) => apiDelete(`/api/webhooks/${id}`)
+    onSuccess: invalidateQueries(webhookKeys.all)
+
+export function useTestWebhook()
+  → useMutation<WebhookTestResponse, Error, string>
+    mutationFn: (id) => apiPost(`/api/webhooks/${id}/test`)
+
+export function useRotateWebhookSecret()
+  → useMutation<WebhookRotateResponse, Error, string>
+    mutationFn: (id) => apiPost(`/api/webhooks/${id}/rotate-secret`)
+    onSuccess: invalidateQueries(webhookKeys.all)
+```
+
+### Step 2: Settings page (`app/(dashboard)/app/settings/page.tsx`)
+
+One-line addition:
+
+```diff
+ import { SlackSection } from "@/components/settings/slack-section";
++import { WebhooksSection } from "@/components/settings/webhooks-section";
+
+       <ApiKeysSection />
+       <SlackSection />
++      <WebhooksSection />
+```
+
+### Step 3: Webhooks section component (`components/settings/webhooks-section.tsx`)
+
+Follow `components/settings/slack-section.tsx` patterns. "use client" directive.
+
+**Imports needed:**
+- UI: Card, CardContent, CardHeader, CardTitle, Button, Dialog*, Input,
+  Label, Badge, Switch, Table*, Skeleton
+- Icons: `Webhook, Plus, Trash2, Copy, RotateCw, Send` from lucide-react
+- State: `useState` from react
+- Toast: `toast` from sonner
+- Hooks: all from `lib/queries/webhooks.ts`
+- Types: `WEBHOOK_EVENT_TYPES` from `lib/validations/webhooks`
+
+**Component structure:**
+
+```
+<Card>
+  <CardHeader>
+    Title: "Webhooks"
+    Description: "Send signed HTTP callbacks when cost events and budget alerts occur."
+    Action: <CreateEndpointDialog /> (only if endpoints < 10)
+  </CardHeader>
+  <CardContent>
+    {isLoading → <WebhooksSkeleton />}
+    {error → error message}
+    {data.length === 0 → empty state message}
+    {data.length > 0 → <EndpointsTable endpoints={data} />}
+  </CardContent>
+</Card>
+```
+
+**CreateEndpointDialog:**
+- Trigger: Button with Plus icon, "Add Endpoint"
+- Form fields:
+  - URL input (required, placeholder: "https://example.com/webhook")
+  - Description input (optional, placeholder: "Slack cost alerts")
+  - Event types: checkboxes for each WEBHOOK_EVENT_TYPES entry.
+    Default: none checked = all events. Label: "Event types (leave empty for all)"
+- Submit: calls `useCreateWebhook` mutation
+- Post-create state: Dialog stays open, shows signing secret with:
+  - `<code>` block with copy button (follow API key copy pattern from settings page)
+  - Warning: "Store this secret securely. It will not be shown again."
+  - "Done" button closes dialog and clears state
+
+**EndpointsTable:**
+```
+<Table>
+  <TableHeader>
+    URL | Events | Status | Actions
+  </TableHeader>
+  <TableBody>
+    {endpoints.map(ep => <EndpointRow key={ep.id} endpoint={ep} />)}
+  </TableBody>
+</Table>
+```
+
+**EndpointRow:**
+- URL: truncate to domain + first path segment, full URL on hover via `title`
+  ```typescript
+  function truncateUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      const pathParts = parsed.pathname.split("/").filter(Boolean);
+      return parsed.host + (pathParts[0] ? `/${pathParts[0]}` : "") + (pathParts.length > 1 ? "/..." : "");
+    } catch { return url; }
+  }
+  ```
+- Events: If `eventTypes.length === 0` → `<Badge variant="outline">All events</Badge>`.
+  Otherwise map to `<Badge variant="secondary">{type}</Badge>` for each.
+- Status: `<Switch checked={ep.enabled} onCheckedChange={...} />` calling
+  `useUpdateWebhook({ id: ep.id, enabled: !ep.enabled })`. Toast on success/error.
+- Actions (button group):
+  - Test: `<Button variant="outline" size="icon-xs">` with Send icon.
+    Calls `useTestWebhook(ep.id)`. Toast success/failure with status code.
+  - Rotate: `<Button variant="outline" size="icon-xs">` with RotateCw icon.
+    Opens RotateSecretDialog.
+  - Delete: `<Button variant="outline" size="icon-xs">` with Trash2 icon.
+    Opens DeleteConfirmDialog.
+
+**DeleteConfirmDialog:**
+- Warning: "This will permanently delete this endpoint and its delivery history."
+- Cancel + Delete buttons. Delete uses `variant="destructive"`.
+- Calls `useDeleteWebhook(id)`. Toast on success. Close on success.
+
+**RotateSecretDialog:**
+- Warning: "The current signing secret will be replaced immediately. Your
+  endpoint will need to be updated with the new secret."
+- Cancel + Rotate buttons.
+- Post-rotate: shows new secret with copy button (same pattern as create).
+- Calls `useRotateWebhookSecret(id)`. Toast on success.
+
+**WebhooksSkeleton:**
+```typescript
+<div className="space-y-2">
+  <Skeleton className="h-10 w-full rounded-lg bg-secondary/50" />
+  <Skeleton className="h-10 w-full rounded-lg bg-secondary/50" />
+</div>
+```
+
+### Key implementation details
+
+- **Copy pattern:** Use `navigator.clipboard.writeText()` wrapped in try/catch.
+  Toast success/error. Follow exact pattern from settings page API key copy.
+- **Event type checkboxes:** Simple `<div>` with `<label>` + `<input type="checkbox">`
+  for each type. No need for a Command/Combobox — 6 items is fine for checkboxes.
+  Use `text-xs` labels with the event type string.
+- **Enabled toggle:** Instant PATCH via `useUpdateWebhook`, no save button needed.
+  Use `<Switch>` component with `onCheckedChange`.
+- **Table responsive:** On small screens, the Actions column might wrap. Use
+  `whitespace-nowrap` on the actions cell.
+- **Loading states:** Use `mutation.isPending` to disable buttons and show
+  loading text during create/delete/test/rotate operations.
 
 ### Verification
 

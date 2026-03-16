@@ -32,6 +32,7 @@ import {
   useRevokeApiKey,
 } from "@/lib/queries/api-keys";
 import { SlackSection } from "@/components/settings/slack-section";
+import { WebhooksSection } from "@/components/settings/webhooks-section";
 import { formatRelativeTime } from "@/lib/utils/format";
 
 export default function SettingsPage() {
@@ -48,6 +49,7 @@ export default function SettingsPage() {
 
       <ApiKeysSection />
       <SlackSection />
+      <WebhooksSection />
     </div>
   );
 }

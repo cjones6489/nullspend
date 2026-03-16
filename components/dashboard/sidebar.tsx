@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, BarChart3, CreditCard, DollarSign, Settings, Shield, Wrench } from "lucide-react";
+import { Activity, BarChart3, Clock, CreditCard, DollarSign, Inbox, Settings, Shield, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -21,6 +21,13 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { href: "/app/activity", label: "Activity", icon: Activity },
       { href: "/app/budgets", label: "Budgets", icon: DollarSign },
       { href: "/app/tool-costs", label: "Tool Costs", icon: Wrench },
+    ],
+  },
+  {
+    label: "Approvals",
+    items: [
+      { href: "/app/inbox", label: "Inbox", icon: Inbox },
+      { href: "/app/history", label: "History", icon: Clock },
     ],
   },
   {
