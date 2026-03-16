@@ -5,10 +5,6 @@ const REQUIRED_ENV = {
   NULLSPEND_URL: "http://127.0.0.1:3000",
   NULLSPEND_API_KEY: "ask_test123",
   UPSTREAM_COMMAND: "node",
-  NULLSPEND_BACKEND_URL: "http://localhost:8787",
-  NULLSPEND_PLATFORM_KEY: "pk-test",
-  NULLSPEND_USER_ID: "user-1",
-  NULLSPEND_KEY_ID: "key-1",
 };
 
 describe("loadConfig", () => {
@@ -40,13 +36,9 @@ describe("loadConfig", () => {
 
   it("throws ConfigError listing all missing vars", () => {
     process.env.NULLSPEND_URL = "http://test.com";
-    try {
-      loadConfig();
-    } catch (err) {
-      expect(err).toBeInstanceOf(ConfigError);
-      expect((err as ConfigError).message).toContain("NULLSPEND_API_KEY");
-      expect((err as ConfigError).message).toContain("UPSTREAM_COMMAND");
-    }
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("NULLSPEND_API_KEY");
+    expect(() => loadConfig()).toThrow("UPSTREAM_COMMAND");
   });
 
   it("returns config with defaults when only required vars are set", () => {
@@ -212,39 +204,27 @@ describe("loadConfig", () => {
     expect(config.budgetEnforcementEnabled).toBe(false);
   });
 
-  it("uses api_key auth mode when legacy cost tracking vars are absent", () => {
-    Object.assign(process.env, {
-      NULLSPEND_URL: "http://127.0.0.1:3000",
-      NULLSPEND_API_KEY: "ask_test123",
-      UPSTREAM_COMMAND: "node",
-    });
+  it("backendUrl defaults to nullspendUrl", () => {
+    Object.assign(process.env, REQUIRED_ENV);
     const config = loadConfig();
-    expect(config.authMode).toBe("api_key");
     expect(config.costTrackingEnabled).toBe(true);
-    // backendUrl falls back to nullspendUrl
     expect(config.backendUrl).toBe("http://127.0.0.1:3000");
   });
 
-  it("uses platform_key auth mode when legacy vars are present", () => {
-    Object.assign(process.env, REQUIRED_ENV);
+  it("ignores legacy env vars silently", () => {
+    Object.assign(process.env, {
+      ...REQUIRED_ENV,
+      NULLSPEND_BACKEND_URL: "http://localhost:8787",
+      NULLSPEND_PLATFORM_KEY: "pk-test",
+      NULLSPEND_USER_ID: "user-1",
+      NULLSPEND_KEY_ID: "key-1",
+    });
     const config = loadConfig();
-    expect(config.authMode).toBe("platform_key");
-    expect(config.backendUrl).toBe("http://localhost:8787");
-    expect(config.platformKey).toBe("pk-test");
-    expect(config.userId).toBe("user-1");
-    expect(config.keyId).toBe("key-1");
-  });
-
-  it("emits deprecation warnings when legacy vars are present", () => {
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    Object.assign(process.env, REQUIRED_ENV);
-    loadConfig();
-
-    const output = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
-    expect(output).toContain("DEPRECATED");
-    expect(output).toContain("NULLSPEND_BACKEND_URL");
-    expect(output).toContain("NULLSPEND_PLATFORM_KEY");
-    stderrSpy.mockRestore();
+    expect(config).not.toHaveProperty("platformKey");
+    expect(config).not.toHaveProperty("userId");
+    expect(config).not.toHaveProperty("keyId");
+    expect(config).not.toHaveProperty("authMode");
+    expect(config.backendUrl).toBe("http://127.0.0.1:3000");
   });
 
   it("does not require cost tracking vars when NULLSPEND_COST_TRACKING=false", () => {
@@ -256,15 +236,6 @@ describe("loadConfig", () => {
     });
     const config = loadConfig();
     expect(config.costTrackingEnabled).toBe(false);
-  });
-
-  it("reads cost tracking config fields in legacy mode", () => {
-    Object.assign(process.env, REQUIRED_ENV);
-    const config = loadConfig();
-    expect(config.backendUrl).toBe("http://localhost:8787");
-    expect(config.platformKey).toBe("pk-test");
-    expect(config.userId).toBe("user-1");
-    expect(config.keyId).toBe("key-1");
   });
 
   it("defaults serverName to UPSTREAM_COMMAND", () => {
@@ -342,22 +313,4 @@ describe("loadConfig", () => {
     expect(() => loadConfig()).toThrow("non-negative number");
   });
 
-  it("lists all missing cost tracking vars at once", () => {
-    Object.assign(process.env, {
-      NULLSPEND_URL: "http://127.0.0.1:3000",
-      NULLSPEND_API_KEY: "ask_test123",
-      UPSTREAM_COMMAND: "node",
-    });
-    // No cost tracking vars set
-    try {
-      loadConfig();
-    } catch (err) {
-      expect(err).toBeInstanceOf(ConfigError);
-      const msg = (err as ConfigError).message;
-      expect(msg).toContain("NULLSPEND_BACKEND_URL");
-      expect(msg).toContain("NULLSPEND_PLATFORM_KEY");
-      expect(msg).toContain("NULLSPEND_USER_ID");
-      expect(msg).toContain("NULLSPEND_KEY_ID");
-    }
-  });
 });

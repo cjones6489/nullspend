@@ -37,6 +37,11 @@ function makeConfig(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
     gatedTools: "*",
     passthroughTools: new Set<string>(),
     approvalTimeoutSeconds: 300,
+    backendUrl: "http://127.0.0.1:3000",
+    serverName: "test-server",
+    costTrackingEnabled: true,
+    budgetEnforcementEnabled: true,
+    toolCostOverrides: {},
     ...overrides,
   };
 }

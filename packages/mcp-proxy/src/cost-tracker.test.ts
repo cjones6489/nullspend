@@ -108,9 +108,7 @@ describe("EventBatcher", () => {
   function makeBatcher(opts?: { batchSize?: number; flushIntervalMs?: number }) {
     return new EventBatcher({
       backendUrl: "http://localhost:8787",
-      platformKey: "pk-test",
-      userId: "user-1",
-      keyId: "key-1",
+      apiKey: "ask_test123",
       batchSize: opts?.batchSize ?? 5,
       flushIntervalMs: opts?.flushIntervalMs ?? 60_000, // high to avoid auto-flush in tests
     });
@@ -173,9 +171,8 @@ describe("EventBatcher", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers["x-nullspend-auth"]).toBe("pk-test");
-    expect(headers["x-nullspend-user-id"]).toBe("user-1");
-    expect(headers["x-nullspend-key-id"]).toBe("key-1");
+    expect(headers["x-nullspend-key"]).toBe("ask_test123");
+    expect(headers["x-nullspend-auth"]).toBeUndefined();
 
     await batcher.shutdown();
   });
@@ -361,9 +358,7 @@ describe("BudgetClient", () => {
   function makeClient() {
     return new BudgetClient({
       backendUrl: "http://localhost:8787",
-      platformKey: "pk-test",
-      userId: "user-1",
-      keyId: "key-1",
+      apiKey: "ask_test123",
     });
   }
 
@@ -393,8 +388,7 @@ describe("BudgetClient", () => {
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
-          "x-nullspend-auth": "pk-test",
-          "x-nullspend-user-id": "user-1",
+          "x-nullspend-key": "ask_test123",
         }),
       }),
     );
@@ -571,10 +565,7 @@ describe("CostTracker", () => {
   function makeTracker(overrides?: Partial<import("./cost-tracker.js").CostTrackerConfig>) {
     return new CostTracker({
       backendUrl: "http://localhost:8787",
-      authMode: "platform_key",
-      platformKey: "pk-test",
-      userId: "user-1",
-      keyId: "key-1",
+      apiKey: "ask_test123",
       serverName: "test-server",
       budgetEnforcementEnabled: true,
       toolCostOverrides: {},
@@ -662,6 +653,58 @@ describe("CostTracker", () => {
 
     // Registry (77_000) beats annotation tier (TIER_FREE=0 for readOnly+not openWorld)
     expect(tracker.estimateCost("read_file", { readOnlyHint: true, openWorldHint: false })).toBe(77_000);
+
+    await tracker.shutdown();
+  });
+
+  it("checkBudget returns allowed when hasBudgets is false", async () => {
+    globalThis.fetch = vi.fn();
+
+    const tracker = makeTracker({ hasBudgets: false });
+    const result = await tracker.checkBudget("tool", 10_000);
+
+    expect(result.allowed).toBe(true);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+
+    await tracker.shutdown();
+  });
+
+  it("checkBudget calls BudgetClient when hasBudgets is true", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ allowed: true, reservationId: "rsv-1" })),
+    );
+
+    const tracker = makeTracker({ hasBudgets: true });
+    const result = await tracker.checkBudget("tool", 10_000);
+
+    expect(result.allowed).toBe(true);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    await tracker.shutdown();
+  });
+
+  it("checkBudget calls BudgetClient when hasBudgets is undefined (fail-safe)", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ allowed: true })),
+    );
+
+    const tracker = makeTracker(); // no hasBudgets → undefined
+    const result = await tracker.checkBudget("tool", 10_000);
+
+    expect(result.allowed).toBe(true);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+    await tracker.shutdown();
+  });
+
+  it("checkBudget skips budget check when hasBudgets is false even if enforcement enabled", async () => {
+    globalThis.fetch = vi.fn();
+
+    const tracker = makeTracker({ budgetEnforcementEnabled: true, hasBudgets: false });
+    const result = await tracker.checkBudget("tool", 10_000);
+
+    expect(result.allowed).toBe(true);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
 
     await tracker.shutdown();
   });

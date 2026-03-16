@@ -80,31 +80,18 @@ export class EventBatcher {
   private readonly headers: Record<string, string>;
 
   constructor(opts: {
+    apiKey: string;
     backendUrl: string;
     batchSize?: number;
     flushIntervalMs?: number;
-  } & (
-    | { authMode: "api_key"; apiKey: string }
-    | { authMode?: "platform_key"; platformKey: string; userId: string; keyId: string }
-  )) {
+  }) {
     this.backendUrl = opts.backendUrl;
     this.batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
 
-    if ("apiKey" in opts && opts.authMode === "api_key") {
-      this.headers = {
-        "Content-Type": "application/json",
-        "x-nullspend-key": opts.apiKey,
-      };
-    } else if ("platformKey" in opts) {
-      this.headers = {
-        "Content-Type": "application/json",
-        "x-nullspend-auth": opts.platformKey,
-        "x-nullspend-user-id": opts.userId,
-        "x-nullspend-key-id": opts.keyId,
-      };
-    } else {
-      this.headers = { "Content-Type": "application/json" };
-    }
+    this.headers = {
+      "Content-Type": "application/json",
+      "x-nullspend-key": opts.apiKey,
+    };
 
     const interval = opts.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
     this.flushTimer = setInterval(() => this.flush(), interval);
@@ -205,28 +192,15 @@ export class BudgetClient {
   private lastGoodAt = 0;
 
   constructor(opts: {
+    apiKey: string;
     backendUrl: string;
-  } & (
-    | { authMode: "api_key"; apiKey: string }
-    | { authMode?: "platform_key"; platformKey: string; userId: string; keyId: string }
-  )) {
+  }) {
     this.backendUrl = opts.backendUrl;
 
-    if ("apiKey" in opts && opts.authMode === "api_key") {
-      this.headers = {
-        "Content-Type": "application/json",
-        "x-nullspend-key": opts.apiKey,
-      };
-    } else if ("platformKey" in opts) {
-      this.headers = {
-        "Content-Type": "application/json",
-        "x-nullspend-auth": opts.platformKey,
-        "x-nullspend-user-id": opts.userId,
-        "x-nullspend-key-id": opts.keyId,
-      };
-    } else {
-      this.headers = { "Content-Type": "application/json" };
-    }
+    this.headers = {
+      "Content-Type": "application/json",
+      "x-nullspend-key": opts.apiKey,
+    };
   }
 
   async check(
@@ -432,12 +406,8 @@ export interface CostTrackerConfig {
   serverName: string;
   budgetEnforcementEnabled: boolean;
   toolCostOverrides: Record<string, number>;
-  // Auth: either API key (new) or platform key (legacy)
-  authMode: "api_key" | "platform_key";
-  apiKey?: string;
-  platformKey?: string;
-  userId?: string;
-  keyId?: string;
+  apiKey: string;
+  hasBudgets?: boolean;
 }
 
 export class CostTracker {
@@ -449,17 +419,13 @@ export class CostTracker {
   constructor(config: CostTrackerConfig) {
     this.config = config;
 
-    const authOpts = config.authMode === "api_key"
-      ? { authMode: "api_key" as const, apiKey: config.apiKey! }
-      : { platformKey: config.platformKey!, userId: config.userId!, keyId: config.keyId! };
-
     this.batcher = new EventBatcher({
       backendUrl: config.backendUrl,
-      ...authOpts,
+      apiKey: config.apiKey,
     });
     this.budgetClient = new BudgetClient({
       backendUrl: config.backendUrl,
-      ...authOpts,
+      apiKey: config.apiKey,
     });
   }
 
@@ -488,6 +454,9 @@ export class CostTracker {
     estimateMicrodollars: number,
   ): Promise<BudgetCheckResponse> {
     if (!this.config.budgetEnforcementEnabled) {
+      return { allowed: true };
+    }
+    if (this.config.hasBudgets === false) {
       return { allowed: true };
     }
     return this.budgetClient.check(

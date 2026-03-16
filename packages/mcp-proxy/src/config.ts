@@ -10,15 +10,10 @@ export interface ProxyConfig {
   approvalTimeoutSeconds: number;
   // Cost tracking
   backendUrl: string;
-  platformKey: string;
-  userId: string;
-  keyId: string;
   serverName: string;
   costTrackingEnabled: boolean;
   budgetEnforcementEnabled: boolean;
   toolCostOverrides: Record<string, number>;
-  // Auth mode: "api_key" (new, 3 env vars) or "platform_key" (legacy, 7 env vars)
-  authMode: "api_key" | "platform_key";
 }
 
 const DEFAULT_AGENT_ID = "mcp-proxy";
@@ -62,33 +57,6 @@ export function loadConfig(): ProxyConfig {
   const budgetEnforcementEnabled =
     process.env.NULLSPEND_BUDGET_ENFORCEMENT !== "false";
 
-  const backendUrl = process.env.NULLSPEND_BACKEND_URL ?? "";
-  const platformKey = process.env.NULLSPEND_PLATFORM_KEY ?? "";
-  const userId = process.env.NULLSPEND_USER_ID ?? "";
-  const keyId = process.env.NULLSPEND_KEY_ID ?? "";
-
-  // Determine auth mode: legacy (platform key) or new (API key)
-  const hasLegacyVars = !!(backendUrl && platformKey && userId && keyId);
-  let authMode: "api_key" | "platform_key" = "api_key";
-
-  if (hasLegacyVars) {
-    authMode = "platform_key";
-    // Emit deprecation warnings for old env vars
-    const deprecated = [
-      ["NULLSPEND_BACKEND_URL", "Remove it — the proxy routes through NULLSPEND_URL automatically."],
-      ["NULLSPEND_PLATFORM_KEY", "NULLSPEND_API_KEY is used for all auth. Remove it."],
-      ["NULLSPEND_USER_ID", "Identity is derived from your API key. Remove it."],
-      ["NULLSPEND_KEY_ID", "Identity is derived from your API key. Remove it."],
-    ] as const;
-    for (const [name, reason] of deprecated) {
-      if (process.env[name]) {
-        process.stderr.write(
-          `[nullspend-proxy] DEPRECATED: ${name} is no longer needed. ${reason}\n`,
-        );
-      }
-    }
-  }
-
   const serverNameRaw =
     process.env.NULLSPEND_SERVER_NAME ?? upstreamCommand!;
   const serverName = serverNameRaw.trim();
@@ -120,15 +88,11 @@ export function loadConfig(): ProxyConfig {
     gatedTools,
     passthroughTools,
     approvalTimeoutSeconds,
-    backendUrl: hasLegacyVars ? backendUrl : nullspendUrl!,
-    platformKey,
-    userId,
-    keyId,
+    backendUrl: nullspendUrl!,
     serverName,
     costTrackingEnabled,
     budgetEnforcementEnabled,
     toolCostOverrides,
-    authMode,
   };
 }
 

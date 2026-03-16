@@ -90,43 +90,37 @@ async function main() {
 
   let costTracker: CostTracker | undefined;
   if (config.costTrackingEnabled) {
-    // Resolve identity for API key auth mode
-    let resolvedUserId = config.userId;
-    let resolvedKeyId = config.keyId;
+    log("Resolving identity from API key...");
+    let hasBudgets = true;
 
-    if (config.authMode === "api_key") {
-      log("Resolving identity from API key...");
-      try {
-        const resp = await fetch(`${config.nullspendUrl}/api/auth/introspect`, {
-          headers: { "x-nullspend-key": config.nullspendApiKey },
-          signal: AbortSignal.timeout(5_000),
-        });
-        if (!resp.ok) {
-          log(`API key introspection failed (${resp.status}). Create a managed key at ${config.nullspendUrl}/app/settings.`);
-          process.exit(1);
-        }
-        const identity = (await resp.json()) as { userId: string; keyId: string; dev?: boolean };
-        resolvedUserId = identity.userId;
-        resolvedKeyId = identity.keyId;
-        log(`Authenticated as userId=${resolvedUserId}, keyId=${resolvedKeyId}${identity.dev ? " (dev mode)" : ""}`);
-      } catch (err) {
-        log(`API key introspection failed: ${err instanceof Error ? err.message : String(err)}`);
+    try {
+      const resp = await fetch(`${config.nullspendUrl}/api/auth/introspect`, {
+        headers: { "x-nullspend-key": config.nullspendApiKey },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!resp.ok) {
+        log(`API key introspection failed (${resp.status}). Create a managed key at ${config.nullspendUrl}/app/settings.`);
         process.exit(1);
       }
+      const identity = (await resp.json()) as {
+        userId: string; keyId: string; dev?: boolean; hasBudgets?: boolean;
+      };
+      hasBudgets = identity.hasBudgets ?? true;
+      log(`Authenticated as userId=${identity.userId}, keyId=${identity.keyId}${identity.dev ? " (dev mode)" : ""}`);
+    } catch (err) {
+      log(`API key introspection failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
     }
-
-    const authConfig = config.authMode === "api_key"
-      ? { authMode: "api_key" as const, apiKey: config.nullspendApiKey }
-      : { authMode: "platform_key" as const, platformKey: config.platformKey, userId: resolvedUserId, keyId: resolvedKeyId };
 
     costTracker = new CostTracker({
       backendUrl: config.backendUrl,
+      apiKey: config.nullspendApiKey,
       serverName: config.serverName,
       budgetEnforcementEnabled: config.budgetEnforcementEnabled,
       toolCostOverrides: config.toolCostOverrides,
-      ...authConfig,
+      hasBudgets,
     });
-    log(`Cost tracking enabled (backend: ${config.backendUrl}, server: ${config.serverName}, auth: ${config.authMode})`);
+    log(`Cost tracking enabled (server: ${config.serverName}, hasBudgets: ${hasBudgets})`);
 
     // Register discovered tools with dashboard and fetch user-configured costs
     const registry = new ToolCostRegistry({
