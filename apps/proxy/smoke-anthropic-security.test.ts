@@ -10,7 +10,6 @@ import postgres from "postgres";
 import {
   BASE,
   ANTHROPIC_API_KEY,
-  NULLSPEND_API_KEY,
   NULLSPEND_SMOKE_USER_ID,
   DATABASE_URL,
   anthropicAuthHeaders,

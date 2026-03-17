@@ -245,7 +245,7 @@ describe("POST /api/slack/callback", () => {
       user: { id: "U1234" },
       actions: [{ action_id: "approve_action", value: ACTION_ID }],
     });
-    const res = await POST(makeSignedRequest(body));
+    const _res = await POST(makeSignedRequest(body));
 
     expect(mockedApproveAction).toHaveBeenCalledWith(
       ACTION_ID,
@@ -495,7 +495,7 @@ describe("POST /api/slack/callback", () => {
         { action_id: "reject_action", value: ACTION_ID },
       ],
     });
-    const res = await POST(makeSignedRequest(body));
+    const _res = await POST(makeSignedRequest(body));
 
     expect(mockedApproveAction).toHaveBeenCalledTimes(1);
     expect(mockedRejectAction).not.toHaveBeenCalled();

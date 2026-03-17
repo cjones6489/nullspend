@@ -10,6 +10,7 @@ const eslintConfig = [
     "packages/db/dist/**",
     "apps/*/dist/**",
     "apps/*/.wrangler/**",
+    "apps/*/worker-configuration.d.ts",
   ] },
   ...nextConfig,
   ...tseslint.configs.recommended,
@@ -17,7 +18,7 @@ const eslintConfig = [
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
       ],
     },
   },

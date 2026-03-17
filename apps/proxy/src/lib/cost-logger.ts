@@ -14,7 +14,7 @@ const CONNECTION_TIMEOUT_MS = 5_000;
  * (127.0.0.1) in BOTH production and local dev, so hostname-based
  * detection is unreliable. Instead we use an explicit opt-out flag.
  */
-export function isLocalConnection(connectionString: string): boolean {
+export function isLocalConnection(_connectionString: string): boolean {
   const globals = globalThis as Record<string, unknown>;
   if (globals.__FORCE_DB_PERSIST) return false;
   if (globals.__SKIP_DB_PERSIST) return true;

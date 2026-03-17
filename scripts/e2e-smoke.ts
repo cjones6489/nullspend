@@ -754,7 +754,7 @@ function vi_fn() {
 async function testProposeAndWaitTimeout() {
   let threw = false;
   let errorName = "";
-  let actionId: string | undefined;
+  let _actionId: string | undefined;
 
   try {
     await sdk.proposeAndWait({
@@ -1158,7 +1158,7 @@ async function main() {
       console.error(`Server returned ${res.status}. Is the dev server running?`);
       process.exit(1);
     }
-  } catch (err) {
+  } catch (_err) {
     console.error(`Cannot reach ${BASE_URL}. Start the dev server first: pnpm dev`);
     process.exit(1);
   }

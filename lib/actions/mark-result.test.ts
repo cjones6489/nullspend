@@ -51,7 +51,7 @@ describe("markResult", () => {
   });
 
   it("marks an approved action as executing", async () => {
-    const now = new Date();
+    const _now = new Date();
     mockTxSelect.mockResolvedValue([
       { id: "action-1", status: "approved" },
     ]);

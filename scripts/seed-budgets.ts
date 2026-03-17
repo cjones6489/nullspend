@@ -8,7 +8,7 @@
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { sql as dsql, isNull, eq, and } from "drizzle-orm";
+import { sql as dsql, isNull } from "drizzle-orm";
 import * as schema from "../packages/db/src/schema";
 
 const { apiKeys, budgets } = schema;

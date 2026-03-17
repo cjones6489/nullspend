@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type Stripe from "stripe";
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),

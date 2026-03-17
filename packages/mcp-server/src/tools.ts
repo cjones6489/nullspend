@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { NullSpend, TimeoutError, waitWithAbort } from "@nullspend/sdk";
-import type { ActionRecord } from "@nullspend/sdk";
 import type { McpServerConfig } from "./config.js";
 import {
   successResult,

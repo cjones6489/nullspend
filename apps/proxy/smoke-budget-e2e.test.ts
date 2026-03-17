@@ -22,9 +22,6 @@ import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, NULLSPEND_SMOKE_USER_ID, authH
 describe("End-to-end budget enforcement", () => {
   let redis: Redis;
   let sql: postgres.Sql;
-  const budgetKey = `{budget}:user:${NULLSPEND_SMOKE_USER_ID}`;
-  const noneKey = `{budget}:user:${NULLSPEND_SMOKE_USER_ID}:none`;
-
   const keysToCleanup: string[] = [];
 
   function trackKey(key: string) {

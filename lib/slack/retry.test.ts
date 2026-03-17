@@ -109,9 +109,6 @@ describe("retryWithBackoff", () => {
   });
 
   it("backoff delay increases between retries", async () => {
-    const delays: number[] = [];
-    const originalSetTimeout = globalThis.setTimeout;
-
     // Spy on setTimeout to track delay values
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 

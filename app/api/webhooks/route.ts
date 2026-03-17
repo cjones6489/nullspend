@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { and, count, eq, desc } from "drizzle-orm";
+import { count, eq, desc } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";

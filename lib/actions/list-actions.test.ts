@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listActions } from "@/lib/actions/list-actions";
 import { bulkExpireActions } from "@/lib/actions/expiration";
 import { getDb } from "@/lib/db/client";
-import { serializeAction } from "@/lib/actions/serialize-action";
 
 vi.mock("@/lib/actions/expiration", () => ({
   bulkExpireActions: vi.fn(),

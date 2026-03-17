@@ -18,7 +18,7 @@
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, isNull, inArray, gte, desc, sql } from "drizzle-orm";
+import { eq, isNull, inArray, desc, sql } from "drizzle-orm";
 import * as schema from "../packages/db/src/schema";
 import {
   getModelPricing,
@@ -253,7 +253,7 @@ async function testMultiModelCalls(ctx: TestContext) {
   }
 }
 
-async function testMathVerification(ctx: TestContext) {
+async function testMathVerification(_ctx: TestContext) {
   console.log("\n════════════════════════════════════════");
   console.log("TEST 2: Cost Math Verification");
   console.log("════════════════════════════════════════");

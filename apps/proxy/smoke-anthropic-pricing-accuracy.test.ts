@@ -340,7 +340,7 @@ describe("Anthropic pricing accuracy", () => {
       "claude-opus-4-6": { input: 5.00, cached: 0.50, output: 25.00 },
     };
 
-    for (const [model, rates] of Object.entries(models)) {
+    for (const [_model, rates] of Object.entries(models)) {
       expect(rates.input).toBeGreaterThan(0);
       expect(rates.cached).toBeGreaterThan(0);
       expect(rates.output).toBeGreaterThan(0);

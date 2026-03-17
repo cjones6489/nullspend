@@ -28,7 +28,6 @@ import * as schema from "../packages/db/src/schema";
 import {
   getModelPricing,
   costComponent,
-  isKnownModel,
 } from "../packages/cost-engine/src/pricing";
 
 const { apiKeys, costEvents } = schema;
@@ -99,7 +98,7 @@ async function testFloatingPointPrecision() {
 
   for (const { tokens, rate, label } of cases) {
     const result = costComponent(tokens, rate);
-    const expected = tokens * rate;
+    const _expected = tokens * rate;
     assert(typeof result === "number", `${label}: returns number`);
     assert(!isNaN(result), `${label}: not NaN`);
     assert(isFinite(result), `${label}: is finite`);
@@ -144,7 +143,7 @@ async function testIntegerBoundaries() {
   // Postgres integer = 32-bit signed: max 2,147,483,647
   // Postgres bigint = 64-bit signed but Drizzle mode:"number" uses JS number (safe up to 2^53)
   const MAX_INT32 = 2_147_483_647;
-  const LARGE_BIGINT = Number.MAX_SAFE_INTEGER; // 9007199254740991
+  const _LARGE_BIGINT = Number.MAX_SAFE_INTEGER; // 9007199254740991
 
   // costComponent with max tokens
   const maxTokenCost = costComponent(MAX_INT32, 0.15);

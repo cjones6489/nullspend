@@ -73,8 +73,8 @@ const RAW_KEY_B = "ask_" + randomBytes(16).toString("hex");
 const HASH_A = createHash("sha256").update(RAW_KEY_A).digest("hex");
 const HASH_B = createHash("sha256").update(RAW_KEY_B).digest("hex");
 
-let KEY_ID_A: string;
-let KEY_ID_B: string;
+let _KEY_ID_A: string;
+let _KEY_ID_B: string;
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -159,14 +159,14 @@ async function setup() {
     VALUES (${USER_A}, 'e2e-key-a', ${HASH_A}, ${RAW_KEY_A.slice(0, 12)})
     RETURNING id
   `;
-  KEY_ID_A = rowA.id;
+  _KEY_ID_A = rowA.id;
 
   const [rowB] = await sql`
     INSERT INTO api_keys (user_id, name, key_hash, key_prefix)
     VALUES (${USER_B}, 'e2e-key-b', ${HASH_B}, ${RAW_KEY_B.slice(0, 12)})
     RETURNING id
   `;
-  KEY_ID_B = rowB.id;
+  _KEY_ID_B = rowB.id;
 }
 
 // ---------------------------------------------------------------------------

@@ -21,12 +21,11 @@
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, isNull, sql, and, gte, desc } from "drizzle-orm";
+import { eq, isNull, sql, and } from "drizzle-orm";
 import * as schema from "../packages/db/src/schema";
 import {
   getModelPricing,
   costComponent,
-  isKnownModel,
 } from "../packages/cost-engine/src/pricing";
 import { calculateOpenAICost } from "../apps/proxy/src/lib/cost-calculator";
 
@@ -436,7 +435,7 @@ async function testSQLInjection(ctx: TestContext) {
 
       const storedValue = (readBack as Record<string, unknown>)[field];
       assert(storedValue === value, `SQLi in ${field}: stored literally, not executed`);
-    } catch (err) {
+    } catch (_err) {
       // If it errors, that's also fine — it means the injection was neutralized
       assert(true, `SQLi in ${field}: rejected or escaped`);
     }
@@ -838,7 +837,7 @@ async function testAPIResilience(ctx: TestContext) {
       body: "{invalid json",
     });
     assert(!res.ok, `Malformed JSON: HTTP ${res.status}`);
-  } catch (err) {
+  } catch (_err) {
     assert(true, `Malformed JSON: rejected`);
   }
 
@@ -857,7 +856,7 @@ async function testAPIResilience(ctx: TestContext) {
       }),
     });
     assert(!res.ok, `max_tokens=0: HTTP ${res.status}`);
-  } catch (err) {
+  } catch (_err) {
     assert(true, `max_tokens=0: rejected`);
   }
 }

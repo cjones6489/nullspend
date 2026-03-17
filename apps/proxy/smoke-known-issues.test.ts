@@ -208,7 +208,7 @@ describe("Known issues: connection exhaustion & waitUntil reliability", () => {
   }, 60_000);
 
   it("two distinct requests produce exactly 2 distinct cost events", async () => {
-    const before = new Date();
+    const _before = new Date();
     const requestIds: string[] = [];
 
     for (let i = 0; i < 2; i++) {

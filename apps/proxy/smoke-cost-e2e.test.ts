@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
-import { BASE, OPENAI_API_KEY, DATABASE_URL, authHeaders, isServerUp, waitForCostEvent, countCostEventsSince } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, DATABASE_URL, authHeaders, isServerUp, waitForCostEvent } from "./smoke-test-helpers.js";
 
 describe("End-to-end cost verification", () => {
   let sql: postgres.Sql;
@@ -121,7 +121,7 @@ describe("End-to-end cost verification", () => {
   }, 30_000);
 
   it("5 rapid requests all produce cost_events rows", async () => {
-    const before = new Date();
+    const _before = new Date();
     const requestIds: string[] = [];
 
     const requests = Array.from({ length: 5 }, (_, i) =>
@@ -178,9 +178,7 @@ describe("End-to-end cost verification", () => {
     // Wait to ensure no async cost logging happens
     await new Promise((r) => setTimeout(r, 3_000));
 
-    const countAfter = await countCostEventsSince(sql, before);
-    // Could be 0 or there could be events from other tests running concurrently,
-    // but we verify no event has our specific auth-failure pattern by checking
+    // Verify no event has our specific auth-failure pattern by checking
     // that no new event was created in this narrow window for the wrong key
     const rows = await sql`
       SELECT * FROM cost_events

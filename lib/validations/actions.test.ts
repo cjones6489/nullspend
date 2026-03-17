@@ -6,7 +6,6 @@ import {
   listActionsQuerySchema,
   markResultInputSchema,
   MAX_EXPIRES_SECONDS,
-  MAX_JSON_DEPTH,
   isWithinJsonDepth,
 } from "@/lib/validations/actions";
 

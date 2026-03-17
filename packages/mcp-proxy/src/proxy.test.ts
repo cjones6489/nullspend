@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ProxyConfig } from "./config.js";
 import type { GateResult } from "./gate.js";
 
-let mockCreateAction = vi.fn();
-let mockGetAction = vi.fn();
-let mockMarkResult = vi.fn();
+const mockCreateAction = vi.fn();
+const mockGetAction = vi.fn();
+const mockMarkResult = vi.fn();
 
 vi.mock("@nullspend/sdk", () => {
   class MockNullSpend {

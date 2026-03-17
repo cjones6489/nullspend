@@ -280,7 +280,7 @@ describe("Cloudflare runtime edge cases", () => {
     }, 120_000);
 
     it("handles 3 concurrent streaming + 3 concurrent non-streaming requests", async () => {
-      const streamReqs = Array.from({ length: 3 }, (_, i) =>
+      const streamReqs = Array.from({ length: 3 }, (_, _i) =>
         fetch(`${BASE}/v1/chat/completions`, {
           method: "POST",
           headers: authHeaders(),
@@ -288,7 +288,7 @@ describe("Cloudflare runtime edge cases", () => {
         }),
       );
 
-      const nonStreamReqs = Array.from({ length: 3 }, (_, i) =>
+      const nonStreamReqs = Array.from({ length: 3 }, (_, _i) =>
         fetch(`${BASE}/v1/chat/completions`, {
           method: "POST",
           headers: authHeaders(),

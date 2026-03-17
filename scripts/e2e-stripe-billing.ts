@@ -63,7 +63,6 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID;
-const STRIPE_TEAM_PRICE_ID = process.env.STRIPE_TEAM_PRICE_ID;
 const BASE_URL = process.env.NULLSPEND_BASE_URL ?? "http://127.0.0.1:3000";
 
 if (!DATABASE_URL) { console.error("DATABASE_URL is not set."); process.exit(1); }
@@ -77,13 +76,8 @@ if (!STRIPE_PRO_PRICE_ID) { console.error("STRIPE_PRO_PRICE_ID is not set."); pr
 
 const sql = postgres(DATABASE_URL, { prepare: false });
 
-// We use Stripe SDK directly to construct webhook events
-import Stripe from "stripe";
-const stripe = new Stripe(STRIPE_SECRET_KEY);
-
 // Test user ID — matches what NULLSPEND_DEV_MODE resolves to
 const TEST_USER_ID = process.env.NULLSPEND_DEV_ACTOR ?? "e2e-stripe-test-user";
-const TEST_EMAIL = "e2e-stripe@nullspend.test";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -203,7 +197,7 @@ async function testCheckoutSessionCreation() {
 }
 
 async function testWebhookCheckoutCompleted() {
-  const now = Math.floor(Date.now() / 1000);
+  const _now = Math.floor(Date.now() / 1000);
   const res = await sendWebhookEvent("checkout.session.completed", {
     id: "cs_e2e_test",
     metadata: { userId: TEST_USER_ID, tier: "pro" },

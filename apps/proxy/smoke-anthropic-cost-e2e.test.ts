@@ -21,7 +21,6 @@ import {
   anthropicAuthHeaders,
   isServerUp,
   waitForCostEvent,
-  countCostEventsSince,
 } from "./smoke-test-helpers.js";
 
 describe("Anthropic end-to-end cost verification", () => {

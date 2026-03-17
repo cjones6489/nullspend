@@ -257,7 +257,7 @@ describe("Load tests", () => {
       return;
     }
 
-    const before = new Date();
+    const _before = new Date();
     const requestIds: string[] = [];
 
     // Send 10 concurrent requests

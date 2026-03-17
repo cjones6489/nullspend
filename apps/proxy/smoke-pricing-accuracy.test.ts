@@ -211,7 +211,7 @@ describe("Pricing accuracy", () => {
     // OpenAI does not guarantee caching, so we just verify the cost event
     // properly records whatever cached_input_tokens OpenAI returns and
     // the cost formula uses the cached rate when applicable
-    const cached1 = Number(row1!.cached_input_tokens);
+    const _cached1 = Number(row1!.cached_input_tokens);
     const cached2 = Number(row2!.cached_input_tokens);
 
     if (cached2 > 0) {
@@ -303,7 +303,7 @@ describe("Pricing accuracy", () => {
   }, 30_000);
 
   it("our pricing data is internally consistent (no negative or NaN values)", async () => {
-    for (const [model, rates] of Object.entries(PRICING)) {
+    for (const [_model, rates] of Object.entries(PRICING)) {
       expect(rates.inputPerMTok).toBeGreaterThan(0);
       expect(rates.cachedInputPerMTok).toBeGreaterThan(0);
       expect(rates.outputPerMTok).toBeGreaterThan(0);
