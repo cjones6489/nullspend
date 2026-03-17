@@ -21,6 +21,7 @@
     "e2e": "tsx scripts/e2e-smoke.ts",
     "e2e:auth": "tsx scripts/e2e-auth-hardening.ts",
     "e2e:observability": "tsx scripts/e2e-observability.ts",
+    "e2e:resilience": "tsx scripts/e2e-resilience.ts",
     "proxy:dev": "pnpm --filter @nullspend/proxy dev",
     "proxy:deploy": "pnpm --filter @nullspend/proxy deploy",
     "proxy:test": "pnpm --filter @nullspend/proxy test",

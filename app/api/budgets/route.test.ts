@@ -12,6 +12,11 @@ vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(),
 }));
 
+vi.mock("@/lib/observability/sentry", () => ({
+  captureExceptionWithContext: vi.fn(),
+  addSentryBreadcrumb: vi.fn(),
+}));
+
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 const mockedGetDb = vi.mocked(getDb);
 
@@ -29,6 +34,10 @@ function makeBudgetRow(overrides: Record<string, unknown> = {}) {
     updatedAt: new Date("2026-03-01T00:00:00Z"),
     ...overrides,
   };
+}
+
+function makeRequest(path = "/api/budgets") {
+  return new Request(`http://localhost${path}`);
 }
 
 describe("GET /api/budgets", () => {
@@ -55,7 +64,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([userBudget]);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.data).toHaveLength(1);
@@ -75,7 +84,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([{ id: "key-123" }])
       .mockResolvedValueOnce([makeBudgetRow(), keyBudget]);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json.data).toHaveLength(2);
@@ -84,7 +93,7 @@ describe("GET /api/budgets", () => {
   it("returns 401 when session is not authenticated", async () => {
     mockedResolveSessionUserId.mockRejectedValue(new Error("Unauthorized"));
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     expect(response.status).toBe(500);
   });
 
@@ -94,7 +103,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([makeBudgetRow()]);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     const json = await response.json();
     expect(json.data[0].createdAt).toBe("2026-01-01T00:00:00.000Z");
     expect(json.data[0].currentPeriodStart).toBe("2026-03-01T00:00:00.000Z");
@@ -106,7 +115,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([makeBudgetRow({ currentPeriodStart: null })]);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     const json = await response.json();
     expect(json.data[0].currentPeriodStart).toBeNull();
   });
@@ -117,7 +126,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     const json = await response.json();
     expect(json.data).toEqual([]);
   });
@@ -128,7 +137,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([makeBudgetRow()]);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     const json = await response.json();
     expect(json.data[0].updatedAt).toBe("2026-03-01T00:00:00.000Z");
   });
@@ -139,7 +148,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([makeBudgetRow()]);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     const json = await response.json();
     const budget = json.data[0];
     expect(budget).toHaveProperty("id");
@@ -172,7 +181,7 @@ describe("GET /api/budgets", () => {
       .mockResolvedValueOnce([{ id: "key-aaa" }, { id: "key-bbb" }])
       .mockResolvedValueOnce(budgets);
 
-    const response = await GET();
+    const response = await GET(makeRequest());
     const json = await response.json();
     expect(json.data).toHaveLength(3);
   });

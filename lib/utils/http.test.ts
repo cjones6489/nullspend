@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@sentry/nextjs", () => ({
-  captureException: vi.fn(),
+vi.mock("@/lib/observability/sentry", () => ({
+  captureExceptionWithContext: vi.fn(),
 }));
 
 vi.mock("@/lib/observability", () => {
@@ -17,7 +17,7 @@ vi.mock("@/lib/observability", () => {
   };
 });
 
-import * as Sentry from "@sentry/nextjs";
+import { captureExceptionWithContext } from "@/lib/observability/sentry";
 import { getLogger } from "@/lib/observability";
 import { handleRouteError, readJsonBody } from "./http";
 
@@ -41,7 +41,7 @@ describe("handleRouteError", () => {
       { err: error },
       "Unhandled route error",
     );
-    expect(Sentry.captureException).toHaveBeenCalledWith(error);
+    expect(captureExceptionWithContext).toHaveBeenCalledWith(error);
   });
 
   it("does NOT call Sentry for 400 errors (ZodError)", async () => {
@@ -57,7 +57,7 @@ describe("handleRouteError", () => {
     const response = handleRouteError(error!);
 
     expect(response.status).toBe(400);
-    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
   });
 
   it("does NOT call Sentry for 401 errors (ApiKeyError)", async () => {
@@ -66,7 +66,7 @@ describe("handleRouteError", () => {
     const response = handleRouteError(error);
 
     expect(response.status).toBe(401);
-    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
   });
 
   it("does NOT call Sentry for 404 errors (ActionNotFoundError)", async () => {
@@ -75,7 +75,7 @@ describe("handleRouteError", () => {
     const response = handleRouteError(error);
 
     expect(response.status).toBe(404);
-    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
   });
 
   it("does NOT call Sentry for 403 errors (ForbiddenError)", async () => {
@@ -84,7 +84,23 @@ describe("handleRouteError", () => {
     const response = handleRouteError(error);
 
     expect(response.status).toBe(403);
-    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 with Retry-After for CircuitOpenError (no Sentry)", async () => {
+    const { CircuitOpenError } = await import("@/lib/resilience/circuit-breaker");
+    const error = new CircuitOpenError("supabase-auth");
+    const response = handleRouteError(error);
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error).toBe("Service temporarily unavailable.");
+    expect(response.headers.get("Retry-After")).toBe("30");
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      { err: error },
+      "Circuit breaker open — returning 503",
+    );
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
   });
 
   it("logs SupabaseEnvError as 500 but does NOT call Sentry", async () => {
@@ -97,7 +113,7 @@ describe("handleRouteError", () => {
       { err: error },
       "Supabase configuration error",
     );
-    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
   });
 
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import * as Sentry from "@sentry/nextjs";
+import { captureExceptionWithContext } from "@/lib/observability/sentry";
 import { ZodError } from "zod";
 
 import {
@@ -15,6 +15,7 @@ import {
   SupabaseEnvError,
 } from "@/lib/auth/errors";
 import { getLogger } from "@/lib/observability";
+import { CircuitOpenError } from "@/lib/resilience/circuit-breaker";
 
 class InvalidJsonBodyError extends Error {
   constructor() {
@@ -127,6 +128,14 @@ export function handleRouteError(error: unknown) {
     return NextResponse.json({ error: error.message }, { status: 403 });
   }
 
+  if (error instanceof CircuitOpenError) {
+    getLogger("http").warn({ err: error }, "Circuit breaker open — returning 503");
+    return NextResponse.json(
+      { error: "Service temporarily unavailable." },
+      { status: 503, headers: { "Retry-After": "30" } },
+    );
+  }
+
   if (error instanceof SupabaseEnvError) {
     getLogger("http").error({ err: error }, "Supabase configuration error");
     return NextResponse.json(
@@ -136,7 +145,7 @@ export function handleRouteError(error: unknown) {
   }
 
   getLogger("http").error({ err: error }, "Unhandled route error");
-  Sentry.captureException(error);
+  captureExceptionWithContext(error);
   return NextResponse.json(
     { error: "Internal server error." },
     { status: 500 },

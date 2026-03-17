@@ -12,6 +12,11 @@ vi.mock("@/lib/auth/dual-auth", () => ({
   assertApiKeyOrSession: vi.fn(),
 }));
 
+vi.mock("@/lib/observability/sentry", () => ({
+  captureExceptionWithContext: vi.fn(),
+  addSentryBreadcrumb: vi.fn(),
+}));
+
 const mockedGetAction = vi.mocked(getAction);
 const mockedAssertApiKeyOrSession = vi.mocked(assertApiKeyOrSession);
 

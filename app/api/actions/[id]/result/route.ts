@@ -2,22 +2,23 @@ import { NextResponse } from "next/server";
 
 import { markResult } from "@/lib/actions/mark-result";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
+import { withRequestContext } from "@/lib/observability";
+import { withIdempotency } from "@/lib/resilience/idempotency";
 import {
   actionIdParamsSchema,
   markResultInputSchema,
   mutateActionResponseSchema,
 } from "@/lib/validations/actions";
 import {
-  handleRouteError,
   readJsonBody,
   readRouteParams,
 } from "@/lib/utils/http";
 
-export async function POST(
+export const POST = withRequestContext(async (
   request: Request,
   context: { params: Promise<{ id: string }> },
-) {
-  try {
+) => {
+  return withIdempotency(request, async () => {
     const authResult = await authenticateApiKey(request);
     if (authResult instanceof Response) return authResult;
     const ownerUserId = authResult.userId;
@@ -31,7 +32,5 @@ export async function POST(
       NextResponse.json(mutateActionResponseSchema.parse(action)),
       authResult.rateLimit,
     );
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+  });
+});

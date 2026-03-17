@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { slackConfigs } from "@nullspend/db";
 import { buildPendingMessage, buildTestMessage } from "@/lib/slack/message";
+import { retryWithBackoff } from "@/lib/slack/retry";
 import type { ActionRecord } from "@/lib/validations/actions";
 
 export class SlackConfigNotFoundError extends Error {
@@ -59,7 +60,7 @@ export async function sendSlackNotification(
 
   const dashboardUrl = getDashboardUrl();
   const message = buildPendingMessage(action, dashboardUrl);
-  await postToWebhook(config.webhookUrl, message);
+  await retryWithBackoff(() => postToWebhook(config.webhookUrl, message));
 }
 
 export async function sendSlackTestNotification(

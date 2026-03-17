@@ -28,3 +28,14 @@ export function getRequestId(): string | undefined {
 export function getRequestStore(): RequestStore | undefined {
   return als.getStore();
 }
+
+/**
+ * Set the userId on the current request store (after auth resolves).
+ * No-ops if no ALS store is active.
+ */
+export function setRequestUserId(userId: string): void {
+  const store = als.getStore();
+  if (store) {
+    store.userId = userId;
+  }
+}

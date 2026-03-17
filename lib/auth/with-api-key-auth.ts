@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { assertApiKeyWithIdentity, resolveDevFallbackApiKeyUserId } from "@/lib/auth/api-key";
 import { checkKeyRateLimit } from "@/lib/auth/api-key-rate-limit";
 import { getLogger } from "@/lib/observability";
+import { setRequestUserId } from "@/lib/observability/request-context";
+import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 
 export interface RateLimitInfo {
   limit: number;
@@ -41,12 +43,16 @@ export async function authenticateApiKey(
         { status: 429, headers },
       );
     }
+    setRequestUserId(userId);
+    addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
     return {
       userId, keyId,
       rateLimit: { limit: result.limit!, remaining: result.remaining!, reset: result.reset! },
     };
   }
 
+  setRequestUserId(userId);
+  addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
   return { userId, keyId };
 }
 

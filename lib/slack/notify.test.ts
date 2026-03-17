@@ -9,6 +9,16 @@ vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(),
 }));
 
+// Override retry backoff to use zero delays for fast tests
+vi.mock("@/lib/slack/retry", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/slack/retry")>();
+  return {
+    ...orig,
+    retryWithBackoff: (fn: () => Promise<unknown>, opts?: unknown) =>
+      orig.retryWithBackoff(fn, { ...(opts as object), baseDelayMs: 0, maxDelayMs: 0 }),
+  };
+});
+
 const mockedGetDb = vi.mocked(getDb);
 
 const mockFetch = vi.fn();
@@ -127,13 +137,27 @@ describe("sendSlackNotification", () => {
     ).rejects.toThrow("Slack webhook error 404");
   });
 
-  it("handles fetch network errors", async () => {
+  it("handles fetch network errors (retries exhausted)", async () => {
     mockDbSelect(activeConfig);
-    mockFetch.mockRejectedValue(new Error("Network timeout"));
+    mockFetch.mockRejectedValue(new TypeError("fetch failed"));
 
     await expect(
       sendSlackNotification(makeAction(), "user-123"),
-    ).rejects.toThrow("Network timeout");
+    ).rejects.toThrow("fetch failed");
+
+    // 1 initial + 3 retries = 4 total (TypeError is retryable)
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("retries on transient webhook failure then succeeds", async () => {
+    mockDbSelect(activeConfig);
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 502, text: () => Promise.resolve("Bad Gateway") })
+      .mockResolvedValueOnce({ ok: true });
+
+    await sendSlackNotification(makeAction(), "user-123");
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to NEXT_PUBLIC_SITE_URL when NULLSPEND_URL is not set", async () => {
@@ -197,6 +221,22 @@ describe("sendSlackTestNotification", () => {
 
     await sendSlackTestNotification("user-123");
 
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT retry on webhook failure (synchronous UI feedback)", async () => {
+    mockDbSelect(activeConfig);
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: () => Promise.resolve("Internal Server Error"),
+    });
+
+    await expect(sendSlackTestNotification("user-123")).rejects.toThrow(
+      "Slack webhook error 500",
+    );
+
+    // Should only call once — no retry
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });

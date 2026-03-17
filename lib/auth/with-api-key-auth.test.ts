@@ -29,7 +29,20 @@ vi.mock("@/lib/observability", () => ({
   })),
 }));
 
+vi.mock("@/lib/observability/request-context", () => ({
+  setRequestUserId: vi.fn(),
+}));
+
+vi.mock("@/lib/observability/sentry", () => ({
+  addSentryBreadcrumb: vi.fn(),
+}));
+
+import { setRequestUserId } from "@/lib/observability/request-context";
+import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 import { authenticateApiKey, applyRateLimitHeaders } from "./with-api-key-auth";
+
+const mockedSetRequestUserId = vi.mocked(setRequestUserId);
+const mockedAddSentryBreadcrumb = vi.mocked(addSentryBreadcrumb);
 
 const mockedAssertApiKey = vi.mocked(assertApiKeyWithIdentity);
 const mockedResolveDevFallback = vi.mocked(resolveDevFallbackApiKeyUserId);
@@ -155,6 +168,43 @@ describe("authenticateApiKey", () => {
     mockedAssertApiKey.mockRejectedValue(new ApiKeyError());
 
     await expect(authenticateApiKey(makeRequest())).rejects.toThrow(ApiKeyError);
+  });
+
+  it("sets request userId and adds breadcrumb for managed key", async () => {
+    const resetTime = Date.now() + 60000;
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", keyId: "key-456" });
+    mockedCheckKeyRateLimit.mockResolvedValue({ allowed: true, limit: 60, remaining: 55, reset: resetTime });
+
+    await authenticateApiKey(makeRequest());
+
+    expect(mockedSetRequestUserId).toHaveBeenCalledWith("user-123");
+    expect(mockedAddSentryBreadcrumb).toHaveBeenCalledWith(
+      "auth", "API key authenticated", { keyId: "key-456", userId: "user-123" },
+    );
+  });
+
+  it("sets request userId and adds breadcrumb for dev fallback key", async () => {
+    mockedAssertApiKey.mockResolvedValue(null);
+    mockedResolveDevFallback.mockReturnValue("dev-user");
+
+    await authenticateApiKey(makeRequest());
+
+    expect(mockedSetRequestUserId).toHaveBeenCalledWith("dev-user");
+    expect(mockedAddSentryBreadcrumb).toHaveBeenCalledWith(
+      "auth", "API key authenticated", { keyId: null, userId: "dev-user" },
+    );
+  });
+
+  it("does NOT set userId or breadcrumb on rate limit 429", async () => {
+    const resetTime = Date.now() + 60000;
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", keyId: "key-456" });
+    mockedCheckKeyRateLimit.mockResolvedValue({ allowed: false, limit: 60, remaining: 0, reset: resetTime });
+
+    const result = await authenticateApiKey(makeRequest());
+
+    expect(result).toBeInstanceOf(Response);
+    expect(mockedSetRequestUserId).not.toHaveBeenCalled();
+    expect(mockedAddSentryBreadcrumb).not.toHaveBeenCalled();
   });
 });
 

@@ -1,6 +1,7 @@
 import { computeExpiresAt } from "@/lib/actions/expiration";
 import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
+import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 import { actions } from "@nullspend/db";
 import type { CreateActionInput, ActionRecord } from "@/lib/validations/actions";
 
@@ -35,5 +36,7 @@ export async function createAction(
     })
     .returning();
 
-  return serializeAction(row);
+  const action = serializeAction(row);
+  addSentryBreadcrumb("action", "Action created", { actionId: action.id, actionType: input.actionType });
+  return action;
 }

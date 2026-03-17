@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { createAction } from "@/lib/actions/create-action";
+import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 
 const mockInsertReturning = vi.fn();
 
@@ -17,6 +18,12 @@ vi.mock("@/lib/db/client", () => ({
 vi.mock("@nullspend/db", () => ({
   actions: {},
 }));
+
+vi.mock("@/lib/observability/sentry", () => ({
+  addSentryBreadcrumb: vi.fn(),
+}));
+
+const mockedAddSentryBreadcrumb = vi.mocked(addSentryBreadcrumb);
 
 function makeRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -66,6 +73,10 @@ describe("createAction", () => {
     expect(result.expiresAt).toBe(expiresAt.toISOString());
     expect(result.agentId).toBe("agent-1");
     expect(result.actionType).toBe("http_post");
+
+    expect(mockedAddSentryBreadcrumb).toHaveBeenCalledWith(
+      "action", "Action created", { actionId: "action-1", actionType: "http_post" },
+    );
   });
 
   it("returns null expiresAt when no expiration", async () => {

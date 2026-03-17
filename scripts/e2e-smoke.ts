@@ -47,12 +47,13 @@ function loadEnvLocal() {
 
 loadEnvLocal();
 
+const noCleanup = process.argv.includes("--no-cleanup");
 const DATABASE_URL = process.env.DATABASE_URL;
 const API_KEY = process.env.NULLSPEND_API_KEY;
 const DEV_ACTOR = process.env.NULLSPEND_DEV_ACTOR;
 const BASE_URL = process.env.NULLSPEND_BASE_URL ?? "http://127.0.0.1:3000";
 
-if (!DATABASE_URL) {
+if (!noCleanup && !DATABASE_URL) {
   console.error("DATABASE_URL is not set.");
   process.exit(1);
 }
@@ -69,15 +70,21 @@ if (!DEV_ACTOR) {
 // Clients
 // ---------------------------------------------------------------------------
 
-const sql = postgres(DATABASE_URL, { prepare: false });
+const sql = DATABASE_URL ? postgres(DATABASE_URL, { prepare: false }) : null;
 const sdk = new NullSpend({ baseUrl: BASE_URL, apiKey: API_KEY });
 
 // ---------------------------------------------------------------------------
 // Direct DB helpers (bypass session auth)
 // ---------------------------------------------------------------------------
 
+function requireSql() {
+  if (!sql) throw new Error("DATABASE_URL is required for DB operations (not available with --no-cleanup without DATABASE_URL)");
+  return sql;
+}
+
 async function dbApproveAction(actionId: string, ownerUserId: string) {
-  const rows = await sql`
+  const db = requireSql();
+  const rows = await db`
     UPDATE actions
     SET status = 'approved',
         approved_at = NOW(),
@@ -94,7 +101,8 @@ async function dbApproveAction(actionId: string, ownerUserId: string) {
 }
 
 async function dbRejectAction(actionId: string, ownerUserId: string) {
-  const rows = await sql`
+  const db = requireSql();
+  const rows = await db`
     UPDATE actions
     SET status = 'rejected',
         rejected_at = NOW(),
@@ -111,7 +119,8 @@ async function dbRejectAction(actionId: string, ownerUserId: string) {
 }
 
 async function dbDeleteAction(actionId: string) {
-  await sql`DELETE FROM actions WHERE id = ${actionId}`;
+  const db = requireSql();
+  await db`DELETE FROM actions WHERE id = ${actionId}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +266,8 @@ async function testProposeAndWait() {
   for (let i = 0; i < 30; i++) {
     await sleep(500);
     // Find the pending action by listing recent actions
-    const pending = await sql`
+    const db = requireSql();
+    const pending = await db`
       SELECT id FROM actions
       WHERE agent_id = 'e2e-test-agent'
         AND status = 'pending'
@@ -695,7 +705,8 @@ async function testProposeAndWaitRejection() {
   let rejected = false;
   for (let i = 0; i < 30; i++) {
     await sleep(500);
-    const pending = await sql`
+    const db = requireSql();
+    const pending = await db`
       SELECT id FROM actions
       WHERE agent_id = 'e2e-test-agent'
         AND status = 'pending'
@@ -763,7 +774,8 @@ async function testProposeAndWaitTimeout() {
   }
 
   // Cleanup: find and delete the orphaned action
-  const orphaned = await sql`
+  const db = requireSql();
+  const orphaned = await db`
     SELECT id FROM actions
     WHERE agent_id = 'e2e-test-agent'
       AND metadata_json->>'test' = 'propose-wait-timeout'
@@ -1205,13 +1217,17 @@ async function main() {
   await runTest("Test 31 — 20-level nested payload accepted", testMaxDepthAccepted);
 
   // Cleanup
-  console.log("\nCleaning up test data...");
-  for (const id of cleanupIds) {
-    try {
-      await dbDeleteAction(id);
-    } catch {
-      // Best effort
+  if (!noCleanup && sql) {
+    console.log("\nCleaning up test data...");
+    for (const id of cleanupIds) {
+      try {
+        await dbDeleteAction(id);
+      } catch {
+        // Best effort
+      }
     }
+  } else {
+    console.log("\nSkipping cleanup (--no-cleanup).");
   }
 
   // Summary
@@ -1228,11 +1244,15 @@ async function main() {
     console.log("");
   }
 
-  await sql.end();
+  if (sql) await sql.end();
   process.exit(failed > 0 ? 1 : 0);
 }
 
 main().catch((err) => {
   console.error("\nFatal error:", err);
-  sql.end().finally(() => process.exit(1));
+  if (sql) {
+    sql.end().finally(() => process.exit(1));
+  } else {
+    process.exit(1);
+  }
 });

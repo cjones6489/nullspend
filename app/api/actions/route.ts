@@ -4,6 +4,8 @@ import { createAction } from "@/lib/actions/create-action";
 import { listActions } from "@/lib/actions/list-actions";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
+import { withRequestContext } from "@/lib/observability";
+import { withIdempotency } from "@/lib/resilience/idempotency";
 import { sendSlackNotification } from "@/lib/slack/notify";
 import {
   createActionInputSchema,
@@ -11,28 +13,24 @@ import {
   listActionsQuerySchema,
   listActionsResponseSchema,
 } from "@/lib/validations/actions";
-import { handleRouteError, readJsonBody } from "@/lib/utils/http";
+import { readJsonBody } from "@/lib/utils/http";
 
-export async function GET(request: Request) {
-  try {
-    const ownerUserId = await resolveSessionUserId();
-    const url = new URL(request.url);
-    const query = listActionsQuerySchema.parse({
-      status: url.searchParams.get("status") ?? undefined,
-      statuses: url.searchParams.get("statuses") ?? undefined,
-      limit: url.searchParams.get("limit") ?? undefined,
-      cursor: url.searchParams.get("cursor") ?? undefined,
-    });
-    const result = await listActions({ ...query, ownerUserId });
+export const GET = withRequestContext(async (request: Request) => {
+  const ownerUserId = await resolveSessionUserId();
+  const url = new URL(request.url);
+  const query = listActionsQuerySchema.parse({
+    status: url.searchParams.get("status") ?? undefined,
+    statuses: url.searchParams.get("statuses") ?? undefined,
+    limit: url.searchParams.get("limit") ?? undefined,
+    cursor: url.searchParams.get("cursor") ?? undefined,
+  });
+  const result = await listActions({ ...query, ownerUserId });
 
-    return NextResponse.json(listActionsResponseSchema.parse(result));
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+  return NextResponse.json(listActionsResponseSchema.parse(result));
+});
 
-export async function POST(request: Request) {
-  try {
+export const POST = withRequestContext(async (request: Request) => {
+  return withIdempotency(request, async () => {
     const authResult = await authenticateApiKey(request);
     if (authResult instanceof Response) return authResult;
     const ownerUserId = authResult.userId;
@@ -55,7 +53,5 @@ export async function POST(request: Request) {
       ),
       authResult.rateLimit,
     );
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+  });
+});

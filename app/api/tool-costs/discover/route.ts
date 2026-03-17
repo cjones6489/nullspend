@@ -4,11 +4,13 @@ import { sql } from "drizzle-orm";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { getDb } from "@/lib/db/client";
 import { toolCosts } from "@nullspend/db";
-import { handleRouteError, readJsonBody } from "@/lib/utils/http";
+import { withRequestContext } from "@/lib/observability";
+import { withIdempotency } from "@/lib/resilience/idempotency";
+import { readJsonBody } from "@/lib/utils/http";
 import { discoverToolCostsInputSchema } from "@/lib/validations/tool-costs";
 
-export async function POST(request: Request) {
-  try {
+export const POST = withRequestContext(async (request: Request) => {
+  return withIdempotency(request, async () => {
     const authResult = await authenticateApiKey(request);
     if (authResult instanceof Response) return authResult;
     const userId = authResult.userId;
@@ -64,7 +66,5 @@ export async function POST(request: Request) {
       ),
       authResult.rateLimit,
     );
-  } catch (error) {
-    return handleRouteError(error);
-  }
-}
+  });
+});
