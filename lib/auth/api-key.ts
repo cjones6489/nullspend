@@ -62,6 +62,7 @@ async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
   return { userId: row.userId, keyId: row.id };
 }
 
+/** @internal Use `authenticateApiKey` from `with-api-key-auth.ts` in route handlers */
 export async function assertApiKeyWithIdentity(
   request: Request,
 ): Promise<ApiKeyIdentity | null> {
@@ -77,6 +78,7 @@ export async function assertApiKeyWithIdentity(
   throw new ApiKeyError();
 }
 
+/** @internal Use `authenticateApiKey` from `with-api-key-auth.ts` in route handlers */
 export function resolveDevFallbackApiKeyUserId(): string {
   const devActor = getDevActor();
 

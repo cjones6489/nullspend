@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isWithinJsonDepth, MAX_JSON_DEPTH } from "@/lib/validations/actions";
+
 // --- Request schemas ---
 
 const MAX_COST = Number.MAX_SAFE_INTEGER; // 2^53 - 1; prevents bigint precision loss
@@ -19,7 +21,12 @@ export type UpsertToolCostInput = z.infer<typeof upsertToolCostInputSchema>;
 const discoverToolSchema = z.object({
   name: z.string().trim().min(1),
   description: z.string().nullable().optional(),
-  annotations: z.record(z.string(), z.unknown()).nullable().optional(),
+  annotations: z.record(z.string(), z.unknown())
+    .refine(
+      (val) => isWithinJsonDepth(val, MAX_JSON_DEPTH),
+      { message: `Annotations must not exceed ${MAX_JSON_DEPTH} levels of nesting.` },
+    )
+    .nullable().optional(),
   tierCost: z.number().int().nonnegative().max(MAX_COST),
 });
 

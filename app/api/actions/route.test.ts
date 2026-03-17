@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAction } from "@/lib/actions/create-action";
 import { listActions } from "@/lib/actions/list-actions";
-import {
-  assertApiKeyWithIdentity,
-  resolveDevFallbackApiKeyUserId,
-} from "@/lib/auth/api-key";
+import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { sendSlackNotification } from "@/lib/slack/notify";
 import { GET, POST } from "@/app/api/actions/route";
@@ -18,12 +15,11 @@ vi.mock("@/lib/actions/list-actions", () => ({
   listActions: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/api-key", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/auth/api-key")>();
+vi.mock("@/lib/auth/with-api-key-auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/with-api-key-auth")>();
   return {
     ...actual,
-    assertApiKeyWithIdentity: vi.fn(),
-    resolveDevFallbackApiKeyUserId: vi.fn(),
+    authenticateApiKey: vi.fn(),
   };
 });
 
@@ -37,10 +33,7 @@ vi.mock("@/lib/slack/notify", () => ({
 
 const mockedCreateAction = vi.mocked(createAction);
 const mockedListActions = vi.mocked(listActions);
-const mockedAssertApiKeyWithIdentity = vi.mocked(assertApiKeyWithIdentity);
-const mockedResolveDevFallbackApiKeyUserId = vi.mocked(
-  resolveDevFallbackApiKeyUserId,
-);
+const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 const mockedSendSlackNotification = vi.mocked(sendSlackNotification);
 
@@ -78,9 +71,9 @@ describe("app/api/actions/route", () => {
   });
 
   it("creates actions for the managed API key owner", async () => {
-    mockedAssertApiKeyWithIdentity.mockResolvedValue({
-      keyId: "key-123",
+    mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
+      keyId: "key-123",
     });
     mockedCreateAction.mockResolvedValue(makeActionRecord());
 
@@ -112,8 +105,10 @@ describe("app/api/actions/route", () => {
   });
 
   it("uses the dev actor only for env-key fallback ownership", async () => {
-    mockedAssertApiKeyWithIdentity.mockResolvedValue(null);
-    mockedResolveDevFallbackApiKeyUserId.mockReturnValue("dev-user");
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "dev-user",
+      keyId: null,
+    });
     mockedCreateAction.mockResolvedValue(makeActionRecord());
 
     await POST(
@@ -138,9 +133,9 @@ describe("app/api/actions/route", () => {
   });
 
   it("returns 201 even when Slack notification fails", async () => {
-    mockedAssertApiKeyWithIdentity.mockResolvedValue({
-      keyId: "key-123",
+    mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
+      keyId: "key-123",
     });
     mockedCreateAction.mockResolvedValue(makeActionRecord());
     mockedSendSlackNotification.mockRejectedValue(new Error("Webhook error"));
@@ -163,6 +158,32 @@ describe("app/api/actions/route", () => {
     expect(response.status).toBe(201);
     const json = await response.json();
     expect(json.id).toBe("550e8400-e29b-41d4-a716-446655440000");
+  });
+
+  it("returns 429 when per-key rate limit is exceeded", async () => {
+    const rateLimitResponse = new Response(
+      JSON.stringify({ error: "Too many requests" }),
+      { status: 429, headers: { "Content-Type": "application/json" } },
+    );
+    mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);
+
+    const response = await POST(
+      new Request("http://localhost/api/actions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-nullspend-key": "ask_0123456789abcdef0123456789abcdef",
+        },
+        body: JSON.stringify({
+          agentId: "agent-1",
+          actionType: "http_post",
+          payload: { url: "https://example.com" },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(mockedCreateAction).not.toHaveBeenCalled();
   });
 
   it("lists actions scoped to the resolved session user", async () => {

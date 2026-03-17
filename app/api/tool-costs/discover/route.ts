@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 
-import {
-  assertApiKeyWithIdentity,
-  resolveDevFallbackApiKeyUserId,
-} from "@/lib/auth/api-key";
+import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { getDb } from "@/lib/db/client";
 import { toolCosts } from "@nullspend/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
@@ -12,8 +9,9 @@ import { discoverToolCostsInputSchema } from "@/lib/validations/tool-costs";
 
 export async function POST(request: Request) {
   try {
-    const identity = await assertApiKeyWithIdentity(request);
-    const userId = identity?.userId ?? resolveDevFallbackApiKeyUserId();
+    const authResult = await authenticateApiKey(request);
+    if (authResult instanceof Response) return authResult;
+    const userId = authResult.userId;
 
     const body = await readJsonBody(request);
     const input = discoverToolCostsInputSchema.parse(body);
@@ -59,9 +57,12 @@ export async function POST(request: Request) {
         });
     });
 
-    return NextResponse.json(
-      { registered: input.tools.length },
-      { status: 201 },
+    return applyRateLimitHeaders(
+      NextResponse.json(
+        { registered: input.tools.length },
+        { status: 201 },
+      ),
+      authResult.rateLimit,
     );
   } catch (error) {
     return handleRouteError(error);

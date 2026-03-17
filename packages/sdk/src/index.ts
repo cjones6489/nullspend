@@ -12,6 +12,7 @@ export type {
   MarkResultInput,
   MutateActionResponse,
   ProposeAndWaitOptions,
+  RetryInfo,
   WaitForDecisionOptions,
 } from "./types.js";
 export { ACTION_TYPES, ACTION_STATUSES, TERMINAL_STATUSES } from "./types.js";

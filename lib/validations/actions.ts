@@ -16,18 +16,50 @@ const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
 const MAX_PAYLOAD_BYTES = 64_000;
 const MAX_METADATA_BYTES = 16_000;
 const MAX_RESULT_BYTES = 64_000;
+const MAX_EXPIRES_SECONDS = 2_592_000; // 30 days
+const MAX_JSON_DEPTH = 20;
+
+/**
+ * Checks whether a JSON value exceeds the given nesting depth.
+ * Returns `true` if the value is within the limit.
+ */
+export function isWithinJsonDepth(value: unknown, maxDepth: number = MAX_JSON_DEPTH): boolean {
+  return checkDepth(value, maxDepth, 0);
+}
+
+function checkDepth(value: unknown, maxDepth: number, currentDepth: number): boolean {
+  if (currentDepth > maxDepth) return false;
+  if (value === null || value === undefined || typeof value !== "object") return true;
+
+  if (Array.isArray(value)) {
+    return value.every((item) => checkDepth(item, maxDepth, currentDepth + 1));
+  }
+
+  return Object.values(value as Record<string, unknown>).every(
+    (v) => checkDepth(v, maxDepth, currentDepth + 1),
+  );
+}
 
 const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
 
-const boundedPayloadSchema = jsonObjectSchema.refine(
-  (val) => JSON.stringify(val).length <= MAX_PAYLOAD_BYTES,
-  { message: `Payload must be at most ${MAX_PAYLOAD_BYTES} bytes when serialized.` },
-);
+const boundedPayloadSchema = jsonObjectSchema
+  .refine(
+    (val) => JSON.stringify(val).length <= MAX_PAYLOAD_BYTES,
+    { message: `Payload must be at most ${MAX_PAYLOAD_BYTES} bytes when serialized.` },
+  )
+  .refine(
+    (val) => isWithinJsonDepth(val, MAX_JSON_DEPTH),
+    { message: `Payload must not exceed ${MAX_JSON_DEPTH} levels of nesting.` },
+  );
 
 const boundedMetadataSchema = jsonObjectSchema
   .refine(
     (val) => JSON.stringify(val).length <= MAX_METADATA_BYTES,
     { message: `Metadata must be at most ${MAX_METADATA_BYTES} bytes when serialized.` },
+  )
+  .refine(
+    (val) => isWithinJsonDepth(val, MAX_JSON_DEPTH),
+    { message: `Metadata must not exceed ${MAX_JSON_DEPTH} levels of nesting.` },
   )
   .optional();
 
@@ -35,6 +67,10 @@ const boundedResultSchema = jsonObjectSchema
   .refine(
     (val) => JSON.stringify(val).length <= MAX_RESULT_BYTES,
     { message: `Result must be at most ${MAX_RESULT_BYTES} bytes when serialized.` },
+  )
+  .refine(
+    (val) => isWithinJsonDepth(val, MAX_JSON_DEPTH),
+    { message: `Result must not exceed ${MAX_JSON_DEPTH} levels of nesting.` },
   )
   .optional();
 
@@ -48,7 +84,7 @@ export const createActionInputSchema = z.object({
   actionType: actionTypeSchema,
   payload: boundedPayloadSchema,
   metadata: boundedMetadataSchema,
-  expiresInSeconds: z.number().int().min(0).nullable().optional(),
+  expiresInSeconds: z.number().int().min(0).max(MAX_EXPIRES_SECONDS).nullable().optional(),
 });
 
 export const actionIdParamsSchema = z.object({
@@ -151,6 +187,7 @@ export const mutateActionResponseSchema = z.object({
   executedAt: z.string().nullable().optional(),
 });
 
+export { MAX_EXPIRES_SECONDS, MAX_JSON_DEPTH };
 export type CreateActionInput = z.infer<typeof createActionInputSchema>;
 export type MarkResultInput = z.infer<typeof markResultInputSchema>;
 

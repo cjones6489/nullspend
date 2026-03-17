@@ -40,6 +40,27 @@ export interface NullSpendConfig {
   fetch?: typeof globalThis.fetch;
   /** Per-request timeout in milliseconds. Default: 30000 (30s). Set to 0 to disable. */
   requestTimeoutMs?: number;
+  /** Max retries on transient failures (429, 5xx, network). Default: 2. Set 0 to disable. */
+  maxRetries?: number;
+  /** Base delay between retries in ms. Default: 500. */
+  retryBaseDelayMs?: number;
+  /** Total wall-time cap for all retry attempts in ms. Default: 0 (no cap). */
+  maxRetryTimeMs?: number;
+  /** Called before each retry. Return false to abort retrying. */
+  onRetry?: (info: RetryInfo) => void | boolean;
+}
+
+export interface RetryInfo {
+  /** Zero-based retry attempt (0 = first retry, i.e. second overall request). */
+  attempt: number;
+  /** Delay in ms before this retry fires. */
+  delayMs: number;
+  /** The error that triggered the retry. */
+  error: Error;
+  /** HTTP method of the request. */
+  method: string;
+  /** URL path of the request. */
+  path: string;
 }
 
 // ---------------------------------------------------------------------------

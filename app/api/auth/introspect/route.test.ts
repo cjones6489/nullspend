@@ -1,23 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  assertApiKeyWithIdentity,
-  resolveDevFallbackApiKeyUserId,
-} from "@/lib/auth/api-key";
 import { checkHasBudgets } from "@/lib/auth/check-has-budgets";
 import { getDevActor } from "@/lib/auth/session";
+import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { GET } from "./route";
 
-vi.mock("@/lib/auth/api-key", () => ({
-  assertApiKeyWithIdentity: vi.fn(),
-  resolveDevFallbackApiKeyUserId: vi.fn(),
-  ApiKeyError: class ApiKeyError extends Error {
-    constructor(message = "Invalid or missing API key.") {
-      super(message);
-      this.name = "ApiKeyError";
-    }
-  },
-}));
+vi.mock("@/lib/auth/with-api-key-auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/with-api-key-auth")>();
+  return {
+    ...actual,
+    authenticateApiKey: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/auth/check-has-budgets", () => ({
   checkHasBudgets: vi.fn(),
@@ -27,8 +21,7 @@ vi.mock("@/lib/auth/session", () => ({
   getDevActor: vi.fn(),
 }));
 
-const mockedAssertApiKey = vi.mocked(assertApiKeyWithIdentity);
-const mockedResolveDevFallback = vi.mocked(resolveDevFallbackApiKeyUserId);
+const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedCheckHasBudgets = vi.mocked(checkHasBudgets);
 const mockedGetDevActor = vi.mocked(getDevActor);
 
@@ -47,7 +40,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("managed key returns hasBudgets: true when budgets exist", async () => {
-    mockedAssertApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
     mockedCheckHasBudgets.mockResolvedValue(true);
 
     const res = await GET(makeRequest());
@@ -59,7 +52,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("managed key returns hasBudgets: false when no budgets", async () => {
-    mockedAssertApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
     mockedCheckHasBudgets.mockResolvedValue(false);
 
     const res = await GET(makeRequest());
@@ -71,8 +64,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("dev fallback returns hasBudgets field", async () => {
-    mockedAssertApiKey.mockResolvedValue(null);
-    mockedResolveDevFallback.mockReturnValue("dev-user-456");
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null });
     mockedGetDevActor.mockReturnValue("dev-actor-789");
     mockedCheckHasBudgets.mockResolvedValue(false);
 
@@ -90,8 +82,8 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("missing API key returns 401", async () => {
-    const { ApiKeyError } = await import("@/lib/auth/api-key");
-    mockedAssertApiKey.mockRejectedValue(new ApiKeyError());
+    const { ApiKeyError } = await vi.importActual<typeof import("@/lib/auth/api-key")>("@/lib/auth/api-key");
+    mockedAuthenticateApiKey.mockRejectedValue(new ApiKeyError());
 
     const res = await GET(makeRequest());
     const body = await res.json();
@@ -101,7 +93,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("DB error during budget check returns 500", async () => {
-    mockedAssertApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
     mockedCheckHasBudgets.mockRejectedValue(new Error("connection refused"));
 
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -114,8 +106,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("dev fallback uses devUserId when getDevActor returns undefined", async () => {
-    mockedAssertApiKey.mockResolvedValue(null);
-    mockedResolveDevFallback.mockReturnValue("dev-user-456");
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null });
     mockedGetDevActor.mockReturnValue(undefined);
     mockedCheckHasBudgets.mockResolvedValue(true);
 
@@ -128,11 +119,10 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("dev fallback throws 401 when dev mode is disabled", async () => {
-    const { ApiKeyError } = await import("@/lib/auth/api-key");
-    mockedAssertApiKey.mockResolvedValue(null);
-    mockedResolveDevFallback.mockImplementation(() => {
-      throw new ApiKeyError("Managed API keys are required. The NULLSPEND_API_KEY fallback is development-only.");
-    });
+    const { ApiKeyError } = await vi.importActual<typeof import("@/lib/auth/api-key")>("@/lib/auth/api-key");
+    mockedAuthenticateApiKey.mockRejectedValue(
+      new ApiKeyError("Managed API keys are required. The NULLSPEND_API_KEY fallback is development-only."),
+    );
 
     const res = await GET(makeRequest());
     const body = await res.json();
@@ -143,12 +133,25 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("passes keyId to checkHasBudgets for managed key (checks both user and key budgets)", async () => {
-    mockedAssertApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
     mockedCheckHasBudgets.mockResolvedValue(false);
 
     await GET(makeRequest());
 
     expect(mockedCheckHasBudgets).toHaveBeenCalledWith(MOCK_USER_ID, MOCK_KEY_ID);
     expect(mockedCheckHasBudgets).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 429 when per-key rate limit is exceeded", async () => {
+    const rateLimitResponse = new Response(
+      JSON.stringify({ error: "Too many requests" }),
+      { status: 429, headers: { "Content-Type": "application/json" } },
+    );
+    mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);
+
+    const res = await GET(makeRequest());
+
+    expect(res.status).toBe(429);
+    expect(mockedCheckHasBudgets).not.toHaveBeenCalled();
   });
 });

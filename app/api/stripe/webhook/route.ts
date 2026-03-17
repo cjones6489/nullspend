@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import Stripe from "stripe";
 
 import { getStripe } from "@/lib/stripe/client";
@@ -70,6 +71,12 @@ export async function POST(request: Request) {
       `[NullSpend] ${isTransient ? "Transient" : "Permanent"} error processing webhook event ${event.id} (${event.type}):`,
       err,
     );
+    Sentry.withScope((scope) => {
+      scope.setTag("stripe.eventId", event.id);
+      scope.setTag("stripe.eventType", event.type);
+      scope.setTag("stripe.errorClass", isTransient ? "transient" : "permanent");
+      Sentry.captureException(err);
+    });
     if (isTransient) {
       // Return 500 so Stripe retries — the error may resolve on its own.
       return NextResponse.json(

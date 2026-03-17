@@ -2,11 +2,8 @@ import { NextResponse } from "next/server";
 
 import { createAction } from "@/lib/actions/create-action";
 import { listActions } from "@/lib/actions/list-actions";
-import {
-  assertApiKeyWithIdentity,
-  resolveDevFallbackApiKeyUserId,
-} from "@/lib/auth/api-key";
 import { resolveSessionUserId } from "@/lib/auth/session";
+import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { sendSlackNotification } from "@/lib/slack/notify";
 import {
   createActionInputSchema,
@@ -36,8 +33,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const identity = await assertApiKeyWithIdentity(request);
-    const ownerUserId = identity?.userId ?? resolveDevFallbackApiKeyUserId();
+    const authResult = await authenticateApiKey(request);
+    if (authResult instanceof Response) return authResult;
+    const ownerUserId = authResult.userId;
     const body = await readJsonBody(request);
     const input = createActionInputSchema.parse(body);
     const action = await createAction(input, ownerUserId);
@@ -46,13 +44,16 @@ export async function POST(request: Request) {
       console.error("[NullSpend] Slack notification failed:", err);
     });
 
-    return NextResponse.json(
-      createActionResponseSchema.parse({
-        id: action.id,
-        status: action.status,
-        expiresAt: action.expiresAt,
-      }),
-      { status: 201 },
+    return applyRateLimitHeaders(
+      NextResponse.json(
+        createActionResponseSchema.parse({
+          id: action.id,
+          status: action.status,
+          expiresAt: action.expiresAt,
+        }),
+        { status: 201 },
+      ),
+      authResult.rateLimit,
     );
   } catch (error) {
     return handleRouteError(error);

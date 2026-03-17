@@ -23,7 +23,9 @@ function toResponse(row: typeof toolCosts.$inferSelect) {
 
 export async function GET(request: Request) {
   try {
-    const userId = await assertApiKeyOrSession(request);
+    const authResult = await assertApiKeyOrSession(request);
+    if (authResult instanceof Response) return authResult;
+    const userId = authResult;
     const db = getDb();
 
     const rows = await db

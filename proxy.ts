@@ -3,6 +3,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
 import { createProxySupabaseClient } from "@/lib/auth/supabase";
+import { logger } from "@/lib/observability";
 
 const MAX_BODY_BYTES = 1_048_576; // 1MB
 
@@ -28,6 +29,15 @@ function getRatelimit(): Ratelimit | null {
 }
 
 export async function proxy(request: NextRequest) {
+  const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
+
+  // Attach request ID to any response returned from proxy
+  function withRequestId(response: NextResponse): NextResponse {
+    response.headers.set("x-request-id", requestId);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  }
+
   // --- Rate limiting for API routes ---
   // Stripe webhooks are exempt — authenticated via signature verification, and
   // rate limiting could cause 429s that trigger cascading Stripe retries.
@@ -41,9 +51,10 @@ export async function proxy(request: NextRequest) {
         ?? request.headers.get("x-real-ip")
         ?? "127.0.0.1";
       try {
+        // `pending` intentionally not captured — no analytics or MultiRegion configured.
         const { success, limit, remaining, reset } = await limiter.limit(ip);
         if (!success) {
-          return NextResponse.json(
+          return withRequestId(NextResponse.json(
             { error: "Too many requests" },
             {
               status: 429,
@@ -51,18 +62,18 @@ export async function proxy(request: NextRequest) {
                 "X-RateLimit-Limit": String(limit),
                 "X-RateLimit-Remaining": String(remaining),
                 "X-RateLimit-Reset": String(reset),
-                "Retry-After": String(Math.ceil((reset - Date.now()) / 1000)),
+                "Retry-After": String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))),
               },
             },
-          );
+          ));
         }
       } catch (err) {
-        console.error("[NullSpend] Rate limiter error:", err);
+        logger.error({ requestId, err }, "Rate limiter error");
         // M1: Fail closed — block request when rate limiter is unavailable
-        return NextResponse.json(
+        return withRequestId(NextResponse.json(
           { error: "Service temporarily unavailable" },
           { status: 503 },
-        );
+        ));
       }
     }
   }
@@ -80,26 +91,26 @@ export async function proxy(request: NextRequest) {
         request.headers.get("x-forwarded-host") || request.headers.get("host");
       try {
         if (new URL(origin).host !== host) {
-          return NextResponse.json(
+          return withRequestId(NextResponse.json(
             { error: "Cross-origin request blocked" },
             { status: 403 },
-          );
+          ));
         }
       } catch {
-        return NextResponse.json(
+        return withRequestId(NextResponse.json(
           { error: "Invalid origin" },
           { status: 400 },
-        );
+        ));
       }
     }
 
     // Body size check
     const contentLength = request.headers.get("content-length");
     if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
-      return NextResponse.json(
+      return withRequestId(NextResponse.json(
         { error: "Payload too large" },
         { status: 413 },
-      );
+      ));
     }
   }
 
@@ -130,11 +141,19 @@ export async function proxy(request: NextRequest) {
     "upgrade-insecure-requests",
   ];
 
-  // Inject nonce into request headers for Server Components to read
+  // Inject nonce and request ID into request headers for downstream handlers
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("x-request-id", requestId);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("x-request-id", requestId);
+
+  // Prevent CDN/browser caching of API responses that may carry session cookies
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.append("Vary", "Cookie");
+  }
 
   // Enforce CSP in production, report-only in development
   response.headers.set(

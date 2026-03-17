@@ -13,7 +13,9 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ownerUserId = await assertApiKeyOrSession(request);
+    const authResult = await assertApiKeyOrSession(request);
+    if (authResult instanceof Response) return authResult;
+    const ownerUserId = authResult;
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
     const action = await getAction(id, ownerUserId);

@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { NullSpend } from "./client.js";
 import { NullSpendError, RejectedError, TimeoutError } from "./errors.js";
-import type { ActionRecord, CreateActionResponse } from "./types.js";
+import type { ActionRecord, CreateActionResponse, NullSpendConfig } from "./types.js";
 
 function mockAction(overrides: Partial<ActionRecord> = {}): ActionRecord {
   return {
@@ -27,11 +27,17 @@ function mockAction(overrides: Partial<ActionRecord> = {}): ActionRecord {
   };
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, status = 200, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    statusText: status === 200 ? "OK" : status === 500 ? "Internal Server Error" : `Status ${status}`,
+    headers: { "Content-Type": "application/json", ...headers },
   });
+}
+
+/** Returns a factory that creates a fresh Response per call (avoids body-reuse issues). */
+function jsonResponseFactory(body: unknown, status = 200, headers?: Record<string, string>) {
+  return () => jsonResponse(body, status, headers);
 }
 
 function createClient(fetchFn: typeof globalThis.fetch): NullSpend {
@@ -39,8 +45,23 @@ function createClient(fetchFn: typeof globalThis.fetch): NullSpend {
     baseUrl: "http://localhost:3000",
     apiKey: "ask_test123",
     fetch: fetchFn,
+    maxRetries: 0,
   });
 }
+
+function createRetryClient(fetchFn: typeof globalThis.fetch, opts?: Partial<NullSpendConfig>): NullSpend {
+  return new NullSpend({
+    baseUrl: "http://localhost:3000",
+    apiKey: "ask_test123",
+    fetch: fetchFn,
+    maxRetries: 2,
+    ...opts,
+  });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -452,6 +473,41 @@ describe("proposeAndWait", () => {
     const resultBody = JSON.parse(fetchFn.mock.calls[3][1].body);
     expect(resultBody.result).toEqual({ value: 42 });
   });
+
+  it("markResult(executed) failure does NOT trigger markResult(failed)", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      // waitForDecision
+      .mockResolvedValueOnce(jsonResponse(approved))
+      // markResult(executing) → ok
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      // markResult(executed) → 500
+      .mockResolvedValueOnce(jsonResponse({ error: "server down" }, 500));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn().mockResolvedValue({ done: true });
+
+    await expect(
+      client.proposeAndWait({
+        agentId: "agent-1",
+        actionType: "send_email",
+        payload: {},
+        execute,
+        pollIntervalMs: 10,
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(NullSpendError);
+
+    // execute ran successfully
+    expect(execute).toHaveBeenCalledOnce();
+    // Only 4 fetch calls — no 5th markResult(failed) call
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -486,5 +542,929 @@ describe("request error wrapping", () => {
     expect(error).toBeInstanceOf(NullSpendError);
     expect((error as NullSpendError).message).toContain("invalid JSON");
     expect((error as NullSpendError).statusCode).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retry behavior
+// ---------------------------------------------------------------------------
+
+describe("Retry behavior", () => {
+  it("retries on 500 → succeeds on second attempt", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.getAction("act-1");
+    expect(result.status).toBe("approved");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([502, 503, 504])("retries on %d → succeeds on retry", async (status) => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, status))
+      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.getAction("act-1");
+    expect(result.status).toBe("approved");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on 429 with Retry-After → succeeds on retry", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "rate limited" }, 429, { "Retry-After": "1" }))
+      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+
+    const client = createRetryClient(fetchFn);
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.getAction("act-1");
+    expect(result.status).toBe("approved");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    // Should have used Retry-After value (1s = 1000ms)
+    expect(sleepSpy).toHaveBeenCalledWith(1000);
+  });
+
+  it("retries on network error (TypeError) → succeeds on retry", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.getAction("act-1");
+    expect(result.status).toBe("approved");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on request timeout (DOMException TimeoutError) → succeeds on retry", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("signal timed out", "TimeoutError"))
+      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.getAction("act-1");
+    expect(result.status).toBe("approved");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT retry on 400", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "bad request" }, 400));
+    const client = createRetryClient(fetchFn);
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([401, 403, 404, 409, 422])("does NOT retry on %d", async (status) => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "nope" }, status));
+    const client = createRetryClient(fetchFn);
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("exhausts retries on persistent 500 → throws NullSpendError with status 500", async () => {
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "broken" }, 500));
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const err = await client.getAction("act-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect((err as NullSpendError).statusCode).toBe(500);
+    expect((err as NullSpendError).message).toContain("broken");
+    // 1 initial + 2 retries = 3
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it("exhausts retries on persistent TypeError → throws NullSpendError (not raw TypeError)", async () => {
+    const fetchFn = vi.fn().mockRejectedValue(new TypeError("network down"));
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const err = await client.getAction("act-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect(err).not.toBeInstanceOf(TypeError);
+    expect((err as NullSpendError).message).toContain("network error");
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it("maxRetries: 0 disables retry (fetch called 1x on 500)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+    const client = createClient(fetchFn); // maxRetries: 0
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("respects Retry-After header value", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "wait" }, 429, { "Retry-After": "2" }))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn);
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    expect(sleepSpy).toHaveBeenCalledWith(2000);
+  });
+
+  it("Retry-After capped at max delay", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "wait" }, 429, { "Retry-After": "60" }))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn);
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    expect(sleepSpy).toHaveBeenCalledWith(5000); // capped at DEFAULT_MAX_RETRY_DELAY_MS
+  });
+
+  it("Retry-After: 0 → immediate retry", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "wait" }, 429, { "Retry-After": "0" }))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn);
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    expect(sleepSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("response body consumed on retry (response.text() called)", async () => {
+    const textSpy = vi.fn().mockResolvedValue("error body");
+    const retryResponse = {
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      headers: new Headers(),
+      text: textSpy,
+    } as unknown as Response;
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(retryResponse)
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    expect(textSpy).toHaveBeenCalledOnce();
+  });
+
+  it("custom retryBaseDelayMs is respected", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn, { retryBaseDelayMs: 200 });
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    // attempt 0, base 200: floor(0.5 * min(200 * 1, 5000)) = floor(100) = 100
+    expect(sleepSpy).toHaveBeenCalledWith(100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Config validation
+// ---------------------------------------------------------------------------
+
+describe("Config validation", () => {
+  it("maxRetries: -1 → clamped to 0 (no retries)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+    const client = createRetryClient(fetchFn, { maxRetries: -1 });
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("maxRetries: NaN → falls back to default (2)", async () => {
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const client = createRetryClient(fetchFn, { maxRetries: NaN });
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(3); // default: 1 + 2 retries
+  });
+
+  it("maxRetries: Infinity → falls back to default (2)", async () => {
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const client = createRetryClient(fetchFn, { maxRetries: Infinity });
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(3); // 1 + 2 retries (default)
+  });
+
+  it("retryBaseDelayMs: -100 → clamped to 0", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn, { retryBaseDelayMs: -100 });
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    // base 0 → ceiling = 0, floor(0.5 * 0) = 0, but min 1
+    expect(sleepSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("retryBaseDelayMs: 0 → works (minimal delay)", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn, { retryBaseDelayMs: 0 });
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    // min 1
+    expect(sleepSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("retryBaseDelayMs: NaN → falls back to default (500)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn, { retryBaseDelayMs: NaN });
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    // attempt 0, base 500: floor(0.5 * 500) = 250
+    expect(sleepSpy).toHaveBeenCalledWith(250);
+  });
+
+  it("maxRetries: 0.5 → floored to 0 (no retries)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+    const client = createRetryClient(fetchFn, { maxRetries: 0.5 });
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("requestTimeoutMs: NaN → falls back to default (30000)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      requestTimeoutMs: NaN,
+      maxRetries: 0,
+    });
+
+    await client.getAction("act-1");
+
+    const init = fetchFn.mock.calls[0][1];
+    // Signal should be set (default 30s timeout, not disabled)
+    expect(init.signal).toBeDefined();
+  });
+
+  it("requestTimeoutMs: Infinity → falls back to default (30000)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      requestTimeoutMs: Infinity,
+      maxRetries: 0,
+    });
+
+    await client.getAction("act-1");
+
+    const init = fetchFn.mock.calls[0][1];
+    // Signal should be set (default 30s timeout, not crashing on Infinity)
+    expect(init.signal).toBeDefined();
+  });
+
+  it("requestTimeoutMs: 0 → disables timeout (no signal)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      requestTimeoutMs: 0,
+      maxRetries: 0,
+    });
+
+    await client.getAction("act-1");
+
+    const init = fetchFn.mock.calls[0][1];
+    expect(init.signal).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onRetry callback
+// ---------------------------------------------------------------------------
+
+describe("onRetry callback", () => {
+  it("calls onRetry before each retry with correct info", async () => {
+    const onRetry = vi.fn();
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 502))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 2,
+      onRetry,
+    });
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+
+    expect(onRetry).toHaveBeenCalledTimes(2);
+
+    const first = onRetry.mock.calls[0][0];
+    expect(first.attempt).toBe(0);
+    expect(first.method).toBe("GET");
+    expect(first.path).toBe("/api/actions/act-1");
+    expect(first.error).toBeInstanceOf(NullSpendError);
+    expect(first.delayMs).toBeGreaterThanOrEqual(1);
+
+    const second = onRetry.mock.calls[1][0];
+    expect(second.attempt).toBe(1);
+  });
+
+  it("onRetry returning false aborts retry", async () => {
+    const onRetry = vi.fn().mockReturnValue(false);
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 2,
+      onRetry,
+    });
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(1); // no retry happened
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it("onRetry returning undefined (void) does not abort", async () => {
+    const onRetry = vi.fn(); // returns undefined
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 2,
+      onRetry,
+    });
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("onRetry not called when maxRetries: 0", async () => {
+    const onRetry = vi.fn();
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 0,
+      onRetry,
+    });
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it("onRetry that throws propagates the thrown error (not NullSpendError)", async () => {
+    const onRetry = vi.fn().mockImplementation(() => {
+      throw new Error("callback exploded");
+    });
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 2,
+      onRetry,
+    });
+
+    const err = await client.getAction("act-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toBe("callback exploded");
+    // Not a NullSpendError — user callback errors propagate as-is
+    expect(err).not.toBeInstanceOf(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(1); // no retry after callback threw
+  });
+});
+
+// ---------------------------------------------------------------------------
+// maxRetryTimeMs (total retry wall-time cap)
+// ---------------------------------------------------------------------------
+
+describe("maxRetryTimeMs", () => {
+  it("aborts retry when total wall-time cap is exceeded", async () => {
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 5,
+      maxRetryTimeMs: 1, // 1ms cap — will expire before retry
+    });
+    // Don't mock sleep — let the 1ms cap trigger naturally
+    vi.spyOn(client as any, "sleep").mockImplementation(async () => {
+      // Simulate enough time passing to exceed the 1ms cap
+      await new Promise((r) => setTimeout(r, 5));
+    });
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    // Should have stopped before exhausting all 5 retries
+    expect(fetchFn.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("aborts retry on network errors when wall-time cap exceeded", async () => {
+    const fetchFn = vi.fn().mockRejectedValue(new TypeError("network down"));
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 5,
+      maxRetryTimeMs: 1,
+    });
+    vi.spyOn(client as any, "sleep").mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+    });
+
+    const err = await client.getAction("act-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect((err as NullSpendError).message).toContain("network error");
+    expect(fetchFn.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("maxRetryTimeMs: 0 means no cap (default)", async () => {
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const client = createRetryClient(fetchFn); // no maxRetryTimeMs
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(3); // all retries exhausted
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retry delay progression
+// ---------------------------------------------------------------------------
+
+describe("Retry delay progression", () => {
+  it("delay increases across consecutive retries", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 3,
+      retryBaseDelayMs: 100,
+    });
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+
+    // With random=0.5, base=100: delay = floor(0.5 * min(100 * 2^attempt, 5000))
+    // attempt 0: floor(0.5 * 100) = 50
+    // attempt 1: floor(0.5 * 200) = 100
+    // attempt 2: floor(0.5 * 400) = 200
+    expect(sleepSpy).toHaveBeenCalledTimes(3);
+    const delays = sleepSpy.mock.calls.map((c: any[]) => c[0] as number);
+    expect(delays[0]).toBe(50);
+    expect(delays[1]).toBe(100);
+    expect(delays[2]).toBe(200);
+    // Verify strictly increasing
+    expect(delays[1]).toBeGreaterThan(delays[0]);
+    expect(delays[2]).toBeGreaterThan(delays[1]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Idempotency
+// ---------------------------------------------------------------------------
+
+describe("Idempotency", () => {
+  it("POST (createAction) includes Idempotency-Key matching /^ns_/", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "pending" }, 201));
+    const client = createClient(fetchFn);
+
+    await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
+
+    const headers = fetchFn.mock.calls[0][1].headers;
+    expect(headers["Idempotency-Key"]).toMatch(/^ns_[0-9a-f-]+$/);
+  });
+
+  it("GET (getAction) does NOT include Idempotency-Key", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const client = createClient(fetchFn);
+
+    await client.getAction("act-1");
+
+    const headers = fetchFn.mock.calls[0][1].headers;
+    expect(headers["Idempotency-Key"]).toBeUndefined();
+  });
+
+  it("same key reused across retries (500 then 200 → both calls have same key)", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "pending" }, 201));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
+
+    const key1 = fetchFn.mock.calls[0][1].headers["Idempotency-Key"];
+    const key2 = fetchFn.mock.calls[1][1].headers["Idempotency-Key"];
+    expect(key1).toBeTruthy();
+    expect(key1).toBe(key2);
+  });
+
+  it("different createAction calls get different keys", async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "pending" }, 201))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-2", status: "pending" }, 201));
+    const client = createClient(fetchFn);
+
+    await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
+    await client.createAction({ agentId: "b", actionType: "send_email", payload: {} });
+
+    const key1 = fetchFn.mock.calls[0][1].headers["Idempotency-Key"];
+    const key2 = fetchFn.mock.calls[1][1].headers["Idempotency-Key"];
+    expect(key1).not.toBe(key2);
+  });
+
+  it("markResult includes Idempotency-Key", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "executed" }));
+    const client = createClient(fetchFn);
+
+    await client.markResult("act-1", { status: "executed" });
+
+    const headers = fetchFn.mock.calls[0][1].headers;
+    expect(headers["Idempotency-Key"]).toMatch(/^ns_[0-9a-f-]+$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration (retry + higher-level methods)
+// ---------------------------------------------------------------------------
+
+describe("Integration", () => {
+  it("proposeAndWait retries transient createAction failure (500 then success)", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction: 500 first, then success
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      // waitForDecision
+      .mockResolvedValueOnce(jsonResponse(approved))
+      // markResult (executing)
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      // markResult (executed)
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executed" }));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.proposeAndWait({
+      agentId: "agent-1",
+      actionType: "send_email",
+      payload: {},
+      execute: async () => "done",
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    expect(result).toBe("done");
+    expect(fetchFn).toHaveBeenCalledTimes(5);
+  });
+
+  it("waitForDecision retries transient getAction failure during polling (502 then approved)", async () => {
+    const pending = mockAction({ status: "pending" });
+    const approved = mockAction({ status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // poll 1: pending
+      .mockResolvedValueOnce(jsonResponse(pending))
+      // poll 2: 502 then approved on retry
+      .mockResolvedValueOnce(jsonResponse({ error: "bad gateway" }, 502))
+      .mockResolvedValueOnce(jsonResponse(approved));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.waitForDecision("act-1", {
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    expect(result.status).toBe("approved");
+  });
+
+  it("default maxRetries=2 → persistent 500 calls fetch 3 times", async () => {
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+    });
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
+    expect(fetchFn).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+  });
+});
+
+// ---------------------------------------------------------------------------
+// proposeAndWait 409 resilience
+// ---------------------------------------------------------------------------
+
+describe("proposeAndWait 409 resilience", () => {
+  it("markResult(executing) gets 409, getAction shows 'executing' → execute callback runs", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      // waitForDecision
+      .mockResolvedValueOnce(jsonResponse(approved))
+      // markResult(executing) → 409
+      .mockResolvedValueOnce(jsonResponse({ error: "already executing" }, 409))
+      // getAction fallback → executing
+      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executing" })))
+      // markResult(executed)
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executed" }));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn().mockResolvedValue({ done: true });
+
+    const result = await client.proposeAndWait({
+      agentId: "agent-1",
+      actionType: "send_email",
+      payload: {},
+      execute,
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    expect(result).toEqual({ done: true });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("markResult(executed) gets 409, getAction shows 'executed' → returns successfully", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      // waitForDecision
+      .mockResolvedValueOnce(jsonResponse(approved))
+      // markResult(executing) → ok
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      // markResult(executed) → 409
+      .mockResolvedValueOnce(jsonResponse({ error: "already executed" }, 409))
+      // getAction fallback → executed
+      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executed" })));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn().mockResolvedValue("result-value");
+
+    const result = await client.proposeAndWait({
+      agentId: "agent-1",
+      actionType: "send_email",
+      payload: {},
+      execute,
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    expect(result).toBe("result-value");
+  });
+
+  it("markResult(executing) gets 409, getAction shows 'approved' → throws (genuine conflict)", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      // waitForDecision
+      .mockResolvedValueOnce(jsonResponse(approved))
+      // markResult(executing) → 409
+      .mockResolvedValueOnce(jsonResponse({ error: "conflict" }, 409))
+      // getAction fallback → approved (not executing!)
+      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "approved" })));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn();
+
+    await expect(
+      client.proposeAndWait({
+        agentId: "agent-1",
+        actionType: "send_email",
+        payload: {},
+        execute,
+        pollIntervalMs: 10,
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(NullSpendError);
+
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("markResult(executed) genuine 409 does NOT trigger markResult(failed)", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      // waitForDecision
+      .mockResolvedValueOnce(jsonResponse(approved))
+      // markResult(executing) → ok
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      // markResult(executed) → 409
+      .mockResolvedValueOnce(jsonResponse({ error: "conflict" }, 409))
+      // getAction fallback → executing (not executed!)
+      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executing" })));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn().mockResolvedValue("result");
+
+    await expect(
+      client.proposeAndWait({
+        agentId: "agent-1",
+        actionType: "send_email",
+        payload: {},
+        execute,
+        pollIntervalMs: 10,
+        timeoutMs: 5000,
+      }),
+    ).rejects.toThrow(NullSpendError);
+
+    // execute ran, but only 5 fetch calls — no 6th markResult(failed) attempt
+    expect(execute).toHaveBeenCalledOnce();
+    expect(fetchFn).toHaveBeenCalledTimes(5);
+  });
+
+  it("getAction failure during 409 fallback propagates without markResult(failed)", async () => {
+    const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
+    const approved = mockAction({ id: "act-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      // waitForDecision
+      .mockResolvedValueOnce(jsonResponse(approved))
+      // markResult(executing) → ok
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      // markResult(executed) → 409
+      .mockResolvedValueOnce(jsonResponse({ error: "conflict" }, 409))
+      // getAction fallback → network error
+      .mockRejectedValueOnce(new TypeError("network down"));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn().mockResolvedValue("result");
+
+    const err = await client
+      .proposeAndWait({
+        agentId: "agent-1",
+        actionType: "send_email",
+        payload: {},
+        execute,
+        pollIntervalMs: 10,
+        timeoutMs: 5000,
+      })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect((err as NullSpendError).message).toContain("network error");
+    // 5 fetch calls — no markResult(failed) attempt
+    expect(fetchFn).toHaveBeenCalledTimes(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retry-After on 503
+// ---------------------------------------------------------------------------
+
+describe("Retry-After on 503", () => {
+  it("503 with Retry-After: 2 → sleep called with ~2000ms", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "maintenance" }, 503, { "Retry-After": "2" }))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn);
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    expect(sleepSpy).toHaveBeenCalledWith(2000);
+  });
+
+  it("503 without Retry-After → exponential backoff", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "maintenance" }, 503))
+      .mockResolvedValueOnce(jsonResponse(mockAction()));
+
+    const client = createRetryClient(fetchFn);
+    const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    await client.getAction("act-1");
+    // attempt 0, base 500: floor(0.5 * min(500 * 1, 5000)) = 250
+    expect(sleepSpy).toHaveBeenCalledWith(250);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Non-JSON error body
+// ---------------------------------------------------------------------------
+
+describe("Non-JSON error body", () => {
+  it("500 with plain text body on final attempt → error message falls back to statusText", async () => {
+    const response = new Response("Internal Server Error", {
+      status: 500,
+      statusText: "Internal Server Error",
+      headers: { "Content-Type": "text/plain" },
+    });
+
+    const fetchFn = vi.fn().mockResolvedValue(response);
+    const client = createClient(fetchFn); // maxRetries: 0
+
+    const err = await client.getAction("act-1").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect((err as NullSpendError).message).toContain("Internal Server Error");
+    expect((err as NullSpendError).statusCode).toBe(500);
   });
 });

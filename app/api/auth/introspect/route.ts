@@ -1,31 +1,31 @@
 import { NextResponse } from "next/server";
 
-import {
-  assertApiKeyWithIdentity,
-  resolveDevFallbackApiKeyUserId,
-} from "@/lib/auth/api-key";
 import { checkHasBudgets } from "@/lib/auth/check-has-budgets";
 import { getDevActor } from "@/lib/auth/session";
+import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { handleRouteError } from "@/lib/utils/http";
 
 export async function GET(request: Request) {
   try {
-    const identity = await assertApiKeyWithIdentity(request);
+    const authResult = await authenticateApiKey(request);
+    if (authResult instanceof Response) return authResult;
 
-    if (identity) {
+    if (authResult.keyId) {
       // Managed key — return real identity
-      const hasBudgets = await checkHasBudgets(identity.userId, identity.keyId);
-      return NextResponse.json({
-        userId: identity.userId,
-        keyId: identity.keyId,
-        hasBudgets,
-      });
+      const hasBudgets = await checkHasBudgets(authResult.userId, authResult.keyId);
+      return applyRateLimitHeaders(
+        NextResponse.json({
+          userId: authResult.userId,
+          keyId: authResult.keyId,
+          hasBudgets,
+        }),
+        authResult.rateLimit,
+      );
     }
 
     // Dev-mode fallback key — return dev identity
-    const devUserId = resolveDevFallbackApiKeyUserId();
     const devActor = getDevActor();
-    const resolvedUserId = devActor ?? devUserId;
+    const resolvedUserId = devActor ?? authResult.userId;
     const hasBudgets = await checkHasBudgets(resolvedUserId);
     return NextResponse.json({
       userId: resolvedUserId,

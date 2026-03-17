@@ -442,7 +442,9 @@ async function testInvalidInput() {
 // ---------------------------------------------------------------------------
 
 async function testLargePayload() {
-  const largeArray = Array.from({ length: 500 }, (_, i) => ({
+  // 400 items × ~150 bytes each ≈ 61KB — just under the 64KB payload limit.
+  // (Previously used 500 items which exceeded 64KB and was rejected by validation.)
+  const largeArray = Array.from({ length: 400 }, (_, i) => ({
     index: i,
     data: "x".repeat(100),
     nested: { key: `value-${i}` },
@@ -459,7 +461,7 @@ async function testLargePayload() {
   const fetched = await sdk.getAction(created.id);
   assertEqual(fetched.status, "pending", "large payload action should be pending");
   const records = (fetched.payload as { records: unknown[] }).records;
-  assertEqual(records.length, 500, "payload should preserve all 500 records");
+  assertEqual(records.length, 400, "payload should preserve all 400 records");
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,6 +1028,106 @@ async function testApproveAfterExpiration() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 28 — expiresInSeconds above 30 days rejected (3.2)
+// ---------------------------------------------------------------------------
+
+async function testExpiresInSecondsBound() {
+  let threw = false;
+  let statusCode: number | undefined;
+  try {
+    await sdk.createAction({
+      agentId: "e2e-test-agent",
+      actionType: "file_write",
+      payload: { path: "/tmp/ttl-test.txt" },
+      expiresInSeconds: 2_592_001, // 30 days + 1 second
+    });
+  } catch (err: unknown) {
+    threw = true;
+    if (err && typeof err === "object" && "statusCode" in err) {
+      statusCode = (err as { statusCode: number }).statusCode;
+    }
+  }
+  assert(threw, "expiresInSeconds > 30 days should be rejected");
+  assertEqual(statusCode, 400, "expected 400 for expiresInSeconds too large");
+}
+
+// ---------------------------------------------------------------------------
+// Test 29 — Content-Type: text/plain rejected with 415 (3.3)
+// ---------------------------------------------------------------------------
+
+async function testContentTypeValidation() {
+  const res = await fetch(`${BASE_URL}/api/actions`, {
+    method: "POST",
+    headers: {
+      "x-nullspend-key": API_KEY!,
+      "content-type": "text/plain",
+    },
+    body: JSON.stringify({
+      agentId: "e2e-test-agent",
+      actionType: "file_write",
+      payload: { path: "/tmp/ct-test.txt" },
+    }),
+  });
+  assertEqual(res.status, 415, "text/plain Content-Type should return 415");
+  const body = await res.json();
+  assert(
+    body.error.includes("application/json"),
+    `error should mention application/json, got: ${body.error}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Test 30 — Deeply nested payload rejected with 400 (3.1)
+// ---------------------------------------------------------------------------
+
+async function testDeepNestingRejected() {
+  // Build a 21-level nested object
+  let nested: Record<string, unknown> = { value: "leaf" };
+  for (let i = 0; i < 20; i++) {
+    nested = { nested };
+  }
+
+  let threw = false;
+  let statusCode: number | undefined;
+  try {
+    await sdk.createAction({
+      agentId: "e2e-test-agent",
+      actionType: "file_write",
+      payload: nested,
+    });
+  } catch (err: unknown) {
+    threw = true;
+    if (err && typeof err === "object" && "statusCode" in err) {
+      statusCode = (err as { statusCode: number }).statusCode;
+    }
+  }
+  assert(threw, "21-level nested payload should be rejected");
+  assertEqual(statusCode, 400, "expected 400 for deeply nested payload");
+}
+
+// ---------------------------------------------------------------------------
+// Test 31 — Payload at exactly 20 levels accepted (3.1)
+// ---------------------------------------------------------------------------
+
+async function testMaxDepthAccepted() {
+  // Build exactly 20-level nested object
+  let nested: Record<string, unknown> = { value: "leaf" };
+  for (let i = 1; i < 20; i++) {
+    nested = { nested };
+  }
+
+  const created = await sdk.createAction({
+    agentId: "e2e-test-agent",
+    actionType: "file_write",
+    payload: nested,
+    metadata: { test: "depth-limit-ok" },
+  });
+  cleanupIds.push(created.id);
+
+  assertEqual(created.status, "pending", "20-level payload should be accepted");
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -1065,7 +1167,7 @@ async function main() {
   await runTest("Test 9  — Invalid input (bad action type)", testInvalidInput);
 
   // Boundary values
-  await runTest("Test 10 — Large payload (~50KB)", testLargePayload);
+  await runTest("Test 10 — Large payload (~61KB)", testLargePayload);
   await runTest("Test 11 — Unicode and special characters", testUnicodeAndSpecialChars);
   await runTest("Test 12 — Empty agentId rejected", testEmptyAgentId);
   await runTest("Test 13 — Minimal valid input (no metadata)", testMinimalInput);
@@ -1095,6 +1197,12 @@ async function main() {
   await runTest("Test 25 — Action expiration via getAction", testExpirationViaGetAction);
   await runTest("Test 26 — Never-expire action (expiresInSeconds: 0)", testNeverExpire);
   await runTest("Test 27 — Approve after expiration fails", testApproveAfterExpiration);
+
+  // Phase 3: Input validation hardening
+  await runTest("Test 28 — expiresInSeconds > 30 days rejected", testExpiresInSecondsBound);
+  await runTest("Test 29 — Content-Type: text/plain → 415", testContentTypeValidation);
+  await runTest("Test 30 — 21-level nested payload → 400", testDeepNestingRejected);
+  await runTest("Test 31 — 20-level nested payload accepted", testMaxDepthAccepted);
 
   // Cleanup
   console.log("\nCleaning up test data...");

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { ZodError } from "zod";
 
 import {
@@ -13,6 +14,7 @@ import {
   ForbiddenError,
   SupabaseEnvError,
 } from "@/lib/auth/errors";
+import { getLogger } from "@/lib/observability";
 
 class InvalidJsonBodyError extends Error {
   constructor() {
@@ -28,12 +30,24 @@ class PayloadTooLargeError extends Error {
   }
 }
 
+class UnsupportedMediaTypeError extends Error {
+  constructor() {
+    super("Content-Type must be application/json.");
+    this.name = "UnsupportedMediaTypeError";
+  }
+}
+
 const DEFAULT_MAX_BODY_BYTES = 1_048_576; // 1MB
 
 export async function readJsonBody(
   request: Request,
   maxBytes: number = DEFAULT_MAX_BODY_BYTES,
 ): Promise<unknown> {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new UnsupportedMediaTypeError();
+  }
+
   const contentLength = request.headers.get("content-length");
   if (contentLength && parseInt(contentLength, 10) > maxBytes) {
     throw new PayloadTooLargeError(maxBytes);
@@ -65,6 +79,10 @@ export async function readRouteParams<T extends Record<string, string>>(
 export function handleRouteError(error: unknown) {
   if (error instanceof InvalidJsonBodyError) {
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  if (error instanceof UnsupportedMediaTypeError) {
+    return NextResponse.json({ error: error.message }, { status: 415 });
   }
 
   if (error instanceof PayloadTooLargeError) {
@@ -110,14 +128,15 @@ export function handleRouteError(error: unknown) {
   }
 
   if (error instanceof SupabaseEnvError) {
-    console.error("[NullSpend] Supabase configuration error:", error.message);
+    getLogger("http").error({ err: error }, "Supabase configuration error");
     return NextResponse.json(
       { error: "Server configuration error." },
       { status: 500 },
     );
   }
 
-  console.error("[NullSpend] Unhandled route error:", error);
+  getLogger("http").error({ err: error }, "Unhandled route error");
+  Sentry.captureException(error);
   return NextResponse.json(
     { error: "Internal server error." },
     { status: 500 },

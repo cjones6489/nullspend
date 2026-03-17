@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Stripe from "stripe";
 
+vi.mock("@sentry/nextjs", () => ({
+  withScope: vi.fn((cb) => cb({ setTag: vi.fn() })),
+  captureException: vi.fn(),
+}));
+
 vi.mock("@/lib/stripe/client", () => ({
   getStripe: vi.fn(),
 }));

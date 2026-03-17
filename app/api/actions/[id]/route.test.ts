@@ -56,4 +56,22 @@ describe("app/api/actions/[id]/route", () => {
     );
     expect(response.status).toBe(200);
   });
+
+  it("returns 429 when per-key rate limit is exceeded", async () => {
+    const rateLimitResponse = new Response(
+      JSON.stringify({ error: "Too many requests" }),
+      { status: 429, headers: { "Content-Type": "application/json" } },
+    );
+    mockedAssertApiKeyOrSession.mockResolvedValue(rateLimitResponse as any);
+
+    const response = await GET(
+      new Request("http://localhost/api/actions/550e8400-e29b-41d4-a716-446655440000"),
+      {
+        params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440000" }),
+      },
+    );
+
+    expect(response.status).toBe(429);
+    expect(mockedGetAction).not.toHaveBeenCalled();
+  });
 });

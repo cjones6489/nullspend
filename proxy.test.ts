@@ -7,6 +7,16 @@ vi.mock("@/lib/auth/supabase", () => ({
   })),
 }));
 
+// Mock observability logger
+vi.mock("@/lib/observability", () => ({
+  logger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 // Mock rate limiting — default to allowing all requests
 const { mockLimit, MockRatelimit } = vi.hoisted(() => {
   const mockLimit = vi.fn().mockResolvedValue({ success: true, limit: 100, remaining: 99, reset: Date.now() + 60000 });
@@ -420,6 +430,23 @@ describe("proxy()", () => {
       expect(body.error).toBe("Service temporarily unavailable");
     });
 
+    it("clamps Retry-After to minimum 1 when reset is in the past", async () => {
+      mockLimit.mockResolvedValueOnce({ success: false, limit: 100, remaining: 0, reset: Date.now() - 5000 });
+
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "x-forwarded-for": "1.2.3.4",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(429);
+      const retryAfter = response.headers.get("Retry-After");
+      expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+    });
+
     it("skips rate limiting when Upstash env vars are not set", async () => {
       delete process.env.UPSTASH_REDIS_REST_URL;
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -430,6 +457,171 @@ describe("proxy()", () => {
       });
       const response = await proxy(req as any);
       expect(response.status).not.toBe(429);
+    });
+  });
+
+  describe("x-request-id header", () => {
+    it("includes x-request-id in normal (200) response", async () => {
+      const response = await proxy(makeRequest() as any);
+      const requestId = response.headers.get("x-request-id");
+      expect(requestId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      );
+    });
+
+    it("generates unique request IDs per request", async () => {
+      const res1 = await proxy(makeRequest() as any);
+      const res2 = await proxy(makeRequest() as any);
+      expect(res1.headers.get("x-request-id")).not.toBe(
+        res2.headers.get("x-request-id"),
+      );
+    });
+
+    it("passes through provided x-request-id header", async () => {
+      const req = makeRequest("https://example.com/dashboard", {
+        headers: new Headers({
+          cookie: "session=abc",
+          "x-request-id": "client-id-123",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.headers.get("x-request-id")).toBe("client-id-123");
+    });
+
+    it("includes x-request-id in 429 rate limit response", async () => {
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake.upstash.io");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "fake-token");
+      mockLimit.mockResolvedValueOnce({
+        success: false,
+        limit: 100,
+        remaining: 0,
+        reset: Date.now() + 60000,
+      });
+
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "x-forwarded-for": "1.2.3.4",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(429);
+      expect(response.headers.get("x-request-id")).toBeTruthy();
+    });
+
+    it("includes x-request-id in 503 limiter error response", async () => {
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake.upstash.io");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "fake-token");
+      mockLimit.mockReset();
+      MockRatelimit.mockImplementation(function () {
+        return { limit: mockLimit };
+      });
+      (MockRatelimit as any).slidingWindow = vi.fn();
+      mockLimit.mockRejectedValueOnce(new Error("Redis connection failed"));
+
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "x-forwarded-for": "1.2.3.4",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(503);
+      expect(response.headers.get("x-request-id")).toBeTruthy();
+    });
+
+    it("includes x-request-id in 403 CSRF response", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "https://evil.com",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(403);
+      expect(response.headers.get("x-request-id")).toBeTruthy();
+    });
+
+    it("includes x-request-id in 413 body size response", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "content-length": "2000000",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(413);
+      expect(response.headers.get("x-request-id")).toBeTruthy();
+    });
+  });
+
+  describe("Cache-Control headers", () => {
+    it("sets Cache-Control: private, no-store on API route responses", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({ cookie: "session=abc", host: "example.com" }),
+      });
+      const response = await proxy(req as any);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    });
+
+    it("sets Vary: Cookie on API route responses", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({ cookie: "session=abc", host: "example.com" }),
+      });
+      const response = await proxy(req as any);
+      expect(response.headers.get("Vary")).toBe("Cookie");
+    });
+
+    it("does NOT set Cache-Control: private, no-store on non-API routes", async () => {
+      const response = await proxy(makeRequest("https://example.com/dashboard") as any);
+      expect(response.headers.get("Cache-Control")).toBeNull();
+    });
+
+    it("sets Cache-Control on 429 rate limit response", async () => {
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake.upstash.io");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "fake-token");
+      mockLimit.mockResolvedValueOnce({
+        success: false,
+        limit: 100,
+        remaining: 0,
+        reset: Date.now() + 60000,
+      });
+
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "x-forwarded-for": "1.2.3.4",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(429);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    });
+
+    it("sets Cache-Control on 403 CSRF response", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "https://evil.com",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(403);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     });
   });
 
