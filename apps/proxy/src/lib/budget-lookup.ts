@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { sql, eq, and, getTableColumns } from "drizzle-orm";
 import { budgets } from "@nullspend/db";
 import { populateCache } from "./budget.js";
+import { withDbConnection } from "./db-semaphore.js";
 
 const BUDGET_CACHE_TTL = 60;
 const CONNECTION_TIMEOUT_MS = 5_000;
@@ -86,73 +87,75 @@ export async function lookupBudgets(
 
   if (misses.length === 0) return result;
 
-  // Slow path: query Postgres for cache misses
-  let client: Client | null = null;
-  try {
-    client = new Client({
-      connectionString,
-      connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-    });
-    client.on("error", (err) => {
-      console.error("[budget-lookup] pg client error:", err.message);
-    });
-    await client.connect();
-    const db = drizzle({ client });
+  // Slow path: query Postgres for cache misses (through semaphore)
+  await withDbConnection(async () => {
+    let client: Client | null = null;
+    try {
+      client = new Client({
+        connectionString,
+        connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+      });
+      client.on("error", (err) => {
+        console.error("[budget-lookup] pg client error:", err.message);
+      });
+      await client.connect();
+      const db = drizzle({ client });
 
-    for (const miss of misses) {
-      const rows = await db
-        .select({
-          ...getTableColumns(budgets),
-          _ts: sql`NOW()`.as("_ts"),
-        })
-        .from(budgets)
-        .where(
-          and(
-            eq(budgets.entityType, miss.type),
-            eq(budgets.entityId, miss.id),
-          ),
-        );
+      for (const miss of misses) {
+        const rows = await db
+          .select({
+            ...getTableColumns(budgets),
+            _ts: sql`NOW()`.as("_ts"),
+          })
+          .from(budgets)
+          .where(
+            and(
+              eq(budgets.entityType, miss.type),
+              eq(budgets.entityId, miss.id),
+            ),
+          );
 
-      if (rows.length > 0) {
-        const row = rows[0];
-        await populateCache(
-          redis,
-          miss.redisKey,
-          row.maxBudgetMicrodollars,
-          row.spendMicrodollars,
-          row.policy,
-          BUDGET_CACHE_TTL,
-        );
-        result.push({
-          entityKey: miss.redisKey,
-          entityType: miss.type,
-          entityId: miss.id,
-          maxBudget: row.maxBudgetMicrodollars,
-          spend: row.spendMicrodollars,
-          reserved: 0,
-          policy: row.policy,
-        });
-      } else {
-        // Fix 10: negative cache – no budget configured for this entity
-        await redis.set(miss.noneKey, "1", { ex: BUDGET_CACHE_TTL });
+        if (rows.length > 0) {
+          const row = rows[0];
+          await populateCache(
+            redis,
+            miss.redisKey,
+            row.maxBudgetMicrodollars,
+            row.spendMicrodollars,
+            row.policy,
+            BUDGET_CACHE_TTL,
+          );
+          result.push({
+            entityKey: miss.redisKey,
+            entityType: miss.type,
+            entityId: miss.id,
+            maxBudget: row.maxBudgetMicrodollars,
+            spend: row.spendMicrodollars,
+            reserved: 0,
+            policy: row.policy,
+          });
+        } else {
+          // Fix 10: negative cache – no budget configured for this entity
+          await redis.set(miss.noneKey, "1", { ex: BUDGET_CACHE_TTL });
+        }
+      }
+    } catch (err) {
+      console.error(
+        "[budget-lookup] Postgres lookup failed:",
+        err instanceof Error ? err.message : "Unknown error",
+      );
+      // Re-throw so the caller can decide failure mode (fail-closed for budget)
+      throw err;
+    } finally {
+      if (client) {
+        try {
+          await client.end();
+        } catch {
+          // already closed
+        }
       }
     }
-  } catch (err) {
-    console.error(
-      "[budget-lookup] Postgres lookup failed:",
-      err instanceof Error ? err.message : "Unknown error",
-    );
-    // Re-throw so the caller can decide failure mode (fail-closed for budget)
-    throw err;
-  } finally {
-    if (client) {
-      try {
-        await client.end();
-      } catch {
-        // already closed
-      }
-    }
-  }
+  });
 
   return result;
 }

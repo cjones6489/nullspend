@@ -13,10 +13,10 @@
  *
  * Requires:
  *   - Live proxy at PROXY_URL
- *   - OPENAI_API_KEY, PLATFORM_AUTH_KEY
+ *   - OPENAI_API_KEY, NULLSPEND_API_KEY
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Resilience tests", () => {
   beforeAll(async () => {
@@ -34,7 +34,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer sk-invalid-key-for-resilience-test",
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: smallRequest(),
       });
@@ -63,7 +63,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer sk-bad",
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: smallRequest(),
       });
@@ -85,7 +85,7 @@ describe("Resilience tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: "Bearer invalid",
-            "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+            "x-nullspend-key": NULLSPEND_API_KEY!,
           },
           body: smallRequest(),
         }),
@@ -113,7 +113,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer bad",
-          "X-NullSpend-Auth": "bad",
+          "x-nullspend-key": "bad",
         },
         body: smallRequest(),
       });
@@ -213,7 +213,7 @@ describe("Resilience tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": "wrong",
+          "x-nullspend-key": "wrong",
         },
         body: smallRequest(),
       });
@@ -271,7 +271,7 @@ describe("Resilience tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: "Bearer invalid",
-            "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+            "x-nullspend-key": NULLSPEND_API_KEY!,
           },
           body: smallRequest(),
         }),

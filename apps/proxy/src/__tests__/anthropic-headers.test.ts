@@ -68,16 +68,16 @@ describe("buildAnthropicUpstreamHeaders", () => {
     );
   });
 
-  it("does NOT forward x-nullspend-auth, host, or content-length", () => {
+  it("does NOT forward x-nullspend-key, host, or content-length", () => {
     const req = makeRequest({
       authorization: "Bearer sk-ant-test",
-      "x-nullspend-auth": "platform-secret",
+      "x-nullspend-key": "ask_test123",
       host: "proxy.example.com",
       "content-length": "42",
     });
     const headers = buildAnthropicUpstreamHeaders(req);
 
-    expect(headers.get("x-nullspend-auth")).toBeNull();
+    expect(headers.get("x-nullspend-key")).toBeNull();
     expect(headers.get("host")).toBeNull();
     expect(headers.get("content-length")).toBeNull();
   });

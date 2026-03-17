@@ -5,9 +5,6 @@ const GATEWAY_TIMEOUT_MS = 130_000; // Slightly above upstream 120s timeout
 // Headers to forward from client to Worker (allowlist — strip cookies/session)
 const FORWARD_HEADERS = [
   "x-nullspend-key",
-  "x-nullspend-auth",
-  "x-nullspend-user-id",
-  "x-nullspend-key-id",
   "x-nullspend-action-id",
   "content-type",
 ] as const;

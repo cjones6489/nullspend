@@ -1,18 +1,31 @@
 /**
- * Semaphore that limits concurrent pg.Client connections from waitUntil tasks.
+ * Semaphore that limits concurrent pg.Client connections per isolate.
  *
- * Cloudflare Workers enforces a 6-connection-per-isolate limit. The main
- * request path (budget-lookup) may use 1 connection, so we cap background
- * tasks (cost-logger + budget-spend) to 2 concurrent connections, leaving
- * headroom for the request flow and avoiding deadlocks under load.
+ * ALL pg.Client creation must go through withDbConnection(). Callers:
+ *   - api-key-auth.ts    (request path, usually cached — skips DB)
+ *   - budget-lookup.ts   (request path, Redis fast-path — rarely hits DB)
+ *   - cost-logger.ts     (background via waitUntil)
+ *   - budget-spend.ts    (background via waitUntil)
+ *   - webhook-cache.ts   (background via waitUntil)
+ *
+ * Worst case: 3 background tasks fire in parallel after a response is sent
+ * while the next request's auth or budget lookup needs a slot. Auth and
+ * budget caches prevent most request-path DB lookups, so contention is
+ * rare. 5 slots keeps headroom under CF's 6-connection-per-isolate limit.
  */
 
-const MAX_CONCURRENT = 2;
-const MAX_QUEUE_DEPTH = 20;
-const QUEUE_TIMEOUT_MS = 10_000;
+export const MAX_CONCURRENT = 5;
+export const MAX_QUEUE_DEPTH = 20;
+export const QUEUE_TIMEOUT_MS = 10_000;
 
 let active = 0;
 const queue: Array<() => void> = [];
+
+/** Reset internal state — for testing only. */
+export function _resetForTesting(): void {
+  active = 0;
+  queue.length = 0;
+}
 
 export async function withDbConnection<T>(fn: () => Promise<T>): Promise<T> {
   if (active < MAX_CONCURRENT) {

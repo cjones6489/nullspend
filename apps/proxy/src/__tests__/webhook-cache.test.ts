@@ -9,6 +9,10 @@ vi.mock("pg", () => ({
   Client: MockClient,
 }));
 
+vi.mock("../lib/db-semaphore.js", () => ({
+  withDbConnection: <T>(fn: () => Promise<T>) => fn(),
+}));
+
 import {
   getWebhookEndpoints,
   getWebhookEndpointsWithSecrets,

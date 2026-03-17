@@ -3,12 +3,12 @@
  * Requires:
  *   - `pnpm proxy:dev` running on localhost:8787
  *   - Real OpenAI API key in OPENAI_API_KEY env var
- *   - PLATFORM_AUTH_KEY matching the proxy's .dev.vars
+ *   - NULLSPEND_API_KEY for proxy auth
  *
  * Run with: npx vitest run smoke-openai.test.ts
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, isServerUp } from "./smoke-test-helpers.js";
 
 describe("OpenAI proxy smoke tests", () => {
   beforeAll(async () => {
@@ -29,7 +29,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -53,7 +53,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -78,7 +78,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: JSON.stringify({
         model: "not-a-real-model-xyz",
@@ -98,7 +98,7 @@ describe("OpenAI proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "X-NullSpend-Auth": "wrong-key-here",
+        "x-nullspend-key": "wrong-key-here",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
@@ -111,7 +111,7 @@ describe("OpenAI proxy smoke tests", () => {
     expect(body).toHaveProperty("error", "unauthorized");
   });
 
-  it("missing X-NullSpend-Auth returns 401", async () => {
+  it("missing x-nullspend-key returns 401", async () => {
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
       headers: {
@@ -132,7 +132,7 @@ describe("OpenAI proxy smoke tests", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: JSON.stringify({ model: "text-embedding-3-small", input: "test" }),
     });
@@ -147,7 +147,7 @@ describe("OpenAI proxy smoke tests", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: "{this is not valid json!!!",
     });

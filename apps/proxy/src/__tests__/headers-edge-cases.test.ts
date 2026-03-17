@@ -60,14 +60,14 @@ describe("buildUpstreamHeaders edge cases", () => {
     expect(headers.get("openai-project")).toBe("proj-456");
   });
 
-  it("does NOT forward x-nullspend-auth to upstream", () => {
+  it("does NOT forward x-nullspend-key to upstream", () => {
     const req = makeRequest({
       authorization: "Bearer sk-test",
-      "x-nullspend-auth": "platform-secret",
+      "x-nullspend-key": "ask_test123",
     });
     const headers = buildUpstreamHeaders(req);
 
-    expect(headers.get("x-nullspend-auth")).toBeNull();
+    expect(headers.get("x-nullspend-key")).toBeNull();
   });
 
   it("does NOT forward host or content-length", () => {

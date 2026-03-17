@@ -30,11 +30,15 @@ pnpm deploy           # Deploy to Cloudflare
 
 - `src/index.ts` — entry point, routing, body parsing
 - `src/routes/openai.ts` — chat completions handler
-- `src/lib/auth.ts` — platform key validation (timing-safe)
+- `src/routes/anthropic.ts` — Anthropic messages handler
+- `src/lib/auth.ts` — API key auth (delegates to `api-key-auth.ts`)
+- `src/lib/api-key-auth.ts` — SHA-256 hash lookup with positive/negative caching
+- `src/lib/db-semaphore.ts` — connection concurrency limiter (MAX_CONCURRENT=5)
 - `src/lib/cost-calculator.ts` — token-to-cost conversion
-- `src/lib/cost-logger.ts` — async DB write via `ctx.waitUntil()`
+- `src/lib/cost-logger.ts` — async DB write via `waitUntil()`
+- `src/lib/budget-lookup.ts` — Redis fast-path + Postgres slow-path budget lookup
 - `src/lib/sse-parser.ts` — streaming response parser for usage extraction
-- `src/lib/headers.ts` — header sanitization (strip proxy headers, forward OpenAI headers)
+- `src/lib/headers.ts` — header sanitization (strip proxy headers, forward provider headers)
 
 ## Cost Tracking Flow
 

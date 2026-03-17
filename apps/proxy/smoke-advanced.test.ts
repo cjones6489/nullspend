@@ -14,10 +14,10 @@
  * Requires:
  *   - `pnpm proxy:dev` running
  *   - Real OpenAI API key in OPENAI_API_KEY env var
- *   - PLATFORM_AUTH_KEY matching the proxy's .dev.vars
+ *   - NULLSPEND_API_KEY for proxy auth
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, authHeaders, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, authHeaders, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Advanced proxy scenarios", () => {
   beforeAll(async () => {
@@ -389,7 +389,7 @@ describe("Advanced proxy scenarios", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": "wrong-key",
+          "x-nullspend-key": "wrong-key",
         },
         body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       });

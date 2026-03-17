@@ -4,12 +4,12 @@
  *
  * Requires:
  *   - Live proxy at PROXY_URL
- *   - OPENAI_API_KEY, PLATFORM_AUTH_KEY
+ *   - OPENAI_API_KEY, NULLSPEND_API_KEY
  *   - DATABASE_URL for verifying all cost events were logged
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, DATABASE_URL, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
 
 function percentile(sorted: number[], p: number): number {
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
@@ -169,7 +169,7 @@ describe("Load tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${OPENAI_API_KEY}`,
-            "X-NullSpend-Auth": "wrong-key",
+            "x-nullspend-key": "wrong-key",
           },
           body: smallRequest(),
         }),

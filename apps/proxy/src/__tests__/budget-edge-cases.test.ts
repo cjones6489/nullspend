@@ -337,8 +337,8 @@ describe("Budget Edge Cases", () => {
     const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     const text = await res.text();
 
-    expect(text).not.toContain("test-platform-key");
-    expect(text).not.toContain("x-nullspend-auth");
+    expect(text).not.toContain("x-nullspend-key");
+    expect(text).not.toContain("ask_");
     expect(text).not.toContain("postgresql://");
     expect(text).not.toContain("upstash.io");
     expect(text).not.toContain("fake-token");

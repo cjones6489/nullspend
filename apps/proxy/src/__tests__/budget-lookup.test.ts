@@ -31,6 +31,10 @@ vi.mock("../lib/budget.js", () => ({
   populateCache: (...args: unknown[]) => mockPopulateCache(...args),
 }));
 
+vi.mock("../lib/db-semaphore.js", () => ({
+  withDbConnection: <T>(fn: () => Promise<T>) => fn(),
+}));
+
 vi.mock("pg", () => {
   return {
     Client: function MockClient() {

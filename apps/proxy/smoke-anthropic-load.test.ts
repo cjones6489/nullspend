@@ -5,7 +5,7 @@
  *
  * Uses smaller concurrency than OpenAI tests to conserve Anthropic credits.
  *
- * Requires: live proxy, ANTHROPIC_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL
+ * Requires: live proxy, ANTHROPIC_API_KEY, NULLSPEND_API_KEY, DATABASE_URL
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";

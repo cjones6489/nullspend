@@ -3,12 +3,12 @@
  * Requires:
  *   - `pnpm proxy:dev` running on localhost:8787
  *   - Real Anthropic API key in ANTHROPIC_API_KEY env var
- *   - PLATFORM_AUTH_KEY matching the proxy's .dev.vars
+ *   - NULLSPEND_API_KEY for proxy auth
  *
  * Run with: npx vitest run smoke-anthropic.test.ts
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { BASE, ANTHROPIC_API_KEY, PLATFORM_AUTH_KEY, anthropicAuthHeaders, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, ANTHROPIC_API_KEY, NULLSPEND_API_KEY, anthropicAuthHeaders, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Anthropic proxy smoke tests", () => {
   beforeAll(async () => {
@@ -89,7 +89,7 @@ describe("Anthropic proxy smoke tests", () => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${ANTHROPIC_API_KEY}`,
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
@@ -120,13 +120,13 @@ describe("Anthropic proxy smoke tests", () => {
     expect(body.error).toBe("invalid_model");
   });
 
-  it("invalid X-NullSpend-Auth returns 401", async () => {
+  it("invalid x-nullspend-key returns 401", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-NullSpend-Auth": "wrong-key-here",
+        "x-nullspend-key": "wrong-key-here",
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
@@ -140,7 +140,7 @@ describe("Anthropic proxy smoke tests", () => {
     expect(body).toHaveProperty("error", "unauthorized");
   });
 
-  it("missing X-NullSpend-Auth returns 401", async () => {
+  it("missing x-nullspend-key returns 401", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: {
@@ -162,7 +162,7 @@ describe("Anthropic proxy smoke tests", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: "{this is not valid json!!!",
     });

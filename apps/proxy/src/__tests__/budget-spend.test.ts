@@ -38,6 +38,10 @@ vi.mock("pg", () => {
   };
 });
 
+vi.mock("../lib/db-semaphore.js", () => ({
+  withDbConnection: <T>(fn: () => Promise<T>) => fn(),
+}));
+
 vi.mock("drizzle-orm/node-postgres", () => ({
   drizzle: vi.fn(() => mockDrizzleDb),
 }));

@@ -20,5 +20,9 @@ export default defineConfig({
   test: {
     include: ["smoke-*.test.ts"],
     testTimeout: 60_000,
+    // Run smoke test files sequentially — budget tests share
+    // NULLSPEND_SMOKE_USER_ID and interfere if run in parallel.
+    fileParallelism: false,
+    globalSetup: ["./smoke-global-setup.ts"],
   },
 });

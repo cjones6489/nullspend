@@ -6,7 +6,7 @@
  * Anthropic cost formula (claude-3-haiku-20240307):
  *   microdollars = Math.round(input * 0.25 + output * 1.25 + cacheRead * 0.03)
  *
- * Requires: live proxy, ANTHROPIC_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL
+ * Requires: live proxy, ANTHROPIC_API_KEY, NULLSPEND_API_KEY, DATABASE_URL
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";

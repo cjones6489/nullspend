@@ -5,17 +5,7 @@
  * Run with: npx vitest run smoke.test.ts
  */
 import { describe, it, expect, beforeAll } from "vitest";
-
-const BASE = "http://127.0.0.1:8787";
-
-async function isServerUp(): Promise<boolean> {
-  try {
-    const res = await fetch(`${BASE}/health`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+import { BASE, isServerUp } from "./smoke-test-helpers.js";
 
 describe("proxy smoke tests", () => {
   beforeAll(async () => {

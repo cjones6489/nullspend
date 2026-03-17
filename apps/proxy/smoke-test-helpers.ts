@@ -3,33 +3,22 @@ import type postgres from "postgres";
 export const BASE = process.env.PROXY_URL ?? `http://127.0.0.1:${process.env.PROXY_PORT ?? "8787"}`;
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-export const PLATFORM_AUTH_KEY = process.env.PLATFORM_AUTH_KEY ?? "test-platform-key";
+export const NULLSPEND_API_KEY = process.env.NULLSPEND_API_KEY;
+export const NULLSPEND_SMOKE_USER_ID = process.env.NULLSPEND_SMOKE_USER_ID;
+export const NULLSPEND_SMOKE_KEY_ID = process.env.NULLSPEND_SMOKE_KEY_ID;
 export const DATABASE_URL = process.env.DATABASE_URL;
 
 /**
- * Build auth headers for proxy requests. Supports two patterns:
- *   authHeaders()                          — basic auth
- *   authHeaders({ "X-Custom": "val" })     — basic auth + extra headers
- *   authHeaders("user-id")                 — auth with userId
- *   authHeaders("user-id", "key-id")       — auth with userId + keyId
+ * Build auth headers for OpenAI proxy requests.
+ * Uses x-nullspend-key (API key auth). Proxy derives userId/keyId from the key.
  */
-export function authHeaders(
-  userIdOrExtra?: string | Record<string, string>,
-  keyId?: string,
-): Record<string, string> {
+export function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+    "x-nullspend-key": NULLSPEND_API_KEY!,
   };
-
-  if (typeof userIdOrExtra === "string") {
-    h["X-NullSpend-User-Id"] = userIdOrExtra;
-    if (keyId) h["X-NullSpend-Key-Id"] = keyId;
-  } else if (userIdOrExtra) {
-    Object.assign(h, userIdOrExtra);
-  }
-
+  if (extra) Object.assign(h, extra);
   return h;
 }
 
@@ -42,13 +31,15 @@ export function smallRequest(overrides: Record<string, unknown> = {}) {
   });
 }
 
-export function anthropicAuthHeaders(
-  extra?: Record<string, string>,
-): Record<string, string> {
+/**
+ * Build auth headers for Anthropic proxy requests.
+ * Uses x-nullspend-key (API key auth). Proxy derives userId/keyId from the key.
+ */
+export function anthropicAuthHeaders(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = {
     "Content-Type": "application/json",
     "x-api-key": ANTHROPIC_API_KEY!,
-    "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+    "x-nullspend-key": NULLSPEND_API_KEY!,
   };
   if (extra) Object.assign(h, extra);
   return h;

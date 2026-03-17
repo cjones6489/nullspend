@@ -3,13 +3,13 @@
  * Validates error recovery, burst handling, and request isolation for
  * the /v1/messages route.
  *
- * Requires: live proxy, ANTHROPIC_API_KEY, PLATFORM_AUTH_KEY
+ * Requires: live proxy, ANTHROPIC_API_KEY, NULLSPEND_API_KEY
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import {
   BASE,
   ANTHROPIC_API_KEY,
-  PLATFORM_AUTH_KEY,
+  NULLSPEND_API_KEY,
   anthropicAuthHeaders,
   smallAnthropicRequest,
   isServerUp,
@@ -28,7 +28,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-invalid-key-for-resilience-test",
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: smallAnthropicRequest(),
     });
@@ -45,7 +45,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-totally-bogus",
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: smallAnthropicRequest(),
     });
@@ -61,7 +61,7 @@ describe("Anthropic resilience", () => {
         headers: {
           "Content-Type": "application/json",
           "x-api-key": "sk-ant-bad-key-burst",
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: smallAnthropicRequest(),
       }),
@@ -83,7 +83,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-bad-key-ready",
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: smallAnthropicRequest(),
     });
@@ -141,7 +141,7 @@ describe("Anthropic resilience", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": "sk-ant-bad-isolation",
-        "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+        "x-nullspend-key": NULLSPEND_API_KEY!,
       },
       body: smallAnthropicRequest(),
     });
@@ -189,7 +189,7 @@ describe("Anthropic resilience", () => {
         headers: {
           "Content-Type": "application/json",
           "x-api-key": "sk-ant-bad-concurrent",
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: smallAnthropicRequest(),
       }),

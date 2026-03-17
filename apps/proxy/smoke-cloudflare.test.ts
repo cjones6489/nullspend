@@ -15,12 +15,12 @@
  * Requires:
  *   - `pnpm proxy:dev` running on localhost:8787
  *   - Real OpenAI API key in OPENAI_API_KEY env var
- *   - PLATFORM_AUTH_KEY matching the proxy's .dev.vars
+ *   - NULLSPEND_API_KEY for proxy auth
  *
  * Run with: pnpm proxy:smoke
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Cloudflare runtime edge cases", () => {
   beforeAll(async () => {
@@ -317,7 +317,7 @@ describe("Cloudflare runtime edge cases", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-NullSpend-Auth": "bad-key",
+            "x-nullspend-key": "bad-key",
             Authorization: `Bearer ${OPENAI_API_KEY}`,
           },
           body: smallRequest(),
@@ -427,7 +427,7 @@ describe("Cloudflare runtime edge cases", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${"x".repeat(5000)}`,
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: smallRequest(),
       });
@@ -534,7 +534,7 @@ describe("Cloudflare runtime edge cases", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": "wrong",
+          "x-nullspend-key": "wrong",
         },
         body: smallRequest({ stream: true }),
       });

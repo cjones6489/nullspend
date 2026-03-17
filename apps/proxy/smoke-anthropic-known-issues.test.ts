@@ -6,7 +6,7 @@
  *
  * Requires:
  *   - Live proxy at PROXY_URL
- *   - ANTHROPIC_API_KEY, PLATFORM_AUTH_KEY
+ *   - ANTHROPIC_API_KEY, NULLSPEND_API_KEY
  *   - DATABASE_URL for direct Supabase queries
  *   - UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
  */
@@ -16,7 +16,7 @@ import { Redis } from "@upstash/redis";
 import {
   BASE,
   ANTHROPIC_API_KEY,
-  PLATFORM_AUTH_KEY,
+  NULLSPEND_SMOKE_USER_ID,
   DATABASE_URL,
   anthropicAuthHeaders,
   smallAnthropicRequest,
@@ -133,13 +133,13 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
   }, 120_000);
 
   it("stream cancel triggers budget reconciliation (reserved returns to 0)", async () => {
-    const userId = `ant-ki-stream-cancel-${Date.now()}`;
+    const userId = NULLSPEND_SMOKE_USER_ID!;
     await setupBudget(userId, 10_000_000); // $10
 
     const controller = new AbortController();
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
+      headers: anthropicAuthHeaders(),
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
         max_tokens: 20,
@@ -290,12 +290,12 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
   // --- Budget edge cases ---
 
   it("budget enforced on /v1/messages route (no bypass)", async () => {
-    const userId = `ant-ki-route-${Date.now()}`;
+    const userId = NULLSPEND_SMOKE_USER_ID!;
     await setupBudget(userId, 1); // 1 microdollar — guaranteed denial
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
+      headers: anthropicAuthHeaders(),
       body: smallAnthropicRequest(),
     });
 
@@ -305,13 +305,13 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
   }, 15_000);
 
   it("stream abort does not double-count spend (actual vs reservation)", async () => {
-    const userId = `ant-ki-dbl-count-${Date.now()}`;
+    const userId = NULLSPEND_SMOKE_USER_ID!;
     await setupBudget(userId, 5_000_000); // $5
 
     const controller = new AbortController();
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
+      headers: anthropicAuthHeaders(),
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
         max_tokens: 15,
@@ -345,14 +345,14 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
   }, 60_000);
 
   it("budget allows exactly one Anthropic request then blocks second (precise exhaustion)", async () => {
-    const userId = `ant-ki-precise-${Date.now()}`;
+    const userId = NULLSPEND_SMOKE_USER_ID!;
     // Anthropic haiku with max_tokens: 10 costs ~5-10 microdollars.
     // Budget of 15 microdollars allows one but reserves enough to block the second.
     await setupBudget(userId, 15);
 
     const res1 = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
+      headers: anthropicAuthHeaders(),
       body: smallAnthropicRequest(),
     });
 
@@ -363,7 +363,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
 
     const res2 = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({ "X-NullSpend-User-Id": userId }),
+      headers: anthropicAuthHeaders(),
       body: smallAnthropicRequest(),
     });
 

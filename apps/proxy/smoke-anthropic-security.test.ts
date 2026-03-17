@@ -1,16 +1,17 @@
 /**
  * Anthropic security smoke tests.
- * Validates header stripping, rate-limit forwarding, timing-safe auth,
+ * Validates header stripping, rate-limit forwarding, spoofing resistance,
  * unicode handling, and data leak prevention for the /v1/messages route.
  *
- * Requires: live proxy, ANTHROPIC_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL
+ * Requires: live proxy, ANTHROPIC_API_KEY, NULLSPEND_API_KEY, DATABASE_URL
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
 import {
   BASE,
   ANTHROPIC_API_KEY,
-  PLATFORM_AUTH_KEY,
+  NULLSPEND_API_KEY,
+  NULLSPEND_SMOKE_USER_ID,
   DATABASE_URL,
   anthropicAuthHeaders,
   isServerUp,
@@ -48,7 +49,7 @@ describe("Anthropic security", () => {
     await res.text();
   }, 30_000);
 
-  it("X-NullSpend-Auth is not leaked in response headers", async () => {
+  it("x-nullspend-key is not leaked in response headers", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: anthropicAuthHeaders(),
@@ -60,17 +61,16 @@ describe("Anthropic security", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.headers.get("x-nullspend-auth")).toBeNull();
+    expect(res.headers.get("x-nullspend-key")).toBeNull();
     await res.text();
   }, 30_000);
 
   it("attribution headers not forwarded to Anthropic (verify via successful response)", async () => {
+    // X-NullSpend-User-Id and X-NullSpend-Key-Id no longer carry auth
+    // information — they are stripped by the proxy regardless.
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
-      headers: anthropicAuthHeaders({
-        "X-NullSpend-User-Id": "sec-test-user",
-        "X-NullSpend-Key-Id": "sec-test-key",
-      }),
+      headers: anthropicAuthHeaders(),
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
         max_tokens: 5,
@@ -78,8 +78,7 @@ describe("Anthropic security", () => {
       }),
     });
 
-    // If these headers were forwarded, Anthropic would ignore them, but our
-    // proxy should strip them. A 200 means Anthropic processed the request fine.
+    // A 200 means Anthropic processed the request fine.
     expect(res.status).toBe(200);
     await res.text();
   }, 30_000);
@@ -131,7 +130,7 @@ describe("Anthropic security", () => {
     await res.text();
   }, 30_000);
 
-  it("arbitrary user ID in header is accepted and recorded in Anthropic cost events", async () => {
+  it("spoofed X-NullSpend-User-Id is ignored — real userId from API key is recorded", async () => {
     const userId = `sec-user-${Date.now()}`;
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
@@ -151,7 +150,9 @@ describe("Anthropic security", () => {
 
     const row = await waitForCostEvent(sql, requestId, 15_000, "anthropic");
     expect(row).not.toBeNull();
-    expect(row!.user_id).toBe(userId);
+    // The spoofed userId is NOT recorded — the real userId derived from
+    // the API key hash is used instead, preventing attribution spoofing.
+    expect(row!.user_id).toBe(NULLSPEND_SMOKE_USER_ID);
   }, 30_000);
 
   it("body with unicode/emoji in messages is handled correctly", async () => {
@@ -220,45 +221,9 @@ describe("Anthropic security", () => {
     await res.text();
   }, 30_000);
 
-  it("response times for wrong platform keys are statistically similar (timing-safe comparison)", async () => {
-    const wrongKey1 = "aaaa" + "0".repeat(60);
-    const wrongKey2 = PLATFORM_AUTH_KEY.slice(0, -1) + (PLATFORM_AUTH_KEY.endsWith("0") ? "1" : "0");
-
-    const measure = async (key: string): Promise<number> => {
-      const times: number[] = [];
-      for (let i = 0; i < 5; i++) {
-        const start = performance.now();
-        const res = await fetch(`${BASE}/v1/messages`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": ANTHROPIC_API_KEY!,
-            "X-NullSpend-Auth": key,
-          },
-          body: JSON.stringify({
-            model: "claude-3-haiku-20240307",
-            max_tokens: 5,
-            messages: [{ role: "user", content: "Timing" }],
-          }),
-        });
-        const elapsed = performance.now() - start;
-        times.push(elapsed);
-        expect(res.status).toBe(401);
-        await res.text();
-      }
-      return times.reduce((a, b) => a + b, 0) / times.length;
-    };
-
-    const avg1 = await measure(wrongKey1);
-    const avg2 = await measure(wrongKey2);
-
-    const diff = Math.abs(avg1 - avg2);
-    const threshold = Math.max(avg1, avg2) * 0.5;
-
-    console.log(
-      `[security] Timing: key1=${Math.round(avg1)}ms, key2=${Math.round(avg2)}ms, diff=${Math.round(diff)}ms, threshold=${Math.round(threshold)}ms`,
-    );
-
-    expect(diff).toBeLessThan(threshold);
-  }, 60_000);
+  // Removed: timing attack test for wrong platform keys.
+  // With hash-based auth (SHA-256 + DB lookup), timing attacks are meaningless.
+  // Every key — regardless of length or similarity to a valid key — goes through
+  // the same hash-then-lookup path. Timing is dominated by the DB round-trip,
+  // not the key value.
 });

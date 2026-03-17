@@ -3,13 +3,12 @@
  * Validates request validation, streaming edge cases, and auth edge cases
  * for the /v1/messages route.
  *
- * Requires: live proxy, ANTHROPIC_API_KEY, PLATFORM_AUTH_KEY
+ * Requires: live proxy, ANTHROPIC_API_KEY, NULLSPEND_API_KEY
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import {
   BASE,
   ANTHROPIC_API_KEY,
-  PLATFORM_AUTH_KEY,
   anthropicAuthHeaders,
   smallAnthropicRequest,
   isServerUp,
@@ -317,13 +316,13 @@ describe("Anthropic edge cases", () => {
 
   // --- Auth edge cases ---
 
-  it("empty string X-NullSpend-Auth returns 401", async () => {
+  it("empty string x-nullspend-key returns 401", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-NullSpend-Auth": "",
+        "x-nullspend-key": "",
       },
       body: smallAnthropicRequest(),
     });
@@ -337,7 +336,7 @@ describe("Anthropic edge cases", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-NullSpend-Auth": "x".repeat(10_000),
+        "x-nullspend-key": "x".repeat(10_000),
       },
       body: smallAnthropicRequest(),
     });
@@ -351,7 +350,7 @@ describe("Anthropic edge cases", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-NullSpend-Auth": "!@#$%^&*()_+-=[]{}|;':\",./<>?",
+        "x-nullspend-key": "!@#$%^&*()_+-=[]{}|;':\",./<>?",
       },
       body: smallAnthropicRequest(),
     });

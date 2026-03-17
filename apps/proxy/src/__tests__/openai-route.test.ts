@@ -416,7 +416,7 @@ describe("handleChatCompletions", () => {
     await res.text();
   });
 
-  it("strips x-nullspend-auth header before sending to OpenAI", async () => {
+  it("strips x-nullspend-key header before sending to OpenAI", async () => {
     let capturedHeaders: Headers | null = null;
 
     globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
@@ -434,7 +434,7 @@ describe("handleChatCompletions", () => {
     );
 
     expect(capturedHeaders).toBeTruthy();
-    expect(capturedHeaders!.get("x-nullspend-auth")).toBeNull();
+    expect(capturedHeaders!.get("x-nullspend-key")).toBeNull();
   });
 
   it("streaming response includes anti-buffering headers", async () => {

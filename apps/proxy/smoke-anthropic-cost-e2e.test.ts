@@ -6,7 +6,7 @@
  * Requires:
  *   - Live proxy at PROXY_URL (or localhost:8787)
  *   - ANTHROPIC_API_KEY
- *   - PLATFORM_AUTH_KEY
+ *   - NULLSPEND_API_KEY
  *   - DATABASE_URL for direct Supabase queries
  *
  * AUDIT NOTE: Anthropic uses usage.input_tokens / usage.output_tokens,
@@ -17,7 +17,6 @@ import postgres from "postgres";
 import {
   BASE,
   ANTHROPIC_API_KEY,
-  PLATFORM_AUTH_KEY,
   DATABASE_URL,
   anthropicAuthHeaders,
   isServerUp,
@@ -154,7 +153,7 @@ describe("Anthropic end-to-end cost verification", () => {
       headers: {
         "Content-Type": "application/json",
         "x-api-key": ANTHROPIC_API_KEY!,
-        "X-NullSpend-Auth": "wrong-key-for-cost-test",
+        "x-nullspend-key": "wrong-key-for-cost-test",
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",

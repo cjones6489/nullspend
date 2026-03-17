@@ -6,12 +6,12 @@
  * Requires:
  *   - Live proxy at PROXY_URL (or localhost:8787)
  *   - OPENAI_API_KEY
- *   - PLATFORM_AUTH_KEY
+ *   - NULLSPEND_API_KEY
  *   - DATABASE_URL for direct Supabase queries
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL, authHeaders, isServerUp, waitForCostEvent, countCostEventsSince } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, DATABASE_URL, authHeaders, isServerUp, waitForCostEvent, countCostEventsSince } from "./smoke-test-helpers.js";
 
 describe("End-to-end cost verification", () => {
   let sql: postgres.Sql;
@@ -163,7 +163,7 @@ describe("End-to-end cost verification", () => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "X-NullSpend-Auth": "wrong-key-for-cost-test",
+        "x-nullspend-key": "wrong-key-for-cost-test",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",

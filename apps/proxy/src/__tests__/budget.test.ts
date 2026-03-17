@@ -561,7 +561,7 @@ describe("Budget Enforcement", () => {
 
   // --- P0-25: Sensitive headers never leaked ---
 
-  it("P0-25: x-nullspend-auth never appears in budget error responses", async () => {
+  it("P0-25: sensitive headers never appear in budget error responses", async () => {
     mockLookupBudgets.mockResolvedValue([keyEntity]);
     mockCheckAndReserve.mockResolvedValue({
       status: "denied",
@@ -573,8 +573,8 @@ describe("Budget Enforcement", () => {
 
     const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     const responseText = await res.text();
-    expect(responseText).not.toContain("x-nullspend-auth");
-    expect(responseText).not.toContain("test-platform-key");
+    expect(responseText).not.toContain("x-nullspend-key");
+    expect(responseText).not.toContain("ask_");
   });
 
   // --- Non-streaming with usage triggers reconciliation with actual cost ---

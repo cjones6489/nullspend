@@ -1,25 +1,29 @@
 /**
  * End-to-end budget enforcement tests.
- * Sets real budgets in Redis, sends requests through the live proxy,
- * and verifies enforcement, exhaustion, and reconciliation.
+ * Sets real budgets in Redis for the smoke-test API key's user, sends requests
+ * through the live proxy, and verifies enforcement, exhaustion, and reconciliation.
+ *
+ * The proxy derives userId/keyId from the x-nullspend-key header (API key auth).
+ * Budget tests set up budgets for NULLSPEND_SMOKE_USER_ID — the real userId
+ * associated with the test API key.
  *
  * Requires:
  *   - Live proxy at PROXY_URL
- *   - OPENAI_API_KEY, PLATFORM_AUTH_KEY
+ *   - OPENAI_API_KEY, NULLSPEND_API_KEY
+ *   - NULLSPEND_SMOKE_USER_ID (real userId for the test API key)
  *   - UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN for direct Redis access
  *   - DATABASE_URL for budget setup in Postgres
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { Redis } from "@upstash/redis";
 import postgres from "postgres";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, NULLSPEND_SMOKE_USER_ID, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
 
 describe("End-to-end budget enforcement", () => {
   let redis: Redis;
   let sql: postgres.Sql;
-  const testUserId = `budget-e2e-user-${Date.now()}`;
-  const budgetKey = `{budget}:user:${testUserId}`;
-  const noneKey = `{budget}:user:${testUserId}:none`;
+  const budgetKey = `{budget}:user:${NULLSPEND_SMOKE_USER_ID}`;
+  const noneKey = `{budget}:user:${NULLSPEND_SMOKE_USER_ID}:none`;
 
   const keysToCleanup: string[] = [];
 
@@ -31,6 +35,8 @@ describe("End-to-end budget enforcement", () => {
     const up = await isServerUp();
     if (!up) throw new Error("Proxy not reachable.");
     if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY required.");
+    if (!NULLSPEND_API_KEY) throw new Error("NULLSPEND_API_KEY required.");
+    if (!NULLSPEND_SMOKE_USER_ID) throw new Error("NULLSPEND_SMOKE_USER_ID required.");
     if (!process.env.UPSTASH_REDIS_REST_URL) throw new Error("UPSTASH_REDIS_REST_URL required.");
     if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL required.");
 
@@ -43,22 +49,23 @@ describe("End-to-end budget enforcement", () => {
   });
 
   afterEach(async () => {
-    // Clean up all tracked Redis keys and reservation keys
+    // Clean up Redis keys AND Postgres rows between tests to prevent
+    // slow-path cache repopulation from stale DB rows
     const rsvKeys = await redis.keys("{budget}:rsv:*");
     const allKeys = [...keysToCleanup, ...rsvKeys];
     if (allKeys.length > 0) {
       await redis.del(...allKeys);
     }
     keysToCleanup.length = 0;
+    await sql`DELETE FROM budgets WHERE entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
   });
 
   afterAll(async () => {
-    // Clean up Postgres budget rows
-    await sql`DELETE FROM budgets WHERE entity_id LIKE 'budget-e2e-%'`;
     await sql.end();
   });
 
-  async function setupBudget(userId: string, maxBudgetMicrodollars: number, spendMicrodollars = 0) {
+  async function setupBudget(maxBudgetMicrodollars: number, spendMicrodollars = 0) {
+    const userId = NULLSPEND_SMOKE_USER_ID!;
     const key = `{budget}:user:${userId}`;
     const nk = `{budget}:user:${userId}:none`;
     trackKey(key);
@@ -87,13 +94,23 @@ describe("End-to-end budget enforcement", () => {
     `;
   }
 
+  /** Remove any existing budget so the user is non-budgeted */
+  async function cleanupBudget() {
+    const userId = NULLSPEND_SMOKE_USER_ID!;
+    const key = `{budget}:user:${userId}`;
+    const nk = `{budget}:user:${userId}:none`;
+    trackKey(key);
+    trackKey(nk);
+    await redis.del(key, nk);
+    await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${userId}`;
+  }
+
   it("allows request when budget has sufficient funds", async () => {
-    const userId = `budget-e2e-allow-${Date.now()}`;
-    await setupBudget(userId, 10_000_000); // $10
+    await setupBudget(10_000_000); // $10
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders(userId),
+      headers: authHeaders(),
       body: smallRequest(),
     });
 
@@ -103,12 +120,11 @@ describe("End-to-end budget enforcement", () => {
   }, 30_000);
 
   it("blocks request with budget_exceeded when budget is $0.00", async () => {
-    const userId = `budget-e2e-zero-${Date.now()}`;
-    await setupBudget(userId, 0); // $0.00
+    await setupBudget(0); // $0.00
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders(userId),
+      headers: authHeaders(),
       body: smallRequest(),
     });
 
@@ -119,12 +135,11 @@ describe("End-to-end budget enforcement", () => {
   }, 15_000);
 
   it("blocks request when spend already equals maxBudget", async () => {
-    const userId = `budget-e2e-full-${Date.now()}`;
-    await setupBudget(userId, 100_000, 100_000); // spend == max
+    await setupBudget(100_000, 100_000); // spend == max
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders(userId),
+      headers: authHeaders(),
       body: smallRequest(),
     });
 
@@ -134,10 +149,9 @@ describe("End-to-end budget enforcement", () => {
   }, 15_000);
 
   it("exhausts budget by sending requests until blocked", async () => {
-    const userId = `budget-e2e-exhaust-${Date.now()}`;
     // Estimator reserves ~6 microdollars per request (gpt-4o-mini, max_tokens: 3).
     // Budget of 10 allows exactly 1 request before denial.
-    await setupBudget(userId, 10);
+    await setupBudget(10);
 
     let successCount = 0;
     let deniedCount = 0;
@@ -145,7 +159,7 @@ describe("End-to-end budget enforcement", () => {
     for (let i = 0; i < 10; i++) {
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
-        headers: authHeaders(userId),
+        headers: authHeaders(),
         body: smallRequest({ messages: [{ role: "user", content: `Budget exhaust ${i}` }] }),
       });
 
@@ -166,7 +180,7 @@ describe("End-to-end budget enforcement", () => {
     expect(deniedCount).toBeGreaterThan(0);
 
     // Verify Redis state shows spend near or at the limit
-    const budgetState = await redis.hgetall(`{budget}:user:${userId}`) as Record<string, string>;
+    const budgetState = await redis.hgetall(`{budget}:user:${NULLSPEND_SMOKE_USER_ID!}`) as Record<string, string>;
     expect(budgetState).toBeDefined();
     const spend = Number(budgetState.spend ?? 0);
     const reserved = Number(budgetState.reserved ?? 0);
@@ -174,13 +188,12 @@ describe("End-to-end budget enforcement", () => {
   }, 120_000);
 
   it("reconciliation adjusts reserved amount after request completes", async () => {
-    const userId = `budget-e2e-reconcile-${Date.now()}`;
-    await setupBudget(userId, 5_000_000); // $5 — plenty of headroom
+    await setupBudget(5_000_000); // $5 — plenty of headroom
 
     // Send a request
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders(userId),
+      headers: authHeaders(),
       body: smallRequest(),
     });
     expect(res.status).toBe(200);
@@ -189,7 +202,7 @@ describe("End-to-end budget enforcement", () => {
     // Wait for waitUntil reconciliation
     await new Promise((r) => setTimeout(r, 5_000));
 
-    const state = await redis.hgetall(`{budget}:user:${userId}`) as Record<string, string>;
+    const state = await redis.hgetall(`{budget}:user:${NULLSPEND_SMOKE_USER_ID!}`) as Record<string, string>;
     const spend = Number(state.spend ?? 0);
     const reserved = Number(state.reserved ?? 0);
 
@@ -200,12 +213,11 @@ describe("End-to-end budget enforcement", () => {
   }, 30_000);
 
   it("budget_exceeded response includes correct detail fields", async () => {
-    const userId = `budget-e2e-details-${Date.now()}`;
-    await setupBudget(userId, 1); // 1 microdollar — guaranteed denial
+    await setupBudget(1); // 1 microdollar — guaranteed denial
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders(userId),
+      headers: authHeaders(),
       body: smallRequest(),
     });
 
@@ -218,14 +230,13 @@ describe("End-to-end budget enforcement", () => {
   }, 15_000);
 
   it("concurrent requests against tight budget don't overspend", async () => {
-    const userId = `budget-e2e-concurrent-${Date.now()}`;
     // Set budget to ~200 microdollars — enough for maybe 1-2 requests
-    await setupBudget(userId, 200);
+    await setupBudget(200);
 
     const requests = Array.from({ length: 5 }, (_, i) =>
       fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
-        headers: authHeaders(userId),
+        headers: authHeaders(),
         body: smallRequest({ messages: [{ role: "user", content: `Concurrent ${i}` }] }),
       }),
     );
@@ -249,17 +260,19 @@ describe("End-to-end budget enforcement", () => {
     // Wait for reconciliation
     await new Promise((r) => setTimeout(r, 5_000));
 
-    const state = await redis.hgetall(`{budget}:user:${userId}`) as Record<string, string>;
+    const state = await redis.hgetall(`{budget}:user:${NULLSPEND_SMOKE_USER_ID!}`) as Record<string, string>;
     const spend = Number(state.spend ?? 0);
     // Spend should not wildly exceed the budget (allowing for reservation margin)
     expect(spend).toBeLessThan(200 * 3); // generous bound
   }, 60_000);
 
-  it("requests without budget headers are not affected by budget enforcement", async () => {
-    // No X-NullSpend-User-Id or X-NullSpend-Key-Id means no budget lookup
+  it("requests without configured budget are not affected by budget enforcement", async () => {
+    // Clean up any existing budget for the smoke user so there's no budget to enforce
+    await cleanupBudget();
+
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
-      headers: authHeaders(), // no userId or keyId
+      headers: authHeaders(),
       body: smallRequest(),
     });
 

@@ -5,12 +5,12 @@
  * Requires:
  *   - `pnpm proxy:dev` running on localhost:8787
  *   - Real OpenAI API key in OPENAI_API_KEY env var
- *   - PLATFORM_AUTH_KEY matching the proxy's .dev.vars
+ *   - NULLSPEND_API_KEY for proxy auth
  *
  * Run with: npx vitest run smoke-edge-cases.test.ts
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, authHeaders, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, authHeaders, isServerUp } from "./smoke-test-helpers.js";
 
 describe("Proxy pressure tests", () => {
   beforeAll(async () => {
@@ -165,13 +165,13 @@ describe("Proxy pressure tests", () => {
   // ── Auth edge cases ──
 
   describe("Authentication edge cases", () => {
-    it("empty string X-NullSpend-Auth returns 401", async () => {
+    it("empty string x-nullspend-key returns 401", async () => {
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": "",
+          "x-nullspend-key": "",
         },
         body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       });
@@ -184,7 +184,7 @@ describe("Proxy pressure tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": "x".repeat(10000),
+          "x-nullspend-key": "x".repeat(10000),
         },
         body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       });
@@ -197,7 +197,7 @@ describe("Proxy pressure tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": "!@#$%^&*()_+-=[]{}|;':\",./<>?~`",
+          "x-nullspend-key": "!@#$%^&*()_+-=[]{}|;':\",./<>?~`",
         },
         body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       });
@@ -292,7 +292,7 @@ describe("Proxy pressure tests", () => {
         headers: {
           "Content-Type": "application/json",
           Authorization: "Bearer sk-invalid-key-12345",
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -659,7 +659,7 @@ describe("Proxy pressure tests", () => {
         method: "POST",
         headers: {
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -677,7 +677,7 @@ describe("Proxy pressure tests", () => {
         headers: {
           "Content-Type": "text/plain",
           Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "X-NullSpend-Auth": PLATFORM_AUTH_KEY,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -765,7 +765,7 @@ describe("Proxy pressure tests", () => {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${OPENAI_API_KEY}`,
-            "X-NullSpend-Auth": "wrong-key",
+            "x-nullspend-key": "wrong-key",
           },
           body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
         }),

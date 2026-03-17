@@ -6,12 +6,12 @@
  *
  * Requires:
  *   - Live proxy at PROXY_URL
- *   - OPENAI_API_KEY, PLATFORM_AUTH_KEY
+ *   - OPENAI_API_KEY, NULLSPEND_API_KEY
  *   - DATABASE_URL for direct Supabase queries
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
-import { BASE, OPENAI_API_KEY, PLATFORM_AUTH_KEY, DATABASE_URL, authHeaders, isServerUp, waitForCostEvent } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, DATABASE_URL, authHeaders, isServerUp, waitForCostEvent } from "./smoke-test-helpers.js";
 
 const PRICING: Record<string, { inputPerMTok: number; cachedInputPerMTok: number; outputPerMTok: number }> = {
   "gpt-4o-mini": { inputPerMTok: 0.15, cachedInputPerMTok: 0.075, outputPerMTok: 0.60 },

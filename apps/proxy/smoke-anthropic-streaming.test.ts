@@ -6,7 +6,7 @@
  * Requires:
  *   - `pnpm proxy:dev` running on localhost:8787
  *   - Real Anthropic API key in ANTHROPIC_API_KEY env var
- *   - PLATFORM_AUTH_KEY matching the proxy's .dev.vars
+ *   - NULLSPEND_API_KEY for proxy auth
  *
  * Run with: npx vitest run smoke-anthropic-streaming.test.ts
  */

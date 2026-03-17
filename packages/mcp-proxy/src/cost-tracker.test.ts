@@ -172,7 +172,6 @@ describe("EventBatcher", () => {
 
     const headers = mockFetch.mock.calls[0][1].headers;
     expect(headers["x-nullspend-key"]).toBe("ask_test123");
-    expect(headers["x-nullspend-auth"]).toBeUndefined();
 
     await batcher.shutdown();
   });
