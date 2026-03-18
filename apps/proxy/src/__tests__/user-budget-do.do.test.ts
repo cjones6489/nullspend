@@ -22,7 +22,7 @@ describe("UserBudgetDO", () => {
     expect(state[0].reserved).toBe(0);
   });
 
-  it("skips if already populated and returns false", async () => {
+  it("returns false on second call and UPSERTs config fields", async () => {
     const stub = getStub("user-populate-2");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
     const second = await stub.populateIfEmpty("user", "u1", 99_000_000, 99, "warn", null, 0);
@@ -30,8 +30,70 @@ describe("UserBudgetDO", () => {
 
     const state = await stub.getBudgetState();
     expect(state).toHaveLength(1);
-    expect(state[0].max_budget).toBe(50_000_000); // Original values preserved
-    expect(state[0].policy).toBe("strict_block");
+    // Config fields updated by UPSERT
+    expect(state[0].max_budget).toBe(99_000_000);
+    expect(state[0].policy).toBe("warn");
+  });
+
+  it("UPSERT preserves DO's spend (not overwritten by Postgres value)", async () => {
+    const stub = getStub("user-populate-spend");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
+
+    // Simulate DO accumulating spend via reconcile
+    const check = await stub.checkAndReserve([{ type: "user", id: "u1" }], 5_000_000);
+    await stub.reconcile(check.reservationId!, 5_000_000);
+
+    // Re-populate with different spend from Postgres (stale)
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
+
+    const state = await stub.getBudgetState();
+    expect(state[0].spend).toBe(15_000_000); // DO's authoritative 10M + 5M, not Postgres's 10M
+  });
+
+  it("UPSERT preserves DO's reserved (not overwritten)", async () => {
+    const stub = getStub("user-populate-reserved");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+
+    // Create a reservation
+    const check = await stub.checkAndReserve([{ type: "user", id: "u1" }], 10_000_000);
+    expect(check.status).toBe("approved");
+
+    // Re-populate — reserved should survive
+    await stub.populateIfEmpty("user", "u1", 60_000_000, 0, "strict_block", null, 0);
+
+    const state = await stub.getBudgetState();
+    expect(state[0].reserved).toBe(10_000_000); // Preserved
+    expect(state[0].max_budget).toBe(60_000_000); // Config updated
+  });
+
+  it("UPSERT preserves DO's period_start (not overwritten)", async () => {
+    const stub = getStub("user-populate-period");
+    const twoDaysAgo = Date.now() - 2 * 86_400_000;
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 50_000_000, "strict_block", "daily", twoDaysAgo);
+
+    // Trigger inline period reset
+    await stub.checkAndReserve([{ type: "user", id: "u1" }], 1_000);
+
+    const stateAfterReset = await stub.getBudgetState();
+    const dosPeriodStart = stateAfterReset[0].period_start;
+    expect(dosPeriodStart).toBeGreaterThan(twoDaysAgo);
+
+    // Re-populate with stale period_start from Postgres
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", "daily", twoDaysAgo);
+
+    const stateAfterUpsert = await stub.getBudgetState();
+    expect(stateAfterUpsert[0].period_start).toBe(dosPeriodStart); // Preserved
+  });
+
+  it("UPSERT updates reset_interval from Postgres", async () => {
+    const stub = getStub("user-populate-interval");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", "daily", Date.now());
+
+    // Change interval
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", "monthly", Date.now());
+
+    const state = await stub.getBudgetState();
+    expect(state[0].reset_interval).toBe("monthly");
   });
 
   // ── checkAndReserve ──────────────────────────────────────────────

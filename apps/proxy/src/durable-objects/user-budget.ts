@@ -329,10 +329,13 @@ export class UserBudgetDO extends DurableObject {
   }
 
   /**
-   * Atomic skip-if-exists population from Postgres.
-   * Returns true if the budget was newly inserted, false if it already existed.
-   * Note: return value is best-effort — concurrent calls may both return true
-   * due to the Map pre-check, but INSERT OR IGNORE ensures DB consistency.
+   * Seed or refresh a budget entity from Postgres.
+   * On first insert: uses all provided values.
+   * On conflict: updates max_budget, policy, reset_interval from Postgres
+   * but preserves the DO's authoritative spend, reserved, and period_start.
+   *
+   * Note: method name is an RPC method on the DO stub — do NOT rename
+   * (would break rolling deploys).
    */
   async populateIfEmpty(
     entityType: string,
@@ -344,12 +347,16 @@ export class UserBudgetDO extends DurableObject {
     periodStart: number,
   ): Promise<boolean> {
     const key = `${entityType}:${entityId}`;
-    if (this.budgets.has(key)) return false;
+    const existed = this.budgets.has(key);
 
     this.ctx.storage.sql.exec(
-      `INSERT OR IGNORE INTO budgets
+      `INSERT INTO budgets
        (entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start)
-       VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+       ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+         max_budget = excluded.max_budget,
+         policy = excluded.policy,
+         reset_interval = excluded.reset_interval`,
       entityType,
       entityId,
       maxBudget,
@@ -359,9 +366,8 @@ export class UserBudgetDO extends DurableObject {
       periodStart,
     );
 
-    const sizeBefore = this.budgets.size;
     this.loadBudgets();
-    return this.budgets.size > sizeBefore;
+    return !existed;
   }
 
   /** Read-only budget state (for dashboard queries or debugging). */

@@ -128,7 +128,7 @@ export async function handleChatCompletions(
 
     if (!upstreamResponse.ok) {
       // Fix 6: reconcile with actualCost=0 on upstream error
-      if (reservationId && ctx.redis) {
+      if (reservationId) {
         waitUntil(
           reconcileBudgetQueued(getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, 0, budgetEntities, ctx.connectionString, ctx.redis),
         );
@@ -184,7 +184,7 @@ export async function handleChatCompletions(
     );
   } catch (err) {
     // Fix 11: clean up reservation on fetch timeout or unexpected error
-    if (reservationId && ctx.redis) {
+    if (reservationId) {
       waitUntil(
         reconcileBudgetQueued(getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, 0, budgetEntities, ctx.connectionString, ctx.redis),
       );
@@ -220,7 +220,7 @@ function handleStreaming(
 ): Response {
   const upstreamBody = upstreamResponse.body;
   if (!upstreamBody) {
-    if (reservationId && redis) {
+    if (reservationId) {
       waitUntil(
         reconcileBudgetQueued(getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString, redis),
       );
@@ -247,7 +247,7 @@ function handleStreaming(
               " cost event not recorded.",
             { requestId, model: requestModel, durationMs, cancelled: result?.cancelled ?? false },
           );
-          if (reservationId && redis) {
+          if (reservationId) {
             await reconcileBudgetQueued(
               getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, reconcileCost, budgetEntities, connectionString, redis,
             );
@@ -270,7 +270,7 @@ function handleStreaming(
           toolCallsRequested: result.toolCalls,
         });
 
-        if (reservationId && redis) {
+        if (reservationId) {
           await reconcileBudgetQueued(
             getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, costEvent.costMicrodollars,
             budgetEntities, connectionString, redis,
@@ -307,7 +307,7 @@ function handleStreaming(
       } catch (err) {
         console.error("[openai-route] Failed to process streaming cost event:", err);
         // Last-resort: try to reconcile with 0 on unexpected error
-        if (reservationId && redis) {
+        if (reservationId) {
           try {
             await reconcileBudgetQueued(
               getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString, redis,
@@ -378,7 +378,7 @@ async function handleNonStreaming(
         toolCallsRequested,
       }));
 
-      if (reservationId && redis) {
+      if (reservationId) {
         waitUntil(
           reconcileBudgetQueued(
             getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, costEvent.costMicrodollars,
@@ -410,7 +410,7 @@ async function handleNonStreaming(
           }
         })());
       }
-    } else if (reservationId && redis) {
+    } else if (reservationId) {
       // No usage in parsed response — reconcile with 0
       waitUntil(
         reconcileBudgetQueued(getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString, redis),
@@ -419,7 +419,7 @@ async function handleNonStreaming(
   } catch {
     console.error("[openai-route] Failed to parse non-streaming response for cost tracking");
     // Fix 6: reconcile on parse failure
-    if (reservationId && redis) {
+    if (reservationId) {
       waitUntil(
         reconcileBudgetQueued(getReconcileQueue(env), budgetMode, env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString, redis),
       );

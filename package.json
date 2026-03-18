@@ -28,6 +28,7 @@
     "proxy:smoke": "pnpm --filter @nullspend/proxy test:smoke",
     "proxy:test:integration": "pnpm --filter @nullspend/proxy test:integration",
     "proxy:test:do": "pnpm --filter @nullspend/proxy test:do",
+    "proxy:typecheck": "pnpm --filter @nullspend/proxy typecheck",
     "cost-engine:build": "pnpm --filter @nullspend/cost-engine build",
     "cost-engine:test": "pnpm --filter @nullspend/cost-engine test",
     "db:build": "pnpm --filter @nullspend/db build",

@@ -5,7 +5,7 @@ import type { BudgetEntity } from "./budget-lookup.js";
 import { lookupBudgets } from "./budget-lookup.js";
 import { checkAndReserve } from "./budget.js";
 import { reconcileReservation } from "./budget-reconcile.js";
-import { lookupBudgetsForDO } from "./budget-do-lookup.js";
+import { lookupBudgetsForDO, type DOBudgetEntity } from "./budget-do-lookup.js";
 import { doBudgetCheck, doBudgetReconcile, doBudgetPopulate } from "./budget-do-client.js";
 import { resetBudgetPeriod } from "./budget-spend.js";
 import { enqueueReconciliation } from "./reconciliation-queue.js";
@@ -15,6 +15,31 @@ import { enqueueReconciliation } from "./reconciliation-queue.js";
 // ---------------------------------------------------------------------------
 
 export type BudgetEngineMode = "redis" | "durable-objects" | "shadow";
+
+// ---------------------------------------------------------------------------
+// DO lookup cache (module-level, persists across requests in same isolate)
+// ---------------------------------------------------------------------------
+
+const DO_LOOKUP_TTL_MS = 60_000;
+const DO_LOOKUP_MAX_SIZE = 256;
+
+interface DOLookupCacheEntry {
+  entities: DOBudgetEntity[];
+  expiresAt: number;
+}
+
+/** @internal Exported for testing only. */
+export const doLookupCache = new Map<string, DOLookupCacheEntry>();
+
+function evictOldestIfNeeded<V>(cache: Map<string, V>, maxSize: number): void {
+  if (cache.size <= maxSize) return;
+  const oldest = cache.keys().next().value;
+  if (oldest !== undefined) cache.delete(oldest);
+}
+
+function doLookupCacheKey(identity: { keyId: string | null; userId: string | null }): string {
+  return `${identity.userId ?? ""}:${identity.keyId ?? ""}`;
+}
 
 export interface BudgetCheckOutcome {
   status: "approved" | "denied" | "skipped";
@@ -266,14 +291,30 @@ async function checkBudgetDO(
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
 
-  const doEntities = await lookupBudgetsForDO(connectionString, identity);
+  // Cache-first lookup: skip Postgres + DO populate on cache hit
+  const cacheKey = doLookupCacheKey(identity);
+  const now = Date.now();
+  const cached = doLookupCache.get(cacheKey);
+
+  let doEntities: DOBudgetEntity[];
+  if (cached && cached.expiresAt > now) {
+    doEntities = cached.entities;
+  } else {
+    doEntities = await lookupBudgetsForDO(connectionString, identity);
+
+    // Only cache non-empty results — empty results must re-query on every
+    // request so that newly-created budgets take effect immediately rather
+    // than being invisible for up to 60s (fails-open).
+    if (doEntities.length > 0) {
+      doLookupCache.set(cacheKey, { entities: doEntities, expiresAt: now + DO_LOOKUP_TTL_MS });
+      evictOldestIfNeeded(doLookupCache, DO_LOOKUP_MAX_SIZE);
+      await doBudgetPopulate(env, userId, doEntities);
+    }
+  }
 
   if (doEntities.length === 0) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
-
-  // Seed DO on cold start
-  await doBudgetPopulate(env, userId, doEntities);
 
   // Check budget
   const entities = doEntities.map((e) => ({ type: e.entityType, id: e.entityId }));

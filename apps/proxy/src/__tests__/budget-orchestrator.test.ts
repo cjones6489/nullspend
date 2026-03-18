@@ -53,7 +53,7 @@ vi.mock("../lib/budget-spend.js", () => ({
   resetBudgetPeriod: (...args: unknown[]) => mockResetBudgetPeriod(...args),
 }));
 
-import { checkBudget, reconcileBudget, resolveBudgetMode, parseShadowSampleRate } from "../lib/budget-orchestrator.js";
+import { checkBudget, reconcileBudget, resolveBudgetMode, parseShadowSampleRate, doLookupCache } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
 import { makeFakeRedis } from "./helpers/make-fake-redis.js";
 
@@ -216,6 +216,7 @@ describe("reconcileBudget — redis mode", () => {
 describe("checkBudget — durable-objects mode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    doLookupCache.clear();
     mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockResetBudgetPeriod.mockResolvedValue(undefined);
   });
@@ -398,9 +399,135 @@ describe("reconcileBudget — durable-objects mode", () => {
   });
 });
 
+describe("checkBudgetDO — lookup cache", () => {
+  const doEntity = {
+    entityType: "user",
+    entityId: "user-1",
+    maxBudget: 100_000_000,
+    spend: 20_000_000,
+    policy: "strict_block",
+    resetInterval: "monthly" as const,
+    periodStart: 1_700_000_000_000,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    doLookupCache.clear();
+    mockDoBudgetPopulate.mockResolvedValue(undefined);
+    mockResetBudgetPeriod.mockResolvedValue(undefined);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-do-1" });
+  });
+
+  it("cache miss → calls lookupBudgetsForDO + doBudgetPopulate", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+
+    await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
+    expect(mockDoBudgetPopulate).toHaveBeenCalledTimes(1);
+  });
+
+  it("cache hit → skips both lookupBudgetsForDO and doBudgetPopulate", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+
+    // First call: cache miss
+    await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
+    expect(mockDoBudgetPopulate).toHaveBeenCalledTimes(1);
+
+    vi.clearAllMocks();
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-do-2" });
+
+    // Second call: cache hit
+    await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+    expect(mockLookupBudgetsForDO).not.toHaveBeenCalled();
+    expect(mockDoBudgetPopulate).not.toHaveBeenCalled();
+  });
+
+  it("cache expires after TTL → re-queries", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+
+    await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+
+    // Manually expire the cache entry
+    for (const [key, entry] of doLookupCache) {
+      doLookupCache.set(key, { ...entry, expiresAt: Date.now() - 1 });
+    }
+
+    vi.clearAllMocks();
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-do-3" });
+    mockDoBudgetPopulate.mockResolvedValue(undefined);
+
+    await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
+    expect(mockDoBudgetPopulate).toHaveBeenCalledTimes(1);
+  });
+
+  it("evicts oldest entry when cache exceeds max size", async () => {
+    // Fill cache with 256 entries (using keys that don't collide with ctx identity user-1:key-1)
+    for (let i = 0; i < 256; i++) {
+      doLookupCache.set(`fill-${i}:fill-${i}`, {
+        entities: [doEntity],
+        expiresAt: Date.now() + 60_000,
+      });
+    }
+    expect(doLookupCache.size).toBe(256);
+
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+
+    // This call adds entry #257 (user-1:key-1), triggering eviction
+    await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+
+    // Size should be 256 (added 1 new, evicted 1 oldest)
+    expect(doLookupCache.size).toBe(256);
+    // First entry should have been evicted
+    expect(doLookupCache.has("fill-0:fill-0")).toBe(false);
+    // New entry should be present
+    expect(doLookupCache.has("user-1:key-1")).toBe(true);
+  });
+
+  it("empty entities are NOT cached (avoids 60s fails-open window)", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([]);
+
+    // First call: no budgets → skipped
+    const result1 = await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+    expect(result1.status).toBe("skipped");
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
+
+    // Cache should NOT have the empty result
+    expect(doLookupCache.size).toBe(0);
+
+    vi.clearAllMocks();
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-do-1" });
+    mockDoBudgetPopulate.mockResolvedValue(undefined);
+
+    // Second call: budgets now exist → should query Postgres again (not serve stale empty)
+    const result2 = await checkBudget("durable-objects", makeEnv(), makeCtx(), 5_000_000);
+    expect(result2.status).toBe("approved");
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
+    expect(mockDoBudgetPopulate).toHaveBeenCalledTimes(1);
+  });
+
+  it("different users get separate cache entries", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+
+    const ctx1 = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasBudgets: true, hasWebhooks: false } });
+    const ctx2 = makeCtx({ auth: { userId: "user-2", keyId: "key-2", hasBudgets: true, hasWebhooks: false } });
+
+    await checkBudget("durable-objects", makeEnv(), ctx1, 5_000_000);
+    await checkBudget("durable-objects", makeEnv(), ctx2, 5_000_000);
+
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(2);
+    expect(doLookupCache.size).toBe(2);
+  });
+});
+
 describe("checkBudget — shadow mode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    doLookupCache.clear();
     mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockResetBudgetPeriod.mockResolvedValue(undefined);
   });
@@ -448,6 +575,7 @@ describe("checkBudget — shadow mode", () => {
 describe("shadow mode — sampling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    doLookupCache.clear();
     mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockResetBudgetPeriod.mockResolvedValue(undefined);
   });
@@ -601,6 +729,7 @@ function parseShadowMetric(logSpy: ReturnType<typeof vi.spyOn>) {
 describe("shadow mode — structured metric emission", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    doLookupCache.clear();
     mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockResetBudgetPeriod.mockResolvedValue(undefined);
   });
