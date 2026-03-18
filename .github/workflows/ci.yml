@@ -36,6 +36,9 @@ jobs:
       - name: Build @nullspend/cost-engine
         run: pnpm cost-engine:build
 
+      - name: Build @nullspend/sdk
+        run: pnpm sdk:build
+
       - name: Typecheck
         run: pnpm typecheck
 
