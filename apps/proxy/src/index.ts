@@ -3,11 +3,13 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { handleChatCompletions } from "./routes/openai.js";
 import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
+import { handleBudgetInvalidation } from "./routes/internal.js";
 import { authenticateRequest } from "./lib/auth.js";
 import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 import { handleReconciliationQueue } from "./queue-handler.js";
+import { handleDlqQueue, DLQ_QUEUE_NAME } from "./dlq-handler.js";
 import type { ReconciliationMessage } from "./lib/reconciliation-queue.js";
 
 export { UserBudgetDO } from "./durable-objects/user-budget.js";
@@ -128,7 +130,11 @@ export default {
     batch: MessageBatch<ReconciliationMessage>,
     env: Env,
   ): Promise<void> {
-    await handleReconciliationQueue(batch, env);
+    if (batch.queue === DLQ_QUEUE_NAME) {
+      await handleDlqQueue(batch, env);
+    } else {
+      await handleReconciliationQueue(batch, env);
+    }
   },
 
   async fetch(
@@ -161,6 +167,11 @@ export default {
             { status: 503 },
           );
         }
+      }
+
+      // Internal endpoint — separate auth pipeline (shared secret, not API key)
+      if (url.pathname === "/internal/budget/invalidate" && request.method === "POST") {
+        return handleBudgetInvalidation(request, env);
       }
 
       // Route lookup
@@ -212,3 +223,4 @@ export default {
     }
   },
 };
+

@@ -86,9 +86,11 @@ export async function verifyWebhookSignature(
 }
 
 function timingSafeStringEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
   const encoder = new TextEncoder();
   const bufA = encoder.encode(a);
   const bufB = encoder.encode(b);
-  return crypto.subtle.timingSafeEqual(bufA.buffer, bufB.buffer);
+  const lengthsMatch = bufA.byteLength === bufB.byteLength;
+  return lengthsMatch
+    ? crypto.subtle.timingSafeEqual(bufA, bufB)
+    : !crypto.subtle.timingSafeEqual(bufA, bufA);
 }

@@ -115,7 +115,15 @@
       "Bash(PROXY_URL=https://nullspend.cjones6489.workers.dev pnpm --filter @nullspend/proxy exec vitest run --config vitest.smoke.config.ts smoke-edge-cases.test.ts smoke-anthropic-edge-cases.test.ts smoke-advanced.test.ts smoke-cloudflare.test.ts 2>&1 | grep -E \"✓|FAIL|Test Files|Tests \" | tail -40)",
       "Bash(PROXY_URL=https://nullspend.cjones6489.workers.dev pnpm --filter @nullspend/proxy exec vitest run --config vitest.smoke.config.ts smoke-load.test.ts smoke-anthropic-load.test.ts smoke-resilience.test.ts smoke-anthropic-resilience.test.ts 2>&1 | grep -E \"✓|FAIL|Test Files|Tests \" | tail -40)",
       "Bash(PROXY_URL=https://nullspend.cjones6489.workers.dev pnpm --filter @nullspend/proxy exec vitest run --config vitest.smoke.config.ts smoke-pricing-accuracy.test.ts smoke-anthropic-pricing-accuracy.test.ts smoke-budget-e2e.test.ts smoke-budget-edge-cases.test.ts smoke-anthropic-budget-e2e.test.ts 2>&1 | grep -E \"✓|FAIL|Test Files|Tests \" | tail -40)",
-      "Bash(PROXY_URL=https://nullspend.cjones6489.workers.dev pnpm --filter @nullspend/proxy exec vitest run --config vitest.smoke.config.ts smoke-budget-e2e.test.ts smoke-budget-edge-cases.test.ts smoke-anthropic-budget-e2e.test.ts smoke-known-issues.test.ts smoke-anthropic-known-issues.test.ts 2>&1 | grep -E \"Test Files|Tests \")"
+      "Bash(PROXY_URL=https://nullspend.cjones6489.workers.dev pnpm --filter @nullspend/proxy exec vitest run --config vitest.smoke.config.ts smoke-budget-e2e.test.ts smoke-budget-edge-cases.test.ts smoke-anthropic-budget-e2e.test.ts smoke-known-issues.test.ts smoke-anthropic-known-issues.test.ts 2>&1 | grep -E \"Test Files|Tests \")",
+      "Bash(__NEW_LINE_d8ca6390b3e4a230__ echo:*)",
+      "Bash(__NEW_LINE_3a162407490aa9d0__ echo:*)",
+      "Bash(__NEW_LINE_54a3befd8faf33d9__ echo:*)",
+      "Bash(for f:*)",
+      "Bash(tsc --noEmit)",
+      "Bash(find /c/Users/cjone/Projects/AgentSeam -path ./node_modules -prune -o -type f \\\\\\(-name *sidebar* -o -name *nav* \\\\\\) -print)",
+      "Bash(grep -A2 '\"\"deploy\"\"' package.json)",
+      "Bash(npx wrangler:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

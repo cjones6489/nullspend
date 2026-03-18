@@ -33,6 +33,7 @@ export async function handleReconciliationQueue(
         msg.actualCostMicrodollars,
         budgetEntities,
         connectionString,
+        { throwOnError: true },
       );
       message.ack();
     } catch (err) {

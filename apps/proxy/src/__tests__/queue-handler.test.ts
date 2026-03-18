@@ -105,7 +105,7 @@ describe("handleReconciliationQueue", () => {
     expect(msg2.ack).toHaveBeenCalledTimes(1);
   });
 
-  it("passes correct arguments to reconcileBudget", async () => {
+  it("passes correct arguments to reconcileBudget with throwOnError", async () => {
     const msg = makeMessage({
       type: "reconcile",
       reservationId: "res-args",
@@ -129,7 +129,27 @@ describe("handleReconciliationQueue", () => {
         expect.objectContaining({ entityType: "user", entityId: "u1" }),
       ]),
       env.HYPERDRIVE.connectionString,
+      { throwOnError: true },
     );
+  });
+
+  it("retries when reconcileBudget throws due to non-ok status (throwOnError)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockReconcileBudget.mockRejectedValueOnce(new Error("Reconciliation failed with status: pg_failed"));
+
+    const msg = makeMessage({
+      type: "reconcile",
+      reservationId: "res-status-fail",
+      actualCostMicrodollars: 50_000,
+      budgetEntities: [],
+      userId: "user-1",
+      enqueuedAt: Date.now(),
+    });
+
+    await handleReconciliationQueue(makeBatch([msg]), makeEnv());
+
+    expect(msg.retry).toHaveBeenCalledTimes(1);
+    expect(msg.ack).not.toHaveBeenCalled();
   });
 
   it("tolerates old messages with extra mode field", async () => {

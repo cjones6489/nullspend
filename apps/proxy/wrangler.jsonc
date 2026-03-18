@@ -34,6 +34,10 @@
         "max_retries": 3,
         "dead_letter_queue": "nullspend-reconcile-dlq",
         "retry_delay": 5
+      },
+      {
+        "queue": "nullspend-reconcile-dlq",
+        "max_retries": 0
       }
     ]
   }
