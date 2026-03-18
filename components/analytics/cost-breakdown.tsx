@@ -101,7 +101,7 @@ export function CostBreakdown({
                 />
               }
             />
-            <Bar dataKey="cost" radius={[0, 4, 4, 0]} />
+            <Bar dataKey="cost" radius={[0, 4, 4, 0]} animationDuration={800} animationEasing="ease-out" />
           </BarChart>
         </ChartContainer>
 

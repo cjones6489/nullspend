@@ -85,6 +85,8 @@ export function SpendChart({ data }: { data: DailySpend[] }) {
               fill="url(#fillSpend)"
               stroke="var(--color-totalCostMicrodollars)"
               strokeWidth={2}
+              animationDuration={800}
+              animationEasing="ease-out"
             />
           </AreaChart>
         </ChartContainer>

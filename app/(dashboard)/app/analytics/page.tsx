@@ -95,6 +95,7 @@ export default function AnalyticsPage() {
             <StatCard
               label="Total Spend"
               value={formatMicrodollars(data.totals.totalCostMicrodollars)}
+              hero
             />
             <StatCard
               label="Total Requests"
@@ -165,22 +166,32 @@ function StatCard({
   label,
   value,
   className,
+  hero,
 }: {
   label: string;
   value: string;
   className?: string;
+  hero?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border/30 bg-background p-3">
+    <div
+      className={cn(
+        "rounded-lg border p-4 transition-colors",
+        hero
+          ? "border-primary/30 bg-primary/5"
+          : "border-border/30 bg-background",
+      )}
+    >
       <p
         className={cn(
-          "text-lg font-semibold tabular-nums text-foreground",
+          "font-bold tabular-nums text-foreground",
+          hero ? "text-3xl leading-tight" : "text-lg",
           className,
         )}
       >
         {value}
       </p>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className={cn("text-muted-foreground", hero ? "mt-1 text-xs" : "text-[11px]")}>{label}</p>
     </div>
   );
 }

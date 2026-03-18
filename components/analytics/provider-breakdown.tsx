@@ -90,7 +90,7 @@ export function ProviderBreakdown({
                   />
                 }
               />
-              <Bar dataKey="totalCostMicrodollars" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="totalCostMicrodollars" radius={[0, 4, 4, 0]} animationDuration={800} animationEasing="ease-out" />
             </BarChart>
           </ChartContainer>
         )}
