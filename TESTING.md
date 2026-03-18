@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~1,590 tests across 106 files organized into four tiers.
+NullSpend has ~1,600+ tests across ~150 files organized into four tiers.
 
 ## Quick Reference
 
@@ -140,7 +140,7 @@ Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accura
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. ~400 tests across 37 files.
+Co-located with source files. 650+ tests across 67 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback

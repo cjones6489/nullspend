@@ -6,6 +6,8 @@ FinOps layer for AI agents — cost tracking, budget enforcement, and human-in-t
 
 Research thoroughly, plan carefully, trust first, test often.
 
+When planning implementations that touch external libraries (Next.js, Drizzle, Supabase, Cloudflare Workers, Upstash, Stripe, Recharts, Zod, etc.), consult Context7 MCP for current documentation before coding. Training data goes stale — the API may have changed.
+
 ## Structure
 
 ```
@@ -45,7 +47,8 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 - `anon` role has zero privileges on application tables
 - API keys: SHA-256 hashed before storage, timing-safe comparison on lookup
 - Auth: session-based (`resolveSessionUserId`) for dashboard, API key (`assertApiKeyWithIdentity`) for agents
-- Error responses: 401 = identity unknown, 403 = identity known but unauthorized
+- Error responses: `{ error: "machine_code", message: "Human readable text." }` — consistent across dashboard and proxy
+- HTTP status semantics: 401 = identity unknown, 403 = identity known but unauthorized
 
 ## Dependencies
 
@@ -59,7 +62,7 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 
 ## Testing
 
-See `TESTING.md` for the full test map (106 files, ~1,590 tests across 4 tiers). Key points:
+See @TESTING.md for the full test map (~150 files, ~1,600+ tests across 4 tiers). Key points:
 
 - Proxy tests: `apps/proxy/src/__tests__/` — naming convention: `{module}.test.ts`, `-edge-cases.test.ts`, `-all-models.test.ts`
 - Dashboard tests: co-located with source files
@@ -67,4 +70,4 @@ See `TESTING.md` for the full test map (106 files, ~1,590 tests across 4 tiers).
 
 ## Audit
 
-Active security audit in `docs/audit-findings.md` with research in `docs/audit-research.md`.
+91-point security audit completed (91/91 resolved). Reference: `docs/audit-findings.md` and `docs/audit-research.md`.
