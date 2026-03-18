@@ -6,7 +6,7 @@ race condition analysis (6 scenarios), and stack research (CF Workers, DO SQLite
 
 **Date:** 2026-03-17
 **Updated:** 2026-03-17
-**Status:** P0-P3 fixed. P4-P5 remaining.
+**Status:** P0-P5 fixed. All findings resolved.
 
 ---
 
@@ -240,10 +240,11 @@ emit a `reconcile_budget_missing` metric when this occurs.
 
 ---
 
-## P5: Dashboard-Side Invalidation Failure Observability
+## P5: Dashboard-Side Invalidation Failure Observability [DONE]
 
 **Severity:** Low
 **Category:** Observability
+**Fixed:** 2026-03-18 — Replaced `console.error` with Pino structured logging (`getLogger("proxy-invalidate")`) and Sentry breadcrumbs (`addSentryBreadcrumb`). Error paths include status, action, userId, entityType, entityId. Success path logs `info` for confirmation. 8 tests covering structured fields, breadcrumbs, and existing behavior.
 
 ### Problem
 
@@ -263,15 +264,15 @@ enforcement issues are invisible.
 
 ### Fix
 
-Add structured logging or metric emission. Options:
-
-1. Use the existing Pino logger (if available in the Next.js app) with structured fields
-2. Add a simple counter/gauge that an external monitor can scrape
-3. At minimum, log with enough structure for Vercel log drains to filter on
+Replaced `console.error` with the existing Pino logger and Sentry breadcrumbs:
+- `log.error` with structured fields (status, action, userId, entityType, entityId) on failure
+- `log.info` on success for confirmation
+- `addSentryBreadcrumb("proxy-invalidate", ...)` on both error paths
 
 ### Files
 
-- `lib/proxy-invalidate.ts` — add structured logging with action/status fields
+- `lib/proxy-invalidate.ts` — structured logging + Sentry breadcrumbs
+- `lib/proxy-invalidate.test.ts` — mock logger/sentry, verify structured fields + breadcrumbs
 
 ---
 

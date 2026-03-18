@@ -1,3 +1,8 @@
+import { getLogger } from "@/lib/observability";
+import { addSentryBreadcrumb } from "@/lib/observability/sentry";
+
+const log = getLogger("proxy-invalidate");
+
 /**
  * Fire-and-forget dashboard→proxy cache invalidation.
  * No-ops silently when PROXY_INTERNAL_URL is unconfigured (local dev).
@@ -23,9 +28,30 @@ export async function invalidateProxyCache(params: {
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) {
-      console.error("[proxy-invalidate] Failed:", res.status, { action: params.action });
+      log.error(
+        { status: res.status, action: params.action, userId: params.userId,
+          entityType: params.entityType, entityId: params.entityId },
+        "Proxy cache invalidation failed",
+      );
+      addSentryBreadcrumb("proxy-invalidate", "Invalidation failed", {
+        status: res.status, action: params.action, userId: params.userId,
+      });
+    } else {
+      log.info(
+        { action: params.action, userId: params.userId,
+          entityType: params.entityType, entityId: params.entityId },
+        "Proxy cache invalidated",
+      );
     }
   } catch (err) {
-    console.error("[proxy-invalidate] Error:", err instanceof Error ? err.message : String(err));
+    log.error(
+      { err, action: params.action, userId: params.userId,
+        entityType: params.entityType, entityId: params.entityId },
+      "Proxy cache invalidation error",
+    );
+    addSentryBreadcrumb("proxy-invalidate", "Invalidation error", {
+      error: err instanceof Error ? err.message : String(err),
+      action: params.action, userId: params.userId,
+    });
   }
 }
