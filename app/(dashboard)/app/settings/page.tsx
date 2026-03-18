@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Key, Plus, Trash2 } from "lucide-react";
+import { Copy, Key, Loader2, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -194,7 +194,7 @@ function KeyRow({
                 onClick={handleRevoke}
                 disabled={revokeKey.isPending}
               >
-                {revokeKey.isPending ? "Revoking..." : "Revoke Key"}
+                {revokeKey.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Revoking...</> : "Revoke Key"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -333,7 +333,7 @@ function CreateKeyDialog({
                 onClick={handleCreate}
                 disabled={!name.trim() || createKey.isPending}
               >
-                {createKey.isPending ? "Creating..." : "Create Key"}
+                {createKey.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Creating...</> : "Create Key"}
               </Button>
             </DialogFooter>
           </>

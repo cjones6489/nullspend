@@ -1,6 +1,6 @@
 "use client";
 
-import { DollarSign, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -341,7 +341,7 @@ function BudgetRow({
                 onClick={handleReset}
                 disabled={resetBudget.isPending}
               >
-                {resetBudget.isPending ? "Resetting..." : "Reset Spend"}
+                {resetBudget.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Resetting...</> : "Reset Spend"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -367,7 +367,7 @@ function BudgetRow({
                 onClick={handleDelete}
                 disabled={deleteBudget.isPending}
               >
-                {deleteBudget.isPending ? "Deleting..." : "Delete Budget"}
+                {deleteBudget.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Deleting...</> : "Delete Budget"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -607,7 +607,7 @@ function BudgetDialog({
             disabled={!canSubmit || createBudget.isPending}
           >
             {createBudget.isPending
-              ? isEdit ? "Saving..." : "Creating..."
+              ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />{isEdit ? "Saving..." : "Creating..."}</>
               : isEdit ? "Save Changes" : "Set Budget"}
           </Button>
         </DialogFooter>

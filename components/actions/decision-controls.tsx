@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -95,7 +95,7 @@ export function DecisionControls({ actionId }: DecisionControlsProps) {
               disabled={isPending}
               className="bg-emerald-600 text-white hover:bg-emerald-500"
             >
-              {approveAction.isPending ? "Approving..." : "Confirm Approve"}
+              {approveAction.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Approving...</> : "Confirm Approve"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -128,7 +128,7 @@ export function DecisionControls({ actionId }: DecisionControlsProps) {
               onClick={handleReject}
               disabled={isPending}
             >
-              {rejectAction.isPending ? "Rejecting..." : "Confirm Reject"}
+              {rejectAction.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Rejecting...</> : "Confirm Reject"}
             </Button>
           </DialogFooter>
         </DialogContent>

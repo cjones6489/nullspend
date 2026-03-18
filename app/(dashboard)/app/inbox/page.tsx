@@ -2,10 +2,17 @@
 
 import { Inbox, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { StatusBadge } from "@/components/actions/status-badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -19,6 +26,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActionsInfinite } from "@/lib/queries/actions";
 import { formatActionType, formatRelativeTime } from "@/lib/utils/format";
 import type { ActionStatus } from "@/lib/utils/status";
+import { ACTION_TYPES } from "@/lib/utils/status";
 
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: "all", label: "All" },
@@ -30,8 +38,11 @@ const STATUS_TABS: { value: string; label: string }[] = [
   { value: "failed", label: "Failed" },
 ];
 
+const ALL_TYPES = "all";
+
 export default function InboxPage() {
   const [activeTab, setActiveTab] = useState("pending");
+  const [typeFilter, setTypeFilter] = useState(ALL_TYPES);
   const statusFilter =
     activeTab === "all" ? undefined : (activeTab as ActionStatus);
   const {
@@ -43,7 +54,11 @@ export default function InboxPage() {
     isFetchingNextPage,
   } = useActionsInfinite({ status: statusFilter });
 
-  const actions = data?.pages.flatMap((p) => p.data) ?? [];
+  const rawActions = data?.pages.flatMap((p) => p.data) ?? [];
+  const actions = useMemo(
+    () => typeFilter === ALL_TYPES ? rawActions : rawActions.filter((a) => a.actionType === typeFilter),
+    [rawActions, typeFilter],
+  );
 
   return (
     <div className="space-y-6">
@@ -56,19 +71,34 @@ export default function InboxPage() {
         </p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="h-8 bg-secondary/50 p-0.5">
-          {STATUS_TABS.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="h-7 rounded-sm px-3 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm"
-            >
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="flex items-center justify-between gap-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="h-8 bg-secondary/50 p-0.5">
+            {STATUS_TABS.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="h-7 rounded-sm px-3 text-xs data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              >
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? ALL_TYPES)}>
+          <SelectTrigger className="h-8 w-[160px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_TYPES}>All types</SelectItem>
+            {ACTION_TYPES.map((type) => (
+              <SelectItem key={type} value={type}>
+                {formatActionType(type)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {error ? (
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">

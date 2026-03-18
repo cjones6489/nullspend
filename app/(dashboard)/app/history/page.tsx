@@ -7,6 +7,13 @@ import { useState } from "react";
 import { StatusBadge } from "@/components/actions/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -19,7 +26,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActionsInfinite } from "@/lib/queries/actions";
 import { formatActionType, formatRelativeTime } from "@/lib/utils/format";
-import type { ActionStatus } from "@/lib/utils/status";
+import { ACTION_TYPES, type ActionStatus } from "@/lib/utils/status";
 
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: "all", label: "All" },
@@ -40,9 +47,12 @@ const HISTORY_STATUSES: ActionStatus[] = [
   "expired",
 ];
 
+const ALL_TYPES = "all";
+
 export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState(ALL_TYPES);
 
   const queryOptions =
     activeTab === "all"
@@ -61,6 +71,7 @@ export default function HistoryPage() {
   const allActions = data?.pages.flatMap((p) => p.data) ?? [];
 
   const filtered = allActions.filter((action) => {
+    if (typeFilter !== ALL_TYPES && action.actionType !== typeFilter) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -96,12 +107,26 @@ export default function HistoryPage() {
           </TabsList>
         </Tabs>
 
+        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? ALL_TYPES)}>
+          <SelectTrigger className="h-8 w-[160px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_TYPES}>All types</SelectItem>
+            {ACTION_TYPES.map((type) => (
+              <SelectItem key={type} value={type}>
+                {formatActionType(type)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         <Input
-          placeholder="Filter by agent or type..."
+          placeholder="Filter by agent..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-8 max-w-[220px] border-border/50 bg-secondary/50 text-xs placeholder:text-muted-foreground/50"
-          aria-label="Filter by agent or action type"
+          className="h-8 max-w-[180px] border-border/50 bg-secondary/50 text-xs placeholder:text-muted-foreground/50"
+          aria-label="Filter by agent ID"
         />
       </div>
 
