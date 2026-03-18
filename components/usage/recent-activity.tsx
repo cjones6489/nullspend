@@ -134,6 +134,9 @@ export function RecentActivity({ keys }: RecentActivityProps) {
                   Cost
                 </TableHead>
                 <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Tok/s
+                </TableHead>
+                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Latency
                 </TableHead>
               </TableRow>
@@ -185,6 +188,11 @@ export function RecentActivity({ keys }: RecentActivityProps) {
                   </TableCell>
                   <TableCell className="text-right font-mono tabular-nums text-[13px] text-foreground">
                     {formatMicrodollars(event.costMicrodollars)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-[13px] text-muted-foreground">
+                    {event.durationMs && event.durationMs > 0
+                      ? `${Math.round((event.outputTokens / event.durationMs) * 1000)}`
+                      : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-[13px] text-muted-foreground">
                     {formatDuration(event.durationMs)}

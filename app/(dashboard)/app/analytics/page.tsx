@@ -94,6 +94,34 @@ export default function AnalyticsPage() {
             />
           </div>
 
+          {(data.costBreakdown.inputCost > 0 ||
+            data.costBreakdown.outputCost > 0) && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatCard
+                label="Input Tokens"
+                value={formatMicrodollars(data.costBreakdown.inputCost)}
+                className="text-base"
+              />
+              <StatCard
+                label="Output Tokens"
+                value={formatMicrodollars(data.costBreakdown.outputCost)}
+                className="text-base"
+              />
+              <StatCard
+                label="Cached Tokens"
+                value={formatMicrodollars(data.costBreakdown.cachedCost)}
+                className="text-base"
+              />
+              {data.costBreakdown.reasoningCost > 0 && (
+                <StatCard
+                  label="Reasoning Tokens"
+                  value={formatMicrodollars(data.costBreakdown.reasoningCost)}
+                  className="text-base"
+                />
+              )}
+            </div>
+          )}
+
           <CostBreakdown data={data.costBreakdown} />
 
           <SpendChart data={data.daily} />
