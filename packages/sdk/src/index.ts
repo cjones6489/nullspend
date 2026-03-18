@@ -4,7 +4,10 @@ export { waitWithAbort, interruptibleSleep } from "./polling.js";
 export type {
   ActionStatus,
   ActionType,
+  BudgetEntity,
+  BudgetStatus,
   NullSpendConfig,
+  CostEventInput,
   CreateActionInput,
   CreateActionResponse,
   ExecuteContext,
@@ -12,6 +15,8 @@ export type {
   MarkResultInput,
   MutateActionResponse,
   ProposeAndWaitOptions,
+  ReportCostResponse,
+  ReportCostBatchResponse,
   RetryInfo,
   WaitForDecisionOptions,
 } from "./types.js";

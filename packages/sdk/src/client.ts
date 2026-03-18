@@ -10,12 +10,16 @@ import {
 } from "./retry.js";
 import type {
   ActionRecord,
+  BudgetStatus,
   NullSpendConfig,
+  CostEventInput,
   CreateActionInput,
   CreateActionResponse,
   MarkResultInput,
   MutateActionResponse,
   ProposeAndWaitOptions,
+  ReportCostResponse,
+  ReportCostBatchResponse,
   RetryInfo,
   WaitForDecisionOptions,
 } from "./types.js";
@@ -89,6 +93,36 @@ export class NullSpend {
       `/api/actions/${id}/result`,
       input,
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Cost reporting
+  // -------------------------------------------------------------------------
+
+  async reportCost(event: CostEventInput): Promise<ReportCostResponse> {
+    return this.request<ReportCostResponse>(
+      "POST",
+      "/api/cost-events",
+      event,
+    );
+  }
+
+  async reportCostBatch(
+    events: CostEventInput[],
+  ): Promise<ReportCostBatchResponse> {
+    return this.request<ReportCostBatchResponse>(
+      "POST",
+      "/api/cost-events/batch",
+      { events },
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Budget status
+  // -------------------------------------------------------------------------
+
+  async checkBudget(): Promise<BudgetStatus> {
+    return this.request<BudgetStatus>("GET", "/api/budgets/status");
   }
 
   // -------------------------------------------------------------------------

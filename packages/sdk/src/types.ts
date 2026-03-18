@@ -152,3 +152,52 @@ export interface WaitForDecisionOptions {
   timeoutMs?: number;
   onPoll?: (action: ActionRecord) => void;
 }
+
+// ---------------------------------------------------------------------------
+// Cost reporting (Phase 2C)
+// ---------------------------------------------------------------------------
+
+export interface CostEventInput {
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  costMicrodollars: number;
+  durationMs?: number;
+  sessionId?: string;
+  eventType?: "llm" | "tool" | "custom";
+  toolName?: string;
+  toolServer?: string;
+}
+
+export interface ReportCostResponse {
+  id: string;
+  createdAt: string;
+}
+
+export interface ReportCostBatchResponse {
+  inserted: number;
+  ids: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Budget status (Phase 2E)
+// ---------------------------------------------------------------------------
+
+export interface BudgetEntity {
+  entityType: string;
+  entityId: string;
+  limitMicrodollars: number;
+  spendMicrodollars: number;
+  remainingMicrodollars: number;
+  policy: string;
+  resetInterval: string | null;
+  currentPeriodStart: string | null;
+}
+
+export interface BudgetStatus {
+  hasBudgets: boolean;
+  entities: BudgetEntity[];
+}

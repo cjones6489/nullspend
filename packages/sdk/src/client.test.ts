@@ -1468,3 +1468,346 @@ describe("Non-JSON error body", () => {
     expect((err as NullSpendError).statusCode).toBe(500);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cost reporting (Phase 2C)
+// ---------------------------------------------------------------------------
+
+describe("reportCost", () => {
+  it("sends POST to /api/cost-events with correct body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ id: "ce-1", createdAt: "2026-03-18T00:00:00Z" }, 201),
+    );
+    const client = createClient(fetchFn);
+
+    const result = await client.reportCost({
+      provider: "openai",
+      model: "gpt-4o",
+      inputTokens: 100,
+      outputTokens: 50,
+      costMicrodollars: 1500,
+    });
+
+    expect(result).toEqual({
+      id: "ce-1",
+      createdAt: "2026-03-18T00:00:00Z",
+    });
+
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe("http://localhost:3000/api/cost-events");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({
+      provider: "openai",
+      model: "gpt-4o",
+      inputTokens: 100,
+      outputTokens: 50,
+      costMicrodollars: 1500,
+    });
+  });
+
+  it("includes Idempotency-Key header", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ id: "ce-1", createdAt: "2026-03-18T00:00:00Z" }, 201),
+    );
+    const client = createClient(fetchFn);
+
+    await client.reportCost({
+      provider: "openai",
+      model: "gpt-4o",
+      inputTokens: 100,
+      outputTokens: 50,
+      costMicrodollars: 1500,
+    });
+
+    const headers = fetchFn.mock.calls[0][1].headers;
+    expect(headers["Idempotency-Key"]).toMatch(/^ns_/);
+  });
+
+  it("includes optional fields when provided", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ id: "ce-2", createdAt: "2026-03-18T00:00:00Z" }, 201),
+    );
+    const client = createClient(fetchFn);
+
+    await client.reportCost({
+      provider: "anthropic",
+      model: "claude-sonnet-4-5-20250514",
+      inputTokens: 200,
+      outputTokens: 100,
+      cachedInputTokens: 50,
+      reasoningTokens: 30,
+      costMicrodollars: 3000,
+      durationMs: 1200,
+      sessionId: "sess-1",
+      eventType: "llm",
+    });
+
+    const body = JSON.parse(fetchFn.mock.calls[0][1].body);
+    expect(body.cachedInputTokens).toBe(50);
+    expect(body.reasoningTokens).toBe(30);
+    expect(body.durationMs).toBe(1200);
+    expect(body.sessionId).toBe("sess-1");
+    expect(body.eventType).toBe("llm");
+  });
+
+  it("retries on 429/5xx", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "rate limit" }, 429, { "Retry-After": "1" }))
+      .mockResolvedValueOnce(
+        jsonResponse({ id: "ce-3", createdAt: "2026-03-18T00:00:00Z" }, 201),
+      );
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.reportCost({
+      provider: "openai",
+      model: "gpt-4o",
+      inputTokens: 100,
+      outputTokens: 50,
+      costMicrodollars: 1500,
+    });
+
+    expect(result.id).toBe("ce-3");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws NullSpendError on 400", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ error: "validation_error", message: "invalid" }, 400),
+    );
+    const client = createClient(fetchFn);
+
+    await expect(
+      client.reportCost({
+        provider: "openai",
+        model: "gpt-4o",
+        inputTokens: 100,
+        outputTokens: 50,
+        costMicrodollars: 1500,
+      }),
+    ).rejects.toThrow(NullSpendError);
+  });
+
+  it("throws NullSpendError on 401", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ error: "authentication_required" }, 401),
+    );
+    const client = createClient(fetchFn);
+
+    const err = await client
+      .reportCost({
+        provider: "openai",
+        model: "gpt-4o",
+        inputTokens: 100,
+        outputTokens: 50,
+        costMicrodollars: 1500,
+      })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect((err as NullSpendError).statusCode).toBe(401);
+  });
+});
+
+describe("reportCostBatch", () => {
+  it("sends POST to /api/cost-events/batch with events array", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ inserted: 2, ids: ["ce-1", "ce-2"] }, 201),
+    );
+    const client = createClient(fetchFn);
+
+    const events = [
+      {
+        provider: "openai",
+        model: "gpt-4o",
+        inputTokens: 100,
+        outputTokens: 50,
+        costMicrodollars: 1500,
+      },
+      {
+        provider: "anthropic",
+        model: "claude-sonnet-4-5-20250514",
+        inputTokens: 200,
+        outputTokens: 100,
+        costMicrodollars: 3000,
+      },
+    ];
+
+    const result = await client.reportCostBatch(events);
+
+    expect(result).toEqual({ inserted: 2, ids: ["ce-1", "ce-2"] });
+
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe("http://localhost:3000/api/cost-events/batch");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ events });
+  });
+
+  it("includes Idempotency-Key header", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ inserted: 1, ids: ["ce-1"] }, 201),
+    );
+    const client = createClient(fetchFn);
+
+    await client.reportCostBatch([
+      {
+        provider: "openai",
+        model: "gpt-4o",
+        inputTokens: 100,
+        outputTokens: 50,
+        costMicrodollars: 1500,
+      },
+    ]);
+
+    const headers = fetchFn.mock.calls[0][1].headers;
+    expect(headers["Idempotency-Key"]).toMatch(/^ns_/);
+  });
+
+  it("retries on 5xx", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(
+        jsonResponse({ inserted: 1, ids: ["ce-1"] }, 201),
+      );
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.reportCostBatch([
+      {
+        provider: "openai",
+        model: "gpt-4o",
+        inputTokens: 100,
+        outputTokens: 50,
+        costMicrodollars: 1500,
+      },
+    ]);
+
+    expect(result.inserted).toBe(1);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkBudget (Phase 2E)
+// ---------------------------------------------------------------------------
+
+describe("checkBudget", () => {
+  const budgetResponse = {
+    hasBudgets: true,
+    source: "postgres",
+    entities: [
+      {
+        entityType: "user",
+        entityId: "user-1",
+        limitMicrodollars: 10_000_000,
+        spendMicrodollars: 3_000_000,
+        remainingMicrodollars: 7_000_000,
+        policy: "strict_block",
+        resetInterval: "monthly",
+        currentPeriodStart: "2026-03-01T00:00:00.000Z",
+      },
+    ],
+  };
+
+  it("sends GET to /api/budgets/status", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(budgetResponse));
+    const client = createClient(fetchFn);
+
+    await client.checkBudget();
+
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe("http://localhost:3000/api/budgets/status");
+    expect(init.method).toBe("GET");
+  });
+
+  it("parses response correctly (hasBudgets, entities with all fields)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(budgetResponse));
+    const client = createClient(fetchFn);
+
+    const result = await client.checkBudget();
+
+    expect(result.hasBudgets).toBe(true);
+    expect(result.entities).toHaveLength(1);
+    expect(result.entities[0]).toEqual({
+      entityType: "user",
+      entityId: "user-1",
+      limitMicrodollars: 10_000_000,
+      spendMicrodollars: 3_000_000,
+      remainingMicrodollars: 7_000_000,
+      policy: "strict_block",
+      resetInterval: "monthly",
+      currentPeriodStart: "2026-03-01T00:00:00.000Z",
+    });
+  });
+
+  it("does not send Idempotency-Key header (GET method)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(budgetResponse));
+    const client = createClient(fetchFn);
+
+    await client.checkBudget();
+
+    const headers = fetchFn.mock.calls[0][1].headers;
+    expect(headers["Idempotency-Key"]).toBeUndefined();
+  });
+
+  it("returns hasBudgets: false when no budgets", async () => {
+    const emptyResponse = {
+      hasBudgets: false,
+      source: "postgres",
+      entities: [],
+    };
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(emptyResponse));
+    const client = createClient(fetchFn);
+
+    const result = await client.checkBudget();
+
+    expect(result.hasBudgets).toBe(false);
+    expect(result.entities).toEqual([]);
+  });
+
+  it("retries on 429/5xx", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "rate limit" }, 429, { "Retry-After": "1" }))
+      .mockResolvedValueOnce(jsonResponse(budgetResponse));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.checkBudget();
+
+    expect(result.hasBudgets).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on network error", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(jsonResponse(budgetResponse));
+
+    const client = createRetryClient(fetchFn);
+    vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
+
+    const result = await client.checkBudget();
+
+    expect(result.hasBudgets).toBe(true);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws NullSpendError on 401", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ error: "authentication_required" }, 401),
+    );
+    const client = createClient(fetchFn);
+
+    const err = await client.checkBudget().catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect((err as NullSpendError).statusCode).toBe(401);
+  });
+});
