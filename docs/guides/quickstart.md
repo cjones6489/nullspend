@@ -45,14 +45,14 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
 ### Authentication
 
 Every request to the proxy must include your NullSpend platform key in the
-`X-NullSpend-Auth` header. If you're using the SDK directly:
+`X-NullSpend-Key` header. If you're using the SDK directly:
 
 ```typescript
 // OpenAI example
 const openai = new OpenAI({
   baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: {
-    "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
+    "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
 });
 ```
@@ -62,7 +62,7 @@ const openai = new OpenAI({
 client = OpenAI(
     base_url="https://proxy.nullspend.com/v1",
     default_headers={
-        "X-NullSpend-Auth": os.environ["PLATFORM_AUTH_KEY"],
+        "X-NullSpend-Key": os.environ["NULLSPEND_API_KEY"],
     },
 )
 ```
@@ -109,7 +109,7 @@ HTTP error — no special handling needed.
 ## Troubleshooting
 
 **Requests return 401 Unauthorized**
-- Verify your `X-NullSpend-Auth` header contains a valid platform key
+- Verify your `X-NullSpend-Key` header contains a valid platform key
 - Check that the key hasn't been revoked in Settings
 
 **Requests return 429 Too Many Requests**

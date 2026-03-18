@@ -32,7 +32,7 @@ import OpenAI from "openai";
 const client = new OpenAI({
   baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: {
-    "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
+    "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
 });
 
@@ -51,7 +51,7 @@ import os
 client = OpenAI(
     base_url="https://proxy.nullspend.com/v1",
     default_headers={
-        "X-NullSpend-Auth": os.environ["PLATFORM_AUTH_KEY"],
+        "X-NullSpend-Key": os.environ["NULLSPEND_API_KEY"],
     },
 )
 
@@ -66,7 +66,7 @@ response = client.chat.completions.create(
 ```bash
 OPENAI_BASE_URL=https://proxy.nullspend.com/v1
 OPENAI_API_KEY=sk-your-real-openai-key
-PLATFORM_AUTH_KEY=your-nullspend-platform-key
+NULLSPEND_API_KEY=your-nullspend-platform-key
 ```
 
 ### cURL
@@ -74,7 +74,7 @@ PLATFORM_AUTH_KEY=your-nullspend-platform-key
 ```bash
 curl https://proxy.nullspend.com/v1/chat/completions \
   -H "Authorization: Bearer sk-your-openai-key" \
-  -H "X-NullSpend-Auth: your-platform-key" \
+  -H "X-NullSpend-Key: your-platform-key" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",

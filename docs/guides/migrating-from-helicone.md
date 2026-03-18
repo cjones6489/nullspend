@@ -36,7 +36,7 @@ Add the NullSpend authentication header to your client:
 const client = new OpenAI({
   baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: {
-    "X-NullSpend-Auth": process.env.PLATFORM_AUTH_KEY,
+    "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
 });
 ```
@@ -114,7 +114,7 @@ current Helicone cost data. Start generous — you can tighten later.
 ### 4. Update your environment variables
 
 Replace your Helicone base URL with the NullSpend proxy URL. Add the
-`X-NullSpend-Auth` header to your client configuration.
+`X-NullSpend-Key` header to your client configuration.
 
 ### 5. Remove Helicone dependencies
 
