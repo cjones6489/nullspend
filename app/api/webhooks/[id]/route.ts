@@ -10,6 +10,7 @@ import {
   webhookIdParamsSchema,
   webhookRecordSchema,
 } from "@/lib/validations/webhooks";
+import { invalidateWebhookCacheForUser } from "@/lib/webhooks/invalidate-cache";
 
 export async function PATCH(
   request: Request,
@@ -67,6 +68,9 @@ export async function PATCH(
       `[NullSpend] Webhook endpoint updated: userId=${userId}, endpointId=${updated.id}`,
     );
 
+    // Fire-and-forget: invalidate proxy's webhook cache so it picks up changes
+    void invalidateWebhookCacheForUser(userId);
+
     return NextResponse.json({
       data: webhookRecordSchema.parse({
         ...updated,
@@ -110,6 +114,9 @@ export async function DELETE(
     console.info(
       `[NullSpend] Webhook endpoint deleted: userId=${userId}, endpointId=${deleted.id}`,
     );
+
+    // Fire-and-forget: invalidate proxy's webhook cache
+    void invalidateWebhookCacheForUser(userId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

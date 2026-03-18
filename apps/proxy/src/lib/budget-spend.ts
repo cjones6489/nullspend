@@ -9,7 +9,10 @@ const CONNECTION_TIMEOUT_MS = 5_000;
 
 /**
  * Atomically increment `spend_microdollars` on each budget entity in Postgres.
- * Runs inside `waitUntil` — never throws.
+ * Throws on failure so callers (reconcileReservation) can retry.
+ *
+ * Entities are sorted by (entityType, entityId) before the transaction
+ * to prevent deadlocks when concurrent reconciliations overlap.
  *
  * Ensures Postgres spend stays current so Redis cache rebuilds after TTL
  * expiry start from an accurate baseline (Fix 2).
@@ -43,8 +46,14 @@ export async function updateBudgetSpend(
       await client.connect();
       const db = drizzle({ client });
 
+      // Sort entities by (entityType, entityId) to prevent deadlocks
+      // when concurrent reconciliations overlap on the same entities.
+      const sorted = [...entities].sort((a, b) =>
+        a.entityType.localeCompare(b.entityType) || a.entityId.localeCompare(b.entityId),
+      );
+
       await db.transaction(async (tx) => {
-        for (const entity of entities) {
+        for (const entity of sorted) {
           await tx
             .update(budgets)
             .set({
@@ -59,11 +68,6 @@ export async function updateBudgetSpend(
             );
         }
       });
-    } catch (err) {
-      console.error(
-        "[budget-spend] Failed to update spend:",
-        err instanceof Error ? err.message : "Unknown error",
-      );
     } finally {
       if (client) {
         try {
@@ -106,8 +110,13 @@ export async function resetBudgetPeriod(
       await client.connect();
       const db = drizzle({ client });
 
+      // Sort entities by (entityType, entityId) to prevent deadlocks
+      const sorted = [...resets].sort((a, b) =>
+        a.entityType.localeCompare(b.entityType) || a.entityId.localeCompare(b.entityId),
+      );
+
       await db.transaction(async (tx) => {
-        for (const reset of resets) {
+        for (const reset of sorted) {
           await tx
             .update(budgets)
             .set({

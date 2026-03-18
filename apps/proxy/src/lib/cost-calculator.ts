@@ -43,7 +43,7 @@ export function calculateOpenAICost(
     const input = costComponent(normalInputTokens, pricing.inputPerMTok);
     const cached = costComponent(cachedTokens, pricing.cachedInputPerMTok);
     const output = costComponent(completionTokens, pricing.outputPerMTok);
-    costMicrodollars = Math.round(input + cached + output);
+    costMicrodollars = Math.max(0, Math.round(input + cached + output));
 
     // Round components, then distribute rounding residual to largest to guarantee exact sum
     const roundedInput = Math.round(input);

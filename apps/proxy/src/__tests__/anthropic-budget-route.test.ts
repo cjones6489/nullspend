@@ -31,36 +31,35 @@ vi.mock("@nullspend/cost-engine", () => ({
   costComponent: vi.fn().mockReturnValue(100),
 }));
 
-const { mockLookupBudgets } = vi.hoisted(() => {
-  const mockLookupBudgets = vi.fn();
-  return { mockLookupBudgets };
-});
-vi.mock("../lib/budget-lookup.js", () => ({
-  lookupBudgets: mockLookupBudgets,
+// checkBudget is mocked in budget-orchestrator.js mock below
+
+const { mockReconcileBudgetQueued } = vi.hoisted(() => ({
+  mockReconcileBudgetQueued: vi.fn().mockResolvedValue(undefined),
 }));
 
-const { mockCheckAndReserve } = vi.hoisted(() => {
-  const mockCheckAndReserve = vi.fn();
-  return { mockCheckAndReserve };
-});
-vi.mock("../lib/budget.js", () => ({
-  checkAndReserve: mockCheckAndReserve,
+const { mockEstimateAnthropicMaxCost } = vi.hoisted(() => ({
+  mockEstimateAnthropicMaxCost: vi.fn().mockReturnValue(500_000),
 }));
-
-const { mockReconcileReservation } = vi.hoisted(() => {
-  const mockReconcileReservation = vi.fn().mockResolvedValue(undefined);
-  return { mockReconcileReservation };
-});
-vi.mock("../lib/budget-reconcile.js", () => ({
-  reconcileReservation: mockReconcileReservation,
-}));
-
-const { mockEstimateAnthropicMaxCost } = vi.hoisted(() => {
-  const mockEstimateAnthropicMaxCost = vi.fn().mockReturnValue(500_000);
-  return { mockEstimateAnthropicMaxCost };
-});
 vi.mock("../lib/anthropic-cost-estimator.js", () => ({
   estimateAnthropicMaxCost: mockEstimateAnthropicMaxCost,
+}));
+
+// Mock the entire budget-orchestrator to avoid deep transitive dependency chain
+vi.mock("../lib/budget-orchestrator.js", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("../lib/budget-orchestrator.js")>();
+  return {
+    ...orig,
+    checkBudget: vi.fn(),
+    reconcileBudget: vi.fn().mockResolvedValue(undefined),
+    reconcileBudgetQueued: (...args: unknown[]) => mockReconcileBudgetQueued(...args),
+    getReconcileQueue: vi.fn().mockReturnValue(undefined),
+  };
+});
+
+vi.mock("../lib/cost-logger.js", () => ({
+  logCostEvent: vi.fn().mockResolvedValue(undefined),
+  logCostEventsBatch: vi.fn().mockResolvedValue(undefined),
+  isLocalConnection: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock("@upstash/redis/cloudflare", () => ({
@@ -70,7 +69,10 @@ vi.mock("@upstash/redis/cloudflare", () => ({
 }));
 
 import { handleAnthropicMessages } from "../routes/anthropic.js";
+import { checkBudget } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
+
+const mockCheckBudget = checkBudget as ReturnType<typeof vi.fn>;
 
 const BUDGET_ENTITY = {
   entityKey: "{budget}:api_key:test-key-id",
@@ -155,9 +157,8 @@ describe("Anthropic budget enforcement", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockLookupBudgets.mockReset();
-    mockCheckAndReserve.mockReset();
-    mockReconcileReservation.mockReset().mockResolvedValue(undefined);
+    mockCheckBudget.mockReset();
+    mockReconcileBudgetQueued.mockReset().mockResolvedValue(undefined);
     mockEstimateAnthropicMaxCost.mockReset().mockReturnValue(500_000);
   });
 
@@ -167,10 +168,10 @@ describe("Anthropic budget enforcement", () => {
   });
 
   it("budget denial returns 429 with budget_exceeded error shape", async () => {
-    mockLookupBudgets.mockResolvedValue([BUDGET_ENTITY]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockCheckBudget.mockResolvedValue({
       status: "denied",
-      entityKey: BUDGET_ENTITY.entityKey,
+      reservationId: null,
+      budgetEntities: [BUDGET_ENTITY],
       remaining: 100_000,
       maxBudget: BUDGET_ENTITY.maxBudget,
       spend: 9_900_000,
@@ -191,10 +192,10 @@ describe("Anthropic budget enforcement", () => {
   });
 
   it("successful non-streaming request reconciles with actual cost", async () => {
-    mockLookupBudgets.mockResolvedValue([BUDGET_ENTITY]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockCheckBudget.mockResolvedValue({
       status: "approved",
       reservationId: "rsv_test_123",
+      budgetEntities: [BUDGET_ENTITY],
     });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -218,18 +219,18 @@ describe("Anthropic budget enforcement", () => {
 
     // waitUntil fires reconciliation asynchronously; verify it was called
     await vi.waitFor(() => {
-      expect(mockReconcileReservation).toHaveBeenCalled();
+      expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
-    const callArgs = mockReconcileReservation.mock.calls[0];
-    expect(callArgs[1]).toBe("rsv_test_123");
-    expect(callArgs[2]).toBeGreaterThan(0);
+    const callArgs = mockReconcileBudgetQueued.mock.calls[0];
+    expect(callArgs[4]).toBe("rsv_test_123");
+    expect(callArgs[5]).toBeGreaterThan(0);
   });
 
   it("upstream 4xx error reconciles reservation with 0", async () => {
-    mockLookupBudgets.mockResolvedValue([BUDGET_ENTITY]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockCheckBudget.mockResolvedValue({
       status: "approved",
       reservationId: "rsv_test_err",
+      budgetEntities: [BUDGET_ENTITY],
     });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -252,15 +253,15 @@ describe("Anthropic budget enforcement", () => {
     expect(res.status).toBe(400);
 
     await vi.waitFor(() => {
-      expect(mockReconcileReservation).toHaveBeenCalled();
+      expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
-    const callArgs = mockReconcileReservation.mock.calls[0];
-    expect(callArgs[1]).toBe("rsv_test_err");
-    expect(callArgs[2]).toBe(0);
+    const callArgs = mockReconcileBudgetQueued.mock.calls[0];
+    expect(callArgs[4]).toBe("rsv_test_err");
+    expect(callArgs[5]).toBe(0);
   });
 
   it("budget lookup failure returns 503 budget_unavailable", async () => {
-    mockLookupBudgets.mockRejectedValue(new Error("Redis connection failed"));
+    mockCheckBudget.mockRejectedValue(new Error("Redis connection failed"));
 
     const body = {
       model: "claude-sonnet-4-20250514",
@@ -275,7 +276,11 @@ describe("Anthropic budget enforcement", () => {
   });
 
   it("no budget entities skips enforcement entirely", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+    mockCheckBudget.mockResolvedValue({
+      status: "skipped",
+      reservationId: null,
+      budgetEntities: [],
+    });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(ANTHROPIC_RESPONSE), {
@@ -295,15 +300,14 @@ describe("Anthropic budget enforcement", () => {
     const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
-    expect(mockCheckAndReserve).not.toHaveBeenCalled();
-    expect(mockReconcileReservation).not.toHaveBeenCalled();
+    expect(mockReconcileBudgetQueued).not.toHaveBeenCalled();
   });
 
   it("streaming request reconciles after stream completes", async () => {
-    mockLookupBudgets.mockResolvedValue([BUDGET_ENTITY]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockCheckBudget.mockResolvedValue({
       status: "approved",
       reservationId: "rsv_stream_test",
+      budgetEntities: [BUDGET_ENTITY],
     });
 
     const sseChunks = [
@@ -336,18 +340,18 @@ describe("Anthropic budget enforcement", () => {
     await res.text();
 
     await vi.waitFor(() => {
-      expect(mockReconcileReservation).toHaveBeenCalled();
+      expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
-    const callArgs = mockReconcileReservation.mock.calls[0];
-    expect(callArgs[1]).toBe("rsv_stream_test");
-    expect(callArgs[2]).toBeGreaterThan(0);
+    const callArgs = mockReconcileBudgetQueued.mock.calls[0];
+    expect(callArgs[4]).toBe("rsv_stream_test");
+    expect(callArgs[5]).toBeGreaterThan(0);
   });
 
   it("timeout/error reconciles reservation with 0 via outer catch", async () => {
-    mockLookupBudgets.mockResolvedValue([BUDGET_ENTITY]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockCheckBudget.mockResolvedValue({
       status: "approved",
       reservationId: "rsv_timeout_test",
+      budgetEntities: [BUDGET_ENTITY],
     });
 
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("fetch timeout"));
@@ -363,10 +367,10 @@ describe("Anthropic budget enforcement", () => {
     ).rejects.toThrow("fetch timeout");
 
     await vi.waitFor(() => {
-      expect(mockReconcileReservation).toHaveBeenCalled();
+      expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
-    const callArgs = mockReconcileReservation.mock.calls[0];
-    expect(callArgs[1]).toBe("rsv_timeout_test");
-    expect(callArgs[2]).toBe(0);
+    const callArgs = mockReconcileBudgetQueued.mock.calls[0];
+    expect(callArgs[4]).toBe("rsv_timeout_test");
+    expect(callArgs[5]).toBe(0);
   });
 });

@@ -9,6 +9,7 @@ export interface AnthropicSSEResult {
   model: string | null;
   stopReason: string | null;
   toolCalls: { name: string; id: string }[] | null;
+  cancelled: boolean;
 }
 
 /**
@@ -51,6 +52,8 @@ export function createAnthropicSSEParser(
     resolveResult(result);
   }
 
+  let wasCancelled = false;
+
   function buildResult(): AnthropicSSEResult {
     return {
       usage: capturedUsage,
@@ -58,6 +61,7 @@ export function createAnthropicSSEParser(
       model: capturedModel,
       stopReason: capturedStopReason,
       toolCalls: capturedToolCalls,
+      cancelled: wasCancelled,
     };
   }
 
@@ -88,6 +92,7 @@ export function createAnthropicSSEParser(
     },
 
     cancel() {
+      wasCancelled = true;
       resolve(buildResult());
     },
   });

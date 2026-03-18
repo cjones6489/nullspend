@@ -2,6 +2,7 @@ export interface SSEResult {
   usage: OpenAIUsage | null;
   model: string | null;
   toolCalls: { name: string; id: string }[] | null;
+  cancelled: boolean;
 }
 
 export interface OpenAIUsage {
@@ -60,14 +61,16 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
         usage: capturedUsage,
         model: capturedModel,
         toolCalls: capturedToolCalls,
+        cancelled: false,
       });
     },
 
     cancel() {
       resolveResult({
-        usage: null,
+        usage: capturedUsage,
         model: capturedModel,
         toolCalls: capturedToolCalls,
+        cancelled: true,
       });
     },
   });

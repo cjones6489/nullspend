@@ -159,6 +159,14 @@ export async function reconcileBudget(
 }
 
 /**
+ * Extract the optional RECONCILE_QUEUE binding from env.
+ * The binding is not in the generated Env type (optional infra).
+ */
+export function getReconcileQueue(env: Env): Queue | undefined {
+  return (env as Record<string, unknown>).RECONCILE_QUEUE as Queue | undefined;
+}
+
+/**
  * Queue-aware reconciliation: attempts to enqueue to Cloudflare Queues first,
  * falls back to direct reconciliation if the queue binding is absent or send fails.
  *

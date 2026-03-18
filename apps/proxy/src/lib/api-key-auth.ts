@@ -10,6 +10,7 @@ export interface ApiKeyIdentity {
 
 const CONNECTION_TIMEOUT_MS = 5_000;
 const CACHE_MAX_SIZE = 256;
+const NEGATIVE_CACHE_MAX_SIZE = 2048;
 const POSITIVE_TTL_MS = 60_000; // 60s
 const NEGATIVE_TTL_MS = 30_000; // 30s
 
@@ -175,7 +176,7 @@ export async function authenticateApiKey(
     negativeCache.set(keyHash, {
       expiresAt: now + NEGATIVE_TTL_MS,
     });
-    evictIfNeeded(negativeCache, CACHE_MAX_SIZE);
+    evictIfNeeded(negativeCache, NEGATIVE_CACHE_MAX_SIZE);
   }
 
   return identity;

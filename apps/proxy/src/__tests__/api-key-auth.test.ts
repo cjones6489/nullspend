@@ -262,6 +262,26 @@ describe("authenticateApiKey", () => {
 
     expect(mockOn).toHaveBeenCalledWith("error", expect.any(Function));
   });
+
+  it("negative cache allows more entries than positive cache (2048 vs 256)", async () => {
+    // Fill negative cache with 257 entries — should NOT evict since limit is 2048
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    for (let i = 0; i < 257; i++) {
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // invalid key
+      await authenticateApiKey(`ask_neg_${i}`, TEST_CONNECTION_STRING);
+    }
+
+    expect(mockConnect).toHaveBeenCalledTimes(257);
+
+    // key_0 should still be in negative cache (not evicted at 256)
+    const result = await authenticateApiKey("ask_neg_0", TEST_CONNECTION_STRING);
+    expect(result).toBeNull();
+    // No additional DB call — still negative-cached
+    expect(mockConnect).toHaveBeenCalledTimes(257);
+
+    vi.restoreAllMocks();
+  });
 });
 
 describe("authenticateApiKey cache expiry", () => {

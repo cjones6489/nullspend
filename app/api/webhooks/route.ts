@@ -11,6 +11,7 @@ import {
   webhookRecordSchema,
   MAX_WEBHOOK_ENDPOINTS_PER_USER,
 } from "@/lib/validations/webhooks";
+import { invalidateWebhookCacheForUser } from "@/lib/webhooks/invalidate-cache";
 
 export async function GET() {
   try {
@@ -89,6 +90,9 @@ export async function POST(request: Request) {
     console.info(
       `[NullSpend] Webhook endpoint created: userId=${userId}, endpointId=${created.id}`,
     );
+
+    // Fire-and-forget: invalidate proxy's webhook cache
+    void invalidateWebhookCacheForUser(userId);
 
     return NextResponse.json(
       {

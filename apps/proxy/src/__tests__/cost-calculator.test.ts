@@ -134,6 +134,25 @@ describe("calculateOpenAICost", () => {
     expect(result.model).toBe("gpt-4o");
     expect(result.costMicrodollars).toBeGreaterThan(0);
   });
+
+  it("clamps costMicrodollars to minimum of 0", () => {
+    // With 0 tokens, cost should be exactly 0 (not negative)
+    const result = calculateOpenAICost(
+      "gpt-4o",
+      null,
+      {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        prompt_tokens_details: { cached_tokens: 0 },
+        completion_tokens_details: { reasoning_tokens: 0 },
+      },
+      "req-zero-tokens",
+      50,
+    );
+
+    expect(result.costMicrodollars).toBe(0);
+    expect(result.costMicrodollars).toBeGreaterThanOrEqual(0);
+  });
 });
 
 describe("calculateOpenAICost actionId attribution", () => {

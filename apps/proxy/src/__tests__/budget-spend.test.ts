@@ -153,8 +153,7 @@ describe("updateBudgetSpend", () => {
     expect(mockEnd).toHaveBeenCalled();
   });
 
-  it("never throws when Postgres connect fails", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("throws when Postgres connect fails (for retry by caller)", async () => {
     mockConnect.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 
     await expect(
@@ -163,16 +162,10 @@ describe("updateBudgetSpend", () => {
         [{ entityType: "api_key", entityId: "key-1" }],
         500_000,
       ),
-    ).resolves.toBeUndefined();
-
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("[budget-spend]"),
-      expect.any(String),
-    );
+    ).rejects.toThrow("ECONNREFUSED");
   });
 
-  it("never throws when Drizzle update fails", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("throws when Drizzle update fails (for retry by caller)", async () => {
     mockUpdateWhere.mockRejectedValueOnce(new Error("relation does not exist"));
 
     await expect(
@@ -181,20 +174,45 @@ describe("updateBudgetSpend", () => {
         [{ entityType: "api_key", entityId: "key-1" }],
         500_000,
       ),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("relation does not exist");
   });
 
   it("closes Postgres client in finally even on error", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     mockUpdateWhere.mockRejectedValueOnce(new Error("boom"));
 
+    await expect(
+      updateBudgetSpend(
+        REMOTE_CONN,
+        [{ entityType: "api_key", entityId: "key-1" }],
+        500_000,
+      ),
+    ).rejects.toThrow("boom");
+
+    expect(mockEnd).toHaveBeenCalled();
+  });
+
+  it("sorts entities by (entityType, entityId) before transaction", async () => {
+    // Pass entities in reverse order
     await updateBudgetSpend(
       REMOTE_CONN,
-      [{ entityType: "api_key", entityId: "key-1" }],
+      [
+        { entityType: "user", entityId: "user-1" },
+        { entityType: "api_key", entityId: "key-2" },
+        { entityType: "api_key", entityId: "key-1" },
+      ],
       500_000,
     );
 
-    expect(mockEnd).toHaveBeenCalled();
+    expect(mockDrizzleDb.update).toHaveBeenCalledTimes(3);
+    // Verify the where() calls are in sorted order: api_key:key-1, api_key:key-2, user:user-1
+    const whereCalls = mockUpdateWhere.mock.calls;
+    // The mock eq returns the second arg, and `and` returns all args as array
+    // eq(budgets.entityType, entity.entityType) returns entity.entityType
+    // eq(budgets.entityId, entity.entityId) returns entity.entityId
+    // and(type, id) returns [type, id]
+    expect(whereCalls[0][0]).toEqual(["api_key", "key-1"]);
+    expect(whereCalls[1][0]).toEqual(["api_key", "key-2"]);
+    expect(whereCalls[2][0]).toEqual(["user", "user-1"]);
   });
 });
 
@@ -266,5 +284,17 @@ describe("resetBudgetPeriod", () => {
     expect(mockDrizzleDb.update).toHaveBeenCalledTimes(3);
     expect(mockConnect).toHaveBeenCalledTimes(1);
     expect(mockEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it("sorts entities before transaction to prevent deadlocks", async () => {
+    await resetBudgetPeriod(REMOTE_CONN, [
+      { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
+      { entityType: "api_key", entityId: "key-1", newPeriodStart: 1_710_000_000_000 },
+    ]);
+
+    expect(mockDrizzleDb.update).toHaveBeenCalledTimes(2);
+    const whereCalls = mockUpdateWhere.mock.calls;
+    expect(whereCalls[0][0]).toEqual(["api_key", "key-1"]);
+    expect(whereCalls[1][0]).toEqual(["user", "user-1"]);
   });
 });

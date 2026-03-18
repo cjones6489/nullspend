@@ -13,6 +13,10 @@ vi.mock("../lib/budget-spend.js", () => ({
   updateBudgetSpend: (...args: unknown[]) => mockUpdateBudgetSpend(...args),
 }));
 
+vi.mock("../lib/metrics.js", () => ({
+  emitMetric: vi.fn(),
+}));
+
 import { reconcileReservation } from "../lib/budget-reconcile.js";
 
 const mockRedis = {} as any;
@@ -79,9 +83,8 @@ describe("reconcileReservation – failure scenarios", () => {
   });
 
   // P0 gap: Redis spend is updated but Postgres baseline is stale.
-  // When Redis cache expires, budget will be rebuilt from stale Postgres data,
-  // effectively "forgetting" this spend.
-  it("partial failure: Redis succeeds but Postgres fails", async () => {
+  // With retry logic, all 3 attempts fail → structured error + split-brain warning.
+  it("partial failure: Redis succeeds but Postgres fails all retries", async () => {
     mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
     mockUpdateBudgetSpend.mockRejectedValue(new Error("ECONNREFUSED"));
 
@@ -89,9 +92,19 @@ describe("reconcileReservation – failure scenarios", () => {
       reconcileReservation(mockRedis, "res-pg-fail", 30_000, entities, connString),
     ).resolves.toBeUndefined();
 
+    // 3 attempts: initial + 2 retries
+    expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(3);
     expect(console.error).toHaveBeenCalledWith(
-      "[budget] Reconciliation failed:",
-      expect.any(Error),
+      "[budget-reconcile] Postgres write failed after retries",
+      expect.objectContaining({
+        reservationId: "res-pg-fail",
+        actualCostMicrodollars: 30_000,
+        error: "ECONNREFUSED",
+      }),
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      "[budget-reconcile] Redis/Postgres split-brain: reservation",
+      "res-pg-fail",
     );
   });
 
@@ -202,5 +215,65 @@ describe("reconcileReservation – failure scenarios", () => {
       "[budget] Reconciliation failed:",
       "kaboom",
     );
+  });
+
+  it("retries Postgres write once then succeeds", async () => {
+    mockUpdateBudgetSpend
+      .mockRejectedValueOnce(new Error("connection timeout"))
+      .mockResolvedValueOnce(undefined);
+
+    await reconcileReservation(mockRedis, "res-retry-ok", 25_000, entities, connString);
+
+    expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(2);
+    // Should NOT log the "failed after retries" error since it succeeded on retry
+    expect(console.error).not.toHaveBeenCalledWith(
+      "[budget-reconcile] Postgres write failed after retries",
+      expect.anything(),
+    );
+  });
+
+  it("emits structured error after all retries exhausted", async () => {
+    mockUpdateBudgetSpend
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"));
+
+    await reconcileReservation(mockRedis, "res-all-fail", 25_000, entities, connString);
+
+    expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(3);
+    expect(console.error).toHaveBeenCalledWith(
+      "[budget-reconcile] Postgres write failed after retries",
+      expect.objectContaining({
+        reservationId: "res-all-fail",
+        actualCostMicrodollars: 25_000,
+        error: "timeout",
+      }),
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      "[budget-reconcile] Redis/Postgres split-brain: reservation",
+      "res-all-fail",
+    );
+  });
+
+  it("retry delays are respected", async () => {
+    vi.useFakeTimers();
+
+    mockUpdateBudgetSpend
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"))
+      .mockRejectedValueOnce(new Error("timeout"));
+
+    const promise = reconcileReservation(mockRedis, "res-delay", 25_000, entities, connString);
+
+    // After first failure, setTimeout(200) is scheduled
+    await vi.advanceTimersByTimeAsync(200);
+    // After second failure, setTimeout(800) is scheduled
+    await vi.advanceTimersByTimeAsync(800);
+
+    await promise;
+
+    expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(3);
+
+    vi.useRealTimers();
   });
 });

@@ -4,12 +4,11 @@ import type { RequestContext } from "../lib/context.js";
 import { errorResponse } from "../lib/errors.js";
 import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { logCostEventsBatch } from "../lib/cost-logger.js";
-import { checkBudget, reconcileBudget, resolveBudgetMode } from "../lib/budget-orchestrator.js";
+import { checkBudget, reconcileBudgetQueued, getReconcileQueue, resolveBudgetMode } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { UUID_RE } from "../lib/validation.js";
 
 // ---------------------------------------------------------------------------
 // POST /v1/mcp/budget/check
@@ -182,7 +181,7 @@ export async function handleMcpEvents(
         if (budgetEntities.length > 0) {
           for (const event of eventsWithReservations) {
             try {
-              await reconcileBudget(budgetMode, env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString, redis);
+              await reconcileBudgetQueued(getReconcileQueue(env), budgetMode, env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString, redis);
             } catch (err) {
               console.error("[mcp-events] Failed to reconcile reservation:", err);
             }

@@ -83,7 +83,7 @@ export function calculateAnthropicCost(
     const input = costComponent(inputTokens, inputRate);
     const cached = cacheWriteCost + costComponent(cacheReadTokens, cacheReadRate);
     const output = costComponent(outputTokens, outputRate);
-    costMicrodollars = Math.round(input + cached + output);
+    costMicrodollars = Math.max(0, Math.round(input + cached + output));
 
     // Round components, then distribute rounding residual to largest to guarantee exact sum
     const roundedInput = Math.round(input);

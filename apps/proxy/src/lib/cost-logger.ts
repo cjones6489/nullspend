@@ -2,6 +2,7 @@ import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { costEvents, type NewCostEventRow } from "@nullspend/db";
 import { withDbConnection } from "./db-semaphore.js";
+import { emitMetric } from "./metrics.js";
 
 const CONNECTION_TIMEOUT_MS = 5_000;
 
@@ -69,6 +70,7 @@ export async function logCostEvent(
         const db = drizzle({ client });
         await db.insert(costEvents).values(event);
       } catch (err) {
+        emitMetric("cost_event_drop", { reason: "pg_error" });
         console.error(
           "[cost-logger] Failed to write cost event:",
           err instanceof Error ? err.message : "Unknown error",
@@ -84,6 +86,7 @@ export async function logCostEvent(
       }
     });
   } catch (err) {
+    emitMetric("cost_event_drop", { reason: "semaphore_full" });
     console.error(
       "[cost-logger] Semaphore rejected cost event:",
       err instanceof Error ? err.message : "Unknown error",

@@ -7,6 +7,8 @@ import { authenticateRequest } from "./lib/auth.js";
 import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
+import { handleReconciliationQueue } from "./queue-handler.js";
+import type { ReconciliationMessage } from "./lib/reconciliation-queue.js";
 
 export { UserBudgetDO } from "./durable-objects/user-budget.js";
 
@@ -122,6 +124,13 @@ async function parseRequestBody(
 }
 
 export default {
+  async queue(
+    batch: MessageBatch<ReconciliationMessage>,
+    env: Env,
+  ): Promise<void> {
+    await handleReconciliationQueue(batch, env);
+  },
+
   async fetch(
     request: Request,
     env: Env,
