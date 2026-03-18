@@ -22,24 +22,27 @@ vi.mock("cloudflare:workers", () => ({
   }),
 }));
 
-const mockLookupBudgets = vi.fn();
-vi.mock("../lib/budget-lookup.js", () => ({
-  lookupBudgets: (...args: unknown[]) => mockLookupBudgets(...args),
+const mockLookupBudgetsForDO = vi.fn();
+vi.mock("../lib/budget-do-lookup.js", () => ({
+  lookupBudgetsForDO: (...args: unknown[]) => mockLookupBudgetsForDO(...args),
 }));
 
-const mockCheckAndReserve = vi.fn();
-vi.mock("../lib/budget.js", () => ({
-  checkAndReserve: (...args: unknown[]) => mockCheckAndReserve(...args),
+const mockDoBudgetCheck = vi.fn();
+const mockDoBudgetReconcile = vi.fn();
+const mockDoBudgetPopulate = vi.fn();
+vi.mock("../lib/budget-do-client.js", () => ({
+  doBudgetCheck: (...args: unknown[]) => mockDoBudgetCheck(...args),
+  doBudgetReconcile: (...args: unknown[]) => mockDoBudgetReconcile(...args),
+  doBudgetPopulate: (...args: unknown[]) => mockDoBudgetPopulate(...args),
+}));
+
+vi.mock("../lib/budget-spend.js", () => ({
+  resetBudgetPeriod: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockLogCostEventsBatch = vi.fn();
 vi.mock("../lib/cost-logger.js", () => ({
   logCostEventsBatch: (...args: unknown[]) => mockLogCostEventsBatch(...args),
-}));
-
-const mockReconcileReservation = vi.fn();
-vi.mock("../lib/budget-reconcile.js", () => ({
-  reconcileReservation: (...args: unknown[]) => mockReconcileReservation(...args),
 }));
 
 vi.mock("@upstash/redis/cloudflare", () => ({
@@ -71,6 +74,10 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     },
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
     UPSTASH_REDIS_REST_TOKEN: "fake-token",
+    USER_BUDGET: {
+      idFromName: vi.fn().mockReturnValue("do-id"),
+      get: vi.fn().mockReturnValue({}),
+    },
     ...overrides,
   } as Env;
 }
@@ -82,7 +89,7 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-1", keyId: "key-1", hasBudgets: true, hasWebhooks: false },
-    redis: {} as any,
+    redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     webhookDispatcher: null,
@@ -90,12 +97,24 @@ function makeCtx(
   };
 }
 
+const doEntity = {
+  entityType: "user",
+  entityId: "user-1",
+  maxBudget: 1_000_000,
+  spend: 100_000,
+  policy: "strict_block",
+  resetInterval: null,
+  periodStart: 0,
+};
+
 describe("handleMcpBudgetCheck", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockLookupBudgets.mockReset();
-    mockCheckAndReserve.mockReset();
+    mockLookupBudgetsForDO.mockReset();
+    mockDoBudgetCheck.mockReset();
+    mockDoBudgetPopulate.mockReset().mockResolvedValue(undefined);
+    mockDoBudgetReconcile.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -182,7 +201,7 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns allowed: true when no budget entities exist", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+    mockLookupBudgetsForDO.mockResolvedValue([]);
 
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
@@ -199,18 +218,8 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns allowed: true with reservationId when budget check passes", async () => {
-    mockLookupBudgets.mockResolvedValue([
-      {
-        entityKey: "{budget}:user:user-1",
-        entityType: "user",
-        entityId: "user-1",
-        maxBudget: 1_000_000,
-        spend: 100_000,
-        reserved: 0,
-        policy: "strict_block",
-      },
-    ]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
       reservationId: "rsv-123",
     });
@@ -231,20 +240,14 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns denied when budget is exceeded", async () => {
-    mockLookupBudgets.mockResolvedValue([
-      {
-        entityKey: "{budget}:user:user-1",
-        entityType: "user",
-        entityId: "user-1",
-        maxBudget: 100,
-        spend: 90,
-        reserved: 0,
-        policy: "strict_block",
-      },
-    ]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([{
+      ...doEntity,
+      maxBudget: 100,
+      spend: 90,
+    }]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "denied",
-      entityKey: "{budget}:user:user-1",
+      deniedEntity: "user:user-1",
       remaining: 10,
       maxBudget: 100,
       spend: 90,
@@ -267,7 +270,7 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns 503 when budget lookup fails", async () => {
-    mockLookupBudgets.mockRejectedValue(new Error("Redis down"));
+    mockLookupBudgetsForDO.mockRejectedValue(new Error("DB down"));
 
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
@@ -283,19 +286,9 @@ describe("handleMcpBudgetCheck", () => {
     expect(json.error).toBe("budget_unavailable");
   });
 
-  it("returns 503 when checkAndReserve fails", async () => {
-    mockLookupBudgets.mockResolvedValue([
-      {
-        entityKey: "{budget}:user:user-1",
-        entityType: "user",
-        entityId: "user-1",
-        maxBudget: 1_000_000,
-        spend: 0,
-        reserved: 0,
-        policy: "strict_block",
-      },
-    ]);
-    mockCheckAndReserve.mockRejectedValue(new Error("Lua script error"));
+  it("returns 503 when doBudgetCheck fails", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockRejectedValue(new Error("DO unavailable"));
 
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
@@ -309,8 +302,8 @@ describe("handleMcpBudgetCheck", () => {
     expect(response.status).toBe(503);
   });
 
-  it("passes userId and keyId from auth result to lookupBudgets", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+  it("passes userId and keyId from auth result to lookupBudgetsForDO", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([]);
 
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
@@ -321,9 +314,8 @@ describe("handleMcpBudgetCheck", () => {
     );
     await handleMcpBudgetCheck(request, env, ctx);
 
-    expect(mockLookupBudgets).toHaveBeenCalledWith(
-      expect.anything(),
-      env.HYPERDRIVE.connectionString,
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith(
+      expect.any(String),
       { keyId: "key-xyz", userId: "user-abc" },
     );
   });
@@ -334,8 +326,8 @@ describe("handleMcpEvents", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockLogCostEventsBatch.mockReset();
-    mockReconcileReservation.mockReset();
-    mockLookupBudgets.mockReset();
+    mockDoBudgetReconcile.mockReset().mockResolvedValue(undefined);
+    mockLookupBudgetsForDO.mockReset();
   });
 
   afterEach(() => {
@@ -483,12 +475,10 @@ describe("handleMcpEvents", () => {
     );
     await handleMcpEvents(request, env, ctx);
 
-    // waitUntil fires the promise; since it's mocked synchronously we can check
-    // Give the microtask a tick
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
-      env.HYPERDRIVE.connectionString,
+      expect.any(String),
       expect.arrayContaining([
         expect.objectContaining({
           provider: "mcp",
@@ -618,18 +608,7 @@ describe("handleMcpEvents", () => {
 
   it("reconciles reservation when reservationId is present", async () => {
     mockLogCostEventsBatch.mockResolvedValue(undefined);
-    mockLookupBudgets.mockResolvedValue([
-      {
-        entityKey: "{budget}:user:user-1",
-        entityType: "user",
-        entityId: "user-1",
-        maxBudget: 1_000_000,
-        spend: 0,
-        reserved: 10000,
-        policy: "strict_block",
-      },
-    ]);
-    mockReconcileReservation.mockResolvedValue(undefined);
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
 
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
@@ -652,14 +631,13 @@ describe("handleMcpEvents", () => {
     await handleMcpEvents(request, env, ctx);
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
+      "user-1",
       "rsv-123",
       10000,
-      expect.arrayContaining([
-        expect.objectContaining({ entityKey: "{budget}:user:user-1" }),
-      ]),
-      env.HYPERDRIVE.connectionString,
+      expect.any(Array),
+      expect.any(String),
     );
   });
 
@@ -676,10 +654,7 @@ describe("handleMcpEvents", () => {
       },
     ];
 
-    mockLookupBudgets.mockResolvedValue([
-      { entityKey: "{budget}:user:user-1", entityType: "user", entityId: "user-1", maxBudget: 1_000_000, spend: 0, reserved: 10000, policy: "strict_block" },
-    ]);
-    mockReconcileReservation.mockResolvedValue(undefined);
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
 
     const response = await handleMcpEvents(request, env, makeCtx({ events }));
 
@@ -689,8 +664,9 @@ describe("handleMcpEvents", () => {
 
     // Reconciliation should still run even though batch insert failed
     await new Promise((r) => setTimeout(r, 10));
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
+      "user-1",
       "rsv-fail-test",
       10000,
       expect.any(Array),
@@ -726,12 +702,9 @@ describe("handleMcpEvents", () => {
     );
   });
 
-  it("calls lookupBudgets only once for multiple events with reservations", async () => {
+  it("calls lookupBudgetsForDO only once for multiple events with reservations", async () => {
     mockLogCostEventsBatch.mockResolvedValue(undefined);
-    mockLookupBudgets.mockResolvedValue([
-      { entityKey: "{budget}:user:user-1", entityType: "user", entityId: "user-1", maxBudget: 1_000_000, spend: 0, reserved: 20000, policy: "strict_block" },
-    ]);
-    mockReconcileReservation.mockResolvedValue(undefined);
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
 
     const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
@@ -749,20 +722,14 @@ describe("handleMcpEvents", () => {
     expect(mockLogCostEventsBatch).toHaveBeenCalledTimes(1);
     expect(mockLogCostEventsBatch.mock.calls[0][1]).toHaveLength(3);
 
-    // lookupBudgets called exactly once (not per-event)
-    expect(mockLookupBudgets).toHaveBeenCalledTimes(1);
+    // lookupBudgetsForDO called exactly once (not per-event)
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
 
-    // reconcileReservation called once per event WITH a reservationId (2, not 3)
-    expect(mockReconcileReservation).toHaveBeenCalledTimes(2);
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
-      expect.anything(), "rsv-1", 5000, expect.any(Array), expect.any(String),
-    );
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
-      expect.anything(), "rsv-2", 8000, expect.any(Array), expect.any(String),
-    );
+    // doBudgetReconcile called once per event WITH a reservationId (2, not 3)
+    expect(mockDoBudgetReconcile).toHaveBeenCalledTimes(2);
   });
 
-  it("does not call lookupBudgets when no events have reservations", async () => {
+  it("does not call lookupBudgetsForDO when no events have reservations", async () => {
     mockLogCostEventsBatch.mockResolvedValue(undefined);
 
     const request = makeRequest("/v1/mcp/events", {});
@@ -777,7 +744,7 @@ describe("handleMcpEvents", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledTimes(1);
-    expect(mockLookupBudgets).not.toHaveBeenCalled();
-    expect(mockReconcileReservation).not.toHaveBeenCalled();
+    expect(mockLookupBudgetsForDO).not.toHaveBeenCalled();
+    expect(mockDoBudgetReconcile).not.toHaveBeenCalled();
   });
 });

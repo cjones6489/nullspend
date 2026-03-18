@@ -7,7 +7,6 @@ describe("enqueueReconciliation", () => {
 
     const msg: ReconciliationMessage = {
       type: "reconcile",
-      mode: "redis",
       reservationId: "res-123",
       actualCostMicrodollars: 50_000,
       budgetEntities: [
@@ -28,7 +27,6 @@ describe("enqueueReconciliation", () => {
 
     const msg: ReconciliationMessage = {
       type: "reconcile",
-      mode: "redis",
       reservationId: "res-456",
       actualCostMicrodollars: 10_000,
       budgetEntities: [],
@@ -44,7 +42,6 @@ describe("enqueueReconciliation", () => {
 
     const msg: ReconciliationMessage = {
       type: "reconcile",
-      mode: "durable-objects",
       reservationId: "res-789",
       actualCostMicrodollars: 100_000,
       budgetEntities: [
@@ -59,7 +56,6 @@ describe("enqueueReconciliation", () => {
 
     const sent = mockQueue.send.mock.calls[0][0];
     expect(sent.type).toBe("reconcile");
-    expect(sent.mode).toBe("durable-objects");
     expect(sent.reservationId).toBe("res-789");
     expect(sent.actualCostMicrodollars).toBe(100_000);
     expect(sent.budgetEntities).toHaveLength(2);

@@ -1,8 +1,5 @@
-import type { BudgetEngineMode } from "./budget-orchestrator.js";
-
 export interface ReconciliationMessage {
   type: "reconcile";
-  mode: BudgetEngineMode;
   reservationId: string;
   actualCostMicrodollars: number;
   budgetEntities: Array<{ entityKey: string; entityType: string; entityId: string }>;

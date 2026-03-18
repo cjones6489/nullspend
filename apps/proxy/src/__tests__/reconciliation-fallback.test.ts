@@ -8,22 +8,6 @@ vi.mock("cloudflare:workers", () => ({
   waitUntil: vi.fn(),
 }));
 
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: { fromEnv: vi.fn(() => ({})) },
-}));
-
-vi.mock("../lib/budget-reconcile.js", () => ({
-  reconcileReservation: vi.fn(),
-}));
-
-vi.mock("../lib/budget.js", () => ({
-  checkAndReserve: vi.fn(),
-}));
-
-vi.mock("../lib/budget-lookup.js", () => ({
-  lookupBudgets: vi.fn(),
-}));
-
 vi.mock("../lib/budget-do-lookup.js", () => ({
   lookupBudgetsForDO: vi.fn(),
 }));
@@ -51,11 +35,8 @@ import { reconcileBudgetQueued } from "../lib/budget-orchestrator.js";
 function makeEnv(): any {
   return {
     HYPERDRIVE: { connectionString: "postgresql://test:test@db:5432/test" },
-    BUDGET_ENGINE: "redis",
   };
 }
-
-const mockRedis = {} as any;
 
 const budgetEntities = [
   {
@@ -79,15 +60,14 @@ describe("reconcileBudgetQueued", () => {
     const mockQueue = {} as any;
 
     await reconcileBudgetQueued(
-      mockQueue, "redis", makeEnv(), "user-1", "res-123", 50_000,
-      budgetEntities, "postgresql://test", mockRedis,
+      mockQueue, makeEnv(), "user-1", "res-123", 50_000,
+      budgetEntities, "postgresql://test",
     );
 
     expect(mockEnqueueReconciliation).toHaveBeenCalledWith(
       mockQueue,
       expect.objectContaining({
         type: "reconcile",
-        mode: "redis",
         reservationId: "res-123",
         actualCostMicrodollars: 50_000,
         userId: "user-1",
@@ -97,10 +77,10 @@ describe("reconcileBudgetQueued", () => {
 
   it("falls back to direct reconciliation when queue is undefined", async () => {
     // When queue is undefined, reconcileBudgetQueued should call reconcileBudget directly
-    // (which calls reconcileReservation for redis mode)
+    // (which calls doBudgetReconcile for DO mode)
     await reconcileBudgetQueued(
-      undefined, "redis", makeEnv(), "user-1", "res-456", 25_000,
-      budgetEntities, "postgresql://test", mockRedis,
+      undefined, makeEnv(), "user-1", "res-456", 25_000,
+      budgetEntities, "postgresql://test",
     );
 
     // Queue was not called
@@ -113,8 +93,8 @@ describe("reconcileBudgetQueued", () => {
     mockEnqueueReconciliation.mockRejectedValueOnce(new Error("queue unavailable"));
 
     await reconcileBudgetQueued(
-      mockQueue, "redis", makeEnv(), "user-1", "res-789", 30_000,
-      budgetEntities, "postgresql://test", mockRedis,
+      mockQueue, makeEnv(), "user-1", "res-789", 30_000,
+      budgetEntities, "postgresql://test",
     );
 
     expect(mockEnqueueReconciliation).toHaveBeenCalledTimes(1);
@@ -128,8 +108,8 @@ describe("reconcileBudgetQueued", () => {
     const mockQueue = {} as any;
 
     await reconcileBudgetQueued(
-      mockQueue, "redis", makeEnv(), "user-1", null, 0,
-      [], "postgresql://test", mockRedis,
+      mockQueue, makeEnv(), "user-1", null, 0,
+      [], "postgresql://test",
     );
 
     // No queue or direct reconciliation for null reservationId

@@ -6,6 +6,16 @@ import { withDbConnection } from "./db-semaphore.js";
 
 const CONNECTION_TIMEOUT_MS = 5_000;
 
+export interface BudgetEntity {
+  entityKey: string;
+  entityType: string;
+  entityId: string;
+  maxBudget: number;
+  spend: number;
+  reserved: number;
+  policy: string;
+}
+
 export interface DOBudgetEntity {
   entityType: string;
   entityId: string;

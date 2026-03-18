@@ -8,10 +8,6 @@ vi.mock("cloudflare:workers", () => ({
   waitUntil: vi.fn(),
 }));
 
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: { fromEnv: vi.fn(() => ({})) },
-}));
-
 vi.mock("../lib/budget-orchestrator.js", () => ({
   reconcileBudget: (...args: unknown[]) => mockReconcileBudget(...args),
 }));
@@ -21,8 +17,6 @@ import { handleReconciliationQueue } from "../queue-handler.js";
 function makeEnv(): any {
   return {
     HYPERDRIVE: { connectionString: "postgresql://test:test@db:5432/test" },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
   };
 }
 
@@ -47,7 +41,6 @@ describe("handleReconciliationQueue", () => {
   it("acks message on successful reconciliation", async () => {
     const msg = makeMessage({
       type: "reconcile",
-      mode: "redis",
       reservationId: "res-123",
       actualCostMicrodollars: 50_000,
       budgetEntities: [
@@ -70,7 +63,6 @@ describe("handleReconciliationQueue", () => {
 
     const msg = makeMessage({
       type: "reconcile",
-      mode: "redis",
       reservationId: "res-fail",
       actualCostMicrodollars: 25_000,
       budgetEntities: [],
@@ -91,7 +83,6 @@ describe("handleReconciliationQueue", () => {
   it("processes multiple messages in a batch", async () => {
     const msg1 = makeMessage({
       type: "reconcile",
-      mode: "redis",
       reservationId: "res-1",
       actualCostMicrodollars: 10_000,
       budgetEntities: [],
@@ -100,7 +91,6 @@ describe("handleReconciliationQueue", () => {
     });
     const msg2 = makeMessage({
       type: "reconcile",
-      mode: "redis",
       reservationId: "res-2",
       actualCostMicrodollars: 20_000,
       budgetEntities: [],
@@ -118,7 +108,6 @@ describe("handleReconciliationQueue", () => {
   it("passes correct arguments to reconcileBudget", async () => {
     const msg = makeMessage({
       type: "reconcile",
-      mode: "durable-objects",
       reservationId: "res-args",
       actualCostMicrodollars: 75_000,
       budgetEntities: [
@@ -132,7 +121,6 @@ describe("handleReconciliationQueue", () => {
     await handleReconciliationQueue(makeBatch([msg]), env);
 
     expect(mockReconcileBudget).toHaveBeenCalledWith(
-      "durable-objects",
       env,
       "user-xyz",
       "res-args",
@@ -141,7 +129,23 @@ describe("handleReconciliationQueue", () => {
         expect.objectContaining({ entityType: "user", entityId: "u1" }),
       ]),
       env.HYPERDRIVE.connectionString,
-      expect.anything(), // redis
     );
+  });
+
+  it("tolerates old messages with extra mode field", async () => {
+    const msg = makeMessage({
+      type: "reconcile",
+      mode: "redis", // legacy field from old messages
+      reservationId: "res-compat",
+      actualCostMicrodollars: 50_000,
+      budgetEntities: [],
+      userId: "user-1",
+      enqueuedAt: Date.now(),
+    });
+
+    await handleReconciliationQueue(makeBatch([msg]), makeEnv());
+
+    expect(mockReconcileBudget).toHaveBeenCalledTimes(1);
+    expect(msg.ack).toHaveBeenCalledTimes(1);
   });
 });

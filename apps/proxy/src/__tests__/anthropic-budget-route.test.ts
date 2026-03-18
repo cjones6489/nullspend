@@ -222,8 +222,8 @@ describe("Anthropic budget enforcement", () => {
       expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
     const callArgs = mockReconcileBudgetQueued.mock.calls[0];
-    expect(callArgs[4]).toBe("rsv_test_123");
-    expect(callArgs[5]).toBeGreaterThan(0);
+    expect(callArgs[3]).toBe("rsv_test_123");
+    expect(callArgs[4]).toBeGreaterThan(0);
   });
 
   it("upstream 4xx error reconciles reservation with 0", async () => {
@@ -256,8 +256,8 @@ describe("Anthropic budget enforcement", () => {
       expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
     const callArgs = mockReconcileBudgetQueued.mock.calls[0];
-    expect(callArgs[4]).toBe("rsv_test_err");
-    expect(callArgs[5]).toBe(0);
+    expect(callArgs[3]).toBe("rsv_test_err");
+    expect(callArgs[4]).toBe(0);
   });
 
   it("budget lookup failure returns 503 budget_unavailable", async () => {
@@ -343,8 +343,8 @@ describe("Anthropic budget enforcement", () => {
       expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
     const callArgs = mockReconcileBudgetQueued.mock.calls[0];
-    expect(callArgs[4]).toBe("rsv_stream_test");
-    expect(callArgs[5]).toBeGreaterThan(0);
+    expect(callArgs[3]).toBe("rsv_stream_test");
+    expect(callArgs[4]).toBeGreaterThan(0);
   });
 
   it("timeout/error reconciles reservation with 0 via outer catch", async () => {
@@ -370,7 +370,7 @@ describe("Anthropic budget enforcement", () => {
       expect(mockReconcileBudgetQueued).toHaveBeenCalled();
     });
     const callArgs = mockReconcileBudgetQueued.mock.calls[0];
-    expect(callArgs[4]).toBe("rsv_timeout_test");
-    expect(callArgs[5]).toBe(0);
+    expect(callArgs[3]).toBe("rsv_timeout_test");
+    expect(callArgs[4]).toBe(0);
   });
 });

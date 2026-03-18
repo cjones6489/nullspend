@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
-import type { BudgetEntity } from "../lib/budget-lookup.js";
+import type { BudgetEntity } from "../lib/budget-do-lookup.js";
 
 function makeBudgetEntity(overrides: Partial<BudgetEntity> = {}): BudgetEntity {
   return {

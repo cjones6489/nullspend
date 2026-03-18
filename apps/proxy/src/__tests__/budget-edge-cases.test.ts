@@ -24,17 +24,19 @@ beforeAll(() => {
 
 const {
   mockWaitUntil,
-  mockLookupBudgets,
-  mockCheckAndReserve,
-  mockReconcile,
+  mockLookupBudgetsForDO,
+  mockDoBudgetCheck,
+  mockDoBudgetReconcile,
+  mockDoBudgetPopulate,
   mockEstimateMaxCost,
   mockUpdateBudgetSpend,
   mockCalculateOpenAICost,
 } = vi.hoisted(() => ({
   mockWaitUntil: vi.fn((promise: Promise<unknown>) => { promise.catch(() => {}); }),
-  mockLookupBudgets: vi.fn(),
-  mockCheckAndReserve: vi.fn(),
-  mockReconcile: vi.fn(),
+  mockLookupBudgetsForDO: vi.fn(),
+  mockDoBudgetCheck: vi.fn(),
+  mockDoBudgetReconcile: vi.fn(),
+  mockDoBudgetPopulate: vi.fn(),
   mockEstimateMaxCost: vi.fn(),
   mockUpdateBudgetSpend: vi.fn(),
   mockCalculateOpenAICost: vi.fn(),
@@ -57,13 +59,14 @@ vi.mock("@nullspend/cost-engine", () => ({
   }),
 }));
 
-vi.mock("../lib/budget-lookup.js", () => ({
-  lookupBudgets: (...args: unknown[]) => mockLookupBudgets(...args),
+vi.mock("../lib/budget-do-lookup.js", () => ({
+  lookupBudgetsForDO: (...args: unknown[]) => mockLookupBudgetsForDO(...args),
 }));
 
-vi.mock("../lib/budget.js", () => ({
-  checkAndReserve: (...args: unknown[]) => mockCheckAndReserve(...args),
-  reconcile: (...args: unknown[]) => mockReconcile(...args),
+vi.mock("../lib/budget-do-client.js", () => ({
+  doBudgetCheck: (...args: unknown[]) => mockDoBudgetCheck(...args),
+  doBudgetReconcile: (...args: unknown[]) => mockDoBudgetReconcile(...args),
+  doBudgetPopulate: (...args: unknown[]) => mockDoBudgetPopulate(...args),
 }));
 
 vi.mock("../lib/cost-estimator.js", () => ({
@@ -72,6 +75,7 @@ vi.mock("../lib/cost-estimator.js", () => ({
 
 vi.mock("../lib/budget-spend.js", () => ({
   updateBudgetSpend: (...args: unknown[]) => mockUpdateBudgetSpend(...args),
+  resetBudgetPeriod: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../lib/cost-logger.js", () => ({
@@ -89,6 +93,7 @@ vi.mock("@upstash/redis/cloudflare", () => ({
 }));
 
 import { handleChatCompletions } from "../routes/openai.js";
+import { doLookupCache } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
 
 function makeRequest(
@@ -114,6 +119,10 @@ function makeEnv(): Env {
     },
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
     UPSTASH_REDIS_REST_TOKEN: "fake-token",
+    USER_BUDGET: {
+      idFromName: vi.fn().mockReturnValue("do-id"),
+      get: vi.fn().mockReturnValue({}),
+    },
   } as Env;
 }
 
@@ -145,7 +154,7 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true, hasWebhooks: false },
-    redis: {} as any,
+    redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     webhookDispatcher: null,
@@ -158,14 +167,14 @@ const defaultBody = {
   messages: [{ role: "user", content: "hi" }],
 };
 
-const keyEntity = {
-  entityKey: "{budget}:api_key:key-uuid-123",
+const doEntity = {
   entityType: "api_key",
   entityId: "key-uuid-123",
   maxBudget: 50_000_000,
   spend: 10_000_000,
-  reserved: 0,
   policy: "strict_block",
+  resetInterval: null,
+  periodStart: 0,
 };
 
 describe("Budget Edge Cases", () => {
@@ -176,13 +185,16 @@ describe("Budget Edge Cases", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     mockWaitUntil.mockClear();
-    mockLookupBudgets.mockReset();
-    mockCheckAndReserve.mockReset();
-    mockReconcile.mockReset();
+    doLookupCache.clear();
+    mockLookupBudgetsForDO.mockReset();
+    mockDoBudgetCheck.mockReset();
+    mockDoBudgetReconcile.mockReset();
+    mockDoBudgetPopulate.mockReset();
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
     mockCalculateOpenAICost.mockReset();
-    mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
+    mockDoBudgetReconcile.mockResolvedValue(undefined);
+    mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
@@ -196,89 +208,84 @@ describe("Budget Edge Cases", () => {
   // --- Attribution nulls ---
 
   it("passes { keyId: null, userId } when auth result has no keyId", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+    mockLookupBudgetsForDO.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
       auth: { userId: "user-uuid-456", keyId: null as any, hasBudgets: true, hasWebhooks: false },
     }));
 
-    expect(mockLookupBudgets).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith(
       expect.any(String),
       { keyId: null, userId: "user-uuid-456" },
     );
   });
 
   it("passes { keyId, userId: null } when auth result has no userId", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+    mockLookupBudgetsForDO.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
+    // userId=null means DO path skips (returns skipped) so no lookupBudgetsForDO call
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
       auth: { userId: null as any, keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true, hasWebhooks: false },
     }));
 
-    expect(mockLookupBudgets).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.any(String),
-      { keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", userId: null },
-    );
+    // DO path skips when no userId — no lookup call
+    expect(mockDoBudgetCheck).not.toHaveBeenCalled();
   });
 
-  it("passes { keyId: null, userId: null } when auth result has neither", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+  it("skips budget when auth has no userId and no keyId", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
       auth: { userId: null as any, keyId: null as any, hasBudgets: true, hasWebhooks: false },
     }));
 
-    expect(mockLookupBudgets).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.any(String),
-      { keyId: null, userId: null },
-    );
-    expect(mockCheckAndReserve).not.toHaveBeenCalled();
+    expect(mockDoBudgetCheck).not.toHaveBeenCalled();
   });
 
   // --- Zero estimate ---
 
-  it("zero estimate still calls checkAndReserve with estimate=0", async () => {
-    mockLookupBudgets.mockResolvedValue([keyEntity]);
+  it("zero estimate still calls doBudgetCheck with estimate=0", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockEstimateMaxCost.mockReturnValue(0);
-    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-zero" });
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-zero" });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
-    expect(mockCheckAndReserve).toHaveBeenCalledWith(
+    expect(mockDoBudgetCheck).toHaveBeenCalledWith(
       expect.anything(),
-      ["{budget}:api_key:key-uuid-123"],
+      "user-uuid-456",
+      expect.any(Array),
       0,
     );
   });
 
   // --- updateBudgetSpend called with correct args ---
 
-  it("updateBudgetSpend called with correct entities and cost on non-streaming success", async () => {
-    mockLookupBudgets.mockResolvedValue([keyEntity]);
-    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-spend" });
+  it("doBudgetReconcile called with correct cost on non-streaming success", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-spend" });
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 123_456 });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
     await drainWaitUntil();
 
-    expect(mockUpdateBudgetSpend).toHaveBeenCalledWith(
-      expect.any(String),
-      [{ entityType: "api_key", entityId: "key-uuid-123" }],
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-uuid-456",
+      "rsv-spend",
       123_456,
+      expect.any(Array),
+      expect.any(String),
     );
   });
 
   it("updateBudgetSpend NOT called when upstream returns error (actualCost=0)", async () => {
-    mockLookupBudgets.mockResolvedValue([keyEntity]);
-    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-err" });
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-err" });
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: "bad" }), {
         status: 400,
@@ -293,7 +300,7 @@ describe("Budget Edge Cases", () => {
   });
 
   it("updateBudgetSpend NOT called when no budget configured", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+    mockLookupBudgetsForDO.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
@@ -305,11 +312,11 @@ describe("Budget Edge Cases", () => {
   // --- 429 response body structure ---
 
   it("429 response body contains all required fields", async () => {
-    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockEstimateMaxCost.mockReturnValue(999_999);
-    mockCheckAndReserve.mockResolvedValue({
+    mockDoBudgetCheck.mockResolvedValue({
       status: "denied",
-      entityKey: "{budget}:api_key:key-uuid-123",
+      deniedEntity: "api_key:key-uuid-123",
       remaining: 100_000,
       maxBudget: 50_000_000,
       spend: 49_400_000,
@@ -325,10 +332,10 @@ describe("Budget Edge Cases", () => {
   });
 
   it("429 response does not contain sensitive data", async () => {
-    mockLookupBudgets.mockResolvedValue([keyEntity]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "denied",
-      entityKey: "{budget}:api_key:key-uuid-123",
+      deniedEntity: "api_key:key-uuid-123",
       remaining: 0,
       maxBudget: 50_000_000,
       spend: 50_000_000,
@@ -347,8 +354,8 @@ describe("Budget Edge Cases", () => {
   // --- Model passed correctly ---
 
   it("estimateMaxCost receives correct model string from body", async () => {
-    mockLookupBudgets.mockResolvedValue([keyEntity]);
-    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-model" });
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-model" });
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     const body = { model: "o3-mini", messages: [{ role: "user", content: "think" }] };

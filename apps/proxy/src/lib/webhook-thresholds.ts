@@ -1,4 +1,4 @@
-import type { BudgetEntity } from "./budget-lookup.js";
+import type { BudgetEntity } from "./budget-do-lookup.js";
 import { buildThresholdPayload, type WebhookEvent } from "./webhook-events.js";
 
 const THRESHOLDS = [50, 80, 90, 95];

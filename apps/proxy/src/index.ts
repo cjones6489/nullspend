@@ -199,7 +199,7 @@ export default {
       const ctx: RequestContext = {
         body: result.body,
         auth,
-        redis: (auth.hasBudgets || auth.hasWebhooks) ? Redis.fromEnv(env) : null,
+        redis: auth.hasWebhooks ? Redis.fromEnv(env) : null,
         connectionString,
         sessionId: request.headers.get("x-nullspend-session") ?? null,
         webhookDispatcher,

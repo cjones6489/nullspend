@@ -1,7 +1,6 @@
-import { Redis } from "@upstash/redis/cloudflare";
 import type { ReconciliationMessage } from "./lib/reconciliation-queue.js";
 import { reconcileBudget } from "./lib/budget-orchestrator.js";
-import type { BudgetEntity } from "./lib/budget-lookup.js";
+import type { BudgetEntity } from "./lib/budget-do-lookup.js";
 
 /**
  * Cloudflare Queue consumer for budget reconciliation messages.
@@ -13,7 +12,6 @@ export async function handleReconciliationQueue(
   env: Env,
 ): Promise<void> {
   const connectionString = env.HYPERDRIVE.connectionString;
-  const redis = Redis.fromEnv(env);
 
   for (const message of batch.messages) {
     try {
@@ -29,14 +27,12 @@ export async function handleReconciliationQueue(
       }));
 
       await reconcileBudget(
-        msg.mode,
         env,
         msg.userId,
         msg.reservationId,
         msg.actualCostMicrodollars,
         budgetEntities,
         connectionString,
-        redis,
       );
       message.ack();
     } catch (err) {

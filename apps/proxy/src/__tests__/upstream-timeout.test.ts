@@ -17,22 +17,22 @@ beforeAll(() => {
 
 const {
   mockWaitUntil,
-  mockLookupBudgets,
-  mockCheckAndReserve,
-  mockReconcile,
+  mockLookupBudgetsForDO,
+  mockDoBudgetCheck,
+  mockDoBudgetReconcile,
+  mockDoBudgetPopulate,
   mockEstimateMaxCost,
   mockUpdateBudgetSpend,
   mockCalculateOpenAICost,
-  mockReconcileReservation,
 } = vi.hoisted(() => ({
   mockWaitUntil: vi.fn((promise: Promise<unknown>) => { promise.catch(() => {}); }),
-  mockLookupBudgets: vi.fn(),
-  mockCheckAndReserve: vi.fn(),
-  mockReconcile: vi.fn(),
+  mockLookupBudgetsForDO: vi.fn(),
+  mockDoBudgetCheck: vi.fn(),
+  mockDoBudgetReconcile: vi.fn(),
+  mockDoBudgetPopulate: vi.fn(),
   mockEstimateMaxCost: vi.fn(),
   mockUpdateBudgetSpend: vi.fn(),
   mockCalculateOpenAICost: vi.fn(),
-  mockReconcileReservation: vi.fn(),
 }));
 
 vi.mock("cloudflare:workers", () => ({
@@ -50,13 +50,14 @@ vi.mock("@nullspend/cost-engine", () => ({
   }),
 }));
 
-vi.mock("../lib/budget-lookup.js", () => ({
-  lookupBudgets: (...args: unknown[]) => mockLookupBudgets(...args),
+vi.mock("../lib/budget-do-lookup.js", () => ({
+  lookupBudgetsForDO: (...args: unknown[]) => mockLookupBudgetsForDO(...args),
 }));
 
-vi.mock("../lib/budget.js", () => ({
-  checkAndReserve: (...args: unknown[]) => mockCheckAndReserve(...args),
-  reconcile: (...args: unknown[]) => mockReconcile(...args),
+vi.mock("../lib/budget-do-client.js", () => ({
+  doBudgetCheck: (...args: unknown[]) => mockDoBudgetCheck(...args),
+  doBudgetReconcile: (...args: unknown[]) => mockDoBudgetReconcile(...args),
+  doBudgetPopulate: (...args: unknown[]) => mockDoBudgetPopulate(...args),
 }));
 
 vi.mock("../lib/cost-estimator.js", () => ({
@@ -65,6 +66,7 @@ vi.mock("../lib/cost-estimator.js", () => ({
 
 vi.mock("../lib/budget-spend.js", () => ({
   updateBudgetSpend: (...args: unknown[]) => mockUpdateBudgetSpend(...args),
+  resetBudgetPeriod: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../lib/cost-logger.js", () => ({
@@ -73,10 +75,6 @@ vi.mock("../lib/cost-logger.js", () => ({
 
 vi.mock("../lib/cost-calculator.js", () => ({
   calculateOpenAICost: (...args: unknown[]) => mockCalculateOpenAICost(...args),
-}));
-
-vi.mock("../lib/budget-reconcile.js", () => ({
-  reconcileReservation: (...args: unknown[]) => mockReconcileReservation(...args),
 }));
 
 vi.mock("@upstash/redis/cloudflare", () => ({
@@ -90,6 +88,7 @@ vi.mock("../lib/sanitize-upstream-error.js", () => ({
 }));
 
 import { handleChatCompletions } from "../routes/openai.js";
+import { doLookupCache } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +111,10 @@ function makeEnv(): Env {
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres" },
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
     UPSTASH_REDIS_REST_TOKEN: "fake-token",
+    USER_BUDGET: {
+      idFromName: vi.fn().mockReturnValue("do-id"),
+      get: vi.fn().mockReturnValue({}),
+    },
   } as Env;
 }
 
@@ -122,7 +125,7 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasBudgets: true, hasWebhooks: false },
-    redis: {} as any,
+    redis: null,
     connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres",
     sessionId: null,
     webhookDispatcher: null,
@@ -138,14 +141,14 @@ async function drainWaitUntil() {
 
 const defaultBody = { model: "gpt-4o", messages: [{ role: "user", content: "hi" }] };
 
-const budgetEntity = {
-  entityKey: "{budget}:api_key:key-uuid-123",
+const doEntity = {
   entityType: "api_key",
   entityId: "key-uuid-123",
   maxBudget: 50_000_000,
   spend: 10_000_000,
-  reserved: 0,
   policy: "strict_block",
+  resetInterval: null,
+  periodStart: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -157,8 +160,9 @@ describe("upstream timeout / error — reservation cleanup", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReconcileReservation.mockResolvedValue(undefined);
-    mockReconcile.mockResolvedValue({ status: "reconciled" });
+    doLookupCache.clear();
+    mockDoBudgetReconcile.mockResolvedValue(undefined);
+    mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
@@ -169,8 +173,8 @@ describe("upstream timeout / error — reservation cleanup", () => {
   });
 
   it("upstream fetch timeout triggers reservation cleanup", async () => {
-    mockLookupBudgets.mockResolvedValue([budgetEntity]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
       reservationId: "rsv-timeout",
     });
@@ -185,18 +189,19 @@ describe("upstream timeout / error — reservation cleanup", () => {
 
     await drainWaitUntil();
 
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
-      expect.anything(),          // redis
-      "rsv-timeout",              // reservationId
-      0,                          // actualCost
-      [budgetEntity],             // budgetEntities
-      "postgresql://postgres:postgres@db.example.com:5432/postgres", // connString
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-uuid-456",
+      "rsv-timeout",
+      0,
+      expect.any(Array),
+      "postgresql://postgres:postgres@db.example.com:5432/postgres",
     );
   });
 
   it("upstream network error triggers reservation cleanup", async () => {
-    mockLookupBudgets.mockResolvedValue([budgetEntity]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
       reservationId: "rsv-timeout",
     });
@@ -211,17 +216,18 @@ describe("upstream timeout / error — reservation cleanup", () => {
 
     await drainWaitUntil();
 
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
+      "user-uuid-456",
       "rsv-timeout",
       0,
-      [budgetEntity],
+      expect.any(Array),
       "postgresql://postgres:postgres@db.example.com:5432/postgres",
     );
   });
 
   it("no reservation — timeout does NOT attempt reconciliation", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
+    mockLookupBudgetsForDO.mockResolvedValue([]);
 
     globalThis.fetch = vi.fn().mockRejectedValue(
       new DOMException("The operation was aborted", "AbortError"),
@@ -233,12 +239,12 @@ describe("upstream timeout / error — reservation cleanup", () => {
 
     await drainWaitUntil();
 
-    expect(mockReconcileReservation).not.toHaveBeenCalled();
+    expect(mockDoBudgetReconcile).not.toHaveBeenCalled();
   });
 
   it("upstream 4xx error — reservation reconciled with cost=0", async () => {
-    mockLookupBudgets.mockResolvedValue([budgetEntity]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
       reservationId: "rsv-4xx",
     });
@@ -254,18 +260,19 @@ describe("upstream timeout / error — reservation cleanup", () => {
     await drainWaitUntil();
 
     expect(response.status).toBe(400);
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
+      "user-uuid-456",
       "rsv-4xx",
       0,
-      [budgetEntity],
+      expect.any(Array),
       "postgresql://postgres:postgres@db.example.com:5432/postgres",
     );
   });
 
   it("upstream 5xx error — reservation reconciled with cost=0", async () => {
-    mockLookupBudgets.mockResolvedValue([budgetEntity]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
       reservationId: "rsv-5xx",
     });
@@ -281,18 +288,19 @@ describe("upstream timeout / error — reservation cleanup", () => {
     await drainWaitUntil();
 
     expect(response.status).toBe(500);
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
+      "user-uuid-456",
       "rsv-5xx",
       0,
-      [budgetEntity],
+      expect.any(Array),
       "postgresql://postgres:postgres@db.example.com:5432/postgres",
     );
   });
 
   it("successful response — reservation reconciled with actual cost", async () => {
-    mockLookupBudgets.mockResolvedValue([budgetEntity]);
-    mockCheckAndReserve.mockResolvedValue({
+    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
+    mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
       reservationId: "rsv-success",
     });
@@ -317,11 +325,12 @@ describe("upstream timeout / error — reservation cleanup", () => {
     await drainWaitUntil();
 
     expect(response.status).toBe(200);
-    expect(mockReconcileReservation).toHaveBeenCalledWith(
+    expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
+      "user-uuid-456",
       "rsv-success",
       75_000,
-      [budgetEntity],
+      expect.any(Array),
       "postgresql://postgres:postgres@db.example.com:5432/postgres",
     );
   });

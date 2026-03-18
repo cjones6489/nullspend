@@ -1,10 +1,9 @@
 import { waitUntil } from "cloudflare:workers";
-import { Redis } from "@upstash/redis/cloudflare";
 import type { RequestContext } from "../lib/context.js";
 import { errorResponse } from "../lib/errors.js";
-import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
+import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.js";
 import { logCostEventsBatch } from "../lib/cost-logger.js";
-import { checkBudget, reconcileBudgetQueued, getReconcileQueue, resolveBudgetMode } from "../lib/budget-orchestrator.js";
+import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
@@ -55,10 +54,8 @@ export async function handleMcpBudgetCheck(
     return Response.json({ allowed: true });
   }
 
-  const budgetMode = resolveBudgetMode(env);
-
   try {
-    const outcome = await checkBudget(budgetMode, env, ctx, parsed.estimateMicrodollars);
+    const outcome = await checkBudget(env, ctx, parsed.estimateMicrodollars);
 
     if (outcome.status === "denied") {
       return Response.json({
@@ -136,7 +133,6 @@ export async function handleMcpEvents(
   const apiKeyId = ctx.auth.keyId;
 
   const accepted = events.length;
-  const budgetMode = resolveBudgetMode(env);
 
   waitUntil(
     (async () => {
@@ -167,13 +163,21 @@ export async function handleMcpEvents(
         console.error("[mcp-events] Failed to batch-insert cost events:", err);
       }
 
-      // Phase 3: Reconcile reservations (one budget lookup)
+      // Phase 3: Reconcile reservations (one budget lookup via DO)
       const eventsWithReservations = events.filter((e) => e.reservationId);
       if (eventsWithReservations.length > 0) {
-        const redis = ctx.redis ?? Redis.fromEnv(env);
         let budgetEntities: BudgetEntity[] = [];
         try {
-          budgetEntities = await lookupBudgets(redis, ctx.connectionString, { keyId: apiKeyId, userId });
+          const doEntities = await lookupBudgetsForDO(ctx.connectionString, { keyId: apiKeyId, userId });
+          budgetEntities = doEntities.map((e) => ({
+            entityKey: `{budget}:${e.entityType}:${e.entityId}`,
+            entityType: e.entityType,
+            entityId: e.entityId,
+            maxBudget: e.maxBudget,
+            spend: e.spend,
+            reserved: 0,
+            policy: e.policy,
+          }));
         } catch {
           // best-effort
         }
@@ -181,7 +185,7 @@ export async function handleMcpEvents(
         if (budgetEntities.length > 0) {
           for (const event of eventsWithReservations) {
             try {
-              await reconcileBudgetQueued(getReconcileQueue(env), budgetMode, env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString, redis);
+              await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
             } catch (err) {
               console.error("[mcp-events] Failed to reconcile reservation:", err);
             }
@@ -192,16 +196,18 @@ export async function handleMcpEvents(
       // Phase 4: Webhook dispatch (one per cost event, single secrets fetch)
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         try {
-          const redis = ctx.redis ?? Redis.fromEnv(env);
-          const cached = await getWebhookEndpoints(redis, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-          if (cached.length > 0) {
-            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-            for (const row of costEventRows) {
-              const whEvent = buildCostEventPayload({
-                ...row,
-                createdAt: new Date().toISOString(),
-              });
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, whEvent);
+          const redis = ctx.redis;
+          if (redis) {
+            const cached = await getWebhookEndpoints(redis, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+              for (const row of costEventRows) {
+                const whEvent = buildCostEventPayload({
+                  ...row,
+                  createdAt: new Date().toISOString(),
+                });
+                await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, whEvent);
+              }
             }
           }
         } catch (err) {
