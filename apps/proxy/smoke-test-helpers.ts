@@ -7,6 +7,7 @@ export const NULLSPEND_API_KEY = process.env.NULLSPEND_API_KEY;
 export const NULLSPEND_SMOKE_USER_ID = process.env.NULLSPEND_SMOKE_USER_ID;
 export const NULLSPEND_SMOKE_KEY_ID = process.env.NULLSPEND_SMOKE_KEY_ID;
 export const DATABASE_URL = process.env.DATABASE_URL;
+export const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 
 /**
  * Build auth headers for OpenAI proxy requests.
@@ -82,6 +83,35 @@ export async function waitForCostEvent(
     await new Promise((r) => setTimeout(r, 500));
   }
   return null;
+}
+
+/**
+ * Call the proxy's internal budget invalidation endpoint to properly clean up
+ * all three layers of budget state: DO SQLite, DO lookup cache, and auth cache.
+ *
+ * Requires INTERNAL_SECRET in .env.smoke.
+ */
+export async function invalidateBudget(
+  userId: string,
+  entityType: string,
+  entityId: string,
+  action: "remove" | "reset_spend" = "remove",
+): Promise<void> {
+  if (!INTERNAL_SECRET) {
+    throw new Error("INTERNAL_SECRET required in .env.smoke for budget invalidation");
+  }
+  const res = await fetch(`${BASE}/internal/budget/invalidate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${INTERNAL_SECRET}`,
+    },
+    body: JSON.stringify({ action, userId, entityType, entityId }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Budget invalidation failed (${res.status}): ${body}`);
+  }
 }
 
 export async function countCostEventsSince(

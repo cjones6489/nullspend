@@ -1,3 +1,4 @@
+import { invalidateAuthCacheForUser } from "../lib/api-key-auth.js";
 import { doBudgetRemove, doBudgetResetSpend } from "../lib/budget-do-client.js";
 import { invalidateDoLookupCacheForUser } from "../lib/budget-orchestrator.js";
 import { errorResponse } from "../lib/errors.js";
@@ -86,6 +87,7 @@ export async function handleBudgetInvalidation(
     }
 
     invalidateDoLookupCacheForUser(body.userId);
+    invalidateAuthCacheForUser(body.userId);
 
     emitMetric("budget_invalidation", {
       action: body.action,

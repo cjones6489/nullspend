@@ -183,6 +183,22 @@ export async function authenticateApiKey(
 }
 
 /**
+ * Invalidate auth cache entries for a specific user.
+ * Needed when budget state changes so hasBudgets is re-evaluated on next auth.
+ * Returns the number of evicted entries.
+ */
+export function invalidateAuthCacheForUser(userId: string): number {
+  let evicted = 0;
+  for (const [hash, entry] of positiveCache) {
+    if (entry.identity.userId === userId) {
+      positiveCache.delete(hash);
+      evicted++;
+    }
+  }
+  return evicted;
+}
+
+/**
  * Reset caches — exposed for testing only.
  */
 export function _resetCaches(): void {
