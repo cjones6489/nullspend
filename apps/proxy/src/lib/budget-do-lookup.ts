@@ -28,7 +28,6 @@ export interface DOBudgetEntity {
 
 /**
  * Query Postgres directly for budget entities with all DO-required fields.
- * Used only in durable-objects and shadow modes.
  * Throws on error (caller decides fail mode).
  */
 export async function lookupBudgetsForDO(

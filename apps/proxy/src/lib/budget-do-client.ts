@@ -22,7 +22,7 @@ export async function doBudgetCheck(
 
 /**
  * Reconcile a reservation via the UserBudgetDO + Postgres write-back.
- * Never throws — matches reconcileReservation contract.
+ * Never throws — errors are logged and metrics emitted.
  *
  * Retries the Postgres write up to PG_MAX_RETRIES times with backoff
  * to prevent DO/Postgres split-brain on transient failures.

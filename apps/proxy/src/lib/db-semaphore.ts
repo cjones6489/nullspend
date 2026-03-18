@@ -3,7 +3,7 @@
  *
  * ALL pg.Client creation must go through withDbConnection(). Callers:
  *   - api-key-auth.ts    (request path, usually cached — skips DB)
- *   - budget-lookup.ts   (request path, Redis fast-path — rarely hits DB)
+ *   - budget-do-lookup.ts (request path, in-memory cache — rarely hits DB)
  *   - cost-logger.ts     (background via waitUntil)
  *   - budget-spend.ts    (background via waitUntil)
  *   - webhook-cache.ts   (background via waitUntil)
