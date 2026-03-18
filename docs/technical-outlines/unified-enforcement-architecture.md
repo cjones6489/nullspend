@@ -687,6 +687,32 @@ budget check would show stale data when concurrent requests have
 outstanding reservations. The SDK should call `POST /v1/enforce` on the
 proxy to get the same atomic enforcement the proxy uses for LLM requests.
 
+### Avoiding Double-Counting Across Entry Points
+
+Because the three entry points write to the same `cost_events` table, a
+developer who uses more than one integration for the same call will get
+duplicate cost events and double budget charges. Common overlaps:
+
+- **MCP proxy + SDK:** Developer uses the MCP proxy (auto-tracks tool
+  costs, auto-checks budgets) AND calls `sdk.reportCost()` manually for
+  the same tool execution → duplicate cost event, budget charged twice.
+- **LLM proxy + SDK:** Developer routes through the proxy (auto-tracks)
+  AND calls `sdk.reportCost()` for the same LLM call → same problem.
+
+**The rule for developers:** Use the proxy OR `reportCost()` for a given
+call, never both. The proxy and MCP proxy handle tracking automatically —
+`reportCost()` is for calls that *don't* go through a proxy (Bedrock via
+AWS SDK, custom tools, direct provider calls). The documentation must
+make this clear.
+
+**Future mitigation (post-launch):** Source-aware deduplication. Each cost
+event carries a `source` field (`proxy`, `mcp_proxy`, `sdk`) and
+optionally a `correlationId` (e.g., request ID or reservation ID). If two
+events arrive with the same correlation from different sources, keep the
+proxy's version (it has accurate token counts from response parsing). This
+is a Phase 6 hardening concern — build it when real users hit the overlap,
+not before.
+
 ### The Honest Assessment: Is This Too Complex?
 
 Three integration paths is the right number for our use case. But it will
