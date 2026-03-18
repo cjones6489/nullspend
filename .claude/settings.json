@@ -4,6 +4,7 @@
       "Bash(pnpm test)",
       "Bash(pnpm test:*)",
       "Bash(pnpm proxy:test)",
+      "Bash(pnpm proxy:test:*)",
       "Bash(pnpm proxy:dev)",
       "Bash(pnpm dev)",
       "Bash(pnpm lint)",
@@ -11,7 +12,8 @@
       "Bash(pnpm db:*)",
       "Bash(npx vitest *)",
       "Bash(npx vitest run *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npx prettier --write *)"
     ],
     "deny": [
       "Bash(pnpm proxy:deploy)",
@@ -19,6 +21,19 @@
       "Read(.env)",
       "Read(.env.local)",
       "Read(.dev.vars)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | xargs npx prettier --write 2>/dev/null || true"
+          }
+        ]
+      }
     ]
   }
 }
