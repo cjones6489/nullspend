@@ -68,6 +68,8 @@ export function formatChartDollars(microdollars: number): string {
   return `$${dollars.toFixed(2)}`;
 }
 
+const MS_PER_DAY = 86_400_000;
+
 export function fillDateGaps(
   data: { date: string; totalCostMicrodollars: number }[],
   periodDays: number,
@@ -76,11 +78,10 @@ export function fillDateGaps(
   const result: { date: string; totalCostMicrodollars: number }[] = [];
   const now = new Date();
   now.setUTCHours(0, 0, 0, 0);
+  const todayMs = now.getTime();
 
   for (let i = periodDays - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setUTCDate(d.getUTCDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = new Date(todayMs - i * MS_PER_DAY).toISOString().slice(0, 10);
     result.push({ date: dateStr, totalCostMicrodollars: lookup.get(dateStr) ?? 0 });
   }
 

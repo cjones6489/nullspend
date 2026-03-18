@@ -13,8 +13,7 @@ function baseConditions(userId: string, cutoffDate: Date) {
 function makeCutoff(periodDays: number): Date {
   const d = new Date();
   d.setUTCHours(0, 0, 0, 0);
-  d.setUTCDate(d.getUTCDate() - (periodDays - 1));
-  return d;
+  return new Date(d.getTime() - (periodDays - 1) * 86_400_000);
 }
 
 const dateExpr = sql<string>`(${costEvents.createdAt} AT TIME ZONE 'UTC')::date::text`;
