@@ -118,7 +118,7 @@ describe("POST /api/cost-events/batch", () => {
 
   it("returns auth error when API key is invalid", async () => {
     const authError = new Response(
-      JSON.stringify({ error: "authentication_required" }),
+      JSON.stringify({ error: { code: "authentication_required", message: "authentication_required", details: null } }),
       { status: 401 },
     );
     mockedAuthenticateApiKey.mockResolvedValue(authError);

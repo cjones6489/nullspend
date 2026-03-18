@@ -33,7 +33,7 @@ export async function DELETE(
 
     if (!revoked) {
       return NextResponse.json(
-        { error: "not_found", message: "API key not found or already revoked." },
+        { error: { code: "not_found", message: "API key not found or already revoked.", details: null } },
         { status: 404 },
       );
     }

@@ -97,7 +97,7 @@ describe("app/api/actions/[id]/result/route", () => {
 
   it("returns 429 when per-key rate limit is exceeded", async () => {
     const rateLimitResponse = new Response(
-      JSON.stringify({ error: "rate_limit_exceeded", message: "Too many requests" }),
+      JSON.stringify({ error: { code: "rate_limit_exceeded", message: "Too many requests", details: null } }),
       { status: 429, headers: { "Content-Type": "application/json" } },
     );
     mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);

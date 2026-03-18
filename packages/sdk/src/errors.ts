@@ -1,10 +1,12 @@
 export class NullSpendError extends Error {
   public readonly statusCode: number | undefined;
+  public readonly code: string | undefined;
 
-  constructor(message: string, statusCode?: number) {
+  constructor(message: string, statusCode?: number, code?: string) {
     super(message);
     this.name = "NullSpendError";
     this.statusCode = statusCode;
+    this.code = code;
   }
 }
 

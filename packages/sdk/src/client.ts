@@ -370,15 +370,24 @@ export class NullSpend {
 
       // Non-retryable error or final attempt
       let detail: string;
+      let code: string | undefined;
       try {
         const json = (await response.json()) as Record<string, unknown>;
-        detail = String(json.error ?? json.message ?? response.statusText);
+        const errObj = json.error;
+        if (errObj && typeof errObj === "object") {
+          const err = errObj as Record<string, unknown>;
+          code = typeof err.code === "string" ? err.code : undefined;
+          detail = String(err.message ?? err.code ?? response.statusText);
+        } else {
+          detail = response.statusText;
+        }
       } catch {
         detail = response.statusText;
       }
       throw new NullSpendError(
         `${method} ${path} failed: ${detail}`,
         response.status,
+        code,
       );
     }
 

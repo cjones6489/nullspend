@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     if (!isValidPriceId(input.priceId)) {
       return NextResponse.json(
-        { error: "invalid_input", message: "Invalid price ID." },
+        { error: { code: "invalid_input", message: "Invalid price ID.", details: null } },
         { status: 400 },
       );
     }
@@ -27,9 +27,12 @@ export async function POST(request: Request) {
     if (existing && existing.status === "active") {
       return NextResponse.json(
         {
-          error: "subscription_exists",
-          message:
-            "You already have an active subscription. Use the Manage Subscription page to change plans.",
+          error: {
+            code: "subscription_exists",
+            message:
+              "You already have an active subscription. Use the Manage Subscription page to change plans.",
+            details: null,
+          },
         },
         { status: 400 },
       );

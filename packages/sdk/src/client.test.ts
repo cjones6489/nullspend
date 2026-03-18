@@ -129,13 +129,27 @@ describe("createAction", () => {
 
   it("throws NullSpendError on non-OK response", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ error: "Bad input" }, 400),
+      jsonResponse({ error: { code: "bad_request", message: "Bad input", details: null } }, 400),
     );
     const client = createClient(fetchFn);
 
     await expect(
       client.createAction({ agentId: "a", actionType: "send_email", payload: {} }),
     ).rejects.toThrow(NullSpendError);
+  });
+
+  it("populates NullSpendError.code from nested error response", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ error: { code: "validation_error", message: "Invalid input", details: null } }, 400),
+    );
+    const client = createClient(fetchFn);
+
+    const err = await client.createAction({ agentId: "a", actionType: "send_email", payload: {} }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(NullSpendError);
+    expect((err as NullSpendError).code).toBe("validation_error");
+    expect((err as NullSpendError).statusCode).toBe(400);
+    expect((err as NullSpendError).message).toContain("Invalid input");
   });
 });
 
@@ -378,7 +392,7 @@ describe("proposeAndWait", () => {
       .mockResolvedValueOnce(jsonResponse(approved))
       .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
       // markResult(failed) also fails
-      .mockResolvedValueOnce(jsonResponse({ error: "server down" }, 500));
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "server_down", message: "server down", details: null } }, 500));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockRejectedValue(new Error("original execute error"));
@@ -487,7 +501,7 @@ describe("proposeAndWait", () => {
       // markResult(executing) → ok
       .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
       // markResult(executed) → 500
-      .mockResolvedValueOnce(jsonResponse({ error: "server down" }, 500));
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "server_down", message: "server down", details: null } }, 500));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockResolvedValue({ done: true });
@@ -553,7 +567,7 @@ describe("Retry behavior", () => {
   it("retries on 500 → succeeds on second attempt", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
 
     const client = createRetryClient(fetchFn);
@@ -567,7 +581,7 @@ describe("Retry behavior", () => {
   it.each([502, 503, 504])("retries on %d → succeeds on retry", async (status) => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, status))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, status))
       .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
 
     const client = createRetryClient(fetchFn);
@@ -581,7 +595,7 @@ describe("Retry behavior", () => {
   it("retries on 429 with Retry-After → succeeds on retry", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "rate limited" }, 429, { "Retry-After": "1" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "rate_limited", message: "rate limited", details: null } }, 429, { "Retry-After": "1" }))
       .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
 
     const client = createRetryClient(fetchFn);
@@ -623,7 +637,7 @@ describe("Retry behavior", () => {
   });
 
   it("does NOT retry on 400", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "bad request" }, 400));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "bad_request", message: "bad request", details: null } }, 400));
     const client = createRetryClient(fetchFn);
 
     await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
@@ -631,23 +645,24 @@ describe("Retry behavior", () => {
   });
 
   it.each([401, 403, 404, 409, 422])("does NOT retry on %d", async (status) => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "nope" }, status));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "nope", message: "nope", details: null } }, status));
     const client = createRetryClient(fetchFn);
 
     await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
-  it("exhausts retries on persistent 500 → throws NullSpendError with status 500", async () => {
-    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "broken" }, 500));
+  it("exhausts retries on persistent 500 → throws NullSpendError with status 500 and code", async () => {
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "broken", message: "broken", details: null } }, 500));
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
 
     const err = await client.getAction("act-1").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(NullSpendError);
     expect((err as NullSpendError).statusCode).toBe(500);
+    expect((err as NullSpendError).code).toBe("broken");
     expect((err as NullSpendError).message).toContain("broken");
-    // 1 initial + 2 retries = 3
+    // 1 initial + 2 retries = 3 — final attempt parses JSON and extracts code
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
@@ -664,7 +679,7 @@ describe("Retry behavior", () => {
   });
 
   it("maxRetries: 0 disables retry (fetch called 1x on 500)", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = createClient(fetchFn); // maxRetries: 0
 
     await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
@@ -674,7 +689,7 @@ describe("Retry behavior", () => {
   it("respects Retry-After header value", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "wait" }, 429, { "Retry-After": "2" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "wait", message: "wait", details: null } }, 429, { "Retry-After": "2" }))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn);
@@ -687,7 +702,7 @@ describe("Retry behavior", () => {
   it("Retry-After capped at max delay", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "wait" }, 429, { "Retry-After": "60" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "wait", message: "wait", details: null } }, 429, { "Retry-After": "60" }))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn);
@@ -700,7 +715,7 @@ describe("Retry behavior", () => {
   it("Retry-After: 0 → immediate retry", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "wait" }, 429, { "Retry-After": "0" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "wait", message: "wait", details: null } }, 429, { "Retry-After": "0" }))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn);
@@ -737,7 +752,7 @@ describe("Retry behavior", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: 200 });
@@ -755,7 +770,7 @@ describe("Retry behavior", () => {
 
 describe("Config validation", () => {
   it("maxRetries: -1 → clamped to 0 (no retries)", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = createRetryClient(fetchFn, { maxRetries: -1 });
 
     await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
@@ -763,7 +778,7 @@ describe("Config validation", () => {
   });
 
   it("maxRetries: NaN → falls back to default (2)", async () => {
-    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = createRetryClient(fetchFn, { maxRetries: NaN });
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
 
@@ -772,7 +787,7 @@ describe("Config validation", () => {
   });
 
   it("maxRetries: Infinity → falls back to default (2)", async () => {
-    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = createRetryClient(fetchFn, { maxRetries: Infinity });
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
 
@@ -785,7 +800,7 @@ describe("Config validation", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: -100 });
@@ -799,7 +814,7 @@ describe("Config validation", () => {
   it("retryBaseDelayMs: 0 → works (minimal delay)", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: 0 });
@@ -815,7 +830,7 @@ describe("Config validation", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: NaN });
@@ -827,7 +842,7 @@ describe("Config validation", () => {
   });
 
   it("maxRetries: 0.5 → floored to 0 (no retries)", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = createRetryClient(fetchFn, { maxRetries: 0.5 });
 
     await expect(client.getAction("act-1")).rejects.toThrow(NullSpendError);
@@ -894,8 +909,8 @@ describe("onRetry callback", () => {
     const onRetry = vi.fn();
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 502))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 502))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = new NullSpend({
@@ -926,7 +941,7 @@ describe("onRetry callback", () => {
     const onRetry = vi.fn().mockReturnValue(false);
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = new NullSpend({
@@ -946,7 +961,7 @@ describe("onRetry callback", () => {
     const onRetry = vi.fn(); // returns undefined
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = new NullSpend({
@@ -964,7 +979,7 @@ describe("onRetry callback", () => {
 
   it("onRetry not called when maxRetries: 0", async () => {
     const onRetry = vi.fn();
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500));
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
@@ -984,7 +999,7 @@ describe("onRetry callback", () => {
     });
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = new NullSpend({
@@ -1010,7 +1025,7 @@ describe("onRetry callback", () => {
 
 describe("maxRetryTimeMs", () => {
   it("aborts retry when total wall-time cap is exceeded", async () => {
-    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
@@ -1051,7 +1066,7 @@ describe("maxRetryTimeMs", () => {
   });
 
   it("maxRetryTimeMs: 0 means no cap (default)", async () => {
-    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = createRetryClient(fetchFn); // no maxRetryTimeMs
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
 
@@ -1068,7 +1083,7 @@ describe("Retry delay progression", () => {
   it("delay increases across consecutive retries", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0.5);
 
-    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
       apiKey: "ask_test123",
@@ -1123,7 +1138,7 @@ describe("Idempotency", () => {
   it("same key reused across retries (500 then 200 → both calls have same key)", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "pending" }, 201));
 
     const client = createRetryClient(fetchFn);
@@ -1174,7 +1189,7 @@ describe("Integration", () => {
     const fetchFn = vi
       .fn()
       // createAction: 500 first, then success
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse(createResp, 201))
       // waitForDecision
       .mockResolvedValueOnce(jsonResponse(approved))
@@ -1208,7 +1223,7 @@ describe("Integration", () => {
       // poll 1: pending
       .mockResolvedValueOnce(jsonResponse(pending))
       // poll 2: 502 then approved on retry
-      .mockResolvedValueOnce(jsonResponse({ error: "bad gateway" }, 502))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "bad_gateway", message: "bad gateway", details: null } }, 502))
       .mockResolvedValueOnce(jsonResponse(approved));
 
     const client = createRetryClient(fetchFn);
@@ -1223,7 +1238,7 @@ describe("Integration", () => {
   });
 
   it("default maxRetries=2 → persistent 500 calls fetch 3 times", async () => {
-    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: "fail" }, 500));
+    const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
       apiKey: "ask_test123",
@@ -1252,7 +1267,7 @@ describe("proposeAndWait 409 resilience", () => {
       // waitForDecision
       .mockResolvedValueOnce(jsonResponse(approved))
       // markResult(executing) → 409
-      .mockResolvedValueOnce(jsonResponse({ error: "already executing" }, 409))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "already_executing", message: "already executing", details: null } }, 409))
       // getAction fallback → executing
       .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executing" })))
       // markResult(executed)
@@ -1287,7 +1302,7 @@ describe("proposeAndWait 409 resilience", () => {
       // markResult(executing) → ok
       .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
       // markResult(executed) → 409
-      .mockResolvedValueOnce(jsonResponse({ error: "already executed" }, 409))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "already_executed", message: "already executed", details: null } }, 409))
       // getAction fallback → executed
       .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executed" })));
 
@@ -1317,7 +1332,7 @@ describe("proposeAndWait 409 resilience", () => {
       // waitForDecision
       .mockResolvedValueOnce(jsonResponse(approved))
       // markResult(executing) → 409
-      .mockResolvedValueOnce(jsonResponse({ error: "conflict" }, 409))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "conflict", message: "conflict", details: null } }, 409))
       // getAction fallback → approved (not executing!)
       .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "approved" })));
 
@@ -1351,7 +1366,7 @@ describe("proposeAndWait 409 resilience", () => {
       // markResult(executing) → ok
       .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
       // markResult(executed) → 409
-      .mockResolvedValueOnce(jsonResponse({ error: "conflict" }, 409))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "conflict", message: "conflict", details: null } }, 409))
       // getAction fallback → executing (not executed!)
       .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executing" })));
 
@@ -1387,7 +1402,7 @@ describe("proposeAndWait 409 resilience", () => {
       // markResult(executing) → ok
       .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
       // markResult(executed) → 409
-      .mockResolvedValueOnce(jsonResponse({ error: "conflict" }, 409))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "conflict", message: "conflict", details: null } }, 409))
       // getAction fallback → network error
       .mockRejectedValueOnce(new TypeError("network down"));
 
@@ -1420,7 +1435,7 @@ describe("Retry-After on 503", () => {
   it("503 with Retry-After: 2 → sleep called with ~2000ms", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "maintenance" }, 503, { "Retry-After": "2" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "maintenance", message: "maintenance", details: null } }, 503, { "Retry-After": "2" }))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn);
@@ -1435,7 +1450,7 @@ describe("Retry-After on 503", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "maintenance" }, 503))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "maintenance", message: "maintenance", details: null } }, 503))
       .mockResolvedValueOnce(jsonResponse(mockAction()));
 
     const client = createRetryClient(fetchFn);
@@ -1553,7 +1568,7 @@ describe("reportCost", () => {
   it("retries on 429/5xx", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "rate limit" }, 429, { "Retry-After": "1" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "rate_limit", message: "rate limit", details: null } }, 429, { "Retry-After": "1" }))
       .mockResolvedValueOnce(
         jsonResponse({ id: "ce-3", createdAt: "2026-03-18T00:00:00Z" }, 201),
       );
@@ -1575,7 +1590,7 @@ describe("reportCost", () => {
 
   it("throws NullSpendError on 400", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ error: "validation_error", message: "invalid" }, 400),
+      jsonResponse({ error: { code: "validation_error", message: "invalid", details: null } }, 400),
     );
     const client = createClient(fetchFn);
 
@@ -1592,7 +1607,7 @@ describe("reportCost", () => {
 
   it("throws NullSpendError on 401", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ error: "authentication_required" }, 401),
+      jsonResponse({ error: { code: "authentication_required", message: "authentication_required", details: null } }, 401),
     );
     const client = createClient(fetchFn);
 
@@ -1668,7 +1683,7 @@ describe("reportCostBatch", () => {
   it("retries on 5xx", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "fail" }, 500))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(
         jsonResponse({ inserted: 1, ids: ["ce-1"] }, 201),
       );
@@ -1772,7 +1787,7 @@ describe("checkBudget", () => {
   it("retries on 429/5xx", async () => {
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "rate limit" }, 429, { "Retry-After": "1" }))
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "rate_limit", message: "rate limit", details: null } }, 429, { "Retry-After": "1" }))
       .mockResolvedValueOnce(jsonResponse(budgetResponse));
 
     const client = createRetryClient(fetchFn);
@@ -1801,7 +1816,7 @@ describe("checkBudget", () => {
 
   it("throws NullSpendError on 401", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ error: "authentication_required" }, 401),
+      jsonResponse({ error: { code: "authentication_required", message: "authentication_required", details: null } }, 401),
     );
     const client = createClient(fetchFn);
 

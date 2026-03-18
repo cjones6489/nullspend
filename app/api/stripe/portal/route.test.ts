@@ -71,8 +71,8 @@ describe("POST /api/stripe/portal", () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("no_subscription");
-    expect(body.message).toMatch(/No active subscription/);
+    expect(body.error.code).toBe("no_subscription");
+    expect(body.error.message).toMatch(/No active subscription/);
   });
 
   it("returns 400 when subscription has no stripeCustomerId", async () => {

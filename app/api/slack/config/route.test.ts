@@ -231,7 +231,7 @@ describe("DELETE /api/slack/config", () => {
     const json = await res.json();
 
     expect(res.status).toBe(404);
-    expect(json.error).toBe("not_found");
-    expect(json.message).toContain("No Slack configuration found");
+    expect(json.error.code).toBe("not_found");
+    expect(json.error.message).toContain("No Slack configuration found");
   });
 });

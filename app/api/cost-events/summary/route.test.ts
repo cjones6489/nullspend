@@ -169,8 +169,8 @@ describe("GET /api/cost-events/summary", () => {
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("validation_error");
-    expect(body.message).toBe("Request validation failed.");
+    expect(body.error.code).toBe("validation_error");
+    expect(body.error.message).toBe("Request validation failed.");
   });
 
   it("returns 401 when session is invalid", async () => {
@@ -240,8 +240,8 @@ describe("GET /api/cost-events/summary", () => {
 
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error).toBe("internal_error");
-    expect(body.message).toBe("Internal server error.");
+    expect(body.error.code).toBe("internal_error");
+    expect(body.error.message).toBe("Internal server error.");
   });
 
   it("passes the authenticated user ID to all aggregation functions", async () => {

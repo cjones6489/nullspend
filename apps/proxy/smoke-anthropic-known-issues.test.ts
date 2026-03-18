@@ -301,7 +301,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
 
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
+    expect(body.error.code).toBe("budget_exceeded");
   }, 15_000);
 
   it("stream abort does not double-count spend (actual vs reservation)", async () => {

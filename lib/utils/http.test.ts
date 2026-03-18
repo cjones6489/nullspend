@@ -94,8 +94,8 @@ describe("handleRouteError", () => {
 
     expect(response.status).toBe(503);
     const body = await response.json();
-    expect(body.error).toBe("service_unavailable");
-    expect(body.message).toBe("Service temporarily unavailable.");
+    expect(body.error.code).toBe("service_unavailable");
+    expect(body.error.message).toBe("Service temporarily unavailable.");
     expect(response.headers.get("Retry-After")).toBe("30");
     expect(mockLogger.warn).toHaveBeenCalledWith(
       { err: error },
@@ -178,8 +178,8 @@ describe("readJsonBody Content-Type validation", () => {
       const response = handleRouteError(err);
       expect(response.status).toBe(415);
       const body = await response.json();
-      expect(body.error).toBe("unsupported_media_type");
-      expect(body.message).toBe("Content-Type must be application/json.");
+      expect(body.error.code).toBe("unsupported_media_type");
+      expect(body.error.message).toBe("Content-Type must be application/json.");
     }
   });
 });

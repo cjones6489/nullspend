@@ -130,7 +130,7 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("non-JSON body returns 400", async () => {
@@ -142,8 +142,8 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
-      expect(body.message).toContain("Invalid JSON");
+      expect(body.error.code).toBe("bad_request");
+      expect(body.error.message).toContain("Invalid JSON");
     });
 
     it("JSON array returns 400 (must be object)", async () => {
@@ -155,7 +155,7 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.message).toContain("JSON object");
+      expect(body.error.message).toContain("JSON object");
     });
 
     it("JSON null returns 400", async () => {
@@ -228,8 +228,8 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(404);
       const body = await res.json();
-      expect(body.error).toBe("not_found");
-      expect(body.message).toContain("not yet supported");
+      expect(body.error.code).toBe("not_found");
+      expect(body.error.message).toContain("not yet supported");
     });
 
     it("POST /v1/audio/transcriptions returns 404", async () => {
@@ -246,7 +246,7 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(404);
       const body = await res.json();
-      expect(body.error).toBe("not_found");
+      expect(body.error.code).toBe("not_found");
     });
 
     it("root path returns 404", async () => {
@@ -317,7 +317,7 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(500);
       const body = await res.json();
-      expect(body.error).toBe("internal_error");
+      expect(body.error.code).toBe("internal_error");
     });
 
     it("does not call passThroughOnException", async () => {
@@ -337,7 +337,7 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(401);
       const body = await res.json();
-      expect(body.error).toBe("unauthorized");
+      expect(body.error.code).toBe("unauthorized");
     });
   });
 
@@ -355,7 +355,7 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(413);
       const body = await res.json();
-      expect(body.error).toBe("payload_too_large");
+      expect(body.error.code).toBe("payload_too_large");
     });
 
     it("allows requests with Content-Length under 1MB", async () => {
@@ -395,7 +395,7 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(429);
       const body = await res.json();
-      expect(body.error).toBe("rate_limited");
+      expect(body.error.code).toBe("rate_limited");
       expect(res.headers.get("X-RateLimit-Limit")).toBe("120");
       expect(res.headers.get("Retry-After")).toBeTruthy();
     });

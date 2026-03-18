@@ -57,8 +57,8 @@ describe("POST /api/slack/test", () => {
     const json = await res.json();
 
     expect(res.status).toBe(404);
-    expect(json.error).toBe("not_found");
-    expect(json.message).toBe("No Slack configuration found.");
+    expect(json.error.code).toBe("not_found");
+    expect(json.error.message).toBe("No Slack configuration found.");
   });
 
   it("returns 400 on webhook client error", async () => {
@@ -71,8 +71,8 @@ describe("POST /api/slack/test", () => {
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toBe("slack_webhook_error");
-    expect(json.message).toBe("Failed to send test notification.");
+    expect(json.error.code).toBe("slack_webhook_error");
+    expect(json.error.message).toBe("Failed to send test notification.");
   });
 
   it("returns 502 on webhook server error", async () => {
@@ -85,8 +85,8 @@ describe("POST /api/slack/test", () => {
     const json = await res.json();
 
     expect(res.status).toBe(502);
-    expect(json.error).toBe("slack_webhook_error");
-    expect(json.message).toBe("Failed to send test notification.");
+    expect(json.error.code).toBe("slack_webhook_error");
+    expect(json.error.message).toBe("Failed to send test notification.");
   });
 
   it("returns 502 for unknown errors", async () => {
@@ -97,8 +97,8 @@ describe("POST /api/slack/test", () => {
     const json = await res.json();
 
     expect(res.status).toBe(502);
-    expect(json.error).toBe("slack_webhook_error");
-    expect(json.message).toBe("Failed to send test notification.");
+    expect(json.error.code).toBe("slack_webhook_error");
+    expect(json.error.message).toBe("Failed to send test notification.");
   });
 
   it("returns auth error when session is invalid", async () => {

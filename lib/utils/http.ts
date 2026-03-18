@@ -77,8 +77,8 @@ export async function readRouteParams<T extends Record<string, string>>(
   return await params;
 }
 
-function errorJson(error: string, message: string, extra?: Record<string, unknown>) {
-  return { error, message, ...extra };
+function errorJson(code: string, message: string, details?: Record<string, unknown> | null) {
+  return { error: { code, message, details: details ?? null } };
 }
 
 export function handleRouteError(error: unknown) {

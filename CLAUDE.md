@@ -47,7 +47,7 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 - `anon` role has zero privileges on application tables
 - API keys: SHA-256 hashed before storage, timing-safe comparison on lookup
 - Auth: session-based (`resolveSessionUserId`) for dashboard, API key (`assertApiKeyWithIdentity`) for agents
-- Error responses: `{ error: "machine_code", message: "Human readable text." }` — consistent across dashboard and proxy
+- Error responses: `{ error: { code: "machine_code", message: "Human readable text.", details: null } }` — consistent across dashboard and proxy
 - HTTP status semantics: 401 = identity unknown, 403 = identity known but unauthorized
 
 ## Dependencies

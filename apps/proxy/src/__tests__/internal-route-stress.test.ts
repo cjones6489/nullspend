@@ -116,8 +116,8 @@ describe("Auth boundary attacks", () => {
       makeEnv(),
     );
     expect(res.status).toBe(401);
-    const json = (await res.json()) as Record<string, unknown>;
-    expect(json.error).toBe("unauthorized");
+    const json = (await res.json()) as { error: { code: string } };
+    expect(json.error.code).toBe("unauthorized");
   });
 
   it("FINDING: trailing whitespace on token is STRIPPED by HTTP Headers API — auth passes (should it?)", async () => {

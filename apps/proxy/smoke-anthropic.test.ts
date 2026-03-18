@@ -117,7 +117,7 @@ describe("Anthropic proxy smoke tests", () => {
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("invalid_model");
+    expect(body.error.code).toBe("invalid_model");
   });
 
   it("invalid x-nullspend-key returns 401", async () => {
@@ -137,7 +137,7 @@ describe("Anthropic proxy smoke tests", () => {
 
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body).toHaveProperty("error", "unauthorized");
+    expect(body.error.code).toBe("unauthorized");
   });
 
   it("missing x-nullspend-key returns 401", async () => {
@@ -169,6 +169,6 @@ describe("Anthropic proxy smoke tests", () => {
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body).toHaveProperty("error", "bad_request");
+    expect(body.error.code).toBe("bad_request");
   });
 });

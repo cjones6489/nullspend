@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
     if (!existing?.stripeCustomerId) {
       return NextResponse.json(
-        { error: "no_subscription", message: "No active subscription to manage." },
+        { error: { code: "no_subscription", message: "No active subscription to manage.", details: null } },
         { status: 400 },
       );
     }

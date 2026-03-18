@@ -125,7 +125,7 @@ describe("handleChatCompletions", () => {
     }));
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("invalid_model");
+    expect(body.error.code).toBe("invalid_model");
   });
 
   it("forwards upstream error responses with correct status", async () => {
@@ -662,7 +662,7 @@ describe("handleChatCompletions", () => {
 
       expect(res.status).toBe(400);
       const json = await res.json();
-      expect(json.error).toBe("invalid_upstream");
+      expect(json.error.code).toBe("invalid_upstream");
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -798,7 +798,7 @@ describe("handleChatCompletions", () => {
 
       expect(res.status).toBe(400);
       const json = await res.json();
-      expect(json.error).toBe("invalid_model");
+      expect(json.error.code).toBe("invalid_model");
     });
   });
 

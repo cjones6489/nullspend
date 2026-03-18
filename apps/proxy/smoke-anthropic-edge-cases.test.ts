@@ -47,7 +47,7 @@ describe("Anthropic edge cases", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("bad_request");
+    expect(body.error.code).toBe("bad_request");
   });
 
   it("JSON array body returns 400 (must be object)", async () => {
@@ -58,7 +58,7 @@ describe("Anthropic edge cases", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("bad_request");
+    expect(body.error.code).toBe("bad_request");
   });
 
   it("JSON null body returns 400", async () => {
@@ -79,7 +79,7 @@ describe("Anthropic edge cases", () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toBe("bad_request");
+    expect(body.error.code).toBe("bad_request");
   });
 
   it("HTML body returns 400", async () => {

@@ -112,7 +112,7 @@ export async function DELETE() {
 
     if (!deleted) {
       return NextResponse.json(
-        { error: "not_found", message: "No Slack configuration found." },
+        { error: { code: "not_found", message: "No Slack configuration found.", details: null } },
         { status: 404 },
       );
     }

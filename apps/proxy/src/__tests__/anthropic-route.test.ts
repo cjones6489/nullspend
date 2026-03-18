@@ -126,7 +126,7 @@ describe("handleAnthropicMessages", () => {
     const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
     expect(res.status).toBe(400);
     const json = await res.json();
-    expect(json.error).toBe("invalid_model");
+    expect(json.error.code).toBe("invalid_model");
   });
 
   it("handles valid non-streaming request", async () => {

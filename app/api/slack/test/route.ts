@@ -19,20 +19,20 @@ export async function POST() {
 
       if (slackErr instanceof SlackConfigNotFoundError) {
         return NextResponse.json(
-          { error: "not_found", message: slackErr.message },
+          { error: { code: "not_found", message: slackErr.message, details: null } },
           { status: 404 },
         );
       }
 
       if (slackErr instanceof SlackWebhookError) {
         return NextResponse.json(
-          { error: "slack_webhook_error", message: "Failed to send test notification." },
+          { error: { code: "slack_webhook_error", message: "Failed to send test notification.", details: null } },
           { status: slackErr.statusCode >= 500 ? 502 : 400 },
         );
       }
 
       return NextResponse.json(
-        { error: "slack_webhook_error", message: "Failed to send test notification." },
+        { error: { code: "slack_webhook_error", message: "Failed to send test notification.", details: null } },
         { status: 502 },
       );
     }

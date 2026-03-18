@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/utils/http", () => ({
   handleRouteError: vi.fn(
-    () => new Response(JSON.stringify({ error: "internal_error", message: "Internal server error." }), { status: 500 }),
+    () => new Response(JSON.stringify({ error: { code: "internal_error", message: "Internal server error.", details: null } }), { status: 500 }),
   ),
 }));
 

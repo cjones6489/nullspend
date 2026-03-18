@@ -172,15 +172,15 @@ describe("handleRouteError Zod sanitization", () => {
     expect(response.status).toBe(400);
 
     const body = await response.json();
-    expect(body.error).toBe("validation_error");
-    expect(body.message).toBe("Request validation failed.");
-    expect(body.issues).toHaveLength(1);
-    expect(body.issues[0]).toEqual({
+    expect(body.error.code).toBe("validation_error");
+    expect(body.error.message).toBe("Request validation failed.");
+    expect(body.error.details.issues).toHaveLength(1);
+    expect(body.error.details.issues[0]).toEqual({
       path: ["maxBudgetMicrodollars"],
       message: "Expected number, received string",
     });
-    expect(body.issues[0]).not.toHaveProperty("code");
-    expect(body.issues[0]).not.toHaveProperty("expected");
-    expect(body.issues[0]).not.toHaveProperty("received");
+    expect(body.error.details.issues[0]).not.toHaveProperty("code");
+    expect(body.error.details.issues[0]).not.toHaveProperty("expected");
+    expect(body.error.details.issues[0]).not.toHaveProperty("received");
   });
 });

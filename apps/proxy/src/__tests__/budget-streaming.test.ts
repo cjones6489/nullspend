@@ -376,7 +376,7 @@ describe("Streaming + Budget Integration", () => {
     const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
+    expect(body.error.code).toBe("budget_exceeded");
   });
 
   it("streaming + no budget configured passes through without budget calls", async () => {

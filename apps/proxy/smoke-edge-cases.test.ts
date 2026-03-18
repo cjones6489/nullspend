@@ -74,7 +74,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("JSON array body returns 400 (must be object)", async () => {
@@ -85,7 +85,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("JSON string literal body returns 400 (must be object)", async () => {
@@ -96,7 +96,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("JSON number body returns 400 (must be object)", async () => {
@@ -107,7 +107,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("JSON null body returns 400 (must be object)", async () => {
@@ -118,7 +118,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("JSON boolean body returns 400 (must be object)", async () => {
@@ -129,7 +129,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("truncated JSON body returns 400", async () => {
@@ -140,7 +140,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("HTML body returns 400", async () => {
@@ -221,7 +221,7 @@ describe("Proxy pressure tests", () => {
       });
       expect(res.status).toBe(404);
       const body = await res.json();
-      expect(body.error).toBe("not_found");
+      expect(body.error.code).toBe("not_found");
     });
 
     it("/v1/models returns 404 (not yet supported)", async () => {

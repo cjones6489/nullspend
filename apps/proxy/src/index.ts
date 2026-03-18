@@ -70,7 +70,7 @@ async function applyRateLimit(
 
 function rateLimitResponse(result: { limit: number; remaining: number; reset: number }): Response {
   return Response.json(
-    { error: "rate_limited", message: "Too many requests" },
+    { error: { code: "rate_limited", message: "Too many requests", details: null } },
     {
       status: 429,
       headers: {

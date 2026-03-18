@@ -127,8 +127,8 @@ describe("End-to-end budget enforcement", () => {
 
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
-    expect(body.message).toContain("budget");
+    expect(body.error.code).toBe("budget_exceeded");
+    expect(body.error.message).toContain("budget");
   }, 15_000);
 
   it("blocks request when spend already equals maxBudget", async () => {
@@ -142,7 +142,7 @@ describe("End-to-end budget enforcement", () => {
 
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
+    expect(body.error.code).toBe("budget_exceeded");
   }, 15_000);
 
   it("exhausts budget by sending requests until blocked", async () => {
@@ -166,7 +166,7 @@ describe("End-to-end budget enforcement", () => {
       } else if (res.status === 429) {
         deniedCount++;
         const body = await res.json();
-        expect(body.error).toBe("budget_exceeded");
+        expect(body.error.code).toBe("budget_exceeded");
         break;
       } else {
         await res.text();
@@ -221,8 +221,8 @@ describe("End-to-end budget enforcement", () => {
     expect(res.status).toBe(429);
     const body = await res.json();
 
-    expect(body.error).toBe("budget_exceeded");
-    expect(body.message).toContain("budget");
+    expect(body.error.code).toBe("budget_exceeded");
+    expect(body.error.message).toContain("budget");
     expect(body.details).toBeUndefined();
   }, 15_000);
 

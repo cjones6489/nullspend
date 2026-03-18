@@ -117,8 +117,8 @@ describe("handleBudgetInvalidation", () => {
 
     const res = await handleBudgetInvalidation(req, makeEnv());
     expect(res.status).toBe(400);
-    const json = await res.json() as Record<string, unknown>;
-    expect(json.error).toBe("bad_request");
+    const json = await res.json() as { error: { code: string } };
+    expect(json.error.code).toBe("bad_request");
   });
 
   it("400: missing required fields", async () => {

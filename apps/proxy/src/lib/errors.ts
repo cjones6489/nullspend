@@ -1,16 +1,15 @@
-export interface NullSpendError {
-  error: string;
-  message: string;
-  details?: Record<string, unknown>;
+export interface NullSpendErrorBody {
+  error: { code: string; message: string; details: Record<string, unknown> | null };
 }
 
 export function errorResponse(
-  error: string,
+  code: string,
   message: string,
   status: number,
-  details?: Record<string, unknown>,
+  details?: Record<string, unknown> | null,
 ): Response {
-  const body: NullSpendError = { error, message };
-  if (details) body.details = details;
+  const body: NullSpendErrorBody = {
+    error: { code, message, details: details ?? null },
+  };
   return Response.json(body, { status });
 }

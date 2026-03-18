@@ -31,7 +31,7 @@ export async function PATCH(
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
-        { error: "validation_error", message: "No fields to update." },
+        { error: { code: "validation_error", message: "No fields to update.", details: null } },
         { status: 400 },
       );
     }
@@ -59,7 +59,7 @@ export async function PATCH(
 
     if (!updated) {
       return NextResponse.json(
-        { error: "not_found", message: "Webhook endpoint not found." },
+        { error: { code: "not_found", message: "Webhook endpoint not found.", details: null } },
         { status: 404 },
       );
     }
@@ -106,7 +106,7 @@ export async function DELETE(
 
     if (!deleted) {
       return NextResponse.json(
-        { error: "not_found", message: "Webhook endpoint not found." },
+        { error: { code: "not_found", message: "Webhook endpoint not found.", details: null } },
         { status: 404 },
       );
     }

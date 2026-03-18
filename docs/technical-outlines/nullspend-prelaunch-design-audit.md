@@ -1,0 +1,584 @@
+# NullSpend Pre-Launch Design Patterns Audit
+## Industry Best Practices vs. Current Implementation
+
+**Date:** 2026-03-18 (revised 2026-03-18)
+**Purpose:** Detailed comparison of NullSpend's current design decisions against proven patterns from Stripe, Marqeta, PostHog, and modern API platform design. Specific recommendations for changes to make before the API surface becomes permanent.
+
+**Context:** NullSpend has zero external users. Every header, URL, response shape, schema column, and method name can be changed freely right now. After the first external API key is issued, these decisions become permanent. This audit prioritizes getting the design right over minimizing implementation effort.
+
+**Migration principle:** When implementing these changes, fully replace old patterns — no backward compatibility layers, no dual-format parsing, no legacy shims. All test mocks, assertions, and production code should use the new format exclusively. If the old pattern exists anywhere in the codebase after a migration, it's a bug. There are zero consumers to protect; keeping dead code around only creates confusion for future contributors.
+
+---
+
+## 1. Object ID Strategy: Prefixed, Type-Safe IDs
+
+### Industry Pattern
+
+Stripe popularized prefixed IDs (`pi_`, `cus_`, `ch_`, `sk_`, `pk_`) and the pattern has become the gold standard for developer-facing APIs. The TypeID spec (jetify-com/typeid, 26 language implementations, ~90K weekly NPM downloads) formalizes this: a human-readable prefix + base32-encoded UUIDv7 underneath. Buttondown recently migrated their entire API to TypeIDs, storing plain UUIDs in the database but presenting prefixed IDs at the API layer.
+
+The core benefits: you can identify an object type from its ID alone (invaluable for debugging, logging, and support), you can grep logs for `ns_evt_` to find all cost events, and you can prevent the extremely common bug of passing a cost event ID where a budget ID was expected.
+
+### NullSpend Current State
+
+Database primary keys are raw UUIDs from Postgres `gen_random_uuid()`. API responses return these UUIDs without prefixes. However, several internal identifiers already use ad-hoc prefixes:
+
+| Prefix | Usage | Location |
+|---|---|---|
+| `ask_` | API key raw values | `lib/auth/api-key.ts` |
+| `evt_` | Webhook event payload IDs | `lib/webhooks/dispatch.ts` |
+| `sdk_` | SDK-generated cost event request IDs | `lib/cost-events/ingest.ts` |
+| `whsec_` | Webhook signing secrets | `app/api/webhooks/route.ts` |
+| `ns_` | SDK idempotency keys | `packages/sdk/src/client.ts` |
+
+These internal prefixes work but are inconsistent — no shared convention, no type safety at the API boundary.
+
+### Recommendation: Add Prefixed IDs at the API Layer
+
+Don't change the database — keep UUID PKs (best for Postgres performance and indexing). Add a thin mapping layer that prepends type prefixes when IDs leave the API and strips them on the way in. Two categories of prefixed IDs:
+
+**API-response IDs** (returned from REST endpoints, stored by consumers):
+```
+ns_key_     API keys
+ns_evt_     Cost events
+ns_bgt_     Budgets
+ns_act_     Actions (approval workflow)
+ns_wh_      Webhook endpoints
+ns_del_     Webhook deliveries
+ns_usr_     User references (in API responses)
+ns_pol_     Policies (future)
+ns_team_    Teams (future)
+```
+
+The `ns_` global prefix prevents collision with any other system's IDs. The type prefix after `ns_` makes every ID self-describing.
+
+**Internal/payload IDs** (already established, do not change):
+```
+evt_        Webhook event payload IDs (used in X-NullSpend-Webhook-Id header)
+sdk_        SDK-generated request IDs (used in cost event dedup)
+whsec_      Webhook signing secrets (never exposed in API responses)
+```
+
+These internal prefixes are never stored by external consumers and don't need the `ns_` global prefix. Changing them would require updating webhook signature verification code that consumers may have deployed.
+
+**Note on TypeID vs. simple prefix:** The full TypeID spec uses Crockford's base32 encoding for shorter IDs. For a B2B API where debuggability matters more than URL brevity, the simpler `ns_evt_{uuid}` format is better — developers can paste the UUID portion directly into Postgres queries without decoding.
+
+Implementation: a utility function `toExternalId(type: string, uuid: string): string` and `fromExternalId(id: string): { type: string; uuid: string }`. Applied in API route handlers at the response boundary. The SDK's response type interfaces (`CreateActionResponse`, `ReportCostResponse`, etc.) already expect string IDs, so the SDK needs no changes — only the server-side route handlers.
+
+**Files that return IDs to consumers (need prefixing):**
+- `app/api/actions/route.ts` — action IDs
+- `app/api/keys/route.ts` — API key IDs
+- `app/api/budgets/route.ts` — budget IDs
+- `app/api/cost-events/route.ts` and `batch/route.ts` — cost event IDs
+- `app/api/webhooks/route.ts` — webhook endpoint IDs
+- `lib/webhooks/dispatch.ts` — webhook event IDs in payloads (already prefixed with `evt_`)
+
+**Estimated effort:** ~3 hours (utility + route handler updates + test fixture updates).
+
+**Priority: High.** This is the single highest-leverage pre-launch change. Once external consumers store raw UUIDs in their databases, adding prefixes is a breaking change.
+
+---
+
+## 2. API Key Format and Scoping
+
+### Industry Pattern
+
+Stripe uses a two-dimensional key format: `sk_live_`, `sk_test_`, `pk_live_`, `pk_test_`. The first segment (`sk`/`pk`) determines permission level (secret vs. publishable). The second segment (`live`/`test`) determines environment. This simple prefix convention prevents four categories of bugs: using a test key in production, using a live key in test, using a publishable key where a secret key is needed, and leaking a secret key in client-side code.
+
+Modern API key formats across the industry:
+
+| Provider | Format | What the prefix encodes |
+|---|---|---|
+| Stripe | `sk_live_...`, `pk_test_...` | Permission level + environment |
+| GitHub | `ghp_...`, `ghu_...`, `gha_...` | Key type (personal, user-to-server, app) |
+| OpenAI | `sk-proj-...` | Key type + scope (project-scoped) |
+| Anthropic | `sk-ant-api03-...` | Provider + API version |
+
+Discord's AutoMod can automatically detect and flag `sk_live_` strings in messages. GitHub's Secret Scanning Partner Program detects keys by prefix regex — the prefix IS the security feature.
+
+### NullSpend Current State
+
+API keys use `ask_` + 32 hex characters (16 random bytes). The prefix is hardcoded in `lib/auth/api-key.ts`:
+
+```typescript
+export const API_KEY_PREFIX = "ask_";
+
+export function generateRawKey(): string {
+  return API_KEY_PREFIX + randomBytes(16).toString("hex");
+}
+
+export function extractPrefix(rawKey: string): string {
+  return rawKey.slice(0, 12);  // "ask_" + 8 hex chars
+}
+```
+
+The `ask_` prefix is:
+- Not distinctive enough for secret scanning (too short, generic substring)
+- Does not encode environment (live vs. test)
+- Does not encode permission level (secret vs. publishable)
+- Does not include the `ns` brand prefix for global uniqueness
+
+### Recommendation: Adopt a Stripe-Style Key Format
+
+```
+ns_live_sk_[random]     Live secret key (full access)
+ns_test_sk_[random]     Test/sandbox secret key (future)
+ns_live_pk_[random]     Live publishable key (read-only, future)
+ns_test_pk_[random]     Test publishable key (future)
+```
+
+Start by issuing all keys as `ns_live_sk_[random]`. The format has room for environment and permission dimensions without future format changes. When you add sandbox mode later, you issue `ns_test_sk_[random]` keys that hit a separate environment. The prefix tells the proxy which environment to use.
+
+**GitHub Secret Scanning registration:** Register `ns_live_sk_` and `ns_test_sk_` as patterns with the GitHub Secret Scanning Partner Program (email `secret-scanning@github.com`). This is free and protects users from accidentally committing keys to public repos. The regex pattern would be: `ns_(live|test)_sk_[a-f0-9]{32}`.
+
+**Files that need updating:**
+- `lib/auth/api-key.ts` — `API_KEY_PREFIX`, `generateRawKey()`, `extractPrefix()` (prefix length changes from 4 to 11, so `keyPrefix` column width and slice offset change)
+- `apps/proxy/src/lib/api-key-auth.ts` — proxy-side key validation and caching
+- `packages/db/src/schema.ts` — `keyPrefix` column may need length adjustment
+- `app/api/keys/route.ts` — key creation endpoint
+- Test fixtures across the codebase that use `ask_test123` as mock keys
+- SDK tests in `packages/sdk/src/client.test.ts` that use `ask_test123`
+
+**Estimated effort:** ~3 hours (prefix change + extractPrefix logic + proxy auth + test fixtures).
+
+**Priority: High.** Key format is permanent. Every developer who creates an API key stores that format in their env files, CI pipelines, and Terraform configs.
+
+---
+
+## 3. Error Response Contract
+
+### Industry Pattern
+
+The consensus across Stripe, GitHub, Google, and RFC 9457 (Problem Details for HTTP APIs, published July 2023) is a consistent structure with machine-readable code, human-readable message, and optional details.
+
+**Stripe's format** (the practical standard for developer APIs):
+```json
+{
+  "error": {
+    "code": "budget_exceeded",
+    "message": "Request would exceed budget for api_key:ns_key_abc",
+    "details": {
+      "remaining_microdollars": 500000,
+      "estimated_cost_microdollars": 750000,
+      "entity_type": "api_key",
+      "entity_id": "ns_key_abc"
+    },
+    "doc_url": "https://docs.nullspend.com/errors/budget-exceeded"
+  }
+}
+```
+
+**RFC 9457** uses `type` (URI), `title`, `status`, `detail`, and `instance` fields with `application/problem+json` media type. It's more formal but less ergonomic than the Stripe pattern. Pure RFC 9457 adoption is uncommon in developer-facing APIs — the Stripe-inspired pattern dominates. However, the structure can be made RFC 9457-compatible by adding a `type` URI field later.
+
+Key principles: `code` is snake_case (machine-readable, used in `if` statements), `message` is a complete sentence (human-readable, shown in logs), `details` is a structured object (context-specific), and `doc_url` links to documentation for that specific error.
+
+### NullSpend Current State
+
+The codebase uses a **flat** error format via `lib/utils/http.ts`:
+
+```typescript
+function errorJson(error: string, message: string, extra?: Record<string, unknown>) {
+  return { error, message, ...extra };
+}
+```
+
+This produces `{ error: "snake_code", message: "..." }` — the `error` field IS the machine code directly.
+
+Existing error codes in `handleRouteError()` (`lib/utils/http.ts`):
+
+| Code | Status | Usage |
+|---|---|---|
+| `invalid_json` | 400 | Request body parse failure |
+| `unsupported_media_type` | 415 | Wrong Content-Type |
+| `payload_too_large` | 413 | Body exceeds limit |
+| `validation_error` | 400 | Zod validation failure |
+| `not_found` | 404 | Resource not found |
+| `invalid_action_transition` | 409 | Invalid state change |
+| `stale_action` | 409 | Optimistic concurrency conflict |
+| `action_expired` | 409 | TTL expired |
+| `authentication_required` | 401 | Missing/invalid credentials |
+| `forbidden` | 403 | Insufficient permissions |
+| `service_unavailable` | 503 | Circuit breaker open |
+| `internal_error` | 500 | Unhandled error |
+
+Additional codes in specific routes: `limit_exceeded` (409), `spend_cap_exceeded` (400).
+
+**The problem:** The flat format (`{ error: "code", message: "..." }`) is incompatible with the nested format (`{ error: { code, message, details } }`). This is a structural change, not just adding fields.
+
+### Recommendation: Migrate to Nested Error Format + Standardize the Enum
+
+This is a breaking change to every API response, the SDK's error parsing, and the proxy's error responses. Since there are zero external consumers, do it now.
+
+**Step 1: Define the complete error code enum.**
+
+```typescript
+// lib/errors/codes.ts — Machine-readable error codes (API surface, permanent)
+export const ERROR_CODES = {
+  // Auth
+  INVALID_API_KEY: "invalid_api_key",
+  EXPIRED_API_KEY: "expired_api_key",
+  REVOKED_API_KEY: "revoked_api_key",
+  MISSING_API_KEY: "missing_api_key",
+  INSUFFICIENT_PERMISSIONS: "insufficient_permissions",
+
+  // Enforcement
+  BUDGET_EXCEEDED: "budget_exceeded",
+  RATE_LIMITED: "rate_limited",
+  MODEL_NOT_ALLOWED: "model_not_allowed",
+  COST_CAP_EXCEEDED: "cost_cap_exceeded",
+  APPROVAL_REQUIRED: "approval_required",
+  APPROVAL_REJECTED: "approval_rejected",
+  APPROVAL_TIMEOUT: "approval_timeout",
+
+  // Validation
+  VALIDATION_ERROR: "validation_error",
+  INVALID_JSON: "invalid_json",
+  BATCH_TOO_LARGE: "batch_too_large",
+  UNSUPPORTED_MEDIA_TYPE: "unsupported_media_type",
+  PAYLOAD_TOO_LARGE: "payload_too_large",
+
+  // Resource
+  NOT_FOUND: "not_found",
+  CONFLICT: "conflict",
+  LIMIT_EXCEEDED: "limit_exceeded",
+  INVALID_ACTION_TRANSITION: "invalid_action_transition",
+  STALE_ACTION: "stale_action",
+  ACTION_EXPIRED: "action_expired",
+
+  // Server
+  INTERNAL_ERROR: "internal_error",
+  SERVICE_UNAVAILABLE: "service_unavailable",
+  UPSTREAM_ERROR: "upstream_error",
+} as const;
+```
+
+**Step 2: Update the error response helper.**
+
+```typescript
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+  details?: Record<string, unknown>
+): NextResponse {
+  return NextResponse.json({
+    error: { code, message, details: details ?? null }
+  }, { status });
+}
+```
+
+**Step 3: Update SDK error parsing.**
+
+The SDK's `request()` method in `packages/sdk/src/client.ts` currently parses errors as:
+```typescript
+detail = String(json.error ?? json.message ?? response.statusText);
+```
+
+This must change to handle the nested format:
+```typescript
+const errorObj = json.error;
+if (typeof errorObj === "object" && errorObj !== null) {
+  detail = String(errorObj.message ?? errorObj.code ?? response.statusText);
+  code = String(errorObj.code ?? "");
+} else {
+  detail = String(errorObj ?? response.statusText);
+}
+```
+
+Consider adding a `code` property to `NullSpendError` so consumers can write `if (err.code === 'budget_exceeded')`.
+
+**Step 4: Update proxy error responses.**
+
+The proxy in `apps/proxy/` returns its own error responses (budget denials, auth failures, upstream errors). These must also adopt the nested format.
+
+**Files that need updating:**
+- `lib/utils/http.ts` — `errorJson()`, `handleRouteError()`
+- All `app/api/` route handlers with custom error responses
+- `packages/sdk/src/client.ts` — error parsing in `request()`
+- `packages/sdk/src/errors.ts` — add `code` property to `NullSpendError`
+- `apps/proxy/src/` — error response helpers
+- Tests across all surfaces that assert on error response shapes
+
+The `doc_url` field can be added later when docs exist. The structure (`{ error: { code, message, details } }`) must be locked now.
+
+**Estimated effort:** ~5-6 hours (error helper + route handlers + SDK parsing + proxy responses + test updates).
+
+**Priority: High.** Developers write `if (err.code === 'budget_exceeded')` in their catch blocks. The code enum and response shape are permanent API surface.
+
+---
+
+## 4. Webhook Event Type Taxonomy
+
+### Industry Pattern
+
+Stripe events follow a strict `resource.action` naming convention: `charge.succeeded`, `invoice.created`, `customer.subscription.deleted`. The naming is hierarchical — subresources use dots as separators. Events are versioned with the API version, and webhook endpoints can filter by event type.
+
+Stripe recently introduced "thin events" (lightweight notifications containing only the object ID) alongside "snapshot events" (containing the full object state). Thin events are unversioned — a major architectural advantage since the payload doesn't need to match the consumer's API version.
+
+Critical Stripe pattern: webhook endpoints occasionally receive the same event more than once. Consumers must be idempotent, and Stripe provides the event ID for deduplication.
+
+### NullSpend Current State
+
+Six event types are already defined in `lib/validations/webhooks.ts`:
+
+```typescript
+export const WEBHOOK_EVENT_TYPES = [
+  "cost_event.created",
+  "budget.threshold.warning",
+  "budget.threshold.critical",
+  "budget.exceeded",
+  "request.blocked",
+  "request.blocked.budget",
+] as const;
+```
+
+The webhook event structure (`lib/webhooks/dispatch.ts`):
+```typescript
+export interface WebhookEvent {
+  id: string;        // "evt_{uuid}"
+  type: string;      // from WEBHOOK_EVENT_TYPES
+  created_at: string; // ISO 8601
+  data: Record<string, unknown>;
+}
+```
+
+Signature format: `t={timestamp},v1={hex}` (Stripe-compatible), delivered via `X-NullSpend-Signature` header. Additional headers: `X-NullSpend-Webhook-Id`, `X-NullSpend-Webhook-Timestamp`.
+
+### Recommendation: Lock the Full Event Taxonomy
+
+The existing 6 types use a consistent naming convention. Extend with the full planned taxonomy:
+
+```
+# Cost tracking (active)
+cost_event.created          — A cost event was recorded
+
+# Budget enforcement (active)
+budget.threshold.warning    — Budget crossed a warning threshold
+budget.threshold.critical   — Budget crossed a critical threshold
+budget.exceeded             — A request was denied due to budget exhaustion
+
+# Request enforcement (active)
+request.blocked             — A request was blocked by the enforcement pipeline
+request.blocked.budget      — A request was blocked due to budget exhaustion
+
+# Budget lifecycle (future — reserve names now)
+budget.created              — A new budget was configured
+budget.updated              — A budget's limit or policy was changed
+budget.deleted              — A budget was removed
+budget.reset                — A budget's spend was reset (manual or periodic)
+
+# Approval workflow (future — reserve names now)
+action.pending              — An action was created and awaits approval
+action.approved             — An action was approved
+action.rejected             — An action was rejected
+action.expired              — An action expired without a decision
+action.executed             — An approved action completed successfully
+action.failed               — An approved action failed during execution
+
+# API key lifecycle (future — reserve names now)
+api_key.created
+api_key.revoked
+
+# Test
+ping                        — Test event for verifying webhook delivery
+```
+
+**Conventions (locked):** All lowercase, dots as separators, `resource.past_tense_verb` pattern. No present tense (`budget.exceed` is wrong, `budget.exceeded` is right). No camelCase. No hyphens. Subresource nesting via dots (`budget.threshold.warning`).
+
+**Add `api_version` field to webhook events:**
+
+```json
+{
+  "id": "evt_01h455vb4pex...",
+  "type": "cost_event.created",
+  "created_at": "2026-03-18T...",
+  "api_version": "2026-03-01",
+  "data": { ... }
+}
+```
+
+The `api_version` field (Stripe's pattern) lets you evolve the `data` payload structure without breaking existing consumers. When you change the shape of `data` in a future version, old webhook endpoints continue receiving the shape they were registered with. At launch, all events use the single initial version.
+
+**Thin events (future-compatible):** Start with snapshot events (full data in payload — simpler for consumers and appropriate at launch volume). The event structure is already forward-compatible with thin events — a thin event would simply have `data: { id: "ns_evt_..." }` instead of the full object. No structural changes needed when you add thin events later.
+
+**Estimated effort:** ~1 hour (add `api_version` field to `WebhookEvent`, update `buildCostEventWebhookPayload`, add reserved types to validation).
+
+**Priority: High.** Event type names are used in webhook endpoint configurations, consumer code switch statements, and monitoring alerts. They're permanent.
+
+---
+
+## 5. API Versioning Strategy
+
+### Industry Pattern
+
+Stripe uses date-based API versioning (`2025-03-31`) rather than numeric versioning (`v1`, `v2`). Each API key has a "default version" set at creation time. Requests can override with a `Stripe-Version` header. Breaking changes ship in new dated versions; non-breaking changes apply to all versions.
+
+Stripe's three engineering principles for API versioning:
+- **Lightweight:** Minimize upgrade cost for consumers
+- **First-class:** Integrate versioning into docs and tooling automatically
+- **Fixed-cost:** Tightly encapsulate old behavior so new development isn't burdened
+
+Internally, Stripe uses "version change modules" — self-contained transformations that encapsulate each breaking change. Response processing applies version gates backward from the current version to the target version.
+
+NullSpend's proxy passthrough paths already use `/v1/` (matching OpenAI's convention). The dashboard API routes use `/api/` without versioning.
+
+### Recommendation: Add Version Column and Header Parsing
+
+Keep `/v1/` on the proxy passthrough paths — that's the upstream provider's convention, not NullSpend's versioning. For NullSpend's own API surface (dashboard routes, SDK endpoints), adopt Stripe's pattern:
+
+1. Add `api_version` column to `api_keys` table (set at key creation time, default to `'2026-03-01'`).
+2. Parse `NullSpend-Version` header in API routes (optional override). Store/log the requested version.
+3. Do **not** build version-gating logic. There is only one version at launch. The infrastructure (column + header parsing) is the important part — it gives you the data to know which version each consumer expects when you eventually need to make a breaking change.
+
+This is minimal implementation cost now. It's impossible to retrofit later without guessing which version each consumer was "born into."
+
+**Estimated effort:** ~30 minutes (schema column + header parsing middleware).
+
+**Priority: Medium.** Not blocking for launch, but the `api_version` column must exist before the first API key is created.
+
+---
+
+## 6. Schema Columns to Add Before Launch
+
+### cost_events Table
+
+| Column | Type | Why | Priority |
+|---|---|---|---|
+| `source` | `text NOT NULL DEFAULT 'proxy'` | Distinguishes proxy vs. SDK (`sdk`) vs. MCP proxy (`mcp`) events. Critical for dedup — without this, you cannot tell which system generated a cost event, and the documented double-counting risk is unmitigable. | **High** |
+| `trace_id` | `text NULL` | OTel trace ID from `traceparent` header. Links NullSpend events to developer's existing traces. Nullable and zero enforcement logic, so adding it later is trivial — but having it from day one means early adopters who use OTel get free integration. | **Low** |
+
+**Columns considered and excluded:**
+
+| Column | Why excluded |
+|---|---|
+| `budget_check_result` | Cost events are only created after a request succeeds. Denied requests don't generate cost events (there's no token usage to record). Recording denial decisions belongs in the `request.blocked` webhook event or a future `enforcement_events` table, not on cost events. |
+| `enforcement_latency_ms` | Derivable from existing columns: `durationMs - upstreamDurationMs` gives approximate enforcement overhead. A dedicated column isn't worth the schema surface area. |
+
+### api_keys Table
+
+| Column | Type | Why | Priority |
+|---|---|---|---|
+| `api_version` | `text NOT NULL DEFAULT '2026-03-01'` | Stripe-style API versioning. Records which API version this key was created under, used as the default response version. | **High** |
+| `environment` | `text NOT NULL DEFAULT 'live'` | `live` or `test`. Enables sandbox mode later without schema changes. At launch, all keys are `live`. | **Medium** |
+
+**Columns considered and excluded:**
+
+| Column | Why excluded |
+|---|---|
+| `has_policies` | No policies feature exists yet. Adding a column that's always `false` is premature schema pollution. Add when the policies feature is built — it mirrors the existing `has_budgets` pattern and can be added without migration risk. |
+
+### budgets Table
+
+| Column | Type | Why | Priority |
+|---|---|---|---|
+| `warn_threshold_pct` | `integer NULL` | Percentage at which to fire `budget.threshold.warning` webhook (e.g., 80). The webhook event types `budget.threshold.warning` and `budget.threshold.critical` already exist in the codebase, but there's no per-budget configuration for what percentage triggers them. Without this column, thresholds must be hardcoded. | **Medium** |
+
+### webhook_endpoints Table (for secret rotation — see Section 7)
+
+| Column | Type | Why | Priority |
+|---|---|---|---|
+| `previous_signing_secret` | `text NULL` | Holds the old signing secret during 24-hour rotation window. | **Medium** |
+| `secret_rotated_at` | `timestamp NULL` | When the current secret replaced the previous one. Used to enforce the 24-hour expiry. | **Medium** |
+
+All columns are nullable or have defaults — non-breaking additions. Adding them before launch means every row of data has these fields from day one.
+
+**Estimated effort:** ~1 hour total for all schema additions + migration.
+
+**Priority: High for `source` and `api_version`.** Medium for the rest.
+
+---
+
+## 7. Webhook Secret Rotation
+
+### Industry Pattern
+
+Stripe supports a 24-hour rolling secret transition: when you rotate a webhook signing secret, both the old and new secrets are valid for 24 hours. This gives consumers time to update their verification code without missing events. The NullSpend security audit identified this as a known gap: "Secret rotation lacks 24-hour transition period."
+
+### Recommendation
+
+Add `previous_signing_secret` (nullable) and `secret_rotated_at` (nullable timestamp) to `webhook_endpoints` (see Section 6). When the signing secret is rotated:
+
+1. Move the current `signingSecret` to `previous_signing_secret`.
+2. Generate a new `signingSecret`.
+3. Set `secret_rotated_at` to now.
+4. The dispatch module signs with BOTH secrets during the 24-hour window, sending two signature values in the header: `t={ts},v1={new_sig},v1={old_sig}`.
+5. Consumers try verification with each `v1` value until one matches.
+6. After 24 hours, a scheduled job (or lazy check on next dispatch) NULLs out `previous_signing_secret`.
+
+This is a small change with disproportionate impact on developer trust. It means consumers never have to worry about webhook downtime during secret rotation.
+
+**Estimated effort:** ~1 hour (schema + dispatch signing + rotation endpoint + expiry check).
+
+**Priority: Medium.** Not blocking for launch, but should be in the first month.
+
+---
+
+## 8. Rate Limiting Response Headers
+
+### Industry Pattern
+
+Standard rate limiting headers (adopted by most APIs): `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` on 429 responses. The NullSpend SDK already parses `Retry-After` for retry logic. The proxy and dashboard routes already apply rate limit headers via `applyRateLimitHeaders`.
+
+### Recommendation
+
+Verify that the header names are consistent across all surfaces (proxy, dashboard API). Use the standard names: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (Unix timestamp). For budget denial responses (429), add `X-NullSpend-Budget-Remaining` and `X-NullSpend-Budget-Limit` custom headers so the SDK can surface budget state without parsing the response body.
+
+**Estimated effort:** ~30 minutes (verify consistency, add budget headers to 429 responses).
+
+**Priority: Low.** Mostly in place already. Just verify consistency.
+
+---
+
+## 9. Summary: Pre-Launch Checklist
+
+### High Priority (must complete before first external API key)
+
+| Item | Current State | Action Needed | Effort |
+|---|---|---|---|
+| Prefixed object IDs | Raw UUIDs in API responses | Add `ns_` prefix mapping layer at API boundary | ~3 hours |
+| API key format | `ask_` prefix, no env/permission encoding | Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning | ~3 hours |
+| Error response contract | Flat `{ error, message }` format | Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy | ~5-6 hours |
+| Webhook event taxonomy | 6 types defined, no `api_version` on events | Lock full taxonomy + add `api_version` field to event structure | ~1 hour |
+| `source` column on cost_events | Missing | Add column (`DEFAULT 'proxy'`) + set in all ingestion paths | ~30 min |
+| `api_version` on api_keys | Missing | Add column (`DEFAULT '2026-03-01'`) + header parsing | ~30 min |
+
+**Total High Priority effort: ~13-14 hours.**
+
+### Medium Priority (should complete before launch or within first month)
+
+| Item | Current State | Action Needed | Effort |
+|---|---|---|---|
+| `environment` on api_keys | Missing | Add column (`DEFAULT 'live'`) | ~15 min |
+| `warn_threshold_pct` on budgets | Missing | Add column (nullable integer) | ~15 min |
+| Webhook secret rotation | No transition period | Add `previous_signing_secret` + dual-signing + 24h expiry | ~1 hour |
+
+### Low Priority (can do incrementally after launch)
+
+| Item | Current State | Action Needed | Effort |
+|---|---|---|---|
+| `trace_id` on cost_events | Missing | Add nullable column + `traceparent` extraction in proxy | ~30 min |
+| Rate limit headers | Mostly done | Verify consistency across surfaces + add budget headers | ~30 min |
+| `doc_url` on error responses | Missing | Add to error helper when docs site exists | ~15 min |
+| Thin webhook events | Not needed at launch volume | Design is forward-compatible; implement when scale requires it | TBD |
+
+### Explicitly Deferred (not needed pre-launch)
+
+| Item | Why deferred |
+|---|---|
+| `budget_check_result` on cost_events | Wrong table — denials don't create cost events. Use `request.blocked` webhook or future `enforcement_events` table. |
+| `enforcement_latency_ms` on cost_events | Derivable from `durationMs - upstreamDurationMs`. Not worth schema surface area. |
+| `has_policies` on api_keys | No policies feature exists. Add with the feature — mirrors `has_budgets` pattern. |
+| API version-gating logic | Only one version at launch. The column + header parsing is the important part; build gating when the first breaking change ships. |
+| Postgres to ClickHouse migration | Right choice at launch scale. Migration trigger is well-understood (>1M rows, slow analytics). |
+| Multi-region DO replication | Smart Placement handles latency. Active-active budget enforcement is a hard distributed systems problem not needed until multi-continent users. |
+
+---
+
+## 10. What NOT to Change
+
+- **Postgres as primary store** — right choice at launch scale. ClickHouse migration path is clear when needed.
+- **Cloudflare Workers + DOs architecture** — native DO integration for budget enforcement is the product's architectural advantage.
+- **Webhook signature format** (`t=,v1=`) — already matches the Stripe convention. Locked.
+- **Webhook delivery headers** (`X-NullSpend-Signature`, `X-NullSpend-Webhook-Id`, `X-NullSpend-Webhook-Timestamp`) — consistent, well-named. Locked.
+- **Auth header name** (`X-NullSpend-Key`) — clear, branded, follows convention. Locked.
+- **TypeScript + Node.js** — CF Workers architecture is the right fit. No language rewrite needed.
+- **Proxy passthrough URL paths** (`/v1/chat/completions`, `/v1/messages`) — these match upstream provider conventions, not NullSpend versioning. Don't change.

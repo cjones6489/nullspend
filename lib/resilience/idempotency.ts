@@ -177,7 +177,7 @@ async function pollForCompletion(
   // Still processing after polling — return 503
   log.warn({ key: idempotencyKey }, "Concurrent duplicate still processing after poll timeout");
   return new Response(
-    JSON.stringify({ error: "request_in_progress", message: "Request is being processed. Please retry." }),
+    JSON.stringify({ error: { code: "request_in_progress", message: "Request is being processed. Please retry.", details: null } }),
     {
       status: 503,
       headers: {

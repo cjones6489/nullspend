@@ -123,7 +123,7 @@ describe("invalidateProxyCache", () => {
     process.env.PROXY_INTERNAL_SECRET = "secret-123";
 
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }),
+      new Response(JSON.stringify({ error: { code: "unauthorized", message: "unauthorized", details: null } }), { status: 401 }),
     );
 
     await expect(

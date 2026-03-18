@@ -188,7 +188,7 @@ describe("per-key rate limiting edge cases", () => {
     expect(mockKeyLimit).not.toHaveBeenCalled();
 
     const body = await res.json();
-    expect(body.error).toBe("rate_limited");
+    expect(body.error.code).toBe("rate_limited");
 
     expect(res.headers.has("X-RateLimit-Limit")).toBe(true);
     expect(res.headers.has("X-RateLimit-Remaining")).toBe(true);

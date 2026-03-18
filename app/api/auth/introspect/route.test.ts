@@ -89,8 +89,8 @@ describe("GET /api/auth/introspect", () => {
     const body = await res.json();
 
     expect(res.status).toBe(401);
-    expect(body.error).toBe("authentication_required");
-    expect(body.message).toBe("Invalid or missing API key.");
+    expect(body.error.code).toBe("authentication_required");
+    expect(body.error.message).toBe("Invalid or missing API key.");
   });
 
   it("DB error during budget check returns 500", async () => {
@@ -103,8 +103,8 @@ describe("GET /api/auth/introspect", () => {
     const body = await res.json();
 
     expect(res.status).toBe(500);
-    expect(body.error).toBe("internal_error");
-    expect(body.message).toBe("Internal server error.");
+    expect(body.error.code).toBe("internal_error");
+    expect(body.error.message).toBe("Internal server error.");
   });
 
   it("dev fallback uses devUserId when getDevActor returns undefined", async () => {
@@ -130,8 +130,8 @@ describe("GET /api/auth/introspect", () => {
     const body = await res.json();
 
     expect(res.status).toBe(401);
-    expect(body.error).toBe("authentication_required");
-    expect(body.message).toContain("Managed API keys are required");
+    expect(body.error.code).toBe("authentication_required");
+    expect(body.error.message).toContain("Managed API keys are required");
     expect(mockedCheckHasBudgets).not.toHaveBeenCalled();
   });
 
@@ -147,7 +147,7 @@ describe("GET /api/auth/introspect", () => {
 
   it("returns 429 when per-key rate limit is exceeded", async () => {
     const rateLimitResponse = new Response(
-      JSON.stringify({ error: "rate_limit_exceeded", message: "Too many requests" }),
+      JSON.stringify({ error: { code: "rate_limit_exceeded", message: "Too many requests", details: null } }),
       { status: 429, headers: { "Content-Type": "application/json" } },
     );
     mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);

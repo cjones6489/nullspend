@@ -323,7 +323,7 @@ describe("Security tests", () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("bad_request");
+      expect(body.error.code).toBe("bad_request");
     });
 
     it("body that is a JSON string returns 400", async () => {

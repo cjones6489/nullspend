@@ -132,7 +132,7 @@ describe("handleMcpBudgetCheck", () => {
 
     expect(response.status).toBe(400);
     const json = await response.json();
-    expect(json.error).toBe("bad_request");
+    expect(json.error.code).toBe("bad_request");
   });
 
   it("returns 400 when toolName is empty string", async () => {
@@ -283,7 +283,7 @@ describe("handleMcpBudgetCheck", () => {
 
     expect(response.status).toBe(503);
     const json = await response.json();
-    expect(json.error).toBe("budget_unavailable");
+    expect(json.error.code).toBe("budget_unavailable");
   });
 
   it("returns 503 when doBudgetCheck fails", async () => {
@@ -342,7 +342,7 @@ describe("handleMcpEvents", () => {
 
     expect(response.status).toBe(400);
     const json = await response.json();
-    expect(json.error).toBe("bad_request");
+    expect(json.error.code).toBe("bad_request");
   });
 
   it("returns 400 when events array is empty", async () => {

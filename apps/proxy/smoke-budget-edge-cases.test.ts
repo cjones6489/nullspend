@@ -124,7 +124,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
+    expect(body.error.code).toBe("budget_exceeded");
   }, 15_000);
 
   it("budget enforced for API key's user", async () => {
@@ -138,8 +138,8 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
-    expect(body.message).toContain("budget");
+    expect(body.error.code).toBe("budget_exceeded");
+    expect(body.error.message).toContain("budget");
   }, 15_000);
 
   it("budget enforced for API key", async () => {
@@ -153,8 +153,8 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
-    expect(body.message).toContain("budget");
+    expect(body.error.code).toBe("budget_exceeded");
+    expect(body.error.message).toContain("budget");
   }, 15_000);
 
   it("both user and key budgets checked — tightest one blocks", async () => {
@@ -170,8 +170,8 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
     expect(res.status).toBe(429);
     const body = await res.json();
-    expect(body.error).toBe("budget_exceeded");
-    expect(body.message).toContain("budget");
+    expect(body.error.code).toBe("budget_exceeded");
+    expect(body.error.message).toContain("budget");
   }, 15_000);
 
   it("stream abort does not double-count spend (actual vs reservation)", async () => {

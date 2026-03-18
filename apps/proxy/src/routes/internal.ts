@@ -1,5 +1,6 @@
 import { doBudgetRemove, doBudgetResetSpend } from "../lib/budget-do-client.js";
 import { invalidateDoLookupCacheForUser } from "../lib/budget-orchestrator.js";
+import { errorResponse } from "../lib/errors.js";
 import { emitMetric } from "../lib/metrics.js";
 
 interface InvalidationBody {
@@ -49,18 +50,18 @@ export async function handleBudgetInvalidation(
   // Validate INTERNAL_SECRET is configured
   if (!env.INTERNAL_SECRET) {
     console.error("[internal] INTERNAL_SECRET not configured");
-    return Response.json({ error: "internal_error", message: "Server misconfigured" }, { status: 500 });
+    return errorResponse("internal_error", "Server misconfigured", 500);
   }
 
   // Auth: timing-safe comparison of Bearer token
   const authHeader = request.headers.get("authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return Response.json({ error: "unauthorized", message: "Missing or malformed Authorization header" }, { status: 401 });
+    return errorResponse("unauthorized", "Missing or malformed Authorization header", 401);
   }
 
   const token = authHeader.slice(7);
   if (!timingSafeStringEqual(token, env.INTERNAL_SECRET)) {
-    return Response.json({ error: "unauthorized", message: "Invalid token" }, { status: 401 });
+    return errorResponse("unauthorized", "Invalid token", 401);
   }
 
   // Parse and validate body
@@ -68,15 +69,12 @@ export async function handleBudgetInvalidation(
   try {
     raw = await request.json();
   } catch {
-    return Response.json({ error: "bad_request", message: "Invalid JSON body" }, { status: 400 });
+    return errorResponse("bad_request", "Invalid JSON body", 400);
   }
 
   const body = parseBody(raw);
   if (!body) {
-    return Response.json(
-      { error: "bad_request", message: "Missing or invalid fields: action (remove|reset_spend), userId, entityType, entityId" },
-      { status: 400 },
-    );
+    return errorResponse("bad_request", "Missing or invalid fields: action (remove|reset_spend), userId, entityType, entityId", 400);
   }
 
   // Execute
@@ -109,6 +107,6 @@ export async function handleBudgetInvalidation(
       status: "error",
     });
 
-    return Response.json({ error: "internal_error", message: "Invalidation failed" }, { status: 500 });
+    return errorResponse("internal_error", "Invalidation failed", 500);
   }
 }

@@ -54,7 +54,7 @@ describe("Resilience tests", () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("invalid_model");
+      expect(body.error.code).toBe("invalid_model");
     });
 
     it("proxy does NOT return 502 for invalid upstream key", async () => {

@@ -144,7 +144,7 @@ describe("GET /api/budgets/status", () => {
 
   it("returns 401 without API key", async () => {
     const authError = new Response(
-      JSON.stringify({ error: "authentication_required" }),
+      JSON.stringify({ error: { code: "authentication_required", message: "authentication_required", details: null } }),
       { status: 401 },
     );
     mockedAuthenticateApiKey.mockResolvedValue(authError);
@@ -155,7 +155,7 @@ describe("GET /api/budgets/status", () => {
 
   it("returns 429 when rate limited", async () => {
     const rateLimitResponse = new Response(
-      JSON.stringify({ error: "rate_limit_exceeded" }),
+      JSON.stringify({ error: { code: "rate_limit_exceeded", message: "rate_limit_exceeded", details: null } }),
       { status: 429 },
     );
     mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);
