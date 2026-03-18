@@ -248,8 +248,11 @@ The enforcement pipeline evaluates checks in order of cost:
 ```typescript
 interface EnforcementCheck {
   name: string;
-  // Returns null if check passes, or a denial reason if blocked
-  check(ctx: EnforcementContext): Promise<EnforcementDenial | null>;
+  // Pre-request: returns allowed/denied with optional reservationId
+  check(ctx: EnforcementContext): Promise<EnforcementResult>;
+  // Post-response: clean up reservations, record actual cost.
+  // Only checks that reserve resources (BudgetCheck) need this.
+  reconcile?(ctx: EnforcementContext, actualCostMicrodollars: number): Promise<void>;
 }
 
 interface EnforcementContext {
@@ -270,7 +273,14 @@ interface EnforcementDenial {
 }
 ```
 
-The pipeline runs checks in order:
+Enforcement is a **two-phase protocol**: pre-request check (reserve) →
+post-response reconcile (settle actual cost). Making `reconcile()` explicit
+on the interface ensures every check that reserves resources has a
+corresponding clean-up path. Checks that don't reserve (PolicyCheck) omit
+it. The pipeline runner calls `reconcile()` on all checks that define it
+after the response completes.
+
+The pipeline runs checks in order (cheapest first, most expensive last):
 
 ```
 1. PolicyCheck (in-memory, sub-ms)
@@ -278,6 +288,7 @@ The pipeline runs checks in order:
    - Cost cap: does the estimated cost exceed the per-request limit?
    - Tool limit: are there too many tool definitions?
    → If denied, return immediately. No DO call. No DB call.
+   → reconcile(): not needed (no reservation)
 
 2. BudgetCheck (DO RPC, 5-15ms on cache hit)
    - Atomic check-and-reserve in UserBudgetDO SQLite
@@ -285,13 +296,45 @@ The pipeline runs checks in order:
    - Period auto-reset with Postgres write-back via waitUntil()
    → If denied, return budget_exceeded with remaining amount.
    → If no budgets configured (hasBudgets: false), skip entirely.
+   → reconcile(): settle reservation with actual cost via CF Queues
 
 3. ApprovalCheck (Postgres + polling, seconds to minutes)
    - Only for actions that require human approval
    - Creates an action record, waits for decision
    → If rejected or timed out, return approval_denied.
    → Only triggered when approval rules match (not on every request).
+   → reconcile(): not needed (approval is binary, no resource hold)
 ```
+
+### Per-Key Pipeline Assembly
+
+Not every API key needs every check. The pipeline should be assembled
+dynamically based on the key's identity flags:
+
+```typescript
+// Flags on API key identity (set during auth lookup)
+interface KeyIdentity {
+  userId: string;
+  keyId: string;
+  hasBudgets: boolean;        // existing — skip BudgetCheck if false
+  hasPolicies: boolean;       // new — skip PolicyCheck if false
+  hasApprovalRules: boolean;  // new — skip ApprovalCheck if false
+}
+
+// Pipeline assembled per-request
+function buildPipeline(identity: KeyIdentity, deps: EnforcementDeps): EnforcementCheck[] {
+  const checks: EnforcementCheck[] = [];
+  if (identity.hasPolicies)      checks.push(new PolicyCheck(deps.policyConfig));
+  if (identity.hasBudgets)       checks.push(new BudgetCheck(deps.budgetDeps));
+  if (identity.hasApprovalRules) checks.push(new ApprovalCheck(deps.approvalDeps));
+  return checks;
+}
+```
+
+A key with no enforcement flags skips the entire pipeline — zero overhead.
+A tracking-only key (`hasBudgets: false`, no policies) pays only for cost
+calculation and logging. This extends the existing `hasBudgets` fast-path
+pattern that the proxy already uses.
 
 **For the LLM proxy:** checks 1 and 2 run. Check 3 (approval) does NOT
 run — LLM calls are too latency-sensitive for human approval. If a
@@ -572,20 +615,31 @@ integration they chose.
 - Internal endpoint for dashboard → proxy cache invalidation
 - Structured observability (Pino logging + Sentry breadcrumbs)
 
-**Phase 2 (weeks 1-2 post-launch):**
-- SDK `reportCost()` endpoint + method (2B, 2C)
-- SDK `checkBudget()` endpoint + method (2D, 2E)
+**Phase 2 (weeks 1-2 post-launch) — SDK cost ingestion:**
+- SDK `reportCost()` endpoint + method (2B, 2C) — **ship first**, lowest
+  friction adoption path. Developer can `npm install @nullspend/sdk` and
+  start sending cost data from Bedrock/custom calls without touching
+  their LLM base URL.
 - SDK client-side event batching (2F)
 - Documentation restructure (integration guides, not product sections)
 
-**Phase 3 (weeks 3-4 post-launch):**
-- Enforcement pipeline interface (`EnforcementCheck`) (3A)
+**Phase 2.5 (driven by user demand) — SDK budget queries:**
+- SDK `checkBudget()` endpoint + method (2D, 2E) — ship when users ask
+  for it, not before. `reportCost()` proves SDK adoption; `checkBudget()`
+  adds value only once users have budgets configured.
+
+**Phase 3 (weeks 3-4 post-launch) — enforcement pipeline:**
+- Enforcement pipeline interface (`EnforcementCheck` with `reconcile()`) (3A)
 - PolicyCheck implementation (model allowlist, cost cap, tool limit) (3B)
 - BudgetCheck wrapper (adapt existing DO orchestrator) (3C, 3D)
-- VelocityCheck (new — rate-based enforcement) (3E)
-- SDK `enforce()` endpoint + method (3F, 3G)
+- SDK `enforce()` endpoint on proxy + SDK method (3F, 3G)
 - Conditional approval thresholds (3H)
 - Config caching in Worker (3I)
+
+**Phase 3.5 (driven by user demand) — velocity + templates:**
+- VelocityCheck (rate-based enforcement) (3E) — build when users hit the
+  limits of simple dollar-amount budgets and need rate controls
+- Pre-built policy templates (4B)
 
 **Phase 4 (months 2-3):**
 - Dashboard Inbox shows approval context (which tool, estimated cost,
@@ -594,6 +648,7 @@ integration they chose.
   enforcement check that triggered them)
 - Approval rules configuration in dashboard (which tools require
   approval, cost thresholds for auto-approve vs manual)
+- Auto-remediation feedback loops (4D) — design after usage data exists
 
 ### What NOT to Unify
 

@@ -532,7 +532,12 @@ export type EnforcementResult =
 
 export interface EnforcementCheck {
   name: string;
+  /** Pre-request: evaluate whether this request should proceed. */
   check(ctx: EnforcementContext): Promise<EnforcementResult>;
+  /** Post-response: settle reservations with actual cost.
+   *  Only checks that reserve resources (BudgetCheck) implement this.
+   *  Called by the pipeline runner after the response completes. */
+  reconcile?(ctx: EnforcementContext, actualCostMicrodollars: number): Promise<void>;
 }
 ```
 
@@ -549,11 +554,25 @@ export async function runEnforcementPipeline(
   }
   return { allowed: true };
 }
+
+/** Post-response: call reconcile() on all checks that define it. */
+export async function reconcileEnforcementPipeline(
+  checks: EnforcementCheck[],
+  ctx: EnforcementContext,
+  actualCostMicrodollars: number,
+): Promise<void> {
+  for (const check of checks) {
+    if (check.reconcile) {
+      await check.reconcile(ctx, actualCostMicrodollars);
+    }
+  }
+}
 ```
 
 This is intentionally simple — an array of checks, executed in order, with
 early return on first denial. No middleware pattern, no framework. The
-complexity is in the individual checks, not the runner.
+complexity is in the individual checks, not the runner. The separate
+`reconcileEnforcementPipeline` runs post-response to settle reservations.
 
 ### What to change
 
@@ -570,6 +589,9 @@ complexity is in the individual checks, not the runner.
 - Unit test: all checks pass → `{ allowed: true }`
 - Unit test: empty checks array → `{ allowed: true }`
 - Unit test: reservationId from BudgetCheck forwarded in result
+- Unit test: reconcile calls `reconcile()` on checks that define it
+- Unit test: reconcile skips checks without `reconcile()` method
+- Unit test: reconcile passes actualCostMicrodollars to each check
 
 ### Validation criteria
 
@@ -671,10 +693,14 @@ export interface BudgetCheckDeps {
     Promise<BudgetEntity[]>;
   checkAndReserve: (entityKeys: string[], estimateMicrodollars: number) =>
     Promise<BudgetCheckResult>;
+  reconcileBudget: (reservationId: string, actualCostMicrodollars: number,
+    entities: Array<{ entityType: string; entityId: string }>) => Promise<void>;
 }
 
 export class BudgetCheck implements EnforcementCheck {
   name = "budget";
+  private lastEntities: BudgetEntity[] = [];
+  private lastReservationId: string | null = null;
 
   constructor(private deps: BudgetCheckDeps) {}
 
@@ -683,6 +709,7 @@ export class BudgetCheck implements EnforcementCheck {
       keyId: ctx.keyId,
       userId: ctx.userId,
     });
+    this.lastEntities = entities;
 
     if (entities.length === 0) return { allowed: true };
 
@@ -709,7 +736,16 @@ export class BudgetCheck implements EnforcementCheck {
       };
     }
 
+    this.lastReservationId = result.reservationId;
     return { allowed: true, reservationId: result.reservationId };
+  }
+
+  async reconcile(_ctx: EnforcementContext, actualCostMicrodollars: number): Promise<void> {
+    if (!this.lastReservationId) return;
+    const entities = this.lastEntities.map(e => ({
+      entityType: e.entityType, entityId: e.entityId,
+    }));
+    await this.deps.reconcileBudget(this.lastReservationId, actualCostMicrodollars, entities);
   }
 }
 ```
@@ -732,6 +768,8 @@ proxy's internal endpoint). Same interface, different backends.
 - Unit test: no budgets → allowed (deps return empty array)
 - Unit test: budget has headroom → allowed with reservationId
 - Unit test: budget exceeded → denied with remaining/maxBudget details
+- Unit test: reconcile() calls deps.reconcileBudget with reservationId + actual cost
+- Unit test: reconcile() no-ops when no reservation was made (denied or skipped)
 - All tests use mock deps (no real DO binding)
 
 ### Validation criteria
@@ -746,15 +784,17 @@ proxy's internal endpoint). Same interface, different backends.
 **Goal:** Replace the proxy's inline enforcement logic with the pipeline
 from Phase 3A, using PolicyCheck (3B) and BudgetCheck (3C).
 
-**This is the highest-risk phase.** The proxy is production infrastructure.
-Changes must be behavior-identical to the current implementation.
+**This is the highest-risk phase.** Changes must be behavior-identical to
+the current implementation. However, NullSpend has zero production traffic
+at this stage — the 158 test files across 4 tiers are the regression gate,
+not a production comparison.
 
-### Strategy: Parallel execution with comparison
+### Strategy: Direct cutover with test coverage
 
-Before flipping over, add a feature flag (env var `ENFORCEMENT_PIPELINE=1`)
-that runs BOTH the old inline logic AND the new pipeline, compares results,
-and logs discrepancies. Ship with the flag off. Enable in staging. When
-results match across N requests, flip the flag to use the pipeline result.
+Ship the pipeline directly. No compare mode — parallel execution adds
+implementation time for a risk that doesn't exist with zero production
+users. The existing test suite (1,590+ tests) provides comprehensive
+behavioral equivalence verification.
 
 ### What to build
 
@@ -762,13 +802,13 @@ results match across N requests, flip the flag to use the pipeline result.
 
 ```typescript
 // In anthropic.ts / openai.ts route handler:
-const pipeline = [
-  new PolicyCheck({ modelAllowlist: /* from config */ }),
-  new BudgetCheck({
+const pipeline = buildPipeline(auth, {
+  policyConfig: /* from config or cache */,
+  budgetDeps: {
     lookupBudgets: (id) => lookupBudgetsForDO(connStr, id),
     checkAndReserve: (entities, est) => doBudgetCheck(env, userId, entities, est),
-  }),
-];
+  },
+});
 
 const result = await runEnforcementPipeline(pipeline, {
   userId: auth.userId,
@@ -779,24 +819,16 @@ const result = await runEnforcementPipeline(pipeline, {
 });
 ```
 
-**2. Comparison mode** (temporary, removed after validation)
+**2. Post-response reconciliation** via pipeline
 
 ```typescript
-if (env.ENFORCEMENT_PIPELINE === "compare") {
-  const [oldResult, newResult] = await Promise.all([
-    runOldEnforcement(...),
-    runEnforcementPipeline(pipeline, ctx),
-  ]);
-  if (oldResult.allowed !== newResult.allowed) {
-    console.error("ENFORCEMENT_MISMATCH", { old: oldResult, new: newResult });
-  }
-  // Use old result (safe)
-}
+// After response completes (in waitUntil or queue consumer):
+await reconcileEnforcementPipeline(pipeline, ctx, actualCostMicrodollars);
 ```
 
-**3. Full cutover** (after comparison validated)
+**3. Remove old inline logic**
 
-Replace inline logic with pipeline result. Remove old code paths.
+Replace old inline enforcement code paths with pipeline. Delete dead code.
 
 ### What to change
 
@@ -811,13 +843,12 @@ Replace inline logic with pipeline result. Remove old code paths.
 - All existing proxy tests must pass unchanged (behavior identical)
 - New test: pipeline denied → 429 with same response shape as before
 - New test: pipeline allowed → request forwarded as before
-- Comparison mode test: mock a mismatch → verify log output
+- New test: reconcile called post-response with actual cost
+- New test: per-key pipeline assembly — key with no flags → empty pipeline
 
 ### Validation criteria
 
 - `pnpm proxy:test` passes with zero failures
-- Comparison mode shows zero mismatches in staging
-- After cutover: `pnpm proxy:test` still passes
 
 ---
 
@@ -1408,30 +1439,36 @@ Velocity exceeds threshold
 ## Dependency Graph
 
 ```
-Phase 2A ──→ Phase 2B ──→ Phase 2C
-                │
-                └──→ Phase 2F (batching, after 2C works)
+Priority path (ship in order):
 
-Phase 2D ──→ Phase 2E
+Phase 2A [DONE] ──→ Phase 2B ──→ Phase 2C ──→ Phase 2F (batching)
+                                                  ↑ ship first — lowest
+                                                    friction SDK adoption
 
-Phase 3A ──→ Phase 3B ──→ Phase 3D (wire into proxy)
+Phase 3A ──→ Phase 3B ──→ Phase 3D (wire into proxy, direct cutover)
          ├──→ Phase 3C ──┘
-         ├──→ Phase 3E (velocity, can parallel with 3B/3C)
          └──→ Phase 3H (approval check)
 
 Phase 3D ──→ Phase 3F ──→ Phase 3G (SDK enforce)
 Phase 3D ──→ Phase 3I (config caching)
 
+Demand-driven (ship when users request):
+
+Phase 2D ──→ Phase 2E (SDK checkBudget)
+Phase 3E (VelocityCheck — when dollar budgets aren't enough)
+Phase 3B ──→ Phase 4B (policy templates)
 Phase 3H ──→ Phase 4A (approval webhooks)
          ──→ Phase 4C (approval rules UI)
-
-Phase 3B ──→ Phase 4B (policy templates)
-Phase 3E ──→ Phase 4D (feedback loops, last)
+Phase 3E ──→ Phase 4D (feedback loops — needs usage data to design)
 ```
 
-Phases within the same number (e.g., 2A-2F) are generally sequential.
-Phases across numbers can overlap when dependencies allow — e.g., Phase 3A
-can start while Phase 2E is being validated.
+**Key sequencing decisions:**
+- `reportCost()` (2B-2C) ships before `checkBudget()` (2D-2E) — cost
+  ingestion proves SDK adoption; budget queries add value only after
+  users have budgets configured.
+- VelocityCheck (3E) and policy templates (4B) are demand-driven, not
+  on the critical path.
+- Auto-remediation (4D) ships last — needs real usage patterns to design.
 
 ---
 
@@ -1448,7 +1485,7 @@ can start while Phase 2E is being validated.
 | 3A (interfaces) | Zero — types only | N/A |
 | 3B (PolicyCheck) | Low — new code, not yet wired | Pure function, thorough tests |
 | 3C (BudgetCheck) | Low — wrapper only | Mock-based tests |
-| **3D (wire pipeline)** | **High — changes proxy request path** | **Compare mode first** |
+| **3D (wire pipeline)** | **High — changes proxy request path** | **Direct cutover; 1,590+ tests as regression gate** |
 | 3E (VelocityCheck) | Medium — new DO SQLite table | Isolated tests; not wired until validated |
 | 3F (enforce API) | Low — new endpoint | Unit tests |
 | 3G (SDK enforce) | Low — new method | Unit tests |
