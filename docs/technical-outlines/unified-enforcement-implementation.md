@@ -1,5 +1,10 @@
 # Unified Enforcement Architecture — Implementation Guide
 
+> **Revised: 2026-03-18.** Updated to reflect DO-based architecture
+> (Durable Objects SQLite replaced Redis Lua), CF Queues reconciliation,
+> and Phase 2A completion. Redis references in BudgetCheck/VelocityCheck
+> sections updated to note the architecture change.
+
 This document breaks the unified enforcement architecture into incremental
 subphases. Each subphase is independently testable, deployable, and
 non-breaking. No subphase requires more than one session to implement.
@@ -37,10 +42,17 @@ Phase 4D — Feedback loops / auto-remediation
 
 ---
 
-## Phase 2A — SDK Retry, Idempotency, Batching Infrastructure
+## Phase 2A — SDK Retry, Idempotency, Batching Infrastructure [DONE]
 
 **Goal:** Add retry logic, idempotency key generation, and request
 infrastructure to the SDK *without changing any public API*.
+
+**Status: Shipped.** The SDK client (`packages/sdk/src/client.ts`) has a
+private `request()` method with exponential backoff + jitter, `Retry-After`
+header support, idempotency key generation for mutating requests,
+configurable retry limits (`maxRetries`, `retryBaseDelayMs`, `maxRetryTimeMs`),
+`onRetry` callback, and a wall-time retry cap. Retry helpers are in
+`packages/sdk/src/retry.ts`.
 
 **Why first:** Every subsequent SDK feature (reportCost, checkBudget,
 enforce) needs retry and idempotency. Building the foundation first means
@@ -299,13 +311,22 @@ state for an API key's associated entities.
   }
   ```
 
-**2. Redis read for accurate spend**
+**2. Accurate spend via DO or Postgres**
 
-The canonical spend is in Redis (updated atomically by Lua scripts). The
-Postgres `spend_microdollars` column may lag. For accuracy:
-- If Redis is available, read `{budget}:api_key:{id}` HGETALL → `spend` field
-- If Redis is unavailable, fall back to Postgres spend column
-- Include a `source: "redis" | "postgres"` field so the SDK knows accuracy
+The canonical spend is in the UserBudgetDO (updated atomically via
+`transactionSync()`). The Postgres `spend_microdollars` column may lag
+slightly due to async reconciliation via CF Queues.
+
+Two options for this endpoint:
+- **Option A (simpler):** Read from Postgres. Slightly stale but avoids
+  routing through the proxy. Sufficient for informational `checkBudget()`.
+- **Option B (accurate):** Route through proxy internal endpoint
+  (`POST /internal/budget/status`) → DO RPC. Same atomic view the proxy
+  uses for enforcement.
+
+Start with Option A. The staleness window is typically <5s (queue
+consumer processing time). Include a `source: "postgres"` field so the
+SDK knows accuracy level. Upgrade to Option B if users need real-time.
 
 ### What to change
 
@@ -317,8 +338,7 @@ Postgres `spend_microdollars` column may lag. For accuracy:
 
 - Unit test: returns budget entities for authenticated key
 - Unit test: returns `hasBudgets: false` when no budgets configured
-- Unit test: Redis spend preferred over Postgres spend
-- Unit test: graceful fallback to Postgres when Redis unavailable
+- Unit test: spend values reflect Postgres state (Option A)
 - Unit test: 401 without API key
 
 ### Validation criteria
@@ -633,11 +653,12 @@ It should have thorough unit tests covering every rule combination.
 
 ## Phase 3C — Extract BudgetCheck into Interface Wrapper
 
-**Goal:** Wrap the proxy's existing Redis Lua budget logic in an
+**Goal:** Wrap the proxy's existing DO budget logic in an
 `EnforcementCheck` interface *without reimplementing it*.
 
-**Key principle:** The existing `checkAndReserve()` function works and is
-battle-tested. We wrap it, not rewrite it.
+**Key principle:** The existing `checkAndReserve()` DO RPC works and is
+battle-tested (atomic `transactionSync()` in UserBudgetDO). We wrap it,
+not rewrite it.
 
 ### What to build
 
@@ -645,7 +666,7 @@ battle-tested. We wrap it, not rewrite it.
 
 ```typescript
 export interface BudgetCheckDeps {
-  // Injected — the check doesn't own Redis or Postgres
+  // Injected — the check doesn't own the DO binding or Postgres
   lookupBudgets: (identity: { keyId: string; userId: string }) =>
     Promise<BudgetEntity[]>;
   checkAndReserve: (entityKeys: string[], estimateMicrodollars: number) =>
@@ -693,11 +714,11 @@ export class BudgetCheck implements EnforcementCheck {
 }
 ```
 
-**Why dependency injection:** The BudgetCheck should not import Redis or
-Postgres directly. The proxy passes its own `lookupBudgets` and
-`checkAndReserve` functions (which use its Redis/Postgres connections). The
-API endpoint passes different implementations. Same interface, different
-backends.
+**Why dependency injection:** The BudgetCheck should not import the DO
+binding or Postgres directly. The proxy passes its own `lookupBudgets` and
+`checkAndReserve` functions (which use its DO binding + Postgres connection).
+The API endpoint passes different implementations (e.g., routing through the
+proxy's internal endpoint). Same interface, different backends.
 
 ### What to change
 
@@ -711,7 +732,7 @@ backends.
 - Unit test: no budgets → allowed (deps return empty array)
 - Unit test: budget has headroom → allowed with reservationId
 - Unit test: budget exceeded → denied with remaining/maxBudget details
-- All tests use mock deps (no real Redis)
+- All tests use mock deps (no real DO binding)
 
 ### Validation criteria
 
@@ -744,8 +765,8 @@ results match across N requests, flip the flag to use the pipeline result.
 const pipeline = [
   new PolicyCheck({ modelAllowlist: /* from config */ }),
   new BudgetCheck({
-    lookupBudgets: (id) => lookupBudgets(redis, connStr, id),
-    checkAndReserve: (keys, est) => checkAndReserve(redis, keys, est),
+    lookupBudgets: (id) => lookupBudgetsForDO(connStr, id),
+    checkAndReserve: (entities, est) => doBudgetCheck(env, userId, entities, est),
   }),
 ];
 
@@ -802,11 +823,24 @@ Replace inline logic with pipeline result. Remove old code paths.
 
 ## Phase 3E — VelocityCheck (New Enforcement Check)
 
-**Goal:** Add rate-based velocity controls using Redis sorted sets.
+**Goal:** Add rate-based velocity controls.
 
 **Why this matters:** Budget caps catch total spend. Velocity limits catch
 runaway agents — "50 LLM calls per minute" or "$10/hour" stops an agent
 looping before it exhausts the full budget.
+
+**Architecture note:** The original design used Redis sorted sets for
+sliding window counters. With the DO migration, two options:
+1. **DO-based:** Add a `velocity` SQLite table to UserBudgetDO. Atomic
+   with budget checks (same `transactionSync()`). Per-user isolation.
+   Downside: no cross-user velocity limits.
+2. **KV/external:** Use Cloudflare KV or Upstash Redis for velocity
+   counters. Decoupled from budget DO. Supports cross-user limits.
+   Downside: separate consistency domain.
+
+Recommendation: Start with DO-based (Option 1) for per-key/per-user
+velocity. Most velocity rules are per-agent, not global. Add external
+store only if cross-user velocity is needed.
 
 ### What to build
 
@@ -822,7 +856,7 @@ export interface VelocityRule {
 }
 
 export interface VelocityCheckDeps {
-  // Sliding window check using Redis sorted sets
+  // Sliding window check (DO SQLite or external store)
   checkVelocity: (
     key: string,
     value: number,
@@ -843,30 +877,42 @@ export class VelocityCheck implements EnforcementCheck {
 }
 ```
 
-**2. Redis sorted set implementation**
+**2. DO SQLite implementation (recommended)**
 
-Sliding window counter using `ZADD` + `ZREMRANGEBYSCORE` + `ZCARD`:
+Sliding window counter using a `velocity_events` table in the UserBudgetDO:
 
-```lua
--- Remove entries outside window
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
--- Count entries in window
-local count = redis.call('ZCARD', KEYS[1])
--- Check limit
-if count >= tonumber(ARGV[2]) then
-  return {0, count}  -- denied
-end
--- Add new entry
-redis.call('ZADD', KEYS[1], ARGV[3], ARGV[4])
-redis.call('EXPIRE', KEYS[1], ARGV[5])
-return {1, count + 1}  -- allowed
+```sql
+-- Table schema (created via transactionSync in DO constructor)
+CREATE TABLE IF NOT EXISTS velocity_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rule_name TEXT NOT NULL,
+  entity_key TEXT NOT NULL,
+  value INTEGER NOT NULL,        -- 1 for count, microdollars for cost
+  created_at INTEGER NOT NULL    -- epoch ms
+);
+CREATE INDEX IF NOT EXISTS idx_velocity_window
+  ON velocity_events(rule_name, entity_key, created_at);
 ```
 
-For cost-based velocity (sum of costs in window, not count):
-```lua
--- ZRANGEBYSCORE + sum member scores approach
--- Or use a separate INCRBY with TTL for simpler cost velocity
+```typescript
+// Inside transactionSync():
+// 1. Prune expired entries
+sql.exec("DELETE FROM velocity_events WHERE created_at < ?", nowMs - windowMs);
+// 2. Sum current window
+const current = sql.exec(
+  "SELECT COALESCE(SUM(value), 0) as total FROM velocity_events WHERE rule_name = ? AND entity_key = ? AND created_at >= ?",
+  ruleName, entityKey, nowMs - windowMs
+).one().total;
+// 3. Check limit
+if (current + value > limit) return { allowed: false, current };
+// 4. Insert new entry
+sql.exec("INSERT INTO velocity_events (rule_name, entity_key, value, created_at) VALUES (?, ?, ?, ?)",
+  ruleName, entityKey, value, nowMs);
+return { allowed: true, current: current + value };
 ```
+
+This runs atomically with budget checks in the same DO instance.
+Per-user isolation is automatic (one DO per userId).
 
 ### What to change
 
@@ -1306,7 +1352,8 @@ interface VelocityAlert {
 **2. Auto-tightening mechanism**
 
 When a velocity alert fires:
-- Write a temporary policy override to Redis (TTL = 1 hour)
+- Write a temporary policy override to the UserBudgetDO (TTL = 1 hour)
+  or KV store (if cross-user scope needed)
 - PolicyCheck reads temporary overrides before static config
 - Dashboard shows active auto-remediation with "dismiss" button
 
@@ -1325,7 +1372,7 @@ Velocity exceeds threshold
 
 | File | Change |
 |------|--------|
-| `packages/enforcement/src/checks/policy-check.ts` | Read temporary overrides from Redis |
+| `packages/enforcement/src/checks/policy-check.ts` | Read temporary overrides from DO/KV |
 | `app/api/alerts/` | New routes for alert management |
 | Webhook dispatch | Fire velocity alert events |
 | Dashboard | Alert banner + management UI |
@@ -1373,17 +1420,17 @@ can start while Phase 2E is being validated.
 
 | Phase | Risk | Mitigation |
 |-------|------|------------|
-| 2A (SDK retry) | Low — additive, no behavior change with defaults | Existing tests as regression gate |
+| 2A (SDK retry) | **Done** — shipped | N/A |
 | 2B (cost event API) | Low — new endpoint, no existing code changed | Input validation + idempotency |
 | 2C (SDK reportCost) | Low — new method, no existing behavior changed | Unit tests |
-| 2D (budget status API) | Low — read-only endpoint | Redis fallback to Postgres |
+| 2D (budget status API) | Low — read-only endpoint | Postgres read (Option A) |
 | 2E (SDK checkBudget) | Low — new method | Unit tests |
 | 2F (SDK batching) | Medium — flush timing, shutdown hooks | Opt-in only; default off |
 | 3A (interfaces) | Zero — types only | N/A |
 | 3B (PolicyCheck) | Low — new code, not yet wired | Pure function, thorough tests |
 | 3C (BudgetCheck) | Low — wrapper only | Mock-based tests |
 | **3D (wire pipeline)** | **High — changes proxy request path** | **Compare mode first** |
-| 3E (VelocityCheck) | Medium — new Redis data structures | Isolated tests; not wired until validated |
+| 3E (VelocityCheck) | Medium — new DO SQLite table | Isolated tests; not wired until validated |
 | 3F (enforce API) | Low — new endpoint | Unit tests |
 | 3G (SDK enforce) | Low — new method | Unit tests |
 | 3H (conditional approval) | Medium — changes MCP proxy gating | Regression tests |

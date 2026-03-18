@@ -5,8 +5,7 @@ Findings from adversarial testing (72 endpoint stress tests, 11 E2E queue tests)
 race condition analysis (6 scenarios), and stack research (CF Workers, DO SQLite, Queues, Drizzle).
 
 **Date:** 2026-03-17
-**Updated:** 2026-03-17
-**Status:** P0-P5 fixed. All findings resolved.
+**Status:** Audit complete. P0 fixed, P1-P5 remaining.
 
 ---
 
@@ -15,6 +14,7 @@ race condition analysis (6 scenarios), and stack research (CF Workers, DO SQLite
 **Severity:** High
 **Category:** Data integrity — permanent incorrect enforcement
 **Fixed:** 2026-03-17 — `syncBudgets` RPC replaces N `populateIfEmpty` calls. Atomically UPSERTs + purges ghosts inside `transactionSync`. `doBudgetPopulate` called even on empty Postgres results. Commit `4dd6393`.
+
 
 ### Problem
 
@@ -58,11 +58,10 @@ budgets and prunes DO rows not in the result. More complex, adds Postgres depend
 
 ---
 
-## P1: DLQ Has No Consumer — Spend Data Lost After 4 Days [DONE]
+## P1: DLQ Has No Consumer — Spend Data Lost After 4 Days
 
 **Severity:** High
 **Category:** Observability / data loss
-**Fixed:** 2026-03-17 — DLQ consumer handler with metrics, structured logging, and best-effort retry. Deployed and stress-tested in production (200 messages, zero exceptions). Commit `021f98f`.
 
 ### Problem
 
@@ -84,36 +83,32 @@ against the budget.
 Silent spend tracking loss on persistent failures. Cost is in `usage_logs` but not attributed
 to any budget entity.
 
-### Fix
+### Fix Options
 
-Implemented Option A — DLQ consumer with metrics + best-effort retry:
+**Option A — DLQ consumer with alerting (recommended):**
+Add a minimal DLQ consumer that logs the failed message payload, emits a `reconciliation_dlq`
+metric, and optionally retries with a longer backoff or different strategy.
 
-- `dlq-handler.ts` — For each dead-lettered message: emits `reconciliation_dlq` metric (with
-  `ageMs`, `entityCount`, no misleading `attempts`), logs structured error with `[dlq]` prefix,
-  calls `reconcileBudget` without `throwOnError` (best-effort, never throws), always acks in
-  `finally` block. `safeStringify` wrapper prevents `JSON.stringify` throws on unexpected types.
-- `index.ts` — Queue dispatch routes by `batch.queue`: DLQ → `handleDlqQueue`, else → primary.
-- `wrangler.jsonc` — DLQ consumer entry with `max_retries: 0`.
-- 9 tests covering: always-ack/never-retry, metric emission, structured logging, 6-arg call
-  signature, ack-on-throw resilience, multi-message batches, null userId, constant value,
-  batch resilience after first failure.
+**Option B — DLQ monitor only:**
+Add a consumer that logs and emits metrics but does not retry. Pair with an alert on the
+`reconciliation_dlq` metric to trigger manual investigation.
 
-### Production verification
+**Option C — External DLQ polling:**
+Use a cron-triggered Worker that polls the DLQ and forwards to a Slack/email alert.
 
-- Created both CF queues (`nullspend-reconcile`, `nullspend-reconcile-dlq`)
-- Set `INTERNAL_SECRET` as CF worker secret (was missing)
-- Stress test: 50 concurrent health requests (all 200, 82-239ms), 30 concurrent auth rejections
-  (all 401), 200 DLQ messages injected and processed with zero exceptions
-- `wrangler tail` confirmed: `reconciliation_dlq` metrics emitted, `[dlq]` logs with full
-  payload, DO `reconcile` RPC called for each message, 543ms wall time for 5-message batch
+### Files
+
+- `wrangler.jsonc` — add DLQ consumer binding
+- `apps/proxy/src/dlq-handler.ts` — new DLQ consumer handler
+- `apps/proxy/src/index.ts` — export DLQ queue handler
+- `apps/proxy/src/__tests__/dlq-handler.test.ts` — test DLQ consumer
 
 ---
 
-## P2: Input Validation Gaps on Internal Endpoint [DONE]
+## P2: Input Validation Gaps on Internal Endpoint
 
 **Severity:** Medium
 **Category:** Input validation / defense-in-depth
-**Fixed:** 2026-03-17 — Added `isNonEmptyString` helper with `.trim()` and 256-char length limit. Parsed values are trimmed before use. 4 new tests (whitespace rejection, length limit, boundary at 256, trimming verification).
 
 ### Problem
 
@@ -151,11 +146,10 @@ if (typeof obj.userId === "string" && obj.userId.length > 256) return null;
 
 ---
 
-## P3: `resetSpend` Over-Approval Window (Orphaned Reservations) [DONE]
+## P3: `resetSpend` Over-Approval Window (Orphaned Reservations)
 
 **Severity:** Medium
 **Category:** Budget enforcement correctness
-**Fixed:** 2026-03-18 — `resetSpend` now uses `transactionSync` to find matching reservations via `json_each`, decrement `reserved` on all co-covered entities, delete reservation records, then reset the target entity. 3 new tests (orphan cleanup, co-covered entity decrement, no over-spend after reset).
 
 ### Problem
 
@@ -240,11 +234,10 @@ emit a `reconcile_budget_missing` metric when this occurs.
 
 ---
 
-## P5: Dashboard-Side Invalidation Failure Observability [DONE]
+## P5: Dashboard-Side Invalidation Failure Observability
 
 **Severity:** Low
 **Category:** Observability
-**Fixed:** 2026-03-18 — Replaced `console.error` with Pino structured logging (`getLogger("proxy-invalidate")`) and Sentry breadcrumbs (`addSentryBreadcrumb`). Error paths include status, action, userId, entityType, entityId. Success path logs `info` for confirmation. 8 tests covering structured fields, breadcrumbs, and existing behavior.
 
 ### Problem
 
@@ -264,15 +257,15 @@ enforcement issues are invisible.
 
 ### Fix
 
-Replaced `console.error` with the existing Pino logger and Sentry breadcrumbs:
-- `log.error` with structured fields (status, action, userId, entityType, entityId) on failure
-- `log.info` on success for confirmation
-- `addSentryBreadcrumb("proxy-invalidate", ...)` on both error paths
+Add structured logging or metric emission. Options:
+
+1. Use the existing Pino logger (if available in the Next.js app) with structured fields
+2. Add a simple counter/gauge that an external monitor can scrape
+3. At minimum, log with enough structure for Vercel log drains to filter on
 
 ### Files
 
-- `lib/proxy-invalidate.ts` — structured logging + Sentry breadcrumbs
-- `lib/proxy-invalidate.test.ts` — mock logger/sentry, verify structured fields + breadcrumbs
+- `lib/proxy-invalidate.ts` — add structured logging with action/status fields
 
 ---
 
