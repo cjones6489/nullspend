@@ -22,7 +22,12 @@ export async function doBudgetCheck(
 
 /**
  * Reconcile a reservation via the UserBudgetDO + Postgres write-back.
- * Never throws — errors are logged and metrics emitted.
+ * Never throws — errors are caught, logged, and metrics emitted.
+ *
+ * Returns the reconciliation status:
+ * - `"ok"`: DO reconcile + Postgres write both succeeded (or actualCost=0, no PG write needed)
+ * - `"pg_failed"`: DO reconcile succeeded but Postgres write failed after retries (split-brain)
+ * - `"error"`: DO reconcile itself failed
  *
  * Retries the Postgres write up to PG_MAX_RETRIES times with backoff
  * to prevent DO/Postgres split-brain on transient failures.
@@ -34,10 +39,10 @@ export async function doBudgetReconcile(
   actualCost: number,
   entities: Array<{ entityType: string; entityId: string }>,
   connectionString: string,
-): Promise<void> {
+): Promise<"ok" | "pg_failed" | "error"> {
   const startMs = Date.now();
   let retries = 0;
-  let status = "ok";
+  let status: "ok" | "pg_failed" | "error" = "ok";
 
   try {
     const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
@@ -83,12 +88,42 @@ export async function doBudgetReconcile(
       retries,
     });
   }
+
+  return status;
 }
 
 /**
- * Seed or refresh DO budget entities from Postgres.
- * UPSERTs config fields (max_budget, policy, reset_interval) but preserves
- * the DO's authoritative spend, reserved, and period_start.
+ * Remove a budget entity from the UserBudgetDO.
+ * Throws on DO error (fail-closed).
+ */
+export async function doBudgetRemove(
+  env: Env,
+  userId: string,
+  entityType: string,
+  entityId: string,
+): Promise<void> {
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  await stub.removeBudget(entityType, entityId);
+}
+
+/**
+ * Reset spend for a budget entity in the UserBudgetDO.
+ * Throws on DO error (fail-closed).
+ */
+export async function doBudgetResetSpend(
+  env: Env,
+  userId: string,
+  entityType: string,
+  entityId: string,
+): Promise<void> {
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  await stub.resetSpend(entityType, entityId);
+}
+
+/**
+ * Sync all DO budget entities from Postgres via a single `syncBudgets` RPC.
+ * UPSERTs config fields and purges ghost rows (budgets deleted from Postgres
+ * but still present in the DO). Emits a metric when ghost rows are purged.
  */
 export async function doBudgetPopulate(
   env: Env,
@@ -96,15 +131,18 @@ export async function doBudgetPopulate(
   entities: DOBudgetEntity[],
 ): Promise<void> {
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
-  for (const entity of entities) {
-    await stub.populateIfEmpty(
-      entity.entityType,
-      entity.entityId,
-      entity.maxBudget,
-      entity.spend,
-      entity.policy,
-      entity.resetInterval,
-      entity.periodStart,
-    );
+  const purged = await stub.syncBudgets(
+    entities.map((e) => ({
+      entityType: e.entityType,
+      entityId: e.entityId,
+      maxBudget: e.maxBudget,
+      spend: e.spend,
+      policy: e.policy,
+      resetInterval: e.resetInterval,
+      periodStart: e.periodStart,
+    })),
+  );
+  if (purged > 0) {
+    emitMetric("do_ghost_budget_purge", { userId, purged });
   }
 }

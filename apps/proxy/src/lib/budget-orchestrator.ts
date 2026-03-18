@@ -31,6 +31,18 @@ function doLookupCacheKey(identity: { keyId: string | null; userId: string | nul
   return `${identity.userId ?? ""}:${identity.keyId ?? ""}`;
 }
 
+/** Evict all doLookupCache entries for a given userId. */
+export function invalidateDoLookupCacheForUser(userId: string): number {
+  let evicted = 0;
+  for (const key of [...doLookupCache.keys()]) {
+    if (key.startsWith(`${userId}:`)) {
+      doLookupCache.delete(key);
+      evicted++;
+    }
+  }
+  return evicted;
+}
+
 export interface BudgetCheckOutcome {
   status: "approved" | "denied" | "skipped";
   reservationId: string | null;
@@ -76,6 +88,7 @@ export async function reconcileBudget(
   actualCost: number,
   budgetEntities: BudgetEntity[],
   connectionString: string,
+  options?: { throwOnError?: boolean },
 ): Promise<void> {
   try {
     if (reservationId && userId) {
@@ -83,10 +96,14 @@ export async function reconcileBudget(
         entityType: e.entityType,
         entityId: e.entityId,
       }));
-      await doBudgetReconcile(env, userId, reservationId, actualCost, entities, connectionString);
+      const status = await doBudgetReconcile(env, userId, reservationId, actualCost, entities, connectionString);
+      if (options?.throwOnError && status !== "ok") {
+        throw new Error(`Reconciliation failed with status: ${status}`);
+      }
     }
   } catch (err) {
     console.error("[budget-orchestrator] Reconciliation failed:", err);
+    if (options?.throwOnError) throw err;
   }
 }
 
@@ -169,8 +186,10 @@ async function checkBudgetDO(
     if (doEntities.length > 0) {
       doLookupCache.set(cacheKey, { entities: doEntities, expiresAt: now + DO_LOOKUP_TTL_MS });
       evictOldestIfNeeded(doLookupCache, DO_LOOKUP_MAX_SIZE);
-      await doBudgetPopulate(env, userId, doEntities);
     }
+    // Always sync to the DO — even when Postgres returns empty — so that
+    // ghost budget rows (deleted from Postgres but retained in DO) get purged.
+    await doBudgetPopulate(env, userId, doEntities);
   }
 
   if (doEntities.length === 0) {

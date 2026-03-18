@@ -375,6 +375,84 @@ export class UserBudgetDO extends DurableObject {
     return Array.from(this.budgets.values());
   }
 
+  /** Remove a budget entity (called via internal invalidation endpoint). */
+  async removeBudget(entityType: string, entityId: string): Promise<void> {
+    this.ctx.storage.sql.exec(
+      "DELETE FROM budgets WHERE entity_type = ? AND entity_id = ?",
+      entityType,
+      entityId,
+    );
+    this.loadBudgets();
+  }
+
+  /**
+   * Atomically sync all budget entities from Postgres into the DO.
+   * UPSERTs config fields (max_budget, policy, reset_interval) and purges
+   * any DO rows not present in the Postgres set (ghost budget cleanup).
+   * Returns the number of ghost rows purged.
+   */
+  async syncBudgets(
+    entities: Array<{
+      entityType: string; entityId: string; maxBudget: number;
+      spend: number; policy: string; resetInterval: string | null; periodStart: number;
+    }>,
+  ): Promise<number> {
+    let purged = 0;
+    this.ctx.storage.transactionSync(() => {
+      // Phase 1: UPSERT all entities from Postgres
+      for (const e of entities) {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO budgets
+           (entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start)
+           VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+           ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+             max_budget = excluded.max_budget,
+             policy = excluded.policy,
+             reset_interval = excluded.reset_interval`,
+          e.entityType, e.entityId, e.maxBudget, e.spend, e.policy, e.resetInterval, e.periodStart,
+        );
+      }
+
+      // Phase 2: Purge ghost rows not in the Postgres set
+      const allRows = this.ctx.storage.sql
+        .exec<{ entity_type: string; entity_id: string }>(
+          "SELECT entity_type, entity_id FROM budgets",
+        )
+        .toArray();
+
+      const validKeys = new Set(entities.map((e) => `${e.entityType}:${e.entityId}`));
+      for (const row of allRows) {
+        const key = `${row.entity_type}:${row.entity_id}`;
+        if (!validKeys.has(key)) {
+          this.ctx.storage.sql.exec(
+            "DELETE FROM budgets WHERE entity_type = ? AND entity_id = ?",
+            row.entity_type, row.entity_id,
+          );
+          purged++;
+        }
+      }
+    });
+
+    if (purged > 0) {
+      console.log(`[UserBudgetDO] syncBudgets: purged ${purged} ghost budget(s)`);
+    }
+
+    this.loadBudgets();
+    return purged;
+  }
+
+  /** Reset spend for a budget entity (called via internal invalidation endpoint). */
+  async resetSpend(entityType: string, entityId: string): Promise<void> {
+    this.ctx.storage.sql.exec(
+      `UPDATE budgets SET spend = 0, reserved = 0, period_start = ?
+       WHERE entity_type = ? AND entity_id = ?`,
+      Date.now(),
+      entityType,
+      entityId,
+    );
+    this.loadBudgets();
+  }
+
   /**
    * Alarm handler: clean up expired reservations.
    * Replaces Redis TTL-based reservation expiry.

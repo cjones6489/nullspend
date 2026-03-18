@@ -96,6 +96,89 @@ describe("UserBudgetDO", () => {
     expect(state[0].reset_interval).toBe("monthly");
   });
 
+  // ── syncBudgets ────────────────────────────────────────────────
+
+  it("syncBudgets UPSERTs all provided entities", async () => {
+    const stub = getStub("user-sync-upsert");
+    const purged = await stub.syncBudgets([
+      { entityType: "user", entityId: "u1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
+      { entityType: "api_key", entityId: "k1", maxBudget: 10_000_000, spend: 0, policy: "warn", resetInterval: "monthly", periodStart: 1_700_000_000_000 },
+    ]);
+    expect(purged).toBe(0);
+
+    const state = await stub.getBudgetState();
+    expect(state).toHaveLength(2);
+    expect(state.find((b: { entity_type: string }) => b.entity_type === "user")!.max_budget).toBe(50_000_000);
+    expect(state.find((b: { entity_type: string }) => b.entity_type === "api_key")!.policy).toBe("warn");
+  });
+
+  it("syncBudgets purges ghost budgets not in the provided set", async () => {
+    const stub = getStub("user-sync-purge");
+    // Seed two entities via populateIfEmpty
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k1", 10_000_000, 0, "warn", null, 0);
+
+    // Sync with only user:u1 — api_key:k1 should be purged
+    const purged = await stub.syncBudgets([
+      { entityType: "user", entityId: "u1", maxBudget: 60_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
+    ]);
+    expect(purged).toBe(1);
+
+    const state = await stub.getBudgetState();
+    expect(state).toHaveLength(1);
+    expect(state[0].entity_type).toBe("user");
+    expect(state[0].max_budget).toBe(60_000_000);
+  });
+
+  it("syncBudgets with empty array purges ALL DO budgets", async () => {
+    const stub = getStub("user-sync-purge-all");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k1", 10_000_000, 0, "warn", null, 0);
+
+    const purged = await stub.syncBudgets([]);
+    expect(purged).toBe(2);
+
+    const state = await stub.getBudgetState();
+    expect(state).toHaveLength(0);
+  });
+
+  it("syncBudgets preserves DO spend/reserved/period_start (UPSERT semantics)", async () => {
+    const stub = getStub("user-sync-preserve");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
+
+    // Simulate DO accumulating spend via reconcile
+    const check = await stub.checkAndReserve([{ type: "user", id: "u1" }], 5_000_000);
+    await stub.reconcile(check.reservationId!, 5_000_000);
+
+    // syncBudgets with stale spend from Postgres
+    const purged = await stub.syncBudgets([
+      { entityType: "user", entityId: "u1", maxBudget: 99_000_000, spend: 10_000_000, policy: "warn", resetInterval: "daily", periodStart: 0 },
+    ]);
+    expect(purged).toBe(0);
+
+    const state = await stub.getBudgetState();
+    expect(state[0].spend).toBe(15_000_000); // DO's authoritative 10M + 5M, not Postgres's 10M
+    expect(state[0].max_budget).toBe(99_000_000); // Config updated
+    expect(state[0].policy).toBe("warn"); // Config updated
+    expect(state[0].reset_interval).toBe("daily"); // Config updated
+  });
+
+  it("syncBudgets with no ghost rows returns 0", async () => {
+    const stub = getStub("user-sync-no-ghosts");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+
+    const purged = await stub.syncBudgets([
+      { entityType: "user", entityId: "u1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
+    ]);
+    expect(purged).toBe(0);
+  });
+
+  it("syncBudgets on fresh DO returns 0", async () => {
+    const stub = getStub("user-sync-fresh");
+    const purged = await stub.syncBudgets([]);
+    expect(purged).toBe(0);
+  });
+
   // ── checkAndReserve ──────────────────────────────────────────────
 
   it("approves when estimate is within budget", async () => {
@@ -391,6 +474,112 @@ describe("UserBudgetDO", () => {
 
     const state = await stub.getBudgetState();
     expect(state[0].reserved).toBe(0); // Cleaned up
+  });
+
+  // ── removeBudget ─────────────────────────────────────────────────
+
+  it("removeBudget removes existing budget", async () => {
+    const stub = getStub("user-remove-1");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k1", 20_000_000, 0, "strict_block", null, 0);
+
+    await stub.removeBudget("user", "u1");
+
+    const state = await stub.getBudgetState();
+    expect(state).toHaveLength(1);
+    expect(state[0].entity_type).toBe("api_key");
+
+    // checkAndReserve should skip removed entity (no budget = no limit)
+    const result = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+      15_000_000,
+    );
+    expect(result.status).toBe("approved");
+  });
+
+  it("removeBudget on non-existent entity is a no-op (idempotent)", async () => {
+    const stub = getStub("user-remove-noop");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+
+    // Remove something that doesn't exist
+    await stub.removeBudget("api_key", "nonexistent");
+
+    const state = await stub.getBudgetState();
+    expect(state).toHaveLength(1);
+  });
+
+  it("removeBudget with outstanding reservations: alarm handles orphaned rows", async () => {
+    const stub = getStub("user-remove-orphan");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+
+    // Create a reservation
+    const check = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 10_000_000, 1,
+    );
+    expect(check.status).toBe("approved");
+
+    // Remove budget while reservation outstanding
+    await stub.removeBudget("user", "u1");
+
+    // Budget is gone
+    const state = await stub.getBudgetState();
+    expect(state).toHaveLength(0);
+
+    // Alarm cleanup should not crash (UPDATE on missing row is a no-op)
+    await new Promise((r) => setTimeout(r, 10));
+    await runDurableObjectAlarm(stub);
+  });
+
+  // ── resetSpend ──────────────────────────────────────────────────
+
+  it("resetSpend zeros spend/reserved and updates period_start", async () => {
+    const stub = getStub("user-reset-1");
+    const oldPeriodStart = Date.now() - 86_400_000;
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 30_000_000, "strict_block", "daily", oldPeriodStart);
+
+    // Add a reservation
+    const check = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 5_000_000,
+    );
+    expect(check.status).toBe("approved");
+
+    const beforeReset = Date.now();
+    await stub.resetSpend("user", "u1");
+
+    const state = await stub.getBudgetState();
+    expect(state[0].spend).toBe(0);
+    expect(state[0].reserved).toBe(0);
+    expect(state[0].period_start).toBeGreaterThanOrEqual(beforeReset);
+  });
+
+  it("resetSpend on non-existent entity is a no-op (idempotent)", async () => {
+    const stub = getStub("user-reset-noop");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
+
+    await stub.resetSpend("api_key", "nonexistent");
+
+    const state = await stub.getBudgetState();
+    expect(state).toHaveLength(1);
+    expect(state[0].spend).toBe(10_000_000); // unchanged
+  });
+
+  it("after resetSpend, full budget is available again", async () => {
+    const stub = getStub("user-reset-avail");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 50_000_000, "strict_block", null, 0);
+
+    // Budget is fully spent — should deny
+    const denied = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 1_000,
+    );
+    expect(denied.status).toBe("denied");
+
+    await stub.resetSpend("user", "u1");
+
+    // After reset — full budget available
+    const approved = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 49_000_000,
+    );
+    expect(approved.status).toBe("approved");
   });
 
   // ── getBudgetState reflects mutations ─────────────────────────────

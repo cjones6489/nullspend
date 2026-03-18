@@ -35,7 +35,7 @@ vi.mock("../lib/budget-spend.js", () => ({
   resetBudgetPeriod: (...args: unknown[]) => mockResetBudgetPeriod(...args),
 }));
 
-import { checkBudget, reconcileBudget, doLookupCache } from "../lib/budget-orchestrator.js";
+import { checkBudget, reconcileBudget, doLookupCache, invalidateDoLookupCacheForUser } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
 
 function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
@@ -128,12 +128,13 @@ describe("checkBudget — durable-objects mode", () => {
     expect(result.deniedEntityId).toBe("user-1");
   });
 
-  it("skipped when no budgets", async () => {
+  it("skipped when no budgets — but still calls doBudgetPopulate for ghost purge", async () => {
     mockLookupBudgetsForDO.mockResolvedValue([]);
 
     const result = await checkBudget(makeEnv(), makeCtx(), 5_000_000);
 
     expect(result.status).toBe("skipped");
+    expect(mockDoBudgetPopulate).toHaveBeenCalledWith(expect.anything(), "user-1", []);
   });
 
   it("skipped when no userId", async () => {
@@ -227,7 +228,7 @@ describe("checkBudget — durable-objects mode", () => {
 describe("reconcileBudget — durable-objects mode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDoBudgetReconcile.mockResolvedValue(undefined);
+    mockDoBudgetReconcile.mockResolvedValue("ok");
   });
 
   it("calls doBudgetReconcile with userId", async () => {
@@ -256,12 +257,77 @@ describe("reconcileBudget — durable-objects mode", () => {
     );
   });
 
-  it("never throws", async () => {
+  it("never throws by default", async () => {
     mockDoBudgetReconcile.mockRejectedValue(new Error("DO fail"));
 
     await expect(
       reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test"),
     ).resolves.toBeUndefined();
+  });
+
+  it("throwOnError: throws when status is not ok", async () => {
+    mockDoBudgetReconcile.mockResolvedValue("pg_failed");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
+    ).rejects.toThrow("Reconciliation failed with status: pg_failed");
+  });
+
+  it("throwOnError: does not throw when status is ok", async () => {
+    mockDoBudgetReconcile.mockResolvedValue("ok");
+
+    await expect(
+      reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("throwOnError: re-throws doBudgetReconcile rejection", async () => {
+    mockDoBudgetReconcile.mockRejectedValue(new Error("DO exploded"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
+    ).rejects.toThrow("DO exploded");
+  });
+});
+
+describe("invalidateDoLookupCacheForUser", () => {
+  beforeEach(() => {
+    doLookupCache.clear();
+  });
+
+  it("evicts matching entries and leaves others", () => {
+    doLookupCache.set("user-1:key-1", { entities: [], expiresAt: Date.now() + 60_000 });
+    doLookupCache.set("user-1:key-2", { entities: [], expiresAt: Date.now() + 60_000 });
+    doLookupCache.set("user-2:key-3", { entities: [], expiresAt: Date.now() + 60_000 });
+
+    const evicted = invalidateDoLookupCacheForUser("user-1");
+
+    expect(evicted).toBe(2);
+    expect(doLookupCache.has("user-1:key-1")).toBe(false);
+    expect(doLookupCache.has("user-1:key-2")).toBe(false);
+    expect(doLookupCache.has("user-2:key-3")).toBe(true);
+  });
+
+  it("returns count of evicted entries", () => {
+    doLookupCache.set("user-1:key-1", { entities: [], expiresAt: Date.now() + 60_000 });
+
+    expect(invalidateDoLookupCacheForUser("user-1")).toBe(1);
+  });
+
+  it("returns 0 on empty cache", () => {
+    expect(invalidateDoLookupCacheForUser("user-1")).toBe(0);
+  });
+
+  it("does not false-match on userId prefix (colon delimiter)", () => {
+    doLookupCache.set("user-10:key-1", { entities: [], expiresAt: Date.now() + 60_000 });
+    doLookupCache.set("user-1:key-1", { entities: [], expiresAt: Date.now() + 60_000 });
+
+    const evicted = invalidateDoLookupCacheForUser("user-1");
+
+    expect(evicted).toBe(1);
+    expect(doLookupCache.has("user-10:key-1")).toBe(true);
   });
 });
 
@@ -353,13 +419,14 @@ describe("checkBudgetDO — lookup cache", () => {
     expect(doLookupCache.has("user-1:key-1")).toBe(true);
   });
 
-  it("empty entities are NOT cached (avoids 60s fails-open window)", async () => {
+  it("empty entities are NOT cached (avoids 60s fails-open window) but still calls doBudgetPopulate", async () => {
     mockLookupBudgetsForDO.mockResolvedValue([]);
 
-    // First call: no budgets → skipped
+    // First call: no budgets → skipped, but doBudgetPopulate called for ghost purge
     const result1 = await checkBudget(makeEnv(), makeCtx(), 5_000_000);
     expect(result1.status).toBe("skipped");
     expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
+    expect(mockDoBudgetPopulate).toHaveBeenCalledWith(expect.anything(), "user-1", []);
 
     // Cache should NOT have the empty result
     expect(doLookupCache.size).toBe(0);
