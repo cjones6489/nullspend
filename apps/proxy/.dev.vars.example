@@ -3,3 +3,4 @@ UPSTASH_REDIS_REST_TOKEN=your-token-here
 DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres
 QSTASH_TOKEN=your-qstash-token-here
 BUDGET_ENGINE=redis
+SHADOW_SAMPLE_RATE=1.0

@@ -75,3 +75,67 @@ export async function updateBudgetSpend(
     }
   });
 }
+
+/**
+ * Reset budget period in Postgres: set spend=0 and update currentPeriodStart.
+ * Called when the DO detects an expired budget period.
+ * Runs inside `waitUntil` — never throws.
+ */
+export async function resetBudgetPeriod(
+  connectionString: string,
+  resets: Array<{ entityType: string; entityId: string; newPeriodStart: number }>,
+): Promise<void> {
+  if (resets.length === 0) return;
+
+  if (isLocalConnection(connectionString)) {
+    console.log("[budget-spend] Local dev — period reset (not persisted):", { resets });
+    return;
+  }
+
+  await withDbConnection(async () => {
+    let client: Client | null = null;
+
+    try {
+      client = new Client({
+        connectionString,
+        connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+      });
+      client.on("error", (err) => {
+        console.error("[budget-spend] pg client error:", err.message);
+      });
+      await client.connect();
+      const db = drizzle({ client });
+
+      await db.transaction(async (tx) => {
+        for (const reset of resets) {
+          await tx
+            .update(budgets)
+            .set({
+              spendMicrodollars: 0,
+              currentPeriodStart: new Date(reset.newPeriodStart),
+              updatedAt: sql`NOW()`,
+            })
+            .where(
+              and(
+                eq(budgets.entityType, reset.entityType),
+                eq(budgets.entityId, reset.entityId),
+              ),
+            );
+        }
+      });
+    } catch (err) {
+      console.error(
+        "[budget-spend] Failed to reset period:",
+        err instanceof Error ? err.message : "Unknown error",
+      );
+    } finally {
+      if (client) {
+        try {
+          await client.end();
+        } catch {
+          // already closed
+        }
+      }
+    }
+  });
+}

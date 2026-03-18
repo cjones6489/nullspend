@@ -3,9 +3,8 @@ import { Redis } from "@upstash/redis/cloudflare";
 import type { RequestContext } from "../lib/context.js";
 import { errorResponse } from "../lib/errors.js";
 import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
-import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
 import { logCostEventsBatch } from "../lib/cost-logger.js";
-import { reconcileReservation } from "../lib/budget-reconcile.js";
+import { checkBudget, reconcileBudget, resolveBudgetMode } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
@@ -57,45 +56,26 @@ export async function handleMcpBudgetCheck(
     return Response.json({ allowed: true });
   }
 
-  // redis is non-null when hasBudgets is true (set in middleware)
-  const redis = ctx.redis!;
+  const budgetMode = resolveBudgetMode(env);
 
-  let budgetEntities: BudgetEntity[];
   try {
-    budgetEntities = await lookupBudgets(redis, ctx.connectionString, { keyId: ctx.auth.keyId, userId: ctx.auth.userId });
-  } catch {
-    return errorResponse("budget_unavailable", "Budget service unavailable", 503);
-  }
+    const outcome = await checkBudget(budgetMode, env, ctx, parsed.estimateMicrodollars);
 
-  if (budgetEntities.length === 0) {
-    return Response.json({ allowed: true });
-  }
+    if (outcome.status === "denied") {
+      return Response.json({
+        allowed: false,
+        denied: true,
+        remaining: outcome.remaining,
+      });
+    }
 
-  const entityKeys = budgetEntities.map((e) => e.entityKey);
-
-  let checkResult: BudgetCheckResult;
-  try {
-    checkResult = await checkAndReserve(
-      redis,
-      entityKeys,
-      parsed.estimateMicrodollars,
-    );
-  } catch {
-    return errorResponse("budget_unavailable", "Budget service unavailable", 503);
-  }
-
-  if (checkResult.status === "denied") {
     return Response.json({
-      allowed: false,
-      denied: true,
-      remaining: checkResult.remaining,
+      allowed: true,
+      reservationId: outcome.reservationId,
     });
+  } catch {
+    return errorResponse("budget_unavailable", "Budget service unavailable", 503);
   }
-
-  return Response.json({
-    allowed: true,
-    reservationId: checkResult.reservationId,
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +137,7 @@ export async function handleMcpEvents(
   const apiKeyId = ctx.auth.keyId;
 
   const accepted = events.length;
+  const budgetMode = resolveBudgetMode(env);
 
   waitUntil(
     (async () => {
@@ -201,7 +182,7 @@ export async function handleMcpEvents(
         if (budgetEntities.length > 0) {
           for (const event of eventsWithReservations) {
             try {
-              await reconcileReservation(redis, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
+              await reconcileBudget(budgetMode, env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString, redis);
             } catch (err) {
               console.error("[mcp-events] Failed to reconcile reservation:", err);
             }

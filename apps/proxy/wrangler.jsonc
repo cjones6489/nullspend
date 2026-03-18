@@ -6,7 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "PROXY_RATE_LIMIT": "600",
-    "BUDGET_ENGINE": "redis"
+    "BUDGET_ENGINE": "redis",
+    "SHADOW_SAMPLE_RATE": "0.0"
   },
   "hyperdrive": [
     {

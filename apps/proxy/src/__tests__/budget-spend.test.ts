@@ -60,11 +60,12 @@ vi.mock("@nullspend/db", () => ({
     entityType: "entityType",
     entityId: "entityId",
     spendMicrodollars: "spendMicrodollars",
+    currentPeriodStart: "currentPeriodStart",
     updatedAt: "updatedAt",
   },
 }));
 
-import { updateBudgetSpend } from "../lib/budget-spend.js";
+import { updateBudgetSpend, resetBudgetPeriod } from "../lib/budget-spend.js";
 
 const REMOTE_CONN = "postgresql://postgres:postgres@db.example.com:5432/postgres";
 
@@ -194,5 +195,76 @@ describe("updateBudgetSpend", () => {
     );
 
     expect(mockEnd).toHaveBeenCalled();
+  });
+});
+
+describe("resetBudgetPeriod", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockConnect.mockResolvedValue(undefined);
+    mockEnd.mockResolvedValue(undefined);
+    mockUpdateWhere.mockResolvedValue(undefined);
+  });
+
+  it("early returns on empty array", async () => {
+    await resetBudgetPeriod(REMOTE_CONN, []);
+    expect(mockConnect).not.toHaveBeenCalled();
+  });
+
+  it("sets spend=0 and currentPeriodStart for each entity", async () => {
+    await resetBudgetPeriod(REMOTE_CONN, [
+      { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
+      { entityType: "api_key", entityId: "key-1", newPeriodStart: 1_710_000_000_000 },
+    ]);
+
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockDrizzleDb.update).toHaveBeenCalledTimes(2);
+    expect(mockEnd).toHaveBeenCalled();
+  });
+
+  it("never throws on Postgres error", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockConnect.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+    await expect(
+      resetBudgetPeriod(REMOTE_CONN, [
+        { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
+      ]),
+    ).resolves.toBeUndefined();
+
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("[budget-spend]"),
+      expect.any(String),
+    );
+  });
+
+  it("skips on local connection", async () => {
+    (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST = true;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await resetBudgetPeriod(
+      "postgresql://postgres:postgres@localhost:5432/postgres",
+      [{ entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 }],
+    );
+
+    expect(mockConnect).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringContaining("[budget-spend]"),
+      expect.anything(),
+    );
+
+    delete (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST;
+  });
+
+  it("handles multiple resets in single call", async () => {
+    await resetBudgetPeriod(REMOTE_CONN, [
+      { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
+      { entityType: "api_key", entityId: "key-1", newPeriodStart: 1_710_000_000_000 },
+      { entityType: "user", entityId: "user-2", newPeriodStart: 1_710_000_000_000 },
+    ]);
+
+    expect(mockDrizzleDb.update).toHaveBeenCalledTimes(3);
+    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockEnd).toHaveBeenCalledTimes(1);
   });
 });

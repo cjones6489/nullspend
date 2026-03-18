@@ -20,6 +20,7 @@ export interface CheckResult {
   remaining?: number;
   maxBudget?: number;
   spend?: number;
+  periodResets?: Array<{ entityType: string; entityId: string; newPeriodStart: number }>;
 }
 
 export interface ReconcileResult {
@@ -147,6 +148,7 @@ export class UserBudgetDO extends DurableObject {
 
     let result: CheckResult = { status: "approved" };
     let reserved = false;
+    const periodResets: Array<{ entityType: string; entityId: string; newPeriodStart: number }> = [];
 
     this.ctx.storage.transactionSync(() => {
       // Phase 1: Check all entities (with inline period reset)
@@ -183,6 +185,7 @@ export class UserBudgetDO extends DurableObject {
             row.spend = 0;
             row.reserved = 0;
             row.period_start = newPeriodStart;
+            periodResets.push({ entityType: entity.type, entityId: entity.id, newPeriodStart });
           }
         }
 
@@ -235,6 +238,11 @@ export class UserBudgetDO extends DurableObject {
       result = { status: "approved", reservationId };
       reserved = true;
     });
+
+    // Attach period resets to result (declared outside transactionSync to survive early returns)
+    if (periodResets.length > 0) {
+      result.periodResets = periodResets;
+    }
 
     // Update in-memory cache
     this.loadBudgets();

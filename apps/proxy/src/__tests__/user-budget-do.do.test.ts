@@ -253,6 +253,64 @@ describe("UserBudgetDO", () => {
     expect(state[0].period_start).toBeGreaterThan(yesterday);
   });
 
+  it("returns periodResets array when daily budget period has expired", async () => {
+    const stub = getStub("user-period-reset-returns");
+    const twoDaysAgo = Date.now() - 2 * 86_400_000;
+    await stub.populateIfEmpty(
+      "user", "u1", 50_000_000, 50_000_000, "strict_block", "daily", twoDaysAgo,
+    );
+
+    const result = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 10_000_000,
+    );
+
+    expect(result.periodResets).toBeDefined();
+    expect(result.periodResets).toHaveLength(1);
+    expect(result.periodResets![0].entityType).toBe("user");
+    expect(result.periodResets![0].entityId).toBe("u1");
+    expect(result.periodResets![0].newPeriodStart).toBeGreaterThan(twoDaysAgo);
+  });
+
+  it("returns no periodResets when period is current", async () => {
+    const stub = getStub("user-period-current");
+    const recentStart = Date.now() - 1_000; // 1 second ago
+    await stub.populateIfEmpty(
+      "user", "u1", 50_000_000, 10_000_000, "strict_block", "daily", recentStart,
+    );
+
+    const result = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 5_000_000,
+    );
+
+    expect(result.status).toBe("approved");
+    expect(result.periodResets).toBeUndefined();
+  });
+
+  it("returns periodResets even when denied (reset entity A, deny on entity B)", async () => {
+    const stub = getStub("user-period-reset-denied");
+    const twoDaysAgo = Date.now() - 2 * 86_400_000;
+    // Entity A: expired period, will reset
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 90_000_000, "strict_block", "daily", twoDaysAgo,
+    );
+    // Entity B: nearly full, current period, will deny
+    await stub.populateIfEmpty(
+      "api_key", "k1", 10_000_000, 9_500_000, "strict_block", null, 0,
+    );
+
+    const result = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+      5_000_000,
+    );
+
+    expect(result.status).toBe("denied");
+    expect(result.deniedEntity).toBe("api_key:k1");
+    // Period reset from entity A should still be recorded
+    expect(result.periodResets).toBeDefined();
+    expect(result.periodResets).toHaveLength(1);
+    expect(result.periodResets![0].entityType).toBe("user");
+  });
+
   // ── Alarm ────────────────────────────────────────────────────────
 
   it("alarm cleans up expired reservations", async () => {
