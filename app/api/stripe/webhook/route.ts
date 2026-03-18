@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!webhookSecret) {
     console.error("[NullSpend] STRIPE_WEBHOOK_SECRET is not set");
     return NextResponse.json(
-      { error: "Webhook secret not configured" },
+      { error: "server_error", message: "Webhook secret not configured" },
       { status: 500 },
     );
   }
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
   if (!signature) {
     return NextResponse.json(
-      { error: "Missing stripe-signature header" },
+      { error: "missing_signature", message: "Missing stripe-signature header" },
       { status: 400 },
     );
   }
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[NullSpend] Webhook signature verification failed:", message);
     return NextResponse.json(
-      { error: "Webhook signature verification failed" },
+      { error: "signature_invalid", message: "Webhook signature verification failed" },
       { status: 400 },
     );
   }
@@ -80,13 +80,13 @@ export async function POST(request: Request) {
     if (isTransient) {
       // Return 500 so Stripe retries — the error may resolve on its own.
       return NextResponse.json(
-        { error: "Webhook processing failed (transient)" },
+        { error: "webhook_processing_error", message: "Webhook processing failed (transient)" },
         { status: 500 },
       );
     }
     // Permanent error: return 200 to prevent Stripe from retrying endlessly.
     // The error is logged above for investigation.
-    return NextResponse.json({ received: true, error: "processing_failed" });
+    return NextResponse.json({ received: true, error: "processing_failed", message: "Permanent webhook processing failure" });
   }
 
   return NextResponse.json({ received: true });

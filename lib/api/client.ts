@@ -18,9 +18,11 @@ async function handleResponse<T>(response: Response): Promise<T> {
       body = undefined;
     }
     const message =
-      body && typeof body === "object" && "error" in body
-        ? String((body as { error: string }).error)
-        : `Request failed with status ${response.status}`;
+      body && typeof body === "object" && "message" in body
+        ? String((body as { message: string }).message)
+        : body && typeof body === "object" && "error" in body
+          ? String((body as { error: string }).error)
+          : `Request failed with status ${response.status}`;
     throw new ApiError(message, response.status, body);
   }
   return response.json() as Promise<T>;

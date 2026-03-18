@@ -55,7 +55,7 @@ export async function proxy(request: NextRequest) {
         const { success, limit, remaining, reset } = await limiter.limit(ip);
         if (!success) {
           return withRequestId(NextResponse.json(
-            { error: "Too many requests" },
+            { error: "rate_limit_exceeded", message: "Too many requests" },
             {
               status: 429,
               headers: {
@@ -71,7 +71,7 @@ export async function proxy(request: NextRequest) {
         logger.error({ requestId, err }, "Rate limiter error");
         // M1: Fail closed — block request when rate limiter is unavailable
         return withRequestId(NextResponse.json(
-          { error: "Service temporarily unavailable" },
+          { error: "service_unavailable", message: "Service temporarily unavailable" },
           { status: 503 },
         ));
       }
@@ -92,13 +92,13 @@ export async function proxy(request: NextRequest) {
       try {
         if (new URL(origin).host !== host) {
           return withRequestId(NextResponse.json(
-            { error: "Cross-origin request blocked" },
+            { error: "csrf_rejected", message: "Cross-origin request blocked" },
             { status: 403 },
           ));
         }
       } catch {
         return withRequestId(NextResponse.json(
-          { error: "Invalid origin" },
+          { error: "invalid_origin", message: "Invalid origin" },
           { status: 400 },
         ));
       }
@@ -108,7 +108,7 @@ export async function proxy(request: NextRequest) {
     const contentLength = request.headers.get("content-length");
     if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
       return withRequestId(NextResponse.json(
-        { error: "Payload too large" },
+        { error: "payload_too_large", message: "Payload too large" },
         { status: 413 },
       ));
     }

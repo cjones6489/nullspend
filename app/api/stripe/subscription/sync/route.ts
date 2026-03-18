@@ -21,7 +21,7 @@ export async function POST(request: Request) {
 
     if (session.metadata?.userId !== userId) {
       return NextResponse.json(
-        { error: "Session does not belong to this user." },
+        { error: "forbidden", message: "Session does not belong to this user." },
         { status: 403 },
       );
     }
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const subscription = session.subscription as Stripe.Subscription | null;
     if (!subscription) {
       return NextResponse.json(
-        { error: "No subscription found on this session." },
+        { error: "not_found", message: "No subscription found on this session." },
         { status: 400 },
       );
     }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
     if (!stripeCustomerId) {
       return NextResponse.json(
-        { error: "No customer found on this session." },
+        { error: "not_found", message: "No customer found on this session." },
         { status: 400 },
       );
     }

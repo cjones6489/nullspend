@@ -121,7 +121,8 @@ describe("POST /api/webhooks", () => {
 
     expect(res.status).toBe(409);
     const body = await res.json();
-    expect(body.error).toContain("10");
+    expect(body.error).toBe("limit_exceeded");
+    expect(body.message).toContain("10");
   });
 
   it("returns 400 for non-HTTPS URL", async () => {

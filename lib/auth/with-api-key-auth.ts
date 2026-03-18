@@ -39,7 +39,7 @@ export async function authenticateApiKey(
       };
       if (requestId) headers["x-request-id"] = requestId;
       return NextResponse.json(
-        { error: "Too many requests" },
+        { error: "rate_limit_exceeded", message: "Too many requests" },
         { status: 429, headers },
       );
     }

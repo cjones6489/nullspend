@@ -77,61 +77,64 @@ export async function readRouteParams<T extends Record<string, string>>(
   return await params;
 }
 
+function errorJson(error: string, message: string, extra?: Record<string, unknown>) {
+  return { error, message, ...extra };
+}
+
 export function handleRouteError(error: unknown) {
   if (error instanceof InvalidJsonBodyError) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json(errorJson("invalid_json", error.message), { status: 400 });
   }
 
   if (error instanceof UnsupportedMediaTypeError) {
-    return NextResponse.json({ error: error.message }, { status: 415 });
+    return NextResponse.json(errorJson("unsupported_media_type", error.message), { status: 415 });
   }
 
   if (error instanceof PayloadTooLargeError) {
-    return NextResponse.json({ error: error.message }, { status: 413 });
+    return NextResponse.json(errorJson("payload_too_large", error.message), { status: 413 });
   }
 
   if (error instanceof ZodError) {
     return NextResponse.json(
-      {
-        error: "Request validation failed.",
+      errorJson("validation_error", "Request validation failed.", {
         issues: error.issues.map((i) => ({ path: i.path, message: i.message })),
-      },
+      }),
       { status: 400 },
     );
   }
 
   if (error instanceof ActionNotFoundError) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+    return NextResponse.json(errorJson("not_found", error.message), { status: 404 });
   }
 
   if (error instanceof InvalidActionTransitionError) {
-    return NextResponse.json({ error: error.message }, { status: 409 });
+    return NextResponse.json(errorJson("invalid_action_transition", error.message), { status: 409 });
   }
 
   if (error instanceof StaleActionError) {
-    return NextResponse.json({ error: error.message }, { status: 409 });
+    return NextResponse.json(errorJson("stale_action", error.message), { status: 409 });
   }
 
   if (error instanceof ActionExpiredError) {
-    return NextResponse.json({ error: error.message }, { status: 409 });
+    return NextResponse.json(errorJson("action_expired", error.message), { status: 409 });
   }
 
   if (error instanceof ApiKeyError) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
+    return NextResponse.json(errorJson("authentication_required", error.message), { status: 401 });
   }
 
   if (error instanceof AuthenticationRequiredError) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
+    return NextResponse.json(errorJson("authentication_required", error.message), { status: 401 });
   }
 
   if (error instanceof ForbiddenError) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    return NextResponse.json(errorJson("forbidden", error.message), { status: 403 });
   }
 
   if (error instanceof CircuitOpenError) {
     getLogger("http").warn({ err: error }, "Circuit breaker open — returning 503");
     return NextResponse.json(
-      { error: "Service temporarily unavailable." },
+      errorJson("service_unavailable", "Service temporarily unavailable."),
       { status: 503, headers: { "Retry-After": "30" } },
     );
   }
@@ -139,7 +142,7 @@ export function handleRouteError(error: unknown) {
   if (error instanceof SupabaseEnvError) {
     getLogger("http").error({ err: error }, "Supabase configuration error");
     return NextResponse.json(
-      { error: "Server configuration error." },
+      errorJson("server_error", "Server configuration error."),
       { status: 500 },
     );
   }
@@ -147,7 +150,7 @@ export function handleRouteError(error: unknown) {
   getLogger("http").error({ err: error }, "Unhandled route error");
   captureExceptionWithContext(error);
   return NextResponse.json(
-    { error: "Internal server error." },
+    errorJson("internal_error", "Internal server error."),
     { status: 500 },
   );
 }

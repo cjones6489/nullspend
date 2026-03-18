@@ -75,7 +75,7 @@ describe("POST /api/tool-costs/discover", () => {
 
   it("returns 429 when per-key rate limit is exceeded", async () => {
     const rateLimitResponse = new Response(
-      JSON.stringify({ error: "Too many requests" }),
+      JSON.stringify({ error: "rate_limit_exceeded", message: "Too many requests" }),
       { status: 429, headers: { "Content-Type": "application/json" } },
     );
     mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);

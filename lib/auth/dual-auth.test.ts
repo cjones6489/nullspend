@@ -53,7 +53,7 @@ describe("assertApiKeyOrSession", () => {
 
   it("returns 429 Response when per-key rate limit exceeded", async () => {
     const rateLimitResponse = new Response(
-      JSON.stringify({ error: "Too many requests" }),
+      JSON.stringify({ error: "rate_limit_exceeded", message: "Too many requests" }),
       { status: 429 },
     );
     mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);

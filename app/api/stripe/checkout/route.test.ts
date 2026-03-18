@@ -110,7 +110,8 @@ describe("POST /api/stripe/checkout", () => {
     const res = await POST(makeRequest({ priceId: "price_invalid" }));
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/Invalid price ID/);
+    expect(body.error).toBe("invalid_input");
+    expect(body.message).toMatch(/Invalid price ID/);
   });
 
   it("returns 400 when user already has an active subscription", async () => {
@@ -122,7 +123,8 @@ describe("POST /api/stripe/checkout", () => {
     const res = await POST(makeRequest({ priceId: "price_pro" }));
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toMatch(/already have an active subscription/);
+    expect(body.error).toBe("subscription_exists");
+    expect(body.message).toMatch(/already have an active subscription/);
   });
 
   it("returns 400 for missing priceId", async () => {

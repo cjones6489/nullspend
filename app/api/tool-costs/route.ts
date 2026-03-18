@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
     if (!row) {
       return NextResponse.json(
-        { error: "Tool cost not found. Tools must be discovered by the proxy before costs can be set." },
+        { error: "not_found", message: "Tool cost not found. Tools must be discovered by the proxy before costs can be set." },
         { status: 404 },
       );
     }

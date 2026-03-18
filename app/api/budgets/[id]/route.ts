@@ -6,6 +6,7 @@ import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -15,7 +16,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
     const { id } = await readRouteParams(params);
     const db = getDb();
 
-    await db.transaction(async (tx) => {
+    const { entityType, entityId } = await db.transaction(async (tx) => {
       const rows = await tx
         .select()
         .from(budgets)
@@ -30,12 +31,14 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
       await verifyBudgetOwnership(tx, userId, budget.entityType, budget.entityId);
 
       await tx.delete(budgets).where(eq(budgets.id, id));
+      return { entityType: budget.entityType, entityId: budget.entityId };
     });
 
+    invalidateProxyCache({ action: "remove", userId, entityType, entityId }).catch(() => {});
     return NextResponse.json({ deleted: true });
   } catch (error) {
     if (error instanceof NotFoundError) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
+      return NextResponse.json({ error: "not_found", message: error.message }, { status: 404 });
     }
     return handleRouteError(error);
   }
@@ -77,6 +80,13 @@ export async function POST(_request: Request, { params }: RouteParams) {
       return result;
     });
 
+    invalidateProxyCache({
+      action: "reset_spend",
+      userId,
+      entityType: updated.entityType,
+      entityId: updated.entityId,
+    }).catch(() => {});
+
     return NextResponse.json({
       ...updated,
       currentPeriodStart: updated.currentPeriodStart?.toISOString() ?? null,
@@ -85,7 +95,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
     });
   } catch (error) {
     if (error instanceof NotFoundError) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
+      return NextResponse.json({ error: "not_found", message: error.message }, { status: 404 });
     }
     return handleRouteError(error);
   }

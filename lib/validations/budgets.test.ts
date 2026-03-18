@@ -172,7 +172,8 @@ describe("handleRouteError Zod sanitization", () => {
     expect(response.status).toBe(400);
 
     const body = await response.json();
-    expect(body.error).toBe("Request validation failed.");
+    expect(body.error).toBe("validation_error");
+    expect(body.message).toBe("Request validation failed.");
     expect(body.issues).toHaveLength(1);
     expect(body.issues[0]).toEqual({
       path: ["maxBudgetMicrodollars"],

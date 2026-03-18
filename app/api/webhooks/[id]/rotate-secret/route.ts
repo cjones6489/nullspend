@@ -34,7 +34,7 @@ export async function POST(
 
     if (!updated) {
       return NextResponse.json(
-        { error: "Webhook endpoint not found." },
+        { error: "not_found", message: "Webhook endpoint not found." },
         { status: 404 },
       );
     }

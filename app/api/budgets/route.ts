@@ -62,7 +62,8 @@ export const POST = withRequestContext(async (request: Request) => {
   if (input.maxBudgetMicrodollars > spendCap) {
     return NextResponse.json(
       {
-        error: `Budget amount exceeds your ${TIERS[tier].label} tier spend cap of ${(spendCap / 1_000_000).toLocaleString()} microdollars ($${(spendCap / 1_000_000_000).toLocaleString()}). Upgrade your plan to increase your limit.`,
+        error: "spend_cap_exceeded",
+        message: `Budget amount exceeds your ${TIERS[tier].label} tier spend cap of ${(spendCap / 1_000_000).toLocaleString()} microdollars ($${(spendCap / 1_000_000_000).toLocaleString()}). Upgrade your plan to increase your limit.`,
       },
       { status: 400 },
     );

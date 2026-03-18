@@ -38,7 +38,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
     return NextResponse.json({ deleted: true });
   } catch (error) {
     if (error instanceof NotFoundError) {
-      return NextResponse.json({ error: error.message }, { status: 404 });
+      return NextResponse.json({ error: "not_found", message: error.message }, { status: 404 });
     }
     return handleRouteError(error);
   }

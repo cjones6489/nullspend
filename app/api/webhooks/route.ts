@@ -61,7 +61,7 @@ export async function POST(request: Request) {
 
     if (endpointCount >= MAX_WEBHOOK_ENDPOINTS_PER_USER) {
       return NextResponse.json(
-        { error: `Maximum of ${MAX_WEBHOOK_ENDPOINTS_PER_USER} webhook endpoints allowed.` },
+        { error: "limit_exceeded", message: `Maximum of ${MAX_WEBHOOK_ENDPOINTS_PER_USER} webhook endpoints allowed.` },
         { status: 409 },
       );
     }

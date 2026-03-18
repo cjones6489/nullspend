@@ -201,7 +201,7 @@ describe("withIdempotency", () => {
 
   it("5xx response: sentinel cleaned up so retries can proceed", async () => {
     const handler = makeHandler(() =>
-      NextResponse.json({ error: "Internal" }, { status: 500 }),
+      NextResponse.json({ error: "internal_error", message: "Internal" }, { status: 500 }),
     );
     const request = makeRequest({ "Idempotency-Key": "key-5xx" });
 
@@ -213,7 +213,7 @@ describe("withIdempotency", () => {
 
   it("429 rate limit response: NOT cached, sentinel cleaned up", async () => {
     const handler = makeHandler(() =>
-      NextResponse.json({ error: "Too many requests" }, { status: 429 }),
+      NextResponse.json({ error: "rate_limit_exceeded", message: "Too many requests" }, { status: 429 }),
     );
     const request = makeRequest({ "Idempotency-Key": "key-429" });
 
@@ -231,7 +231,7 @@ describe("withIdempotency", () => {
 
   it("4xx response: cached in Redis (same as Stripe behavior)", async () => {
     const handler = makeHandler(() =>
-      NextResponse.json({ error: "Validation failed" }, { status: 400 }),
+      NextResponse.json({ error: "validation_error", message: "Validation failed" }, { status: 400 }),
     );
     const request = makeRequest({ "Idempotency-Key": "key-4xx" });
 

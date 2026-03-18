@@ -110,7 +110,8 @@ describe("authenticateApiKey", () => {
     const response = result as Response;
     expect(response.status).toBe(429);
     const body = await response.json();
-    expect(body.error).toBe("Too many requests");
+    expect(body.error).toBe("rate_limit_exceeded");
+    expect(body.message).toBe("Too many requests");
     expect(response.headers.get("X-RateLimit-Limit")).toBe("60");
     expect(response.headers.get("X-RateLimit-Remaining")).toBe("0");
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");

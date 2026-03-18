@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
     if (activeKeyCount >= MAX_KEYS_PER_USER) {
       return NextResponse.json(
-        { error: `Maximum of ${MAX_KEYS_PER_USER} active API keys allowed.` },
+        { error: "limit_exceeded", message: `Maximum of ${MAX_KEYS_PER_USER} active API keys allowed.` },
         { status: 409 },
       );
     }

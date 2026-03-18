@@ -549,6 +549,7 @@ describe("POST /api/stripe/webhook", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.error).toBe("processing_failed");
+      expect(body.message).toBe("Permanent webhook processing failure");
     });
   });
 });

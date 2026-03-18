@@ -139,7 +139,8 @@ describe("POST /api/keys", () => {
 
     expect(res.status).toBe(409);
     const body = await res.json();
-    expect(body.error).toContain("20");
+    expect(body.error).toBe("limit_exceeded");
+    expect(body.message).toContain("20");
   });
 
   it("returns 400 for missing name", async () => {
