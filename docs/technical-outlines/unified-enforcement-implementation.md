@@ -2,8 +2,8 @@
 
 > **Revised: 2026-03-18.** Updated to reflect DO-based architecture
 > (Durable Objects SQLite replaced Redis Lua), CF Queues reconciliation,
-> and Phase 2A completion. Redis references in BudgetCheck/VelocityCheck
-> sections updated to note the architecture change.
+> and Phase 2A completion. All Redis references replaced with DO/KV
+> equivalents.
 
 This document breaks the unified enforcement architecture into incremental
 subphases. Each subphase is independently testable, deployable, and
@@ -291,7 +291,7 @@ state for an API key's associated entities.
 - Auth: `assertApiKeyWithIdentity()`
 - Query: find all budgets where `entity_type='api_key' AND entity_id=keyId`
   OR `entity_type='user' AND entity_id=userId`
-- For each budget, read current spend from Redis (if available) or Postgres
+- For each budget, read current spend from Postgres (see Option A/B below)
 - Return:
   ```json
   {
@@ -616,7 +616,7 @@ export class PolicyCheck implements EnforcementCheck {
 
 **2. Tests**
 
-The PolicyCheck is a pure function — no Redis, no Postgres, no network.
+The PolicyCheck is a pure function — no DO calls, no Postgres, no network.
 It should have thorough unit tests covering every rule combination.
 
 ### What to change
@@ -1362,7 +1362,7 @@ When a velocity alert fires:
 ```
 Velocity exceeds threshold
   → QStash sends alert event
-  → Alert handler writes Redis override
+  → Alert handler writes DO/KV override
   → Subsequent requests hit tighter policy
   → Dashboard shows alert banner
   → Human can dismiss or make permanent
