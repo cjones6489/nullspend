@@ -1811,3 +1811,172 @@ describe("checkBudget", () => {
     expect((err as NullSpendError).statusCode).toBe(401);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Client-side batching (Phase 2F)
+// ---------------------------------------------------------------------------
+
+function makeCostEvent(id = 1) {
+  return {
+    provider: "openai",
+    model: "gpt-4o",
+    inputTokens: 100 * id,
+    outputTokens: 50 * id,
+    costMicrodollars: 500 * id,
+  };
+}
+
+describe("client-side batching", () => {
+  it("queueCost() queues locally, flush() sends batch to /api/cost-events/batch", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ inserted: 2, ids: ["id-1", "id-2"] }),
+    );
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 0,
+      costReporting: { batchSize: 100, flushIntervalMs: 60000 },
+    });
+
+    client.queueCost(makeCostEvent(1));
+    client.queueCost(makeCostEvent(2));
+
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    await client.flush();
+
+    expect(fetchFn).toHaveBeenCalledOnce();
+    const [url, init] = fetchFn.mock.calls[0];
+    expect(url).toBe("http://localhost:3000/api/cost-events/batch");
+    expect(init.method).toBe("POST");
+    const body = JSON.parse(init.body);
+    expect(body.events).toHaveLength(2);
+
+    await client.shutdown();
+  });
+
+  it("queueCost() throws when batching not configured", () => {
+    const fetchFn = vi.fn();
+    const client = createClient(fetchFn);
+
+    expect(() => client.queueCost(makeCostEvent())).toThrow(
+      "queueCost() requires costReporting to be configured",
+    );
+  });
+
+  it("queueCost() throws after shutdown()", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ inserted: 0, ids: [] }),
+    );
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 0,
+      costReporting: { batchSize: 100, flushIntervalMs: 60000 },
+    });
+
+    await client.shutdown();
+
+    let thrown: unknown;
+    try {
+      client.queueCost(makeCostEvent());
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(NullSpendError);
+    expect((thrown as Error).message).toBe("CostReporter is shut down");
+  });
+
+  it("reportCost() still works normally with batching configured", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ id: "ce-1", createdAt: "2026-01-01T00:00:00Z" }),
+    );
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 0,
+      costReporting: { batchSize: 10 },
+    });
+
+    const result = await client.reportCost(makeCostEvent());
+    expect(result.id).toBe("ce-1");
+
+    const [url] = fetchFn.mock.calls[0];
+    expect(url).toBe("http://localhost:3000/api/cost-events");
+
+    await client.shutdown();
+  });
+
+  it("reportCost() still returns ReportCostResponse with batching configured", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ id: "ce-2", createdAt: "2026-03-18T00:00:00Z" }),
+    );
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 0,
+      costReporting: {},
+    });
+
+    const result = await client.reportCost(makeCostEvent());
+    expect(result).toEqual({ id: "ce-2", createdAt: "2026-03-18T00:00:00Z" });
+
+    await client.shutdown();
+  });
+
+  it("flush() / shutdown() are no-ops when batching not configured", async () => {
+    const fetchFn = vi.fn();
+    const client = createClient(fetchFn);
+
+    // Should not throw or call fetch
+    await client.flush();
+    await client.shutdown();
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("reportCostBatch() is not affected by batching config (bypasses CostReporter)", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ inserted: 1, ids: ["id-1"] }),
+    );
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 0,
+      costReporting: { batchSize: 100 },
+    });
+
+    const result = await client.reportCostBatch([makeCostEvent()]);
+    expect(result.inserted).toBe(1);
+
+    const [url] = fetchFn.mock.calls[0];
+    expect(url).toBe("http://localhost:3000/api/cost-events/batch");
+
+    await client.shutdown();
+  });
+
+  it("costReporting: {} (empty config) enables batching with all defaults", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse({ inserted: 1, ids: ["id-1"] }),
+    );
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ask_test123",
+      fetch: fetchFn,
+      maxRetries: 0,
+      costReporting: {},
+    });
+
+    // Should not throw — batching is enabled
+    client.queueCost(makeCostEvent());
+    await client.flush();
+
+    expect(fetchFn).toHaveBeenCalledOnce();
+
+    await client.shutdown();
+  });
+});

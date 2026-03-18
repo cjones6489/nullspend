@@ -6,6 +6,7 @@ export type {
   ActionType,
   BudgetEntity,
   BudgetStatus,
+  CostReportingConfig,
   NullSpendConfig,
   CostEventInput,
   CreateActionInput,

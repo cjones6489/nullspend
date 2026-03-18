@@ -33,6 +33,19 @@ export const TERMINAL_STATUSES: ReadonlySet<ActionStatus> = new Set([
 // Client configuration
 // ---------------------------------------------------------------------------
 
+export interface CostReportingConfig {
+  /** Flush when queue reaches this size. Default: 10. Clamped [1, 100]. */
+  batchSize?: number;
+  /** Flush on a timer interval in ms. Default: 5000. Min 100. */
+  flushIntervalMs?: number;
+  /** Max queued events before dropping oldest. Default: 1000. Min 1. */
+  maxQueueSize?: number;
+  /** Called when events are dropped due to queue overflow. */
+  onDropped?: (count: number) => void;
+  /** Called when a batch flush fails after retries. */
+  onFlushError?: (error: Error, events: CostEventInput[]) => void;
+}
+
 export interface NullSpendConfig {
   baseUrl: string;
   apiKey: string;
@@ -48,6 +61,8 @@ export interface NullSpendConfig {
   maxRetryTimeMs?: number;
   /** Called before each retry. Return false to abort retrying. */
   onRetry?: (info: RetryInfo) => void | boolean;
+  /** Enable client-side cost event batching. Presence enables batching. */
+  costReporting?: CostReportingConfig;
 }
 
 export interface RetryInfo {

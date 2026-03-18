@@ -1,3 +1,4 @@
+import { CostReporter } from "./cost-reporter.js";
 import { NullSpendError, RejectedError, TimeoutError } from "./errors.js";
 import {
   isRetryableStatusCode,
@@ -45,6 +46,7 @@ export class NullSpend {
   private readonly retryBaseDelayMs: number;
   private readonly maxRetryTimeMs: number;
   private readonly onRetry: ((info: RetryInfo) => void | boolean) | undefined;
+  private readonly costReporter: CostReporter | null;
 
   constructor(config: NullSpendConfig) {
     if (!config.baseUrl) throw new NullSpendError("baseUrl is required");
@@ -70,6 +72,11 @@ export class NullSpend {
       toFiniteInt(config.maxRetryTimeMs, 0),
     );
     this.onRetry = config.onRetry;
+    this.costReporter = config.costReporting
+      ? new CostReporter(config.costReporting, async (events) => {
+          await this.reportCostBatch(events);
+        })
+      : null;
   }
 
   // -------------------------------------------------------------------------
@@ -115,6 +122,27 @@ export class NullSpend {
       "/api/cost-events/batch",
       { events },
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Client-side batching
+  // -------------------------------------------------------------------------
+
+  queueCost(event: CostEventInput): void {
+    if (!this.costReporter) {
+      throw new NullSpendError(
+        "queueCost() requires costReporting to be configured",
+      );
+    }
+    this.costReporter.enqueue(event);
+  }
+
+  async flush(): Promise<void> {
+    await this.costReporter?.flush();
+  }
+
+  async shutdown(): Promise<void> {
+    await this.costReporter?.shutdown();
   }
 
   // -------------------------------------------------------------------------
