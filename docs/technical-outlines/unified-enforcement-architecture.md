@@ -478,37 +478,59 @@ interface EnforcementResult {
 
 ### New API Endpoints (for SDK)
 
-The SDK needs these API endpoints on the dashboard (Next.js):
+The SDK needs endpoints split across two services based on where the
+data and enforcement state live:
 
+**Dashboard (Next.js) — data ingestion + queries:**
 ```
 POST /api/cost-events          — Report a cost event (SDK ingestion)
 POST /api/cost-events/batch    — Report multiple cost events
 GET  /api/budgets/status       — Current budget state for authenticated key
-POST /api/enforce              — Run enforcement pipeline, return allow/deny
 ```
 
-These endpoints authenticate via `x-nullspend-key` (same as the proxy),
-so the SDK uses the same API key the developer already has.
+**Proxy (CF Workers) — enforcement + budget checks:**
+```
+POST /v1/enforce               — Run enforcement pipeline, return allow/deny
+POST /v1/budget/status         — Real-time budget state from DO
+```
 
-The enforcement endpoint (`POST /api/enforce`) is the unified entry point.
-The proxy calls the enforcement pipeline directly (in-process via DO RPC).
-The SDK calls it via HTTP. Same pipeline, same checks, same result.
+All endpoints authenticate via `x-nullspend-key` (same key, same auth
+flow). The SDK already knows the proxy URL (it's the gateway the
+developer configured). Cost reporting and budget queries hit the
+dashboard. Enforcement and real-time budget checks hit the proxy.
 
-**Architecture note:** The `POST /api/enforce` endpoint on the dashboard
-(Next.js/Vercel) would need to reach the UserBudgetDO for budget checks.
-Two options:
+**Why enforcement lives on the proxy, not the dashboard:**
 
-1. **Dashboard → proxy internal endpoint → DO** — route through the CF
-   Workers proxy, which already has the DO binding. Add a new internal
-   RPC like `POST /internal/budget/check`.
-2. **Dashboard → Postgres only** — the dashboard reads budget state from
-   Postgres directly (no real-time reservation tracking). This is
-   sufficient for `checkBudget()` but not for `enforce()` with atomic
-   reservation.
+The proxy has the DO binding (`env.USER_BUDGET`), the budget orchestrator,
+and the check-and-reserve logic. Putting `POST /api/enforce` on the
+dashboard would require either:
+- (a) The dashboard calling the proxy's internal endpoint (extra network
+  hop, couples SDK latency to two services), or
+- (b) Reading budget state from Postgres only (stale — doesn't reflect
+  outstanding reservations)
 
-Option 1 is consistent with the existing internal endpoint pattern
-(`/internal/budget/invalidate`) and gives the SDK the same atomic
-enforcement the proxy uses.
+Neither is good. The proxy already runs the enforcement pipeline on every
+LLM request and every MCP budget check. Adding `POST /v1/enforce` is a
+thin route that exposes the same `checkBudget()` orchestrator the proxy
+already uses — same DO RPC, same atomic reservation, same latency profile.
+The MCP proxy already calls `POST /v1/mcp/budget/check` for the same
+reason. The SDK enforce endpoint is the generalized version of that.
+
+```
+SDK enforce() flow:
+  SDK ──POST /v1/enforce──▶ CF Workers proxy
+                              │
+                              ├─ API key auth (same as LLM requests)
+                              ├─ PolicyCheck (in-memory)
+                              ├─ BudgetCheck (DO RPC → UserBudgetDO)
+                              └─ Return { allowed, denial?, reservationId? }
+```
+
+This keeps enforcement latency at ~15-30ms (single CF edge hop + DO RPC)
+instead of ~100-200ms (SDK → dashboard → proxy → DO → proxy → dashboard →
+SDK). It also means SDK enforcement availability depends only on the proxy,
+not on the dashboard — which is the right dependency since the proxy is
+the enforcement authority.
 
 ### How to Avoid Confusion: Documentation Structure
 
@@ -603,12 +625,12 @@ developer can route through the proxy, they should. If they can't (e.g.,
 Bedrock via AWS SDK), they use `sdk.reportCost()` to send the data
 manually.
 
-**Don't bypass DO for SDK budget checks.** It's tempting to have the SDK
-read budget state from Postgres directly (avoid the DO hop). But Postgres
-doesn't track reservations — the DO does. A Postgres-only budget check
-would show stale data when concurrent requests have outstanding
-reservations. The SDK should route through the proxy's internal endpoint
-to get the same atomic view the proxy uses.
+**Don't bypass the proxy for SDK enforcement.** It's tempting to have the
+SDK hit a dashboard endpoint or read budget state from Postgres directly.
+But Postgres doesn't track reservations — the DO does. A Postgres-only
+budget check would show stale data when concurrent requests have
+outstanding reservations. The SDK should call `POST /v1/enforce` on the
+proxy to get the same atomic enforcement the proxy uses for LLM requests.
 
 ### The Honest Assessment: Is This Too Complex?
 

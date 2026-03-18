@@ -944,14 +944,21 @@ BudgetCheck. Add velocity rule configuration to the dashboard.
 
 ## Phase 3F — Enforcement API Endpoint
 
-**Goal:** Add `POST /api/enforce` so the SDK can run the full enforcement
-pipeline via HTTP.
+**Goal:** Add `POST /v1/enforce` to the **proxy** (CF Workers) so the SDK
+can run the full enforcement pipeline via HTTP with direct DO access.
+
+**Why on the proxy, not the dashboard:** The proxy owns the DO binding
+(`env.USER_BUDGET`), the budget orchestrator, and the check-and-reserve
+logic. Routing through the dashboard would add a network hop and couple
+SDK enforcement latency to both services. The MCP proxy already calls the
+CF Workers proxy for budget checks (`POST /v1/mcp/budget/check`) — this
+endpoint is the generalized version of that pattern.
 
 ### What to build
 
-**1. `POST /api/enforce`**
+**1. `POST /v1/enforce`** in `apps/proxy/src/routes/enforce.ts`
 
-- Auth: `assertApiKeyWithIdentity()`
+- Auth: API key auth (same `apiKeyAuth()` used by LLM routes)
 - Accept:
   ```json
   {
@@ -964,7 +971,8 @@ pipeline via HTTP.
   ```
 - Construct pipeline: PolicyCheck + VelocityCheck + BudgetCheck
   (approval not included — that's a separate flow)
-- Run `runEnforcementPipeline()`
+- Run `runEnforcementPipeline()` using the existing budget orchestrator
+  (`checkBudget()` → DO RPC)
 - Return:
   ```json
   // Allowed:
@@ -982,7 +990,12 @@ pipeline via HTTP.
   }
   ```
 
-**2. Policy config loading**
+**2. Route registration** in `apps/proxy/src/index.ts`
+
+Add `/v1/enforce` to the router alongside `/v1/chat/completions`,
+`/v1/messages`, and `/v1/mcp/*`.
+
+**3. Policy config loading**
 
 The endpoint needs to load the user's policy configuration. For Phase 3F,
 policies are stored as a JSON column on the `api_keys` or `budgets` table
@@ -993,26 +1006,32 @@ hardcoded defaults + per-key overrides.
 
 | File | Change |
 |------|--------|
-| `app/api/enforce/route.ts` | New file — POST handler |
+| `apps/proxy/src/routes/enforce.ts` | New file — POST handler |
+| `apps/proxy/src/index.ts` | Route `/v1/enforce` to handler |
 
 ### How to test
 
 - Unit test: allowed → 200 with `allowed: true`
 - Unit test: policy denied → 200 with denial details
-- Unit test: budget denied → 200 with denial details
+- Unit test: budget denied → 200 with denial details (DO RPC mocked)
 - Unit test: 401 without API key
 - Unit test: missing required fields → 400
 
 ### Validation criteria
 
-- `pnpm test` passes
-- Manually test with curl
+- `pnpm proxy:test` passes
+- Manually test with curl against `wrangler dev`
 
 ---
 
 ## Phase 3G — SDK `enforce()`
 
-**Goal:** Add enforcement method to the SDK.
+**Goal:** Add enforcement method to the SDK that calls the proxy's
+`POST /v1/enforce` endpoint.
+
+**Note:** The SDK's `baseUrl` is already the proxy gateway URL (e.g.,
+`https://proxy.nullspend.com`). The `enforce()` method calls the same
+host the developer already configured — no additional URL needed.
 
 ### What to build
 
@@ -1032,15 +1051,15 @@ class NullSpend {
 
 | File | Change |
 |------|--------|
-| `packages/sdk/src/client.ts` | Add `enforce()` |
+| `packages/sdk/src/client.ts` | Add `enforce()` — sends POST to `/v1/enforce` |
 | `packages/sdk/src/types.ts` | Add enforcement types (or re-export from `@nullspend/enforcement`) |
 
 ### How to test
 
-- Unit test: sends POST to `/api/enforce`
+- Unit test: sends POST to `/v1/enforce` (proxy, not dashboard)
 - Unit test: parses allowed/denied response
 - Unit test: retries on transient errors
-- Integration: SDK → dev server → verify enforcement runs
+- Integration: SDK → wrangler dev → verify enforcement runs with DO
 
 ---
 
