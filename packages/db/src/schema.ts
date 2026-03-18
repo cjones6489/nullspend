@@ -125,7 +125,7 @@ export const costEvents = pgTable("cost_events", {
   costMicrodollars: bigint("cost_microdollars", { mode: "number" }).notNull(),
   durationMs: integer("duration_ms"),
   actionId: uuid("action_id").references(() => actions.id, { onDelete: "set null" }),
-  eventType: text("event_type").$type<"llm" | "tool">().notNull().default("llm"),
+  eventType: text("event_type").$type<"llm" | "tool" | "custom">().notNull().default("llm"),
   toolName: text("tool_name"),
   toolServer: text("tool_server"),
   toolCallsRequested: jsonb("tool_calls_requested").$type<{ name: string; id: string }[] | null>(),
