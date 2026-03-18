@@ -26,6 +26,7 @@ export interface CheckResult {
 export interface ReconcileResult {
   status: "reconciled" | "not_found";
   spends?: Record<string, number>;
+  budgetsMissing?: string[];
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -281,6 +282,7 @@ export class UserBudgetDO extends DurableObject {
 
     const entityKeys: string[] = JSON.parse(row.entity_keys);
     const spends: Record<string, number> = {};
+    const budgetsMissing: string[] = [];
 
     this.ctx.storage.transactionSync(() => {
       for (const key of entityKeys) {
@@ -315,7 +317,14 @@ export class UserBudgetDO extends DurableObject {
             entityId,
           )
           .toArray()[0];
-        if (updated) spends[key] = updated.spend;
+        if (updated) {
+          spends[key] = updated.spend;
+        } else {
+          budgetsMissing.push(key);
+          console.warn(
+            `[UserBudgetDO] reconcile: budget missing for entity=${key}, cost=${actualCostMicrodollars} untracked`,
+          );
+        }
       }
 
       this.ctx.storage.sql.exec(
@@ -325,7 +334,11 @@ export class UserBudgetDO extends DurableObject {
     });
 
     this.loadBudgets();
-    return { status: "reconciled", spends };
+    const result: ReconcileResult = { status: "reconciled", spends };
+    if (budgetsMissing.length > 0) {
+      result.budgetsMissing = budgetsMissing;
+    }
+    return result;
   }
 
   /**
@@ -443,13 +456,45 @@ export class UserBudgetDO extends DurableObject {
 
   /** Reset spend for a budget entity (called via internal invalidation endpoint). */
   async resetSpend(entityType: string, entityId: string): Promise<void> {
-    this.ctx.storage.sql.exec(
-      `UPDATE budgets SET spend = 0, reserved = 0, period_start = ?
-       WHERE entity_type = ? AND entity_id = ?`,
-      Date.now(),
-      entityType,
-      entityId,
-    );
+    const entityKey = `${entityType}:${entityId}`;
+
+    this.ctx.storage.transactionSync(() => {
+      // 1. Find all reservations referencing this entity
+      const matching = this.ctx.storage.sql
+        .exec<{ id: string; amount: number; entity_keys: string }>(
+          `SELECT r.id, r.amount, r.entity_keys
+           FROM reservations r, json_each(r.entity_keys) j
+           WHERE j.value = ?`,
+          entityKey,
+        )
+        .toArray();
+
+      // 2. Decrement reserved on all co-covered entities and delete reservations
+      for (const rsv of matching) {
+        const keys: string[] = JSON.parse(rsv.entity_keys);
+        for (const key of keys) {
+          const [eType, eId] = parseEntityKey(key);
+          this.ctx.storage.sql.exec(
+            "UPDATE budgets SET reserved = MAX(0, reserved - ?) WHERE entity_type = ? AND entity_id = ?",
+            rsv.amount,
+            eType,
+            eId,
+          );
+        }
+        this.ctx.storage.sql.exec("DELETE FROM reservations WHERE id = ?", rsv.id);
+      }
+
+      // 3. Reset the target entity (spend=0, reserved=0 — reserved may already be 0
+      //    from step 2, but we set it explicitly to ensure clean state)
+      this.ctx.storage.sql.exec(
+        `UPDATE budgets SET spend = 0, reserved = 0, period_start = ?
+         WHERE entity_type = ? AND entity_id = ?`,
+        Date.now(),
+        entityType,
+        entityId,
+      );
+    });
+
     this.loadBudgets();
   }
 

@@ -377,6 +377,47 @@ describe("UserBudgetDO", () => {
     expect(keyBudget!.reserved).toBe(0);
   });
 
+  // ── reconcile with missing budgets ─────────────────────────────
+
+  it("reconcile after removeBudget returns budgetsMissing", async () => {
+    const stub = getStub("user-reconcile-missing");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+
+    const check = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 10_000_000,
+    );
+    expect(check.status).toBe("approved");
+
+    // Remove the budget before reconciling
+    await stub.removeBudget("user", "u1");
+
+    const result = await stub.reconcile(check.reservationId!, 7_000_000);
+    expect(result.status).toBe("reconciled");
+    expect(result.budgetsMissing).toEqual(["user:u1"]);
+    expect(result.spends!["user:u1"]).toBeUndefined();
+  });
+
+  it("reconcile with partial missing budgets", async () => {
+    const stub = getStub("user-reconcile-partial-missing");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k1", 100_000_000, 0, "strict_block", null, 0);
+
+    const check = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+      10_000_000,
+    );
+    expect(check.status).toBe("approved");
+
+    // Remove only user budget
+    await stub.removeBudget("user", "u1");
+
+    const result = await stub.reconcile(check.reservationId!, 7_000_000);
+    expect(result.status).toBe("reconciled");
+    expect(result.budgetsMissing).toEqual(["user:u1"]);
+    expect(result.spends!["user:u1"]).toBeUndefined();
+    expect(result.spends!["api_key:k1"]).toBe(7_000_000);
+  });
+
   // ── Inline period reset ──────────────────────────────────────────
 
   it("resets spend on expired daily budget period", async () => {
@@ -580,6 +621,73 @@ describe("UserBudgetDO", () => {
       [{ type: "user", id: "u1" }], 49_000_000,
     );
     expect(approved.status).toBe("approved");
+  });
+
+  it("resetSpend deletes orphaned reservations", async () => {
+    const stub = getStub("user-reset-orphan");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+
+    const check = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 10_000_000,
+    );
+    expect(check.status).toBe("approved");
+
+    await stub.resetSpend("user", "u1");
+
+    // Old reservation should be gone — reconcile returns not_found
+    const result = await stub.reconcile(check.reservationId!, 10_000_000);
+    expect(result.status).toBe("not_found");
+
+    // Spend should still be 0 (orphan didn't reconcile)
+    const state = await stub.getBudgetState();
+    expect(state[0].spend).toBe(0);
+  });
+
+  it("resetSpend decrements reserved on co-covered entities", async () => {
+    const stub = getStub("user-reset-multi");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k1", 50_000_000, 0, "strict_block", null, 0);
+
+    // Multi-entity reservation covering both user:u1 and api_key:k1
+    const check = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }], 10_000_000,
+    );
+    expect(check.status).toBe("approved");
+
+    // Reset only api_key:k1
+    await stub.resetSpend("api_key", "k1");
+
+    // user:u1's reserved should be decremented (reservation cleaned up)
+    const state = await stub.getBudgetState();
+    const userBudget = state.find((b) => b.entity_type === "user");
+    expect(userBudget!.reserved).toBe(0);
+  });
+
+  it("no over-spend after resetSpend with outstanding reservation", async () => {
+    const stub = getStub("user-reset-nospend");
+    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
+
+    // Create reservation, then reset
+    const check = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 10_000_000,
+    );
+    await stub.resetSpend("user", "u1");
+
+    // Old reservation is gone
+    const reconcileResult = await stub.reconcile(check.reservationId!, 10_000_000);
+    expect(reconcileResult.status).toBe("not_found");
+
+    // Full budget should be available — reserve up to the limit
+    const fullReserve = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 50_000_000,
+    );
+    expect(fullReserve.status).toBe("approved");
+
+    // Nothing beyond should be allowed
+    const overReserve = await stub.checkAndReserve(
+      [{ type: "user", id: "u1" }], 1,
+    );
+    expect(overReserve.status).toBe("denied");
   });
 
   // ── getBudgetState reflects mutations ─────────────────────────────

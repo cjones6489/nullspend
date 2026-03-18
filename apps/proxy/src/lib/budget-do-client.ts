@@ -46,7 +46,20 @@ export async function doBudgetReconcile(
 
   try {
     const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
-    await stub.reconcile(reservationId, actualCost);
+    const reconcileResult = await stub.reconcile(reservationId, actualCost);
+
+    if (reconcileResult.budgetsMissing && reconcileResult.budgetsMissing.length > 0) {
+      console.warn("[budget-do-client] Reconciled reservation has missing budgets", {
+        reservationId,
+        costMicrodollars: actualCost,
+        budgetsMissing: reconcileResult.budgetsMissing,
+      });
+      emitMetric("reconcile_budget_missing", {
+        reservationId,
+        costMicrodollars: actualCost,
+        budgetsMissing: reconcileResult.budgetsMissing,
+      });
+    }
 
     if (actualCost > 0) {
       let pgSuccess = false;

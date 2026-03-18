@@ -19,20 +19,26 @@ function timingSafeStringEqual(a: string, b: string): boolean {
     : !crypto.subtle.timingSafeEqual(bufA, bufA);
 }
 
+const MAX_FIELD_LENGTH = 256;
+
+function isNonEmptyString(val: unknown): val is string {
+  return typeof val === "string" && val.trim().length > 0 && val.length <= MAX_FIELD_LENGTH;
+}
+
 function parseBody(raw: unknown): InvalidationBody | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
 
   if (obj.action !== "remove" && obj.action !== "reset_spend") return null;
-  if (typeof obj.userId !== "string" || !obj.userId) return null;
-  if (typeof obj.entityType !== "string" || !obj.entityType) return null;
-  if (typeof obj.entityId !== "string" || !obj.entityId) return null;
+  if (!isNonEmptyString(obj.userId)) return null;
+  if (!isNonEmptyString(obj.entityType)) return null;
+  if (!isNonEmptyString(obj.entityId)) return null;
 
   return {
     action: obj.action,
-    userId: obj.userId,
-    entityType: obj.entityType,
-    entityId: obj.entityId,
+    userId: obj.userId.trim(),
+    entityType: obj.entityType.trim(),
+    entityId: obj.entityId.trim(),
   };
 }
 

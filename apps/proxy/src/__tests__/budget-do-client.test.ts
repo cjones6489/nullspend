@@ -283,6 +283,45 @@ describe("doBudgetReconcile", () => {
     expect(result).toBe("ok");
   });
 
+  it("emits reconcile_budget_missing metric when DO reports missing budgets", async () => {
+    const stub = makeStub({
+      reconcile: vi.fn().mockResolvedValue({
+        status: "reconciled",
+        spends: {},
+        budgetsMissing: ["user:u1"],
+      }),
+    });
+    const env = makeEnv(stub);
+
+    await doBudgetReconcile(
+      env, "user-1", "rsv-1", 1_000,
+      [{ entityType: "user", entityId: "user-1" }],
+      "postgres://test",
+    );
+
+    expect(mockEmitMetric).toHaveBeenCalledWith("reconcile_budget_missing", {
+      reservationId: "rsv-1",
+      costMicrodollars: 1_000,
+      budgetsMissing: ["user:u1"],
+    });
+  });
+
+  it("no reconcile_budget_missing metric when budgetsMissing is absent", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetReconcile(
+      env, "user-1", "rsv-1", 1_000,
+      [{ entityType: "user", entityId: "user-1" }],
+      "postgres://test",
+    );
+
+    expect(mockEmitMetric).not.toHaveBeenCalledWith(
+      "reconcile_budget_missing",
+      expect.anything(),
+    );
+  });
+
   it("returns 'ok' when actualCost=0", async () => {
     const stub = makeStub();
     const env = makeEnv(stub);
