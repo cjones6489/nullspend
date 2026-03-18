@@ -127,7 +127,10 @@ export default function InboxPage() {
                   <TableCell className="text-xs text-muted-foreground">
                     {action.environment ?? "—"}
                   </TableCell>
-                  <TableCell className="text-right text-xs text-muted-foreground">
+                  <TableCell
+                    className="text-right text-xs text-muted-foreground cursor-default"
+                    title={new Date(action.createdAt).toLocaleString()}
+                  >
                     {formatRelativeTime(action.createdAt)}
                   </TableCell>
                 </TableRow>

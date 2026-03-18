@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Loader2 } from "lucide-react";
+import { Activity, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,8 @@ export function RecentActivity({ keys }: RecentActivityProps) {
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
+    refetch,
+    isFetching,
   } = useCostEvents(filters);
 
   const events = data?.pages.flatMap((p) => p.data) ?? [];
@@ -62,7 +64,16 @@ export function RecentActivity({ keys }: RecentActivityProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          title="Refresh data"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching && !isFetchingNextPage ? "animate-spin" : ""}`} />
+        </button>
         <Select
           value={selectedProvider}
           onValueChange={(v) => setSelectedProvider(v ?? ALL_PROVIDERS)}
@@ -133,7 +144,10 @@ export function RecentActivity({ keys }: RecentActivityProps) {
                 <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Cost
                 </TableHead>
-                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <TableHead
+                  className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
+                  title="Output tokens per second — measures model throughput"
+                >
                   Tok/s
                 </TableHead>
                 <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -148,8 +162,8 @@ export function RecentActivity({ keys }: RecentActivityProps) {
                   className="border-border/30 transition-colors hover:bg-accent/40"
                 >
                   <TableCell
-                    className="text-[13px] text-muted-foreground"
-                    title={event.createdAt}
+                    className="text-[13px] text-muted-foreground cursor-default"
+                    title={new Date(event.createdAt).toLocaleString()}
                   >
                     {formatRelativeTime(event.createdAt)}
                   </TableCell>
@@ -238,10 +252,10 @@ function EmptyActivity({ hasFilter }: { hasFilter: boolean }) {
         <p className="text-sm font-medium text-foreground">
           {hasFilter ? "No cost events match your filters" : "No API calls recorded yet"}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 max-w-xs text-xs text-muted-foreground">
           {hasFilter
             ? "Try adjusting your provider or API key filters."
-            : "Cost events will appear here as your agents make API calls through the proxy."}
+            : "Set your OPENAI_BASE_URL to proxy.nullspend.com/v1 and costs will appear here within seconds."}
         </p>
       </div>
     </div>

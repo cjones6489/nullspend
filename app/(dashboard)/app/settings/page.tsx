@@ -31,6 +31,7 @@ import {
   useCreateApiKey,
   useRevokeApiKey,
 } from "@/lib/queries/api-keys";
+import { CopyButton } from "@/components/ui/copy-button";
 import { SlackSection } from "@/components/settings/slack-section";
 import { WebhooksSection } from "@/components/settings/webhooks-section";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -147,14 +148,23 @@ function KeyRow({
         {apiKey.name}
       </TableCell>
       <TableCell>
-        <code className="rounded bg-secondary/50 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-          {apiKey.keyPrefix}••••••••
-        </code>
+        <span className="inline-flex items-center gap-1">
+          <code className="rounded bg-secondary/50 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+            {apiKey.keyPrefix}••••••••
+          </code>
+          <CopyButton value={apiKey.keyPrefix} />
+        </span>
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
+      <TableCell
+        className="text-xs text-muted-foreground cursor-default"
+        title={apiKey.lastUsedAt ? new Date(apiKey.lastUsedAt).toLocaleString() : undefined}
+      >
         {apiKey.lastUsedAt ? formatRelativeTime(apiKey.lastUsedAt) : "Never"}
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
+      <TableCell
+        className="text-xs text-muted-foreground cursor-default"
+        title={new Date(apiKey.createdAt).toLocaleString()}
+      >
         {formatRelativeTime(apiKey.createdAt)}
       </TableCell>
       <TableCell>

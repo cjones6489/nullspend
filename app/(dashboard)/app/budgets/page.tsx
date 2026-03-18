@@ -263,12 +263,20 @@ function BudgetRow({
       </TableCell>
       <TableCell>
         <div className="space-y-1.5">
-          <p className="text-[13px] tabular-nums text-foreground">
-            {formatMicrodollars(budget.spendMicrodollars)}{" "}
-            <span className="text-muted-foreground">
-              / {formatMicrodollars(budget.maxBudgetMicrodollars)}
+          <div className="flex items-baseline justify-between">
+            <p className="text-[13px] tabular-nums text-foreground">
+              {formatMicrodollars(budget.spendMicrodollars)}{" "}
+              <span className="text-muted-foreground">
+                / {formatMicrodollars(budget.maxBudgetMicrodollars)}
+              </span>
+            </p>
+            <span className={cn(
+              "text-[11px] font-medium tabular-nums",
+              pct >= 90 ? "text-red-400" : pct >= 70 ? "text-amber-400" : "text-muted-foreground",
+            )}>
+              {Math.round(pct)}%
             </span>
-          </p>
+          </div>
           <Progress
             value={pct}
             indicatorClassName={budgetHealthColor(
@@ -277,9 +285,6 @@ function BudgetRow({
             )}
             className="h-1.5 gap-0"
           />
-          <p className="text-[11px] tabular-nums text-muted-foreground">
-            {Math.round(pct)}%
-          </p>
         </div>
       </TableCell>
       <TableCell>

@@ -1,6 +1,7 @@
 "use client";
 
-import { BarChart3 } from "lucide-react";
+import { BarChart3, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
 import { CostBreakdown } from "@/components/analytics/cost-breakdown";
@@ -9,6 +10,7 @@ import { ModelBreakdown } from "@/components/analytics/model-breakdown";
 import { ProviderBreakdown } from "@/components/analytics/provider-breakdown";
 import { SpendChart } from "@/components/analytics/spend-chart";
 import { ToolBreakdown } from "@/components/analytics/tool-breakdown";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCostSummary } from "@/lib/queries/cost-event-summary";
@@ -19,19 +21,31 @@ type Period = "7d" | "30d" | "90d";
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState<Period>("30d");
-  const { data, isLoading, isError } = useCostSummary(period);
+  const { data, isLoading, isError, refetch, isFetching } = useCostSummary(period);
 
   const isEmpty = data && data.totals.totalRequests === 0;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Analytics
-        </h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          Spend breakdown and usage trends.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Analytics
+          </h1>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            Spend breakdown and usage trends.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          title="Refresh data"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+        </Button>
       </div>
 
       <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
@@ -61,10 +75,17 @@ export default function AnalyticsPage() {
             <p className="text-sm font-medium text-foreground">
               No API calls during this period
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Try a longer time range, or run the seed script for test data.
+            <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+              Point your SDK at the NullSpend proxy and costs will appear here
+              within seconds.
             </p>
           </div>
+          <Link
+            href="/app/settings"
+            className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            Create API Key
+          </Link>
         </div>
       )}
 
