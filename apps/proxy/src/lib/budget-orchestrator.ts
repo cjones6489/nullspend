@@ -8,6 +8,7 @@ import { reconcileReservation } from "./budget-reconcile.js";
 import { lookupBudgetsForDO } from "./budget-do-lookup.js";
 import { doBudgetCheck, doBudgetReconcile, doBudgetPopulate } from "./budget-do-client.js";
 import { resetBudgetPeriod } from "./budget-spend.js";
+import { enqueueReconciliation } from "./reconciliation-queue.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,13 +90,24 @@ export async function checkBudget(
 
   // Run DO in waitUntil for comparison
   waitUntil((async () => {
+    const t0 = performance.now();
+    let doResult: BudgetCheckOutcome | null = null;
+    let doError: string | null = null;
+
     try {
-      const doResult = await checkBudgetDO(
+      doResult = await checkBudgetDO(
         env, ctx.connectionString, identity, estimateMicrodollars,
       );
-      compareShadowResults(redisResult, doResult);
     } catch (err) {
-      console.info("[budget-shadow] DO check failed (non-blocking):", err);
+      doError = err instanceof Error ? err.message : String(err);
+    }
+
+    const doLatencyMs = Math.round(performance.now() - t0);
+
+    try {
+      emitShadowMetric(identity, redisResult, doResult, doError, doLatencyMs, estimateMicrodollars);
+    } catch (metricErr) {
+      console.error("[budget-shadow] Metric emission failed:", metricErr);
     }
   })());
 
@@ -144,6 +156,48 @@ export async function reconcileBudget(
   } catch (err) {
     console.error("[budget-orchestrator] Reconciliation failed:", err);
   }
+}
+
+/**
+ * Queue-aware reconciliation: attempts to enqueue to Cloudflare Queues first,
+ * falls back to direct reconciliation if the queue binding is absent or send fails.
+ *
+ * When the queue is available, reconciliation is decoupled from the request
+ * lifecycle (no 30s waitUntil limit). The consumer retries with DLQ.
+ */
+export async function reconcileBudgetQueued(
+  queue: Queue | undefined,
+  mode: BudgetEngineMode,
+  env: Env,
+  userId: string | null,
+  reservationId: string | null,
+  actualCost: number,
+  budgetEntities: BudgetEntity[],
+  connectionString: string,
+  redis: Redis | null,
+): Promise<void> {
+  if (queue && reservationId) {
+    try {
+      await enqueueReconciliation(queue, {
+        type: "reconcile",
+        mode,
+        reservationId,
+        actualCostMicrodollars: actualCost,
+        budgetEntities: budgetEntities.map((e) => ({
+          entityKey: e.entityKey,
+          entityType: e.entityType,
+          entityId: e.entityId,
+        })),
+        userId,
+        enqueuedAt: Date.now(),
+      });
+      return;
+    } catch (err) {
+      console.error("[budget-orchestrator] Queue send failed, falling back to direct:", err);
+    }
+  }
+  // Fallback: direct reconciliation (current behavior)
+  await reconcileBudget(mode, env, userId, reservationId, actualCost, budgetEntities, connectionString, redis);
 }
 
 // ---------------------------------------------------------------------------
@@ -269,38 +323,83 @@ async function checkBudgetDO(
 }
 
 // ---------------------------------------------------------------------------
-// Shadow comparison
+// Shadow metric emission
 // ---------------------------------------------------------------------------
 
-function compareShadowResults(
-  redisResult: BudgetCheckOutcome,
-  doResult: BudgetCheckOutcome,
-): void {
-  // Divergence-only logging — silent return on match to avoid log volume at high traffic
-  if (redisResult.status === doResult.status) return;
+interface ShadowMetricEvent {
+  _event: "budget_shadow_sample";
+  userId: string | null;
+  keyId: string | null;
+  redisStatus: "approved" | "denied" | "skipped";
+  doStatus: "approved" | "denied" | "skipped" | "error";
+  divergenceType: "none" | "strict" | "soft" | "error";
+  doLatencyMs: number;
+  doError: string | null;
+  redisRemaining?: number;
+  doRemaining?: number;
+  redisSpend?: number;
+  doSpend?: number;
+  redisMaxBudget?: number;
+  doMaxBudget?: number;
+  estimateMicrodollars: number;
+  timestamp: number;
+}
 
-  const detail = {
+function emitShadowMetric(
+  identity: { keyId: string | null; userId: string | null },
+  redisResult: BudgetCheckOutcome,
+  doResult: BudgetCheckOutcome | null,
+  doError: string | null,
+  doLatencyMs: number,
+  estimateMicrodollars: number,
+): void {
+  const doStatus: ShadowMetricEvent["doStatus"] = doError
+    ? "error"
+    : doResult
+      ? doResult.status
+      : "error";
+
+  let divergenceType: ShadowMetricEvent["divergenceType"];
+  if (doError || !doResult) {
+    divergenceType = "error";
+  } else if (redisResult.status === doResult.status) {
+    divergenceType = "none";
+  } else if (
+    (redisResult.status === "denied" && doResult.status === "approved") ||
+    (redisResult.status === "approved" && doResult.status === "denied")
+  ) {
+    divergenceType = "strict";
+  } else {
+    divergenceType = "soft";
+  }
+
+  const event: ShadowMetricEvent = {
+    _event: "budget_shadow_sample",
+    userId: identity.userId,
+    keyId: identity.keyId,
     redisStatus: redisResult.status,
-    doStatus: doResult.status,
-    redisSpend: redisResult.spend,
-    doSpend: doResult.spend,
-    redisMaxBudget: redisResult.maxBudget,
-    doMaxBudget: doResult.maxBudget,
-    redisReserved: redisResult.reserved,
-    doReserved: doResult.reserved,
+    doStatus,
+    divergenceType,
+    doLatencyMs,
+    doError,
     redisRemaining: redisResult.remaining,
-    doRemaining: doResult.remaining,
+    doRemaining: doResult?.remaining,
+    redisSpend: redisResult.spend,
+    doSpend: doResult?.spend,
+    redisMaxBudget: redisResult.maxBudget,
+    doMaxBudget: doResult?.maxBudget,
+    estimateMicrodollars,
+    timestamp: Date.now(),
   };
 
-  // One denied + one approved = strict divergence (WARN)
-  // Other combos (skipped vs approved, etc.) = expected (INFO)
-  const isStrictDivergence =
-    (redisResult.status === "denied" && doResult.status === "approved") ||
-    (redisResult.status === "approved" && doResult.status === "denied");
+  console.log(JSON.stringify(event));
 
-  if (isStrictDivergence) {
-    console.warn("[budget-shadow] STRICT divergence", detail);
-  } else {
-    console.info("[budget-shadow] Divergence", detail);
+  if (divergenceType === "strict") {
+    console.warn("[budget-shadow] STRICT divergence", {
+      userId: identity.userId,
+      redisStatus: redisResult.status,
+      doStatus,
+      doLatencyMs,
+    });
   }
 }

@@ -586,20 +586,31 @@ describe("resolveBudgetMode", () => {
   });
 });
 
-describe("shadow mode — divergence logging", () => {
+// ---------------------------------------------------------------------------
+// Helper: parse structured shadow metric from console.log spy
+// ---------------------------------------------------------------------------
+
+function parseShadowMetric(logSpy: ReturnType<typeof vi.spyOn>) {
+  const call = logSpy.mock.calls.find((c) => {
+    try { return JSON.parse(c[0])._event === "budget_shadow_sample"; }
+    catch { return false; }
+  });
+  return call ? JSON.parse(call[0]) : null;
+}
+
+describe("shadow mode — structured metric emission", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockResetBudgetPeriod.mockResolvedValue(undefined);
   });
 
-  it("logs WARN for approved-vs-denied divergence with rich detail", async () => {
+  it("emits structured JSON with divergenceType='strict' for approved-vs-denied", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     mockLookupBudgets.mockResolvedValue([keyEntity]);
     mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
-    // DO returns denied
     mockLookupBudgetsForDO.mockResolvedValue([{
       entityType: "api_key", entityId: "key-1",
       maxBudget: 50_000_000, spend: 49_000_000,
@@ -611,58 +622,89 @@ describe("shadow mode — divergence logging", () => {
     });
 
     await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
-
-    // Wait for the microtask to flush
     await new Promise((r) => setTimeout(r, 10));
 
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric._event).toBe("budget_shadow_sample");
+    expect(metric.divergenceType).toBe("strict");
+    expect(metric.redisStatus).toBe("approved");
+    expect(metric.doStatus).toBe("denied");
+
+    // Backward compat: console.warn still fired
     expect(warnSpy).toHaveBeenCalledWith(
       "[budget-shadow] STRICT divergence",
-      expect.objectContaining({
-        redisStatus: "approved",
-        doStatus: "denied",
-        doSpend: 49_000_000,
-        doMaxBudget: 50_000_000,
-      }),
-    );
-    expect(infoSpy).not.toHaveBeenCalledWith(
-      "[budget-shadow] Divergence",
-      expect.anything(),
+      expect.objectContaining({ redisStatus: "approved", doStatus: "denied" }),
     );
 
     warnSpy.mockRestore();
-    infoSpy.mockRestore();
+    logSpy.mockRestore();
   });
 
-  it("logs INFO for skipped-vs-approved divergence with rich detail", async () => {
+  it("emits structured JSON with divergenceType='strict' for denied-vs-approved (reverse)", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({
+      status: "denied", entityKey: "{budget}:api_key:key-1",
+      remaining: 0, maxBudget: 50_000_000, spend: 50_000_000,
+    });
+    // DO returns approved
+    mockLookupBudgetsForDO.mockResolvedValue([{
+      entityType: "api_key", entityId: "key-1",
+      maxBudget: 50_000_000, spend: 10_000_000,
+      policy: "strict_block", resetInterval: null, periodStart: 0,
+    }]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-do-1" });
+
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric.divergenceType).toBe("strict");
+    expect(metric.redisStatus).toBe("denied");
+    expect(metric.doStatus).toBe("approved");
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[budget-shadow] STRICT divergence",
+      expect.objectContaining({ redisStatus: "denied", doStatus: "approved" }),
+    );
+
+    warnSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("emits structured JSON with divergenceType='soft' for skipped-vs-approved", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     mockLookupBudgets.mockResolvedValue([keyEntity]);
     mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
-    // DO returns skipped (no entities)
     mockLookupBudgetsForDO.mockResolvedValue([]);
 
     await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
-
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(infoSpy).toHaveBeenCalledWith(
-      "[budget-shadow] Divergence",
-      expect.objectContaining({ redisStatus: "approved", doStatus: "skipped" }),
-    );
-    // Should NOT be a strict (warn) divergence
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric.divergenceType).toBe("soft");
+    expect(metric.redisStatus).toBe("approved");
+    expect(metric.doStatus).toBe("skipped");
+
+    // No console.warn for soft divergence
     expect(warnSpy).not.toHaveBeenCalledWith(
       "[budget-shadow] STRICT divergence",
       expect.anything(),
     );
 
     warnSpy.mockRestore();
-    infoSpy.mockRestore();
+    logSpy.mockRestore();
   });
 
-  it("does not log when statuses match (silent on match)", async () => {
+  it("emits structured JSON with divergenceType='none' when statuses match", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     mockLookupBudgets.mockResolvedValue([keyEntity]);
@@ -675,33 +717,34 @@ describe("shadow mode — divergence logging", () => {
     mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-do-1" });
 
     await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
-
     await new Promise((r) => setTimeout(r, 10));
 
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric._event).toBe("budget_shadow_sample");
+    expect(metric.divergenceType).toBe("none");
+    expect(metric.redisStatus).toBe("approved");
+    expect(metric.doStatus).toBe("approved");
+
+    // No warn for match
     expect(warnSpy).not.toHaveBeenCalledWith(
       "[budget-shadow] STRICT divergence",
       expect.anything(),
     );
-    expect(infoSpy).not.toHaveBeenCalledWith(
-      "[budget-shadow] Divergence",
-      expect.anything(),
-    );
-    // Also no console.log for matches
-    expect(logSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("[budget-shadow]"),
-      expect.anything(),
-    );
 
     warnSpy.mockRestore();
-    infoSpy.mockRestore();
     logSpy.mockRestore();
   });
 
-  it("divergence detail includes spend, maxBudget, reserved, remaining from both sides", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("divergence detail includes spend/maxBudget/remaining from both sides", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
 
     mockLookupBudgets.mockResolvedValue([keyEntity]);
-    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+    mockCheckAndReserve.mockResolvedValue({
+      status: "denied", entityKey: "{budget}:api_key:key-1",
+      remaining: 100, maxBudget: 50_000_000, spend: 49_999_900,
+    });
     mockLookupBudgetsForDO.mockResolvedValue([{
       entityType: "api_key", entityId: "key-1",
       maxBudget: 50_000_000, spend: 49_000_000,
@@ -715,20 +758,172 @@ describe("shadow mode — divergence logging", () => {
     await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
     await new Promise((r) => setTimeout(r, 10));
 
-    const call = warnSpy.mock.calls.find(
-      (c) => c[0] === "[budget-shadow] STRICT divergence",
-    );
-    expect(call).toBeDefined();
-    const detail = call![1] as Record<string, unknown>;
-    expect(detail).toHaveProperty("redisSpend");
-    expect(detail).toHaveProperty("doSpend");
-    expect(detail).toHaveProperty("redisMaxBudget");
-    expect(detail).toHaveProperty("doMaxBudget");
-    expect(detail).toHaveProperty("redisReserved");
-    expect(detail).toHaveProperty("doReserved");
-    expect(detail).toHaveProperty("redisRemaining");
-    expect(detail).toHaveProperty("doRemaining");
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric.redisSpend).toBe(49_999_900);
+    expect(metric.doSpend).toBe(49_000_000);
+    expect(metric.redisMaxBudget).toBe(50_000_000);
+    expect(metric.doMaxBudget).toBe(50_000_000);
+    expect(metric.redisRemaining).toBe(100);
+    expect(metric.doRemaining).toBe(500_000);
 
+    vi.restoreAllMocks();
+  });
+
+  it("includes doLatencyMs as non-negative number", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+    mockLookupBudgetsForDO.mockResolvedValue([{
+      entityType: "api_key", entityId: "key-1",
+      maxBudget: 50_000_000, spend: 10_000_000,
+      policy: "strict_block", resetInterval: null, periodStart: 0,
+    }]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-do-1" });
+
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(typeof metric.doLatencyMs).toBe("number");
+    expect(metric.doLatencyMs).toBeGreaterThanOrEqual(0);
+
+    logSpy.mockRestore();
+  });
+
+  it("DO error → doStatus='error', divergenceType='error', doError populated", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+    mockLookupBudgetsForDO.mockRejectedValue(new Error("DO unavailable"));
+
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric.doStatus).toBe("error");
+    expect(metric.divergenceType).toBe("error");
+    expect(metric.doError).toBe("DO unavailable");
+
+    // No console.warn for error type (not strict)
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      "[budget-shadow] STRICT divergence",
+      expect.anything(),
+    );
+
+    logSpy.mockRestore();
     warnSpy.mockRestore();
+  });
+
+  it("event includes userId and keyId for attribution", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+    mockLookupBudgetsForDO.mockResolvedValue([]);
+
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric.userId).toBe("user-1");
+    expect(metric.keyId).toBe("key-1");
+
+    logSpy.mockRestore();
+  });
+
+  it("console.warn emitted for strict divergence (backward compat)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+    mockLookupBudgetsForDO.mockResolvedValue([{
+      entityType: "api_key", entityId: "key-1",
+      maxBudget: 50_000_000, spend: 49_000_000,
+      policy: "strict_block", resetInterval: null, periodStart: 0,
+    }]);
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "denied", deniedEntity: "api_key:key-1",
+      remaining: 0, maxBudget: 50_000_000, spend: 49_000_000,
+    });
+
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[budget-shadow] STRICT divergence",
+      expect.objectContaining({
+        userId: "user-1",
+        redisStatus: "approved",
+        doStatus: "denied",
+        doLatencyMs: expect.any(Number),
+      }),
+    );
+
+    vi.restoreAllMocks();
+  });
+
+  it("console.warn NOT emitted for non-strict types (soft, none, error)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    // Test soft divergence
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+    mockLookupBudgetsForDO.mockResolvedValue([]);
+
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 5_000_000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      "[budget-shadow] STRICT divergence",
+      expect.anything(),
+    );
+
+    vi.restoreAllMocks();
+  });
+
+  it("SHADOW_SAMPLE_RATE=0 emits no budget_shadow_sample events", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "0.0" }), makeCtx(), 5_000_000);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).toBeNull();
+    expect(mockWaitUntil).not.toHaveBeenCalled();
+
+    logSpy.mockRestore();
+  });
+
+  it("event includes estimateMicrodollars and timestamp", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    mockLookupBudgets.mockResolvedValue([keyEntity]);
+    mockCheckAndReserve.mockResolvedValue({ status: "approved", reservationId: "rsv-1" });
+    mockLookupBudgetsForDO.mockResolvedValue([]);
+
+    const before = Date.now();
+    await checkBudget("shadow", makeEnv({ SHADOW_SAMPLE_RATE: "1.0" }), makeCtx(), 7_500_000);
+    await new Promise((r) => setTimeout(r, 10));
+    const after = Date.now();
+
+    const metric = parseShadowMetric(logSpy);
+    expect(metric).not.toBeNull();
+    expect(metric.estimateMicrodollars).toBe(7_500_000);
+    expect(metric.timestamp).toBeGreaterThanOrEqual(before);
+    expect(metric.timestamp).toBeLessThanOrEqual(after);
+
+    logSpy.mockRestore();
   });
 });

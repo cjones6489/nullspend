@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "PROXY_RATE_LIMIT": "600",
-    "BUDGET_ENGINE": "redis",
+    "BUDGET_ENGINE": "shadow",
     "SHADOW_SAMPLE_RATE": "0.0"
   },
   "hyperdrive": [
@@ -25,5 +25,18 @@
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["UserBudgetDO"] }
-  ]
+  ],
+  "queues": {
+    "producers": [
+      { "binding": "RECONCILE_QUEUE", "queue": "nullspend-reconcile" }
+    ],
+    "consumers": [
+      {
+        "queue": "nullspend-reconcile",
+        "max_retries": 3,
+        "dead_letter_queue": "nullspend-reconcile-dlq",
+        "retry_delay": 5
+      }
+    ]
+  }
 }
