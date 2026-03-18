@@ -22,6 +22,11 @@ beforeAll(() => {
 
 vi.mock("cloudflare:workers", () => ({
   waitUntil: vi.fn((p: Promise<unknown>) => { p.catch(() => {}); }),
+  DurableObject: class DurableObject {
+    ctx: any;
+    env: any;
+    constructor(ctx: any, env: any) { this.ctx = ctx; this.env = env; }
+  },
 }));
 
 vi.mock("@upstash/redis/cloudflare", () => ({

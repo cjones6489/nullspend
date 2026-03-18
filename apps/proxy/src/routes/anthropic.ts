@@ -90,7 +90,7 @@ export async function handleAnthropicMessages(
         if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
           waitUntil((async () => {
             try {
-              const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId);
+              const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
               if (cached.length > 0) {
                 const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
                 const event = buildBudgetExceededPayload({
@@ -273,7 +273,7 @@ function handleStreaming(
         //     but errors here must NOT trigger the outer catch's reconciliation fallback) ---
         try {
           if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && redis) {
-            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId);
+            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
               const webhookData = {
@@ -394,7 +394,7 @@ async function handleNonStreaming(
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && redis) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId);
+            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
               const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString() };

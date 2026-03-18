@@ -8,6 +8,8 @@ import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 
+export { UserBudgetDO } from "./durable-objects/user-budget.js";
+
 const MAX_BODY_SIZE = 1_048_576; // 1MB
 const DEFAULT_RATE_LIMIT = 120;
 const DEFAULT_KEY_RATE_LIMIT = 600;

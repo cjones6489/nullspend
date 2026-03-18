@@ -213,7 +213,7 @@ export async function handleMcpEvents(
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         try {
           const redis = ctx.redis ?? Redis.fromEnv(env);
-          const cached = await getWebhookEndpoints(redis, ctx.connectionString, ctx.auth.userId);
+          const cached = await getWebhookEndpoints(redis, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
           if (cached.length > 0) {
             const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
             for (const row of costEventRows) {

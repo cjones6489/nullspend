@@ -1,6 +1,8 @@
 # NullSpend: Revised Redis → Durable Objects Migration Spec
 
 > **Synthesized from**: Deep DO research (platform docs, known issues, pricing, architecture patterns) + Claude Code codebase audit (actual Redis usage inventory, Vercel constraint discovery, per-area recommendations). This is the optimal migration plan.
+>
+> **Last revised**: 2026-03-17 — corrected auth cache misconception, added Postgres write-back requirement, documented policy behavior change, removed cron trigger, specified shadow mode.
 
 ---
 
@@ -12,14 +14,19 @@ The Claude Code assessment revealed a critical constraint the initial research m
 |---|---|---|---|
 | **Budget enforcement** | Upstash Redis (3 Lua scripts) | **Cloudflare Durable Objects** | Core product — DO eliminates Lua, gives sub-ms atomicity |
 | **Webhook cache** | Upstash Redis (GET/SET+EX) | **Workers KV** | Read-heavy, native TTL, CF-native |
-| **Auth cache** | Upstash Redis (GET/SET+EX) | **Workers KV** | Same pattern as webhook cache |
-| **Negative budget cache** | Upstash Redis | **Worker in-memory Map** | Zero-latency, ephemeral, zero-cost |
+| **Auth cache** | In-memory Map (api-key-auth.ts) | **Keep in-memory** | Already optimal — 0ms vs KV's 5-50ms. Not on Redis. |
+| **Negative budget cache** | Upstash Redis (SET+EX) | **DO implicit** (no rows = no budget) | DO `populateIfEmpty` handles this; separate cache unnecessary |
 | **Proxy rate limiting** | @upstash/ratelimit | **Keep Upstash** | Battle-tested lib, reimplementation = risk for zero benefit |
 | **Dashboard rate limiting** | @upstash/ratelimit | **Keep Upstash** | Vercel can't reach DOs — no alternative |
 | **Dashboard idempotency** | Upstash Redis SET NX | **Keep Upstash** | Vercel-only, working, simple |
 | **Health check** | redis.ping() | **Keep Upstash** | Trivial, uses whatever Redis exists |
 
-**Net result**: The proxy Worker loses its Redis dependency for budget enforcement and caching. Upstash Redis remains for rate limiting (both proxy and dashboard), idempotency (dashboard), and health. This eliminates 3 Lua scripts and ~150 lines of the most complex Redis code while keeping battle-tested libraries for everything else.
+**Net result**: The proxy Worker loses its Redis dependency for budget enforcement and webhook caching. Upstash Redis remains for rate limiting (both proxy and dashboard), idempotency (dashboard), and health. This eliminates 3 Lua scripts and ~150 lines of the most complex Redis code while keeping battle-tested libraries for everything else.
+
+> **Correction log (2026-03-17)**:
+> - Auth cache was incorrectly listed as "Upstash Redis" — it is actually module-level `Map` objects in `api-key-auth.ts` (positive: 60s TTL, negative: 30s TTL). Moving to KV would add latency for zero benefit.
+> - Negative budget cache merges into the DO model — when the DO has no rows for an entity, that IS the "no budget" signal. No separate cache layer needed.
+> - Cron trigger removed from wrangler config — inline period resets in `checkAndReserve` handle resets; no scheduled handler is needed.
 
 ---
 
@@ -55,14 +62,18 @@ Use `new_sqlite_classes` in wrangler.jsonc. This is non-reversible — KV-backed
 - **10GB per DO** (GA since April 2025) — more than enough for any user's budget history
 - **Sub-millisecond reads** from the local SQLite database colocated with the DO process
 
-### Decision 3: Workers KV for All Caching, Not DOs
+### Decision 3: Workers KV for Webhook Caching
 
-Auth cache, webhook cache, and negative budget markers all move to Workers KV. Both assessments independently reached this conclusion:
+Webhook endpoint cache moves from Upstash Redis to Workers KV:
 
 - **Native TTL** (`expirationTtl`) — no alarm-based cleanup needed
 - **Edge caching** — reads hit the nearest Cloudflare PoP, sub-5ms globally
 - **$0.50/million reads** — dramatically cheaper than DO requests for read-heavy patterns
 - **Simple API** — `get(key, "json")` / `put(key, value, { expirationTtl: 300 })`
+
+**What stays as-is:**
+- **Auth cache** remains in-memory (`Map` in `api-key-auth.ts`). It already has 0ms latency, 256-entry LRU eviction, and 60s/30s TTLs. KV would be strictly worse.
+- **Negative budget markers** are absorbed by the DO model — the `populateIfEmpty` RPC returning false (or no rows existing) is the signal. No separate cache needed.
 
 ### Decision 4: Keep @upstash/ratelimit Everywhere
 
@@ -105,7 +116,7 @@ A `BUDGET_ENGINE` environment variable controls the rollout:
       "id": "ae987aca79704f1fa94bf2c4bb761f14"
     }
   ],
-  // NEW: Workers KV for auth + webhook caching
+  // NEW: Workers KV for webhook caching
   "kv_namespaces": [
     { "binding": "CACHE_KV", "id": "<create-via-wrangler-kv-namespace-create>" }
   ],
@@ -124,11 +135,9 @@ A `BUDGET_ENGINE` environment variable controls the rollout:
       "tag": "v1",
       "new_sqlite_classes": ["UserBudgetDO"]
     }
-  ],
-  // NEW: Cron trigger for budget period resets + reconciliation
-  "triggers": {
-    "crons": ["*/5 * * * *"]
-  }
+  ]
+  // NOTE: No cron trigger needed — inline period resets in checkAndReserve
+  // handle budget period rollovers atomically within the transaction.
 }
 ```
 
@@ -161,7 +170,7 @@ export interface Env {
   // NEW: Durable Object binding
   USER_BUDGET: DurableObjectNamespace<UserBudgetDO>;
 
-  // NEW: Workers KV for auth + webhook + negative budget caching
+  // NEW: Workers KV for webhook caching (auth stays in-memory, negative budget handled by DO)
   CACHE_KV: KVNamespace;
 }
 ```
@@ -551,6 +560,27 @@ export class UserBudgetDO extends DurableObject {
 }
 ```
 
+### Intentional Behavior Change: Policy Enforcement
+
+The current Lua script blocks ALL entities when `spend + reserved + estimate > maxBudget`, regardless of policy:
+
+```lua
+-- Current: blocks strict_block, soft_block, AND warn identically
+if spend + reserved + estimate > maxBudget then
+  return denied
+end
+```
+
+The DO implementation only blocks `strict_block`:
+
+```typescript
+if (row.policy === "strict_block" && estimateMicrodollars > remaining) {
+  // Only strict_block actually denies
+}
+```
+
+**This is intentional and correct.** The `soft_block` and `warn` policies were always meant to allow requests through while flagging them. The Lua script had a bug where all policies behaved identically as hard blocks. The DO implementation fixes this. During shadow mode validation, expect `soft_block`/`warn` entities to show approved (DO) vs denied (Redis) — these are correct divergences, not bugs.
+
 ### Why This Implementation Is Correct
 
 **Atomicity**: `transactionSync()` executes synchronously — no `await`, no event loop yield, no interleaving. This is the DO equivalent of a Redis Lua script. The entire check-reset-reserve sequence is one atomic unit.
@@ -567,89 +597,48 @@ export class UserBudgetDO extends DurableObject {
 
 ## Part 4: Workers KV Cache Implementation
 
+Only webhook endpoint caching moves to KV. Auth caching stays in-memory (`api-key-auth.ts`). Negative budget caching is absorbed by the DO model.
+
 ```typescript
 // src/lib/cache-kv.ts
-// Replaces Redis auth cache, webhook cache, and negative budget markers
+// Replaces Redis webhook cache (webhook-cache.ts Redis path)
 
-const AUTH_TTL = 300;       // 5 minutes
-const WEBHOOK_TTL = 300;    // 5 minutes
-const NO_BUDGET_TTL = 300;  // 5 minutes
-
-// ── Auth Cache ──────────────────────────────────────────────────────
-
-interface CachedAuth {
-  keyId: string;
-  userId: string;
-  teamId: string;
-  permissions: string[];
-  hasBudgets: boolean;
-  cachedAt: number;
-}
-
-export async function getCachedAuth(
-  kv: KVNamespace,
-  apiKeyHash: string,
-): Promise<CachedAuth | null> {
-  return kv.get<CachedAuth>(`auth:${apiKeyHash}`, "json");
-}
-
-export async function setCachedAuth(
-  kv: KVNamespace,
-  apiKeyHash: string,
-  auth: CachedAuth,
-): Promise<void> {
-  await kv.put(`auth:${apiKeyHash}`, JSON.stringify(auth), {
-    expirationTtl: AUTH_TTL,
-  });
-}
+const WEBHOOK_TTL = 300; // 5 minutes — matches current Redis TTL
 
 // ── Webhook Config Cache ────────────────────────────────────────────
 
-interface CachedWebhookConfig {
-  endpoints: Array<{
-    id: string;
-    url: string;
-    eventTypes: string[];
-  }>;
+export interface CachedWebhookEndpoint {
+  id: string;
+  url: string;
+  eventTypes: string[];
 }
 
-export async function getCachedWebhookConfig(
+export async function getCachedWebhookEndpoints(
   kv: KVNamespace,
   userId: string,
-): Promise<CachedWebhookConfig | null> {
-  return kv.get<CachedWebhookConfig>(`webhook:${userId}`, "json");
+): Promise<CachedWebhookEndpoint[] | null> {
+  return kv.get<CachedWebhookEndpoint[]>(`webhook:${userId}`, "json");
 }
 
-export async function setCachedWebhookConfig(
+export async function setCachedWebhookEndpoints(
   kv: KVNamespace,
   userId: string,
-  config: CachedWebhookConfig,
+  endpoints: CachedWebhookEndpoint[],
 ): Promise<void> {
-  await kv.put(`webhook:${userId}`, JSON.stringify(config), {
+  await kv.put(`webhook:${userId}`, JSON.stringify(endpoints), {
     expirationTtl: WEBHOOK_TTL,
   });
 }
 
-// ── Negative Budget Cache ───────────────────────────────────────────
-// For entities confirmed to have no budgets — avoids DO lookup
-
-export async function isNoBudgetCached(
+export async function invalidateWebhookEndpoints(
   kv: KVNamespace,
-  apiKeyHash: string,
-): Promise<boolean> {
-  const val = await kv.get(`no-budget:${apiKeyHash}`);
-  return val === "1";
-}
-
-export async function setCachedNoBudget(
-  kv: KVNamespace,
-  apiKeyHash: string,
+  userId: string,
 ): Promise<void> {
-  await kv.put(`no-budget:${apiKeyHash}`, "1", {
-    expirationTtl: NO_BUDGET_TTL,
-  });
+  await kv.delete(`webhook:${userId}`);
 }
 ```
+
+> **What was removed from original spec**: Auth cache KV functions (`getCachedAuth`, `setCachedAuth`) — auth is already optimal in-memory. Negative budget KV functions (`isNoBudgetCached`, `setCachedNoBudget`) — the DO itself serves as the authoritative cache; no rows = no budget.
 
 ---
 
@@ -660,6 +649,7 @@ export async function setCachedNoBudget(
 // Drop-in replacement for the Redis budget functions
 
 import type { Env } from "../env";
+import { updateBudgetSpend } from "./budget-spend.js";
 
 interface BudgetEntity {
   type: string;  // "api_key" | "user"
@@ -682,16 +672,38 @@ export async function doBudgetCheck(
   );
 }
 
+/**
+ * Reconcile in DO + persist to Postgres.
+ *
+ * CRITICAL: Postgres is the source of truth. The DO is an acceleration layer.
+ * Every reconciliation must write back to Postgres so that:
+ *   1. Dashboard spend displays are accurate
+ *   2. Cold DO restarts (populateIfEmpty) get correct baseline spend
+ *   3. Postgres-based reporting/analytics stay current
+ *
+ * This mirrors what reconcileReservation() does today:
+ *   - reconcile() in Redis → now stub.reconcile() in DO
+ *   - updateBudgetSpend() in Postgres → still called here
+ */
 export async function doBudgetReconcile(
   env: Env,
   userId: string,
   reservationId: string,
   actualCostMicrodollars: number,
+  entities: Array<{ entityType: string; entityId: string }>,
+  connectionString: string,
 ) {
   const doId = env.USER_BUDGET.idFromName(userId);
   const stub = env.USER_BUDGET.get(doId);
 
-  return stub.reconcile(reservationId, actualCostMicrodollars);
+  const result = await stub.reconcile(reservationId, actualCostMicrodollars);
+
+  // Persist to Postgres — source of truth
+  if (actualCostMicrodollars > 0) {
+    await updateBudgetSpend(connectionString, entities, actualCostMicrodollars);
+  }
+
+  return result;
 }
 
 export async function doBudgetPopulate(
@@ -717,7 +729,7 @@ export async function doBudgetPopulate(
 
 ### Modified Route Handler (OpenAI example)
 
-The key change in the route handler is minimal — swap `checkAndReserve(ctx.redis, ...)` for `doBudgetCheck(env, ...)`:
+The key change in the route handler is minimal — swap `checkAndReserve(ctx.redis, ...)` for `doBudgetCheck(env, ...)`. To avoid triplicating this logic across openai.ts, anthropic.ts, and mcp.ts, extract a shared `BudgetOrchestrator` (see implementation tracker Phase 4).
 
 ```typescript
 // In openai.ts route handler (conceptual diff)
@@ -748,12 +760,48 @@ if (env.BUDGET_ENGINE === "durable-objects") {
 }
 
 // Reconciliation in waitUntil — same pattern, different backend
-ctx.waitUntil(
+// NOTE: doBudgetReconcile includes Postgres write-back (updateBudgetSpend)
+waitUntil(
   env.BUDGET_ENGINE === "durable-objects"
-    ? doBudgetReconcile(env, auth.userId, reservationId!, actualCost)
+    ? doBudgetReconcile(env, auth.userId, reservationId!, actualCost,
+        budgetEntities.map(e => ({ entityType: e.entityType, entityId: e.entityId })),
+        ctx.connectionString)
     : reconcileReservation(ctx.redis, reservationId!, actualCost, budgetEntities, ctx.connectionString)
 );
 ```
+
+### Shadow Mode Detail
+
+When `BUDGET_ENGINE=shadow`, Redis is primary for all decisions. DOs receive writes in `waitUntil()` for validation:
+
+```typescript
+// Shadow mode: Redis decides, DO shadows for comparison logging
+if (env.BUDGET_ENGINE === "shadow") {
+  // Primary: Redis (existing path, returns response)
+  const redisResult = await checkAndReserve(ctx.redis, entityKeys, estimate);
+
+  // Shadow: DO (non-blocking, log-only)
+  waitUntil((async () => {
+    try {
+      const doResult = await doBudgetCheck(env, auth.userId, budgetEntities, estimate);
+
+      // Log divergence — skip known soft_block/warn differences
+      if (redisResult.status !== doResult.status) {
+        console.warn("[budget-shadow] DIVERGENCE", {
+          userId: auth.userId, redisResult, doResult,
+        });
+      }
+    } catch (err) {
+      console.error("[budget-shadow] DO shadow failed:", err);
+    }
+  })());
+
+  // Use Redis result for the actual decision
+  checkResult = redisResult;
+}
+```
+
+Shadow reconciliation also runs in parallel — `doBudgetReconcile` is called alongside `reconcileReservation` so both backends stay in sync.
 
 ---
 
@@ -937,41 +985,49 @@ describe("UserBudgetDO", () => {
 
 ## Part 9: Deployment Sequence
 
-### Week 1: Infrastructure Setup
+> For granular implementation steps, verification criteria, and progress tracking, see the companion document: `docs/technical-outlines/nullspend-do-migration-implementation.md`
+
+### Phase 1: Infrastructure Setup
 1. `wrangler kv namespace create CACHE_KV` → copy ID into wrangler.jsonc
-2. Add DO binding, SQLite migration, KV binding, cron trigger to wrangler.jsonc
+2. Add DO binding, SQLite migration, KV binding to wrangler.jsonc
 3. Create `UserBudgetDO` class (exported from index.ts)
 4. Deploy with `BUDGET_ENGINE=redis` — DOs exist but unused
-5. Run full test suite locally with `wrangler dev --test-scheduled`
+5. Run full test suite — verify zero regressions
 6. Verify DO appears in CF dashboard → Workers → Durable Objects
 
-### Week 2: Auth/Webhook Cache Migration (Lowest Risk)
-1. Implement Workers KV cache functions (auth, webhook, negative budget)
-2. Wire KV cache into proxy routes, replacing Redis cache calls
+### Phase 2: Webhook Cache KV Migration (Lowest Risk)
+1. Implement Workers KV webhook cache functions (`cache-kv.ts`)
+2. Update `webhook-cache.ts` to use KV instead of Redis
 3. Monitor KV hit rates and latency
-4. Keep Redis auth cache code temporarily for rollback
-5. Remove Redis auth/webhook cache code after 1 week stable
+4. Keep Redis webhook cache code temporarily for rollback
+5. Remove Redis webhook cache code after stable
 
-### Week 3: Shadow Mode for Budget Enforcement
+### Phase 3: Budget Orchestrator + DO Client
+1. Create `budget-do-client.ts` with Postgres write-back
+2. Create `BudgetOrchestrator` — shared logic for all 3 route handlers
+3. Wire orchestrator into openai.ts, anthropic.ts, mcp.ts
+4. `BUDGET_ENGINE=redis` still active — orchestrator uses Redis path
+
+### Phase 4: Shadow Mode Validation
 1. Set `BUDGET_ENGINE=shadow`
 2. Redis remains primary for all budget decisions
 3. `waitUntil()` sends parallel DO writes for every budget operation
-4. Log all Redis-vs-DO result discrepancies
-5. Fix any divergences found
+4. Log all Redis-vs-DO result discrepancies (expect soft_block/warn divergences)
+5. Fix any unexpected divergences
 
-### Week 4: Budget Enforcement Cutover
+### Phase 5: Budget Enforcement Cutover
 1. Set `BUDGET_ENGINE=durable-objects`
 2. DOs are now primary for budget enforcement
 3. Monitor: check latency (p50, p99), approval/denial accuracy, reconciliation rates
 4. Redis budget code remains in codebase but inactive
-5. Run parallel validation for 1+ weeks
 
-### Week 5+: Cleanup
+### Phase 6: Cleanup
 1. Remove Redis Lua scripts (budget.ts, budget-reconcile.ts)
-2. Remove budget-related Redis cache code (budget-lookup.ts, budget-spend.ts)
+2. Remove budget-related Redis cache code (budget-lookup.ts)
 3. Remove `BUDGET_ENGINE` toggle (hardcode to DO path)
-4. Keep Upstash Redis for rate limiting, idempotency, health
-5. Update all documentation
+4. Remove `ctx.redis` from `RequestContext` if no longer needed
+5. Keep Upstash Redis for rate limiting, idempotency, health
+6. Keep `budget-spend.ts` — Postgres write-back is still used by DO path
 
 ### Rollback at Any Phase
 - **Shadow mode issues**: Disable shadow path, zero user impact

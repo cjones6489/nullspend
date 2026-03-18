@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:do": "vitest run --config vitest.do.config.mts"
   },
   "dependencies": {
     "@nullspend/cost-engine": "workspace:*",
@@ -26,7 +27,8 @@
     "@types/node": "^25.3.5",
     "@types/pg": "^8.11.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18",
+    "@cloudflare/vitest-pool-workers": "^0.13.2",
+    "vitest": "^4.1.0",
     "wrangler": "^4.71.0"
   }
 }
