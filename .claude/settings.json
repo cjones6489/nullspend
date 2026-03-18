@@ -24,6 +24,21 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/protect-critical-files.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/check-secrets.sh"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write",
@@ -31,6 +46,17 @@
           {
             "type": "command",
             "command": "jq -r '.tool_input.file_path' | xargs npx prettier --write 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Context restored after compaction. Key reminders: pnpm test (root) and pnpm proxy:test (proxy) are separate suites. Error format: { error: \"code\", message: \"text\" }. Schema source of truth: packages/db/src/schema.ts. Run pnpm typecheck before committing.'"
           }
         ]
       }
