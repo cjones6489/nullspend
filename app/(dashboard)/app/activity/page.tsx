@@ -1,11 +1,24 @@
 "use client";
 
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useApiKeys } from "@/lib/queries/api-keys";
 import { RecentActivity } from "@/components/usage/recent-activity";
 
-export default function ActivityPage() {
+function ActivityContent() {
   const { data: keysData } = useApiKeys();
+  const searchParams = useSearchParams();
+  const provider = searchParams.get("provider") ?? undefined;
 
+  return (
+    <RecentActivity
+      keys={(keysData?.data ?? []).map((k) => ({ id: k.id, name: k.name }))}
+      initialProvider={provider}
+    />
+  );
+}
+
+export default function ActivityPage() {
   return (
     <div className="space-y-6">
       <div>
@@ -16,9 +29,9 @@ export default function ActivityPage() {
           Every API call that flows through the proxy.
         </p>
       </div>
-      <RecentActivity
-        keys={(keysData?.data ?? []).map((k) => ({ id: k.id, name: k.name }))}
-      />
+      <Suspense fallback={null}>
+        <ActivityContent />
+      </Suspense>
     </div>
   );
 }

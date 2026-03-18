@@ -1,7 +1,7 @@
 "use client";
 
-import { Activity, Loader2, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Loader2, RefreshCw } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,14 +32,36 @@ import {
 
 interface RecentActivityProps {
   keys: { id: string; name: string }[];
+  initialProvider?: string;
 }
 
 const ALL_KEYS = "all";
 const ALL_PROVIDERS = "all";
 
-export function RecentActivity({ keys }: RecentActivityProps) {
+type SortField = "createdAt" | "cost" | "toks" | "latency" | "input" | "output";
+type SortDir = "asc" | "desc";
+
+function SortIcon({ field, active, dir }: { field: string; active: string | null; dir: SortDir }) {
+  if (active !== field) return <ArrowUpDown className="ml-1 inline h-3 w-3 opacity-30" />;
+  return dir === "asc"
+    ? <ArrowUp className="ml-1 inline h-3 w-3" />
+    : <ArrowDown className="ml-1 inline h-3 w-3" />;
+}
+
+export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
   const [selectedKeyId, setSelectedKeyId] = useState(ALL_KEYS);
-  const [selectedProvider, setSelectedProvider] = useState(ALL_PROVIDERS);
+  const [selectedProvider, setSelectedProvider] = useState(initialProvider ?? ALL_PROVIDERS);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortField(field);
+      setSortDir("desc");
+    }
+  }
 
   const filters = {
     ...(selectedKeyId !== ALL_KEYS ? { apiKeyId: selectedKeyId } : {}),
@@ -58,7 +80,25 @@ export function RecentActivity({ keys }: RecentActivityProps) {
     isFetching,
   } = useCostEvents(filters);
 
-  const events = data?.pages.flatMap((p) => p.data) ?? [];
+  const rawEvents = data?.pages.flatMap((p) => p.data) ?? [];
+
+  const events = useMemo(() => {
+    if (!sortField) return rawEvents;
+    const sorted = [...rawEvents].sort((a, b) => {
+      let aVal: number, bVal: number;
+      switch (sortField) {
+        case "createdAt": aVal = new Date(a.createdAt).getTime(); bVal = new Date(b.createdAt).getTime(); break;
+        case "cost": aVal = a.costMicrodollars; bVal = b.costMicrodollars; break;
+        case "input": aVal = a.inputTokens; bVal = b.inputTokens; break;
+        case "output": aVal = a.outputTokens; bVal = b.outputTokens; break;
+        case "toks": aVal = a.durationMs ? (a.outputTokens / a.durationMs) : 0; bVal = b.durationMs ? (b.outputTokens / b.durationMs) : 0; break;
+        case "latency": aVal = a.durationMs ?? 0; bVal = b.durationMs ?? 0; break;
+        default: return 0;
+      }
+      return sortDir === "asc" ? aVal - bVal : bVal - aVal;
+    });
+    return sorted;
+  }, [rawEvents, sortField, sortDir]);
   const hasFilter =
     selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS;
 
@@ -124,8 +164,11 @@ export function RecentActivity({ keys }: RecentActivityProps) {
           <Table>
             <TableHeader>
               <TableRow className="border-border/50 hover:bg-transparent">
-                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Time
+                <TableHead
+                  className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleSort("createdAt")}
+                >
+                  Time <SortIcon field="createdAt" active={sortField} dir={sortDir} />
                 </TableHead>
                 <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Model
@@ -135,23 +178,36 @@ export function RecentActivity({ keys }: RecentActivityProps) {
                     Key
                   </TableHead>
                 )}
-                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Input
-                </TableHead>
-                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Output
-                </TableHead>
-                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Cost
+                <TableHead
+                  className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleSort("input")}
+                >
+                  Input <SortIcon field="input" active={sortField} dir={sortDir} />
                 </TableHead>
                 <TableHead
-                  className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
+                  className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleSort("output")}
+                >
+                  Output <SortIcon field="output" active={sortField} dir={sortDir} />
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleSort("cost")}
+                >
+                  Cost <SortIcon field="cost" active={sortField} dir={sortDir} />
+                </TableHead>
+                <TableHead
+                  className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleSort("toks")}
                   title="Output tokens per second — measures model throughput"
                 >
-                  Tok/s
+                  Tok/s <SortIcon field="toks" active={sortField} dir={sortDir} />
                 </TableHead>
-                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Latency
+                <TableHead
+                  className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                  onClick={() => toggleSort("latency")}
+                >
+                  Latency <SortIcon field="latency" active={sortField} dir={sortDir} />
                 </TableHead>
               </TableRow>
             </TableHeader>

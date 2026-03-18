@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 
 import {
@@ -111,9 +112,15 @@ export function ProviderBreakdown({
             </TableHeader>
             <TableBody>
               {data.map((row) => (
-                <TableRow key={row.provider} className="border-border/30">
-                  <TableCell className="text-[13px] font-medium text-foreground">
-                    {formatProviderName(row.provider)}
+                <TableRow key={row.provider} className="border-border/30 transition-colors hover:bg-accent/40">
+                  <TableCell>
+                    <Link
+                      href={`/app/activity?provider=${row.provider}`}
+                      className="text-[13px] font-medium text-foreground transition-colors hover:text-primary"
+                      title={`View all ${formatProviderName(row.provider)} activity`}
+                    >
+                      {formatProviderName(row.provider)}
+                    </Link>
                   </TableCell>
                   <TableCell className="text-right text-[13px] tabular-nums text-foreground">
                     {row.requestCount.toLocaleString()}

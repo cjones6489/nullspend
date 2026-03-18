@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowLeft } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import { Suspense, use } from "react";
 import { useSearchParams } from "next/navigation";
@@ -167,15 +168,19 @@ function DetailRow({
   return (
     <div>
       <p className="text-[11px] text-muted-foreground/70">{label}</p>
-      <p
-        className={
-          mono
-            ? "truncate font-mono text-xs text-foreground/80"
-            : "text-[13px] text-foreground"
-        }
-      >
-        {value ?? "—"}
-      </p>
+      <div className="flex items-center gap-1">
+        <p
+          className={
+            mono
+              ? "truncate font-mono text-xs text-foreground/80"
+              : "text-[13px] text-foreground"
+          }
+          title={mono && value ? value : undefined}
+        >
+          {value ?? "—"}
+        </p>
+        {mono && value && <CopyButton value={value} />}
+      </div>
     </div>
   );
 }
