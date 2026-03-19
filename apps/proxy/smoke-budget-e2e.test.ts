@@ -46,6 +46,12 @@ describe("End-to-end budget enforcement", () => {
     sql = postgres(process.env.DATABASE_URL!, { max: 3, idle_timeout: 10 });
   });
 
+  // TODO: Tests after "exhausts budget" can flake (expect 429/200, get the opposite)
+  // because rapid-fire requests leave in-flight reconciliations that race with the
+  // 5s afterEach cleanup. The reconciliation writes stale spend to Postgres after
+  // cleanup, and the next test's setupBudget syncs that stale spend into the DO.
+  // Fix: either increase the delay, reset spend in setupBudget before sync, or
+  // isolate the exhaust test into its own describe with a longer teardown.
   afterEach(async () => {
     // Wait for waitUntil reconciliation from the test's requests to complete.
     // Without this, reconciliation can re-add spend to the DO after we clean it.
