@@ -25,7 +25,7 @@ export const GET = withRequestContext(async (request: Request) => {
   const query = listCostEventsQuerySchema.parse({
     limit: url.searchParams.get("limit") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
-    apiKeyId: url.searchParams.get("apiKeyId") ?? undefined,
+    apiKeyId: url.searchParams.get("apiKeyId") || undefined,
     model: url.searchParams.get("model") ?? undefined,
     provider: url.searchParams.get("provider") ?? undefined,
   });
