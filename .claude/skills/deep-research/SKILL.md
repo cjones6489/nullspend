@@ -51,7 +51,15 @@ Use at minimum these agent roles:
 - Recommend how we can make the system cleaner, easier to reason about, and more pleasant to build on
 - Highlight where architecture decisions may hurt speed, clarity, or maintainability later
 
-6. Risk / Failure Mode Agent
+6. Frontier / Emerging Patterns Agent
+- Search for bleeding-edge startups (especially recent YC companies) building in adjacent spaces — AI infrastructure, FinOps, API gateways, observability, billing, developer tools
+- Look for published academic research, technical papers, and conference talks (e.g., USENIX, SIGMOD, VLDB, InfoQ, Strange Loop) relevant to this problem
+- Identify forward-looking design patterns that haven't yet become mainstream but show strong signal — new approaches to the problem from teams that are solving it right now
+- Look at recently funded companies' technical blogs, open-source projects, and architecture posts for novel approaches
+- Distinguish between genuinely innovative patterns vs. hype. Focus on ideas that could give NullSpend a structural advantage as the best financial infrastructure for AI agents
+- Flag any emerging standards, protocols, or specifications in draft/proposal stage that we should design for now
+
+7. Risk / Failure Mode Agent
 - Identify likely bugs, weak spots, operational risks, edge cases, rollout hazards, data integrity risks, auth/security issues, scaling traps, and long-tail failure modes
 - Identify hidden complexity or places where the problem is harder than it first appears
 - Highlight assumptions that need validation before implementation
@@ -136,9 +144,19 @@ For each option include:
 Give the recommended technical strategy for our specific use case.
 Explain why this is the best choice for our stage, goals, and likely future needs.
 
+## Frontier and Emerging Patterns
+Summarize findings from bleeding-edge companies, recent YC startups, published research, and emerging standards. For each finding:
+- Who is doing it (company, paper, project) and when (funding date, publication date, last commit)
+- What the pattern or approach is
+- Why it matters for our platform vision (best financial infrastructure for AI agents)
+- Maturity level: production-proven / early-adopter / experimental / theoretical
+- Whether to adopt now, design for later, or watch
+
+Clearly separate signal from hype. We want patterns that give structural advantage, not trends that add complexity without payoff.
+
 ## Opportunities to Build Something Better
 Identify where existing products, repos, or patterns seem weak and where we can create a better implementation.
-Focus on simplicity, robustness, maintainability, and DX.
+Focus on simplicity, robustness, maintainability, and DX. Include forward-looking opportunities from the frontier research that could position us ahead of established players.
 
 ## Risks, Gaps, and Edge Cases
 List hidden risks, hard problems, likely bugs, scaling traps, and assumptions that need validation.
