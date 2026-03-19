@@ -534,10 +534,10 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
-| DO-first budget enforcement (Section 11) | Postgres queried on every cache miss (30-150ms) | Eliminate Postgres from hot path — DO is the only read-side authority | ~3-4 hours |
+| ~~DO-first budget enforcement (Section 11)~~ **DONE** | ~~Postgres queried on every cache miss~~ | ~~Eliminate Postgres from hot path~~ Deployed 2026-03-18. Single DO RPC, 1-5ms. | ~~3-4 hours~~ |
 | Prefixed object IDs | Raw UUIDs in API responses | Add `ns_` prefix mapping layer at API boundary | ~3 hours |
 | API key format | `ask_` prefix, no env/permission encoding | Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning | ~3 hours |
-| ~~Error response contract~~ **DONE** | ~~Flat `{ error, message }` format~~ | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18. Second pass (proxy.ts, gateway, Stripe webhook) completed same day. | ~~5-6 hours~~ |
+| ~~Error response contract~~ **DONE** | ~~Flat `{ error, message }` format~~ | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18. | ~~5-6 hours~~ |
 | Webhook event taxonomy | 6 types defined, no `api_version` on events | Lock full taxonomy + add `api_version` field to event structure | ~1 hour |
 | `source` column on cost_events | Missing | Add column (`DEFAULT 'proxy'`) + set in all ingestion paths | ~30 min |
 | `api_version` on api_keys | Missing | Add column (`DEFAULT '2026-03-01'`) + header parsing | ~30 min |
@@ -551,6 +551,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 | ~~Reduce auth cache TTL~~ | **DONE** — 60s → 30s |
 | ~~Remove vestigial `source` field~~ | **DONE** — Removed `source: "postgres"` from budget status response + validation schema (always one source, field was redundant) |
 | ~~Stale Redis comments~~ | **DONE** — Updated 4 proxy comments referencing Redis HINCRBY / cache rebuilds to reference DO architecture |
+| ~~Rate limit headers~~ | **DONE** — Proxy forwards upstream `x-ratelimit-*`, dashboard applies standard headers |
 
 ### Medium Priority (should complete before launch or within first month)
 
@@ -564,11 +565,10 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
 | `trace_id` on cost_events | Missing | Add nullable column + `traceparent` extraction in proxy | ~30 min |
-| Rate limit headers | Mostly done | Verify consistency across surfaces + add budget headers | ~30 min |
 | `doc_url` on error responses | Missing | Add to error helper when docs site exists | ~15 min |
 | Thin webhook events | Not needed at launch volume | Design is forward-compatible; implement when scale requires it | TBD |
 
-See Section 10 for full budget enforcement architecture analysis and rationale.
+See Section 10 for budget enforcement architecture analysis, Section 11 for DO-first implementation notes.
 
 ### Explicitly Deferred (not needed pre-launch)
 
