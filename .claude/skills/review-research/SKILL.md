@@ -1,6 +1,6 @@
 ---
 name: review-research
-description: Review a research document against the actual codebase. Use after deep-research to validate recommendations against real code, find misalignments between research assumptions and implementation reality, and identify where recommendations don't fit our architecture, conventions, or constraints.
+description: Review a research document against the actual codebase. Use after deep-research to validate recommendations against real code, find misalignments, and identify where the codebase should evolve to match better patterns from the research. Balances codebase reality with forward-looking improvements.
 disable-model-invocation: true
 allowed-tools: Read, Edit, Write, Grep, Glob, Agent, Bash(git diff *), Bash(git log *), Bash(git show *), WebFetch, WebSearch, mcp__context7__resolve-library-id, mcp__context7__query-docs
 argument-hint: [path to research document or topic name]
@@ -12,10 +12,16 @@ Review the research document against our actual codebase and identify misalignme
 $ARGUMENTS
 
 Your role:
-Act as a senior staff engineer who deeply knows this codebase, reviewing a research document produced by an external research team. Your job is to ground-truth every recommendation against the real code, conventions, constraints, and architecture of this project.
+Act as a senior staff engineer who deeply knows this codebase AND thinks strategically about where the platform needs to go. You're reviewing research produced by an external research team. Your job is twofold: (1) ground-truth recommendations against the real code to catch wrong assumptions, and (2) identify where the research reveals gaps, weaknesses, or outdated patterns in our codebase that we should fix.
+
+Platform vision: NullSpend aims to be the best financial infrastructure for AI agents — the Stripe of AI FinOps. Every decision should be evaluated against this standard. If the research surfaces patterns from Stripe, Datadog, or other best-in-class platforms that we're not following, that's an opportunity, not a conflict.
 
 Objective:
-Find where research recommendations conflict with reality — wrong assumptions about how the code works, recommendations that ignore existing patterns, suggestions that would break conventions, architectural options that don't account for our infrastructure, and anything that sounds good in theory but doesn't fit our codebase.
+Find both directions of misalignment:
+- Where research recommendations make wrong assumptions about how our code actually works
+- Where our codebase is behind industry best practices and should evolve to match the research recommendations
+
+Do not reflexively defend existing code. If the research identifies a fundamentally better approach — more robust, more scalable, better DX, more aligned with where the platform needs to go — flag it as an upgrade opportunity, not a misalignment to dismiss.
 
 Instructions:
 
@@ -81,8 +87,20 @@ List functions, utilities, patterns, or prior implementations that already exist
 ## Convention Violations
 List where recommendations would break established project conventions, with the correct convention cited.
 
+## Upgrade Opportunities
+List where the research reveals that our codebase is behind best practices or missing patterns that best-in-class platforms use. For each:
+- What the research recommends (and who does it well)
+- What our codebase currently does
+- Why upgrading matters for our platform vision
+- Effort and complexity to adopt
+- Whether to do it now or track for later
+
 ## Revised Recommendation
-Based on the review, provide the corrected implementation approach that accounts for all misalignments, uses existing code where possible, and follows project conventions.
+Based on the review, provide the corrected implementation approach that:
+- Fixes wrong assumptions from the research
+- Uses existing code where it's already good
+- Adopts better patterns from the research where our code should evolve
+- Follows project conventions where they're sound, upgrades them where they're not
 
 ## Updated File List
 Provide the corrected list of files that actually need to change, with specific changes for each.
@@ -91,4 +109,4 @@ Provide the corrected list of files that actually need to change, with specific 
 Provide a revised effort estimate based on the actual scope.
 
 Final rule:
-Trust the codebase over the research. If the research says one thing and the code says another, the code wins. Optimize for an implementation that fits naturally into the existing codebase.
+Be honest in both directions. When the codebase is right and the research is wrong, say so. When the research is right and the codebase is behind, say so. The goal is the best possible implementation — not defending existing code, and not blindly adopting research recommendations. Always evaluate against the platform vision: best financial infrastructure for AI agents.
