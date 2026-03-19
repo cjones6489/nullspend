@@ -5,11 +5,11 @@
  * Usage:  pnpm tsx --env-file=.env.local scripts/seed-budgets.ts
  * Requires DATABASE_URL in .env.local
  */
-import crypto from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql as dsql, isNull } from "drizzle-orm";
 import * as schema from "../packages/db/src/schema";
+import { generateRawKey, hashKey, extractPrefix } from "../lib/auth/api-key";
 
 const { apiKeys, budgets } = schema;
 
@@ -41,19 +41,20 @@ async function main() {
   const seedKeyNames = ["Production Agent", "Staging Agent"];
   while (keys.length < 3) {
     const name = seedKeyNames[keys.length - 1] || `Seed Key ${keys.length}`;
-    const keyHash = crypto.createHash("sha256").update(crypto.randomUUID()).digest("hex");
+    const rawKey = generateRawKey();
     const [newKey] = await db
       .insert(apiKeys)
       .values({
         userId,
         name,
-        keyHash,
-        keyPrefix: `as_seed_${keys.length}_`,
+        keyHash: hashKey(rawKey),
+        keyPrefix: extractPrefix(rawKey),
       })
       .returning({ id: apiKeys.id, name: apiKeys.name, userId: apiKeys.userId });
 
     keys.push(newKey);
     console.log(`  Created seed API key: "${name}"`);
+    console.log(`    Raw key: ${rawKey}`);
   }
 
   console.log(`Using ${keys.length} API key(s)`);

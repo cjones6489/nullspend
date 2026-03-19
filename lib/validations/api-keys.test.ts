@@ -37,7 +37,7 @@ describe("API key validation schemas", () => {
       const result = apiKeyRecordSchema.parse({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "Production",
-        keyPrefix: "ask_3f8a1b2c",
+        keyPrefix: "ns_live_sk_3f8a1b2c",
         lastUsedAt: null,
         createdAt: "2026-03-07T12:00:00.000Z",
       });
@@ -50,7 +50,7 @@ describe("API key validation schemas", () => {
       const result = apiKeyRecordSchema.parse({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "Dev",
-        keyPrefix: "ask_abcd1234",
+        keyPrefix: "ns_live_sk_abcd1234",
         lastUsedAt: "2026-03-07T15:00:00.000Z",
         createdAt: "2026-03-07T12:00:00.000Z",
       });
@@ -64,12 +64,12 @@ describe("API key validation schemas", () => {
       const result = createApiKeyResponseSchema.parse({
         id: "550e8400-e29b-41d4-a716-446655440000",
         name: "Production",
-        keyPrefix: "ask_3f8a1b2c",
-        rawKey: "ask_3f8a1b2c9d4e5f6a7b8c9d0e1f2a3b",
+        keyPrefix: "ns_live_sk_3f8a1b2c",
+        rawKey: "ns_live_sk_3f8a1b2c9d4e5f6a7b8c9d0e1f2a3b4c",
         createdAt: "2026-03-07T12:00:00.000Z",
       });
       expect(result.id).toBe("ns_key_550e8400-e29b-41d4-a716-446655440000");
-      expect(result.rawKey).toContain("ask_");
+      expect(result.rawKey).toContain("ns_live_sk_");
     });
   });
 

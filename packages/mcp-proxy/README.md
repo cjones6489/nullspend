@@ -44,7 +44,7 @@ Add to `claude_desktop_config.json`:
       "args": ["C:/path/to/NullSpend/packages/mcp-proxy/dist/index.js"],
       "env": {
         "NULLSPEND_URL": "http://127.0.0.1:3000",
-        "NULLSPEND_API_KEY": "ask_your-api-key-here",
+        "NULLSPEND_API_KEY": "ns_live_sk_your-api-key-here",
         "UPSTREAM_COMMAND": "npx",
         "UPSTREAM_ARGS": "[\"-y\", \"@supabase/mcp-server\"]",
         "UPSTREAM_ENV": "{\"SUPABASE_ACCESS_TOKEN\": \"sbp_your-token\"}",
@@ -68,7 +68,7 @@ Add to your Cursor MCP settings (`.cursor/mcp.json` or global settings):
       "args": ["C:/path/to/NullSpend/packages/mcp-proxy/dist/index.js"],
       "env": {
         "NULLSPEND_URL": "http://127.0.0.1:3000",
-        "NULLSPEND_API_KEY": "ask_your-api-key-here",
+        "NULLSPEND_API_KEY": "ns_live_sk_your-api-key-here",
         "UPSTREAM_COMMAND": "npx",
         "UPSTREAM_ARGS": "[\"-y\", \"@supabase/mcp-server\"]",
         "UPSTREAM_ENV": "{\"SUPABASE_ACCESS_TOKEN\": \"sbp_your-token\"}",

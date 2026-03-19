@@ -49,7 +49,7 @@ describe("DB-backed API key auth", () => {
 
     await expect(
       assertApiKeyWithIdentity(
-        makeRequest({ "x-nullspend-key": "ask_0123456789abcdef0123456789abcdef" }),
+        makeRequest({ "x-nullspend-key": "ns_live_sk_0123456789abcdef0123456789abcdef" }),
       ),
     ).resolves.toEqual({
       keyId: "key-123",
@@ -75,7 +75,7 @@ describe("DB-backed API key auth", () => {
 
     await expect(
       assertApiKeyWithIdentity(
-        makeRequest({ "x-nullspend-key": "ask_wrong0000000000000000000000000000" }),
+        makeRequest({ "x-nullspend-key": "ns_live_sk_ff00ff00ff00ff00ff00ff00ff00ff00" }),
       ),
     ).rejects.toBeInstanceOf(ApiKeyError);
   });

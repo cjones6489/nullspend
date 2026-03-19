@@ -9,7 +9,7 @@ import { NullSpend } from "@nullspend/sdk";
 
 const seam = new NullSpend({
   baseUrl: "http://localhost:3000",
-  apiKey: "ask_...", // from your Settings page
+  apiKey: "ns_live_sk_...", // from your Settings page
 });
 
 const result = await seam.proposeAndWait({
@@ -119,9 +119,9 @@ Three runnable demos in [`examples/`](examples/) show the approval loop for diff
 pnpm dev
 
 # Terminal 2: run any demo
-NULLSPEND_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-send-email.ts
-NULLSPEND_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-http-post.ts
-NULLSPEND_API_KEY=ask_... pnpm tsx packages/sdk/examples/demo-shell-command.ts
+NULLSPEND_API_KEY=ns_live_sk_... pnpm tsx packages/sdk/examples/demo-send-email.ts
+NULLSPEND_API_KEY=ns_live_sk_... pnpm tsx packages/sdk/examples/demo-http-post.ts
+NULLSPEND_API_KEY=ns_live_sk_... pnpm tsx packages/sdk/examples/demo-shell-command.ts
 ```
 
 Then open <http://localhost:3000/app/inbox> and approve the action.

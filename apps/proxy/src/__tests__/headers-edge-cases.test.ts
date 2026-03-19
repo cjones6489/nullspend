@@ -63,7 +63,7 @@ describe("buildUpstreamHeaders edge cases", () => {
   it("does NOT forward x-nullspend-key to upstream", () => {
     const req = makeRequest({
       authorization: "Bearer sk-test",
-      "x-nullspend-key": "ask_test123",
+      "x-nullspend-key": "ns_live_sk_test0001",
     });
     const headers = buildUpstreamHeaders(req);
 

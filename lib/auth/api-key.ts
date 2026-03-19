@@ -7,7 +7,7 @@ import { apiKeys } from "@nullspend/db";
 import { getDevActor } from "@/lib/auth/session";
 
 export const API_KEY_HEADER = "x-nullspend-key";
-export const API_KEY_PREFIX = "ask_";
+export const API_KEY_PREFIX = "ns_live_sk_";
 
 export class ApiKeyError extends Error {
   constructor(message = "Invalid or missing API key.") {
@@ -30,7 +30,7 @@ export function hashKey(rawKey: string): string {
 }
 
 export function extractPrefix(rawKey: string): string {
-  return rawKey.slice(0, 12);
+  return rawKey.slice(0, 19);
 }
 
 function constantTimeCompare(a: string, b: string): boolean {

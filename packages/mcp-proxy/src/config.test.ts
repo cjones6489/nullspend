@@ -3,7 +3,7 @@ import { loadConfig, ConfigError } from "./config.js";
 
 const REQUIRED_ENV = {
   NULLSPEND_URL: "http://127.0.0.1:3000",
-  NULLSPEND_API_KEY: "ask_test123",
+  NULLSPEND_API_KEY: "ns_live_sk_test0001",
   UPSTREAM_COMMAND: "node",
 };
 
@@ -46,7 +46,7 @@ describe("loadConfig", () => {
     const config = loadConfig();
 
     expect(config.nullspendUrl).toBe("http://127.0.0.1:3000");
-    expect(config.nullspendApiKey).toBe("ask_test123");
+    expect(config.nullspendApiKey).toBe("ns_live_sk_test0001");
     expect(config.upstreamCommand).toBe("node");
     expect(config.upstreamArgs).toEqual([]);
     expect(config.upstreamEnv).toEqual({});
@@ -230,7 +230,7 @@ describe("loadConfig", () => {
   it("does not require cost tracking vars when NULLSPEND_COST_TRACKING=false", () => {
     Object.assign(process.env, {
       NULLSPEND_URL: "http://127.0.0.1:3000",
-      NULLSPEND_API_KEY: "ask_test123",
+      NULLSPEND_API_KEY: "ns_live_sk_test0001",
       UPSTREAM_COMMAND: "node",
       NULLSPEND_COST_TRACKING: "false",
     });

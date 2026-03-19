@@ -10,7 +10,7 @@ if echo "$FILE_PATH" | grep -qE '\.(ts|tsx|js|jsx|json|md|sh|sql|css|env)$'; the
   if [ -f "$FILE_PATH" ]; then
     # Check for common secret patterns
     MATCHES=$(grep -nE \
-      '(sk-[a-zA-Z0-9]{20,}|sk-ant-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|-----BEGIN (RSA |EC |DSA )?PRIVATE KEY|password\s*[:=]\s*["\x27][^"\x27]{8,}|postgresql://[^@]+:[^@]+@|redis://[^@]*:[^@]+@|SUPABASE_SERVICE_ROLE_KEY\s*=\s*ey)' \
+      '(ns_(live|test)_(sk|pk)_[a-f0-9]{32}|sk-[a-zA-Z0-9]{20,}|sk-ant-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|-----BEGIN (RSA |EC |DSA )?PRIVATE KEY|password\s*[:=]\s*["\x27][^"\x27]{8,}|postgresql://[^@]+:[^@]+@|redis://[^@]*:[^@]+@|SUPABASE_SERVICE_ROLE_KEY\s*=\s*ey)' \
       "$FILE_PATH" 2>/dev/null || true)
 
     if [ -n "$MATCHES" ]; then

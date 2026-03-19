@@ -32,7 +32,7 @@ describe("authenticateRequest", () => {
     });
 
     const request = new Request("http://localhost/v1/chat/completions", {
-      headers: { "x-nullspend-key": "ask_valid_key" },
+      headers: { "x-nullspend-key": "ns_live_sk_valid_key" },
     });
 
     const result = await authenticateRequest(request, "postgresql://localhost");
@@ -51,7 +51,7 @@ describe("authenticateRequest", () => {
     mockAuthenticateApiKey.mockResolvedValue(null);
 
     const request = new Request("http://localhost/v1/chat/completions", {
-      headers: { "x-nullspend-key": "ask_invalid_key" },
+      headers: { "x-nullspend-key": "ns_live_sk_invalid_key" },
     });
 
     const result = await authenticateRequest(request, "postgresql://localhost");

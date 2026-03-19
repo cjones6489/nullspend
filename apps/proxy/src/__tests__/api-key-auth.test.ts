@@ -31,27 +31,27 @@ vi.mock("../lib/db-semaphore.js", () => ({
 // --- Import after mocks ---
 import { hashApiKey, authenticateApiKey, _resetCaches } from "../lib/api-key-auth.js";
 
-const TEST_RAW_KEY = "ask_test1234567890abcdef";
+const TEST_RAW_KEY = "ns_live_sk_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
 const TEST_USER_ID = "user-abc-123";
 const TEST_KEY_ID = "550e8400-e29b-41d4-a716-446655440000";
 const TEST_CONNECTION_STRING = "postgresql://postgres:postgres@db.example.com:5432/postgres";
 
 describe("hashApiKey", () => {
   it("produces the same hex output as Node.js crypto.createHash('sha256')", async () => {
-    const rawKey = "ask_test1234567890abcdef";
+    const rawKey = "ns_live_sk_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
     const expected = createHash("sha256").update(rawKey).digest("hex");
     const result = await hashApiKey(rawKey);
     expect(result).toBe(expected);
   });
 
   it("produces a 64-character lowercase hex string", async () => {
-    const result = await hashApiKey("ask_hello");
+    const result = await hashApiKey("ns_live_sk_hello");
     expect(result).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("produces different hashes for different inputs", async () => {
-    const hash1 = await hashApiKey("ask_key1");
-    const hash2 = await hashApiKey("ask_key2");
+    const hash1 = await hashApiKey("ns_live_sk_key01");
+    const hash2 = await hashApiKey("ns_live_sk_key02");
     expect(hash1).not.toBe(hash2);
   });
 
@@ -62,7 +62,7 @@ describe("hashApiKey", () => {
   });
 
   it("handles unicode input", async () => {
-    const rawKey = "ask_unicödé_kéy_🔑";
+    const rawKey = "ns_live_sk_unicödé_kéy_🔑";
     const expected = createHash("sha256").update(rawKey).digest("hex");
     const result = await hashApiKey(rawKey);
     expect(result).toBe(expected);
@@ -144,7 +144,7 @@ describe("authenticateApiKey", () => {
     // returns no rows — we just verify it returns null
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
-    const result = await authenticateApiKey("ask_revoked_key", TEST_CONNECTION_STRING);
+    const result = await authenticateApiKey("ns_live_sk_revoked_key", TEST_CONNECTION_STRING);
     expect(result).toBeNull();
   });
 
@@ -196,7 +196,7 @@ describe("authenticateApiKey", () => {
       mockQuery.mockResolvedValueOnce({
         rows: [{ id: `key-${i}`, user_id: `user-${i}`, has_webhooks: false }],
       });
-      await authenticateApiKey(`ask_key_${i}`, TEST_CONNECTION_STRING);
+      await authenticateApiKey(`ns_live_sk_key_${i}`, TEST_CONNECTION_STRING);
     }
 
     // 257 DB calls should have been made
@@ -206,13 +206,13 @@ describe("authenticateApiKey", () => {
     mockQuery.mockResolvedValueOnce({
       rows: [{ id: "key-0", user_id: "user-0", has_webhooks: false }],
     });
-    const result = await authenticateApiKey("ask_key_0", TEST_CONNECTION_STRING);
+    const result = await authenticateApiKey("ns_live_sk_key_0", TEST_CONNECTION_STRING);
     expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false });
     expect(mockConnect).toHaveBeenCalledTimes(258); // Had to go to DB again
 
     // Re-adding key_0 brought cache to 257 → key_1 was evicted.
     // key_2 should still be cached (it was the third entry, not evicted).
-    const result2 = await authenticateApiKey("ask_key_2", TEST_CONNECTION_STRING);
+    const result2 = await authenticateApiKey("ns_live_sk_key_2", TEST_CONNECTION_STRING);
     expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false });
     expect(mockConnect).toHaveBeenCalledTimes(258); // No additional DB call — cache hit
 
@@ -268,13 +268,13 @@ describe("authenticateApiKey", () => {
 
     for (let i = 0; i < 257; i++) {
       mockQuery.mockResolvedValueOnce({ rows: [] }); // invalid key
-      await authenticateApiKey(`ask_neg_${i}`, TEST_CONNECTION_STRING);
+      await authenticateApiKey(`ns_live_sk_neg_${i}`, TEST_CONNECTION_STRING);
     }
 
     expect(mockConnect).toHaveBeenCalledTimes(257);
 
     // key_0 should still be in negative cache (not evicted at 256)
-    const result = await authenticateApiKey("ask_neg_0", TEST_CONNECTION_STRING);
+    const result = await authenticateApiKey("ns_live_sk_neg_0", TEST_CONNECTION_STRING);
     expect(result).toBeNull();
     // No additional DB call — still negative-cached
     expect(mockConnect).toHaveBeenCalledTimes(257);

@@ -14,17 +14,17 @@ describe("loadConfig", () => {
 
   it("returns config when all required vars are set", () => {
     process.env.NULLSPEND_URL = "http://localhost:3000";
-    process.env.NULLSPEND_API_KEY = "ask_test123";
+    process.env.NULLSPEND_API_KEY = "ns_live_sk_test0001";
 
     const config = loadConfig();
     expect(config.nullspendUrl).toBe("http://localhost:3000");
-    expect(config.nullspendApiKey).toBe("ask_test123");
+    expect(config.nullspendApiKey).toBe("ns_live_sk_test0001");
     expect(config.agentId).toBe("mcp-agent");
   });
 
   it("uses custom NULLSPEND_AGENT_ID when set", () => {
     process.env.NULLSPEND_URL = "http://localhost:3000";
-    process.env.NULLSPEND_API_KEY = "ask_test123";
+    process.env.NULLSPEND_API_KEY = "ns_live_sk_test0001";
     process.env.NULLSPEND_AGENT_ID = "my-custom-agent";
 
     const config = loadConfig();
@@ -32,7 +32,7 @@ describe("loadConfig", () => {
   });
 
   it("throws ConfigError when NULLSPEND_URL is missing", () => {
-    process.env.NULLSPEND_API_KEY = "ask_test123";
+    process.env.NULLSPEND_API_KEY = "ns_live_sk_test0001";
     delete process.env.NULLSPEND_URL;
 
     expect(() => loadConfig()).toThrow(ConfigError);

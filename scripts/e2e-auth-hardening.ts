@@ -68,8 +68,8 @@ const sql = postgres(DATABASE_URL, { prepare: false });
 
 const USER_A = "e2e-tenant-a-" + Date.now();
 const USER_B = "e2e-tenant-b-" + Date.now();
-const RAW_KEY_A = "ask_" + randomBytes(16).toString("hex");
-const RAW_KEY_B = "ask_" + randomBytes(16).toString("hex");
+const RAW_KEY_A = "ns_live_sk_" + randomBytes(16).toString("hex");
+const RAW_KEY_B = "ns_live_sk_" + randomBytes(16).toString("hex");
 const HASH_A = createHash("sha256").update(RAW_KEY_A).digest("hex");
 const HASH_B = createHash("sha256").update(RAW_KEY_B).digest("hex");
 

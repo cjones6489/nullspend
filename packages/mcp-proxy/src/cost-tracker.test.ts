@@ -108,7 +108,7 @@ describe("EventBatcher", () => {
   function makeBatcher(opts?: { batchSize?: number; flushIntervalMs?: number }) {
     return new EventBatcher({
       backendUrl: "http://localhost:8787",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       batchSize: opts?.batchSize ?? 5,
       flushIntervalMs: opts?.flushIntervalMs ?? 60_000, // high to avoid auto-flush in tests
     });
@@ -171,7 +171,7 @@ describe("EventBatcher", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     const headers = mockFetch.mock.calls[0][1].headers;
-    expect(headers["x-nullspend-key"]).toBe("ask_test123");
+    expect(headers["x-nullspend-key"]).toBe("ns_live_sk_test0001");
 
     await batcher.shutdown();
   });
@@ -357,7 +357,7 @@ describe("BudgetClient", () => {
   function makeClient() {
     return new BudgetClient({
       backendUrl: "http://localhost:8787",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
     });
   }
 
@@ -387,7 +387,7 @@ describe("BudgetClient", () => {
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
-          "x-nullspend-key": "ask_test123",
+          "x-nullspend-key": "ns_live_sk_test0001",
         }),
       }),
     );
@@ -564,7 +564,7 @@ describe("CostTracker", () => {
   function makeTracker(overrides?: Partial<import("./cost-tracker.js").CostTrackerConfig>) {
     return new CostTracker({
       backendUrl: "http://localhost:8787",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       serverName: "test-server",
       budgetEnforcementEnabled: true,
       toolCostOverrides: {},
@@ -583,7 +583,7 @@ describe("CostTracker", () => {
     const tracker = makeTracker({ serverName: "supabase" });
     const registry = new ToolCostRegistry({
       nullspendUrl: "http://localhost:3000",
-      apiKey: "ask_test",
+      apiKey: "ns_live_sk_test0001",
       serverName: "supabase",
     });
 
@@ -612,7 +612,7 @@ describe("CostTracker", () => {
     });
     const registry = new ToolCostRegistry({
       nullspendUrl: "http://localhost:3000",
-      apiKey: "ask_test",
+      apiKey: "ns_live_sk_test0001",
       serverName: "supabase",
     });
 
@@ -636,7 +636,7 @@ describe("CostTracker", () => {
     const tracker = makeTracker({ serverName: "supabase" });
     const registry = new ToolCostRegistry({
       nullspendUrl: "http://localhost:3000",
-      apiKey: "ask_test",
+      apiKey: "ns_live_sk_test0001",
       serverName: "supabase",
     });
 
@@ -741,7 +741,7 @@ describe("ToolCostRegistry", () => {
   function makeRegistry(opts?: { serverName?: string }) {
     return new ToolCostRegistry({
       nullspendUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       serverName: opts?.serverName ?? "test-server",
     });
   }
@@ -776,7 +776,7 @@ describe("ToolCostRegistry", () => {
       await registry.fetchCosts();
 
       const headers = mockFetch.mock.calls[0][1].headers;
-      expect(headers["x-nullspend-key"]).toBe("ask_test123");
+      expect(headers["x-nullspend-key"]).toBe("ns_live_sk_test0001");
     });
 
     it("logs actionable message on 401 and falls back gracefully", async () => {
@@ -912,7 +912,7 @@ describe("ToolCostRegistry", () => {
       const [url, opts] = mockFetch.mock.calls[0];
       expect(url).toBe("http://localhost:3000/api/tool-costs/discover");
       expect(opts.method).toBe("POST");
-      expect(opts.headers["x-nullspend-key"]).toBe("ask_test123");
+      expect(opts.headers["x-nullspend-key"]).toBe("ns_live_sk_test0001");
 
       const body = JSON.parse(opts.body);
       expect(body.serverName).toBe("supabase");

@@ -29,7 +29,7 @@ vi.mock("@nullspend/sdk", async (importOriginal) => {
 function makeConfig(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
   return {
     nullspendUrl: "http://127.0.0.1:3000",
-    nullspendApiKey: "ask_test",
+    nullspendApiKey: "ns_live_sk_test0001",
     agentId: "test-proxy",
     upstreamCommand: "node",
     upstreamArgs: [],

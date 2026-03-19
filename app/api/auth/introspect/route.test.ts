@@ -24,7 +24,7 @@ const MOCK_KEY_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 function makeRequest() {
   return new Request("http://localhost/api/auth/introspect", {
-    headers: { "x-nullspend-key": "ask_test123" },
+    headers: { "x-nullspend-key": "ns_live_sk_test0001" },
   });
 }
 

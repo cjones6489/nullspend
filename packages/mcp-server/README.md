@@ -52,7 +52,7 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
       "args": ["C:/path/to/NullSpend/packages/mcp-server/dist/index.js"],
       "env": {
         "NULLSPEND_URL": "http://127.0.0.1:3000",
-        "NULLSPEND_API_KEY": "ask_your-api-key-here"
+        "NULLSPEND_API_KEY": "ns_live_sk_your-api-key-here"
       }
     }
   }
@@ -71,7 +71,7 @@ Add to your Cursor MCP settings:
       "args": ["C:/path/to/NullSpend/packages/mcp-server/dist/index.js"],
       "env": {
         "NULLSPEND_URL": "http://127.0.0.1:3000",
-        "NULLSPEND_API_KEY": "ask_your-api-key-here"
+        "NULLSPEND_API_KEY": "ns_live_sk_your-api-key-here"
       }
     }
   }

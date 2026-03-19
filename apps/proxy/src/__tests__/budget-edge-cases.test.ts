@@ -330,7 +330,7 @@ describe("Budget Edge Cases", () => {
     const text = await res.text();
 
     expect(text).not.toContain("x-nullspend-key");
-    expect(text).not.toContain("ask_");
+    expect(text).not.toContain("ns_live_sk_");
     expect(text).not.toContain("postgresql://");
     expect(text).not.toContain("upstash.io");
     expect(text).not.toContain("fake-token");

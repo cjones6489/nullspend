@@ -31,7 +31,7 @@ describe("assertApiKeyOrSession", () => {
     mockedAuthenticateApiKey.mockResolvedValue({ userId: "user-123", keyId: "key-456" });
 
     const request = new Request("http://localhost/api/actions", {
-      headers: { "x-nullspend-key": "ask_test123" },
+      headers: { "x-nullspend-key": "ns_live_sk_test0001" },
     });
     const result = await assertApiKeyOrSession(request);
 
@@ -59,7 +59,7 @@ describe("assertApiKeyOrSession", () => {
     mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);
 
     const request = new Request("http://localhost/api/actions", {
-      headers: { "x-nullspend-key": "ask_test123" },
+      headers: { "x-nullspend-key": "ns_live_sk_test0001" },
     });
     const result = await assertApiKeyOrSession(request);
 
@@ -82,7 +82,7 @@ describe("assertApiKeyOrSession", () => {
     mockedAuthenticateApiKey.mockRejectedValue(new Error("Invalid or missing API key."));
 
     const request = new Request("http://localhost/api/actions", {
-      headers: { "x-nullspend-key": "ask_bogus" },
+      headers: { "x-nullspend-key": "ns_live_sk_bogus0001" },
     });
 
     await expect(assertApiKeyOrSession(request)).rejects.toThrow("Invalid or missing API key.");

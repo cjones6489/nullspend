@@ -218,7 +218,7 @@ import { withApproval } from "@nullspend/sdk";
 
 // Wraps fetch to automatically handle 202 → poll → retry
 const safeFetch = withApproval(fetch, {
-  apiKey: "ask_...",
+  apiKey: "ns_live_sk_...",
   pollIntervalMs: 3000,
   timeoutMs: 300000,
 });
@@ -611,7 +611,7 @@ already handles with retry logic or error reporting.
 ```typescript
 import { withApproval } from "@nullspend/sdk";
 
-const safeFetch = withApproval(fetch, { apiKey: "ask_..." });
+const safeFetch = withApproval(fetch, { apiKey: "ns_live_sk_..." });
 
 // Drop-in replacement for fetch — handles 202 transparently
 const response = await safeFetch(proxyUrl + "/v1/chat/completions", {
@@ -639,7 +639,7 @@ import { withApproval } from "@nullspend/sdk";
 
 const client = new OpenAI({
   baseURL: "https://proxy.nullspend.com/v1",
-  fetch: withApproval(fetch, { apiKey: "ask_..." }),
+  fetch: withApproval(fetch, { apiKey: "ns_live_sk_..." }),
 });
 
 // Completely standard OpenAI SDK usage

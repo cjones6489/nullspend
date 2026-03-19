@@ -71,7 +71,7 @@ describe("buildAnthropicUpstreamHeaders", () => {
   it("does NOT forward x-nullspend-key, host, or content-length", () => {
     const req = makeRequest({
       authorization: "Bearer sk-ant-test",
-      "x-nullspend-key": "ask_test123",
+      "x-nullspend-key": "ns_live_sk_test0001",
       host: "proxy.example.com",
       "content-length": "42",
     });

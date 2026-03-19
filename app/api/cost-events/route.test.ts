@@ -54,7 +54,7 @@ function makeRequest(body: unknown, headers?: Record<string, string>): Request {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-nullspend-key": "ask_test123",
+      "x-nullspend-key": "ns_live_sk_test0001",
       ...headers,
     },
     body: JSON.stringify(body),

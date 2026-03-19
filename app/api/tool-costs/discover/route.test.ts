@@ -58,7 +58,7 @@ describe("POST /api/tool-costs/discover", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-nullspend-key": "ask_test123",
+          "x-nullspend-key": "ns_live_sk_test0001",
         },
         body: JSON.stringify({
           serverName: "test-server",
@@ -85,7 +85,7 @@ describe("POST /api/tool-costs/discover", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-nullspend-key": "ask_test123",
+          "x-nullspend-key": "ns_live_sk_test0001",
         },
         body: JSON.stringify({
           serverName: "test-server",

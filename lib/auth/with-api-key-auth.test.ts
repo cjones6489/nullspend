@@ -52,7 +52,7 @@ function makeRequest(headers: Record<string, string> = {}) {
   return new Request("http://localhost/api/actions", {
     method: "POST",
     headers: {
-      "x-nullspend-key": "ask_test123",
+      "x-nullspend-key": "ns_live_sk_test0001",
       "x-request-id": "req-abc-123",
       ...headers,
     },
@@ -148,7 +148,7 @@ describe("authenticateApiKey", () => {
     // Build request without x-request-id
     const req = new Request("http://localhost/api/actions", {
       method: "POST",
-      headers: { "x-nullspend-key": "ask_test123" },
+      headers: { "x-nullspend-key": "ns_live_sk_test0001" },
     });
     const result = await authenticateApiKey(req);
 

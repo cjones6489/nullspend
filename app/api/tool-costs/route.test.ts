@@ -58,7 +58,7 @@ describe("GET /api/tool-costs", () => {
 
     const response = await GET(
       new Request("http://localhost/api/tool-costs", {
-        headers: { "x-nullspend-key": "ask_test123" },
+        headers: { "x-nullspend-key": "ns_live_sk_test0001" },
       }),
     );
 
@@ -75,7 +75,7 @@ describe("GET /api/tool-costs", () => {
 
     const response = await GET(
       new Request("http://localhost/api/tool-costs", {
-        headers: { "x-nullspend-key": "ask_test123" },
+        headers: { "x-nullspend-key": "ns_live_sk_test0001" },
       }),
     );
 

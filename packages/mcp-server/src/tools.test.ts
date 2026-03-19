@@ -21,7 +21,7 @@ vi.mock("@nullspend/sdk", async (importOriginal) => {
 
 const TEST_CONFIG: McpServerConfig = {
   nullspendUrl: "http://localhost:3000",
-  nullspendApiKey: "ask_test123",
+  nullspendApiKey: "ns_live_sk_test0001",
   agentId: "test-agent",
 };
 

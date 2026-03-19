@@ -28,7 +28,7 @@ const mockedApplyRateLimitHeaders = vi.mocked(applyRateLimitHeaders);
 function makeRequest(): Request {
   return new Request("http://localhost:3000/api/budgets/status", {
     method: "GET",
-    headers: { "x-nullspend-key": "ask_test123" },
+    headers: { "x-nullspend-key": "ns_live_sk_test0001" },
   });
 }
 

@@ -186,7 +186,7 @@ async function testRequestIdOnAuthError() {
   const res = await fetch(`${BASE_URL}/api/actions`, {
     method: "POST",
     headers: {
-      "x-nullspend-key": "ask_bogus_key_that_does_not_exist",
+      "x-nullspend-key": "ns_live_sk_00000000000000000000000000dead02",
       "content-type": "application/json",
     },
     body: JSON.stringify({
@@ -498,7 +498,7 @@ async function testApiKeyAuthEnforcement() {
   // This is intentional for local development.
   //
   // Test the API-key-auth path: POST with a bogus key should be rejected.
-  const bogusKey = "ask_this_key_definitely_does_not_exist_anywhere_12345";
+  const bogusKey = "ns_live_sk_00000000000000000000000000dead03";
   const res = await fetch(`${BASE_URL}/api/actions`, {
     method: "POST",
     headers: {

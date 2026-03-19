@@ -1,7 +1,7 @@
 # NullSpend Pre-Launch Design Patterns Audit
 ## Industry Best Practices vs. Current Implementation
 
-**Date:** 2026-03-18 (revised 2026-03-18 15:30 UTC)
+**Date:** 2026-03-18 (revised 2026-03-19 05:30 UTC)
 **Purpose:** Detailed comparison of NullSpend's current design decisions against proven patterns from Stripe, Marqeta, PostHog, and modern API platform design. Specific recommendations for changes to make before the API surface becomes permanent.
 
 **Context:** NullSpend has zero external users. Every header, URL, response shape, schema column, and method name can be changed freely right now. After the first external API key is issued, these decisions become permanent. This audit prioritizes getting the design right over minimizing implementation effort.
@@ -141,6 +141,40 @@ Start by issuing all keys as `ns_live_sk_[random]`. The format has room for envi
 **Estimated effort:** ~3 hours (prefix change + extractPrefix logic + proxy auth + test fixtures).
 
 **Priority: High.** Key format is permanent. Every developer who creates an API key stores that format in their env files, CI pipelines, and Terraform configs.
+
+### Implementation Notes (2026-03-18)
+
+**What shipped:**
+
+| Change | File(s) |
+|---|---|
+| `API_KEY_PREFIX` changed from `"ask_"` to `"ns_live_sk_"` | `lib/auth/api-key.ts` |
+| `extractPrefix()` slice changed from 12 to 19 chars (`ns_live_sk_` + 8 hex) | `lib/auth/api-key.ts` |
+| Pre-commit hook detects `ns_(live\|test)_(sk\|pk)_[a-f0-9]{32}` | `.claude/scripts/check-secrets.sh` |
+| Seed script uses `generateRawKey()`/`hashKey()`/`extractPrefix()`, prints raw keys | `scripts/seed-budgets.ts` |
+| All `ask_`, `as_live_`, `as_seed_` test fixtures → `ns_live_sk_` format | 26 test files |
+| E2E scripts updated to new format | `scripts/e2e-auth-hardening.ts`, `e2e-smoke.ts`, `e2e-observability.ts` |
+| Documentation updated | 3 README files, `.env.smoke.example`, `unified-policy-engine-spec.md` |
+| Regression tests added | Format regex, prefix regex, negative old-prefix test in `key-utils.test.ts` |
+| Existing dev keys revoked, new `ns_live_sk_` keys created | Database + `.env.smoke` |
+
+**Key design decisions:**
+
+- **No prefix validation gates.** Auth is hash-based and format-agnostic. Adding `isValidKeyFormat()` would break the dashboard's dev fallback path (`NULLSPEND_API_KEY` env var accepts arbitrary strings). Validation is a separate concern if needed later.
+- **No environment column added.** All keys are `ns_live_sk_` — the prefix encodes environment. Column can be added when sandbox mode ships.
+- **Hex encoding, not base62.** Simpler to generate, debug, and regex-match. 128-bit entropy (32 hex chars) is cryptographically strong. GitHub Secret Scanning regex: `ns_(live|test)_sk_[a-f0-9]{32}`.
+- **`keyPrefix` column unchanged.** `text` type, no width constraint. New 19-char prefix fits without schema migration.
+- **Proxy auth unchanged.** `api-key-auth.ts` lookups are purely hash-based — format change is transparent.
+
+**Three-pass audit findings caught and fixed:**
+
+- **Critical:** `lib/validations/api-keys.test.ts:72` had `expect(result.rawKey).toContain("ask_")` — explicit format assertion that would pass vacuously after migration if missed
+- **Critical:** `budget-edge-cases.test.ts:333` had `expect(text).not.toContain("ask_")` — security leak detection that would pass vacuously if not updated to `"ns_live_sk_"`
+- **High:** `app/api/keys/route.test.ts` used transitional `as_live_` prefix, invisible to `grep "ask_"` verification
+- **High:** `scripts/seed-budgets.ts` used `as_seed_` prefix with manual key construction — replaced with proper `generateRawKey()` imports
+- **Medium:** Test description strings in `key-utils.test.ts` referenced old format/length in names
+
+**Follow-up:** Register `ns_live_sk_` and `ns_test_sk_` patterns with GitHub Secret Scanning Partner Program (email `secret-scanning@github.com`). This is an external action, not a code change.
 
 ---
 
@@ -536,7 +570,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 |---|---|---|---|
 | ~~DO-first budget enforcement (Section 11)~~ **DONE** | ~~Postgres queried on every cache miss~~ | ~~Eliminate Postgres from hot path~~ Deployed 2026-03-18. Single DO RPC, 1-5ms. | ~~3-4 hours~~ |
 | ~~Prefixed object IDs (Section 1)~~ **DONE** | ~~Raw UUIDs in API responses~~ | ~~Add `ns_` prefix mapping layer at API boundary~~ Deployed 2026-03-18. Zod schema transforms on all 8 resource types, 47 files changed. Three-pass audit completed. | ~~3 hours~~ |
-| API key format | `ask_` prefix, no env/permission encoding | Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning | ~3 hours |
+| ~~API key format (Section 2)~~ **DONE** | ~~`ask_` prefix, no env/permission encoding~~ | ~~Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning~~ Format migrated 2026-03-18. `ns_live_sk_` + 32 hex chars (43 total). 35+ files updated, three-pass audit completed. GitHub Secret Scanning registration is a follow-up external action. | ~~3 hours~~ |
 | ~~Error response contract~~ **DONE** | ~~Flat `{ error, message }` format~~ | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18. | ~~5-6 hours~~ |
 | Webhook event taxonomy | 6 types defined, no `api_version` on events | Lock full taxonomy + add `api_version` field to event structure | ~1 hour |
 | `source` column on cost_events | Missing | Add column (`DEFAULT 'proxy'`) + set in all ingestion paths | ~30 min |

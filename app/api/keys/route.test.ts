@@ -64,7 +64,7 @@ describe("GET /api/keys", () => {
       {
         id: "00000000-0000-4000-a000-000000000011",
         name: "My Key",
-        keyPrefix: "as_live_abc",
+        keyPrefix: "ns_live_sk_abcdef12",
         lastUsedAt: null,
         createdAt: new Date("2026-01-01"),
       },
@@ -99,14 +99,14 @@ describe("POST /api/keys", () => {
   it("creates a new API key and returns prefix + raw key", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
     mockSelectCount.mockResolvedValue([{ value: 0 }]);
-    mockedGenerateRawKey.mockReturnValue("as_live_full_raw_key");
+    mockedGenerateRawKey.mockReturnValue("ns_live_sk_abcdef1234567890abcdef1234567890");
     mockedHashKey.mockReturnValue("hashed_key");
-    mockedExtractPrefix.mockReturnValue("as_live_ful");
+    mockedExtractPrefix.mockReturnValue("ns_live_sk_abcdef12");
     mockInsertReturning.mockResolvedValue([
       {
         id: "00000000-0000-4000-a000-000000000011",
         name: "Production Key",
-        keyPrefix: "as_live_ful",
+        keyPrefix: "ns_live_sk_abcdef12",
         createdAt: new Date("2026-01-01"),
       },
     ]);
@@ -121,7 +121,7 @@ describe("POST /api/keys", () => {
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.rawKey).toBe("as_live_full_raw_key");
+    expect(body.rawKey).toBe("ns_live_sk_abcdef1234567890abcdef1234567890");
     expect(body.name).toBe("Production Key");
   });
 

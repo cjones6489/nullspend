@@ -326,7 +326,7 @@ async function testExecutionFailure() {
 // ---------------------------------------------------------------------------
 
 async function testInvalidApiKey() {
-  const badSdk = new NullSpend({ baseUrl: BASE_URL, apiKey: "ask_bogus_key_12345" });
+  const badSdk = new NullSpend({ baseUrl: BASE_URL, apiKey: "ns_live_sk_00000000000000000000000000dead01" });
 
   let threw = false;
   let statusCode: number | undefined;

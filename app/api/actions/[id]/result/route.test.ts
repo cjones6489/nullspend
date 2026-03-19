@@ -40,7 +40,7 @@ describe("app/api/actions/[id]/result/route", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-nullspend-key": "ask_0123456789abcdef0123456789abcdef",
+          "x-nullspend-key": "ns_live_sk_0123456789abcdef0123456789abcdef",
         },
         body: JSON.stringify({
           status: "executed",
@@ -107,7 +107,7 @@ describe("app/api/actions/[id]/result/route", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-nullspend-key": "ask_0123456789abcdef0123456789abcdef",
+          "x-nullspend-key": "ns_live_sk_0123456789abcdef0123456789abcdef",
         },
         body: JSON.stringify({
           status: "executed",

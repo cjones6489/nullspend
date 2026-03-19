@@ -43,7 +43,7 @@ function jsonResponseFactory(body: unknown, status = 200, headers?: Record<strin
 function createClient(fetchFn: typeof globalThis.fetch): NullSpend {
   return new NullSpend({
     baseUrl: "http://localhost:3000",
-    apiKey: "ask_test123",
+    apiKey: "ns_live_sk_test0001",
     fetch: fetchFn,
     maxRetries: 0,
   });
@@ -52,7 +52,7 @@ function createClient(fetchFn: typeof globalThis.fetch): NullSpend {
 function createRetryClient(fetchFn: typeof globalThis.fetch, opts?: Partial<NullSpendConfig>): NullSpend {
   return new NullSpend({
     baseUrl: "http://localhost:3000",
-    apiKey: "ask_test123",
+    apiKey: "ns_live_sk_test0001",
     fetch: fetchFn,
     maxRetries: 2,
     ...opts,
@@ -70,7 +70,7 @@ afterEach(() => {
 describe("NullSpend constructor", () => {
   it("throws if baseUrl is missing", () => {
     expect(
-      () => new NullSpend({ baseUrl: "", apiKey: "ask_x" }),
+      () => new NullSpend({ baseUrl: "", apiKey: "ns_live_sk_x" }),
     ).toThrow("baseUrl is required");
   });
 
@@ -84,7 +84,7 @@ describe("NullSpend constructor", () => {
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "1", status: "pending" }));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000///",
-      apiKey: "ask_x",
+      apiKey: "ns_live_sk_x",
       fetch: fetchFn,
     });
     client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
@@ -118,7 +118,7 @@ describe("createAction", () => {
     const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe("http://localhost:3000/api/actions");
     expect(init.method).toBe("POST");
-    expect(init.headers["x-nullspend-key"]).toBe("ask_test123");
+    expect(init.headers["x-nullspend-key"]).toBe("ns_live_sk_test0001");
     expect(JSON.parse(init.body)).toEqual({
       agentId: "my-agent",
       actionType: "send_email",
@@ -853,7 +853,7 @@ describe("Config validation", () => {
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       requestTimeoutMs: NaN,
       maxRetries: 0,
@@ -870,7 +870,7 @@ describe("Config validation", () => {
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       requestTimeoutMs: Infinity,
       maxRetries: 0,
@@ -887,7 +887,7 @@ describe("Config validation", () => {
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       requestTimeoutMs: 0,
       maxRetries: 0,
@@ -915,7 +915,7 @@ describe("onRetry callback", () => {
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 2,
       onRetry,
@@ -946,7 +946,7 @@ describe("onRetry callback", () => {
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 2,
       onRetry,
@@ -966,7 +966,7 @@ describe("onRetry callback", () => {
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 2,
       onRetry,
@@ -983,7 +983,7 @@ describe("onRetry callback", () => {
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 0,
       onRetry,
@@ -1004,7 +1004,7 @@ describe("onRetry callback", () => {
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 2,
       onRetry,
@@ -1029,7 +1029,7 @@ describe("maxRetryTimeMs", () => {
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 5,
       maxRetryTimeMs: 1, // 1ms cap — will expire before retry
@@ -1050,7 +1050,7 @@ describe("maxRetryTimeMs", () => {
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 5,
       maxRetryTimeMs: 1,
@@ -1086,7 +1086,7 @@ describe("Retry delay progression", () => {
     const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 3,
       retryBaseDelayMs: 100,
@@ -1241,7 +1241,7 @@ describe("Integration", () => {
     const fetchFn = vi.fn().mockImplementation(jsonResponseFactory({ error: { code: "fail", message: "fail", details: null } }, 500));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
     });
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -1842,7 +1842,7 @@ describe("client-side batching", () => {
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 0,
       costReporting: { batchSize: 100, flushIntervalMs: 60000 },
@@ -1880,7 +1880,7 @@ describe("client-side batching", () => {
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 0,
       costReporting: { batchSize: 100, flushIntervalMs: 60000 },
@@ -1904,7 +1904,7 @@ describe("client-side batching", () => {
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 0,
       costReporting: { batchSize: 10 },
@@ -1925,7 +1925,7 @@ describe("client-side batching", () => {
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 0,
       costReporting: {},
@@ -1953,7 +1953,7 @@ describe("client-side batching", () => {
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 0,
       costReporting: { batchSize: 100 },
@@ -1974,7 +1974,7 @@ describe("client-side batching", () => {
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
-      apiKey: "ask_test123",
+      apiKey: "ns_live_sk_test0001",
       fetch: fetchFn,
       maxRetries: 0,
       costReporting: {},
