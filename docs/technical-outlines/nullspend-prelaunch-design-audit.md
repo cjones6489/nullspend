@@ -528,7 +528,7 @@ This is minimal implementation cost now. It's impossible to retrofit later witho
 
 | Column | Type | Why | Priority |
 |---|---|---|---|
-| `warn_threshold_pct` | `integer NULL` | Percentage at which to fire `budget.threshold.warning` webhook (e.g., 80). The webhook event types `budget.threshold.warning` and `budget.threshold.critical` already exist in the codebase, but there's no per-budget configuration for what percentage triggers them. Without this column, thresholds must be hardcoded. | **Medium** |
+| `warn_threshold_pct` | `integer NULL` | Percentage at which to fire `budget.threshold.warning` webhook (e.g., 80). **Current gap:** thresholds are hardcoded at `[50, 80, 90, 95]` in `apps/proxy/src/lib/webhook-thresholds.ts` — users cannot configure them, cannot see what they are, and have no way to know in advance when alerts will fire. This column (plus a `critical_threshold_pct`) would let users set per-budget thresholds via the create/update budget API (`createBudgetInputSchema` in `lib/validations/budgets.ts`). The proxy's `detectThresholdCrossings()` would read these from the `BudgetEntity` instead of the hardcoded array. | **Medium → High** |
 
 ### webhook_endpoints Table (for secret rotation — see Section 7)
 
@@ -649,7 +649,8 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
-| Schema columns (Section 6) | `source` on cost_events **DONE**. Missing columns on 2 tables | Add `api_version` + `environment` on api_keys, `warn_threshold_pct` on budgets | ~45 min |
+| Schema columns (Section 6) | `source` on cost_events **DONE**. Missing columns on 2 tables | Add `api_version` + `environment` on api_keys | ~30 min |
+| Configurable budget thresholds (Section 6) | Thresholds hardcoded at `[50,80,90,95]` in proxy — users cannot configure or discover them | Add `warn_threshold_pct` + `critical_threshold_pct` on budgets, expose in create/update API, read in proxy `detectThresholdCrossings()` | ~1.5 hours |
 | Webhook secret rotation | No transition period | Add `previous_signing_secret` + dual-signing + 24h expiry | ~1 hour |
 
 ### Low Priority (can do incrementally after launch)
