@@ -69,6 +69,7 @@ function buildInsertValues(input: CostEventInput, requestId: string, ctx: Insert
     toolName: input.toolName ?? null,
     toolServer: input.toolServer ?? null,
     sessionId: input.sessionId ?? null,
+    source: "api" as const,
   };
 }
 
@@ -136,6 +137,7 @@ export interface InsertedCostEventRow {
   toolServer: string | null;
   sessionId: string | null;
   requestId: string;
+  source: string;
 }
 
 /**
@@ -171,6 +173,7 @@ export async function insertCostEventsBatch(
       toolServer: costEvents.toolServer,
       sessionId: costEvents.sessionId,
       requestId: costEvents.requestId,
+      source: costEvents.source,
     });
 
   return {

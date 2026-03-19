@@ -132,6 +132,7 @@ export const costEvents = pgTable("cost_events", {
   toolDefinitionTokens: integer("tool_definition_tokens").default(0),
   upstreamDurationMs: integer("upstream_duration_ms"),
   sessionId: text("session_id"),
+  source: text("source").$type<CostEventSource>().notNull().default("proxy"),
   costBreakdown: jsonb("cost_breakdown").$type<{ input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -165,6 +166,9 @@ export const subscriptions = pgTable("subscriptions", {
 
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type NewSubscriptionRow = typeof subscriptions.$inferInsert;
+
+export const COST_EVENT_SOURCES = ["proxy", "api", "mcp"] as const;
+export type CostEventSource = (typeof COST_EVENT_SOURCES)[number];
 
 export const TOOL_COST_SOURCES = ["discovered", "manual"] as const;
 

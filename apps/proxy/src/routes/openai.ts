@@ -264,6 +264,7 @@ function handleStreaming(
           ...costEvent,
           ...enrichment,
           toolCallsRequested: result.toolCalls,
+          source: "proxy" as const,
         });
 
         if (reservationId) {
@@ -285,6 +286,7 @@ function handleStreaming(
                 ...enrichment,
                 toolCallsRequested: result.toolCalls,
                 createdAt: new Date().toISOString(),
+                source: "proxy" as const,
               };
               const whEvent = buildCostEventPayload(webhookData);
               await dispatchToEndpoints(ctx.webhookDispatcher, endpoints, whEvent);
@@ -371,6 +373,7 @@ async function handleNonStreaming(
         ...costEvent,
         ...enrichment,
         toolCallsRequested,
+        source: "proxy" as const,
       }));
 
       if (reservationId) {
@@ -389,7 +392,7 @@ async function handleNonStreaming(
             const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
-              const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString() };
+              const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString(), source: "proxy" as const };
               const whEvent = buildCostEventPayload(webhookData);
               await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, whEvent);
 

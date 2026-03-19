@@ -4,6 +4,7 @@ import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { insertCostEventsBatch } from "@/lib/cost-events/ingest";
 import { withIdempotency } from "@/lib/resilience/idempotency";
 import {
+  buildCostEventWebhookPayload,
   fetchWebhookEndpoints,
   dispatchToEndpoints,
 } from "@/lib/webhooks/dispatch";
@@ -45,6 +46,7 @@ vi.mock("@/lib/observability", () => ({
 
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedInsertCostEventsBatch = vi.mocked(insertCostEventsBatch);
+const mockedBuildCostEventWebhookPayload = vi.mocked(buildCostEventWebhookPayload);
 const mockedFetchWebhookEndpoints = vi.mocked(fetchWebhookEndpoints);
 const mockedDispatchToEndpoints = vi.mocked(dispatchToEndpoints);
 
@@ -74,6 +76,7 @@ function makeInsertedRow(overrides?: Record<string, unknown>) {
     toolServer: null,
     sessionId: null,
     requestId: "sdk_abc",
+    source: "api",
     ...overrides,
   };
 }
@@ -173,6 +176,12 @@ describe("POST /api/cost-events/batch", () => {
 
     // Dispatch called for each actually-inserted row
     expect(mockedDispatchToEndpoints).toHaveBeenCalledTimes(2);
+
+    // Source is forwarded to webhook builder
+    expect(mockedBuildCostEventWebhookPayload).toHaveBeenCalledTimes(2);
+    for (const call of mockedBuildCostEventWebhookPayload.mock.calls) {
+      expect(call[0]).toHaveProperty("source", "api");
+    }
   });
 
   it("does not dispatch webhooks when no events inserted", async () => {

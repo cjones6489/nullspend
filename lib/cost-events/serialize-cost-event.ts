@@ -13,6 +13,7 @@ interface CostEventJoinRow {
   costMicrodollars: number;
   durationMs: number | null;
   createdAt: Date;
+  source: string;
   keyName: string;
 }
 
@@ -30,6 +31,7 @@ export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
     costMicrodollars: row.costMicrodollars,
     durationMs: row.durationMs,
     createdAt: row.createdAt.toISOString(),
+    source: row.source,
     keyName: row.keyName,
   };
 }

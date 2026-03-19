@@ -41,6 +41,7 @@ interface CostEventData {
   sessionId?: string | null;
   toolCallsRequested?: { name: string; id: string }[] | null;
   toolDefinitionTokens?: number;
+  source?: string;
 }
 
 export function buildCostEventPayload(
@@ -70,6 +71,7 @@ export function buildCostEventPayload(
         tool_calls_requested: costEvent.toolCallsRequested ?? null,
         tool_definition_tokens: costEvent.toolDefinitionTokens ?? 0,
         api_key_id: costEvent.apiKeyId,
+        source: costEvent.source ?? null,
         created_at: costEvent.createdAt ?? new Date().toISOString(),
       },
     },

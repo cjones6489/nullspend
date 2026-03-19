@@ -2,7 +2,7 @@ import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
 import { getDb } from "@/lib/db/client";
-import { apiKeys, costEvents } from "@nullspend/db";
+import { apiKeys, costEvents, type CostEventSource } from "@nullspend/db";
 
 interface ListCostEventsOptions {
   userId: string;
@@ -11,6 +11,7 @@ interface ListCostEventsOptions {
   apiKeyId?: string;
   model?: string;
   provider?: string;
+  source?: CostEventSource;
 }
 
 export async function listCostEvents(options: ListCostEventsOptions) {
@@ -28,6 +29,9 @@ export async function listCostEvents(options: ListCostEventsOptions) {
   }
   if (options.provider) {
     conditions.push(eq(costEvents.provider, options.provider));
+  }
+  if (options.source) {
+    conditions.push(eq(costEvents.source, options.source));
   }
 
   if (options.cursor) {
@@ -57,6 +61,7 @@ export async function listCostEvents(options: ListCostEventsOptions) {
       costMicrodollars: costEvents.costMicrodollars,
       durationMs: costEvents.durationMs,
       createdAt: costEvents.createdAt,
+      source: costEvents.source,
       keyName: apiKeys.name,
     })
     .from(costEvents)

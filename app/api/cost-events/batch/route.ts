@@ -51,6 +51,7 @@ export const POST = withRequestContext(async (request: Request) => {
             toolServer: row.toolServer,
             sessionId: row.sessionId,
             apiKeyId: authResult.keyId,
+            source: row.source,
           });
           await dispatchToEndpoints(endpoints, whEvent);
         }

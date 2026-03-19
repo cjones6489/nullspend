@@ -140,6 +140,7 @@ export function buildCostEventWebhookPayload(
     upstreamDurationMs?: number | null;
     toolCallsRequested?: { name: string; id: string }[] | null;
     toolDefinitionTokens?: number;
+    source?: string;
   },
   apiVersion: string = CURRENT_API_VERSION,
 ): WebhookEvent {
@@ -166,6 +167,7 @@ export function buildCostEventWebhookPayload(
         tool_calls_requested: costEvent.toolCallsRequested ?? null,
         tool_definition_tokens: costEvent.toolDefinitionTokens ?? 0,
         api_key_id: costEvent.apiKeyId,
+        source: costEvent.source ?? null,
         created_at: new Date().toISOString(),
       },
     },

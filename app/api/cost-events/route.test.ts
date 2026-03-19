@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { insertCostEvent } from "@/lib/cost-events/ingest";
 import { withIdempotency } from "@/lib/resilience/idempotency";
-import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { buildCostEventWebhookPayload, dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth/with-api-key-auth", () => ({
@@ -39,6 +39,7 @@ vi.mock("@/lib/observability", () => ({
 
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedInsertCostEvent = vi.mocked(insertCostEvent);
+const mockedBuildCostEventWebhookPayload = vi.mocked(buildCostEventWebhookPayload);
 const mockedDispatchWebhookEvent = vi.mocked(dispatchWebhookEvent);
 
 const VALID_EVENT = {
@@ -148,6 +149,9 @@ describe("POST /api/cost-events", () => {
 
     // Allow fire-and-forget promise to resolve
     await new Promise((r) => setTimeout(r, 10));
+    expect(mockedBuildCostEventWebhookPayload).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "api" }),
+    );
     expect(mockedDispatchWebhookEvent).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({ type: "cost_event.created" }),

@@ -28,6 +28,7 @@ describe("buildCostEventPayload", () => {
       toolServer: "mcp-server",
       toolCallsRequested: [{ name: "search", id: "call_1" }],
       toolDefinitionTokens: 800,
+      source: "proxy",
     });
 
     expect(event.type).toBe("cost_event.created");
@@ -49,6 +50,7 @@ describe("buildCostEventPayload", () => {
     expect(event.data.object.tool_server).toBe("mcp-server");
     expect(event.data.object.tool_calls_requested).toEqual([{ name: "search", id: "call_1" }]);
     expect(event.data.object.tool_definition_tokens).toBe(800);
+    expect(event.data.object.source).toBe("proxy");
   });
 
   it("handles null optional fields", () => {
@@ -75,6 +77,7 @@ describe("buildCostEventPayload", () => {
     expect(event.data.object.tool_server).toBeNull();
     expect(event.data.object.tool_calls_requested).toBeNull();
     expect(event.data.object.tool_definition_tokens).toBe(0);
+    expect(event.data.object.source).toBeNull();
   });
 
   it("generates unique event IDs", () => {

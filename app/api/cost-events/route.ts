@@ -28,6 +28,7 @@ export const GET = withRequestContext(async (request: Request) => {
     apiKeyId: url.searchParams.get("apiKeyId") || undefined,
     model: url.searchParams.get("model") ?? undefined,
     provider: url.searchParams.get("provider") ?? undefined,
+    source: url.searchParams.get("source") ?? undefined,
   });
   const result = await listCostEvents({ ...query, userId });
   return NextResponse.json(listCostEventsResponseSchema.parse(result));
@@ -64,6 +65,7 @@ export const POST = withRequestContext(async (request: Request) => {
         toolServer: input.toolServer,
         sessionId: input.sessionId,
         apiKeyId: authResult.keyId,
+        source: "api",
       });
       dispatchWebhookEvent(authResult.userId, whEvent).catch((err) => {
         log.error({ err }, "Webhook dispatch failed for cost event");

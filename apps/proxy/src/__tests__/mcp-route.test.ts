@@ -490,6 +490,7 @@ describe("handleMcpEvents", () => {
           toolName: "run_query",
           toolServer: "supabase",
           sessionId: null,
+          source: "mcp",
         }),
       ]),
     );

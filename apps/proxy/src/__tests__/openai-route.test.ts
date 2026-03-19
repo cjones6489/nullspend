@@ -573,6 +573,7 @@ describe("handleChatCompletions", () => {
     expect(mockLogCostEvent).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
+        source: "proxy",
         sessionId: "sess-123",
         upstreamDurationMs: expect.any(Number),
         toolDefinitionTokens: expect.any(Number),
@@ -625,6 +626,7 @@ describe("handleChatCompletions", () => {
     expect(mockLogCostEvent).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
+        source: "proxy",
         toolCallsRequested: [{ name: "search", id: "call_s1" }],
       }),
     );
@@ -717,6 +719,7 @@ describe("handleChatCompletions", () => {
       expect(mockLogCostEvent).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
+          source: "proxy",
           costMicrodollars: 0,
           model: "llama-3.1-70b-versatile",
         }),

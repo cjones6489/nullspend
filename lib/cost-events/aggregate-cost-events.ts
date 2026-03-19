@@ -99,6 +99,24 @@ export async function getKeyBreakdown(userId: string, periodDays: number) {
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 
+export async function getSourceBreakdown(userId: string, periodDays: number) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+
+  return db
+    .select({
+      source: costEvents.source,
+      totalCostMicrodollars:
+        sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
+    })
+    .from(costEvents)
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .where(baseConditions(userId, cutoff))
+    .groupBy(costEvents.source)
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
+}
+
 export async function getToolBreakdown(userId: string, periodDays: number) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);

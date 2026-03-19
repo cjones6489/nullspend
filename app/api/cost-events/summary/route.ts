@@ -7,6 +7,7 @@ import {
   getKeyBreakdown,
   getModelBreakdown,
   getProviderBreakdown,
+  getSourceBreakdown,
   getToolBreakdown,
   getTotals,
 } from "@/lib/cost-events/aggregate-cost-events";
@@ -25,12 +26,13 @@ export async function GET(request: Request) {
     });
     const periodDays = parseInt(period, 10);
 
-    const [daily, models, providers, keys, tools, totals, costBreakdown] = await Promise.all([
+    const [daily, models, providers, keys, tools, sources, totals, costBreakdown] = await Promise.all([
       getDailySpend(userId, periodDays),
       getModelBreakdown(userId, periodDays),
       getProviderBreakdown(userId, periodDays),
       getKeyBreakdown(userId, periodDays),
       getToolBreakdown(userId, periodDays),
+      getSourceBreakdown(userId, periodDays),
       getTotals(userId, periodDays),
       getCostBreakdownTotals(userId, periodDays),
     ]);
@@ -41,6 +43,7 @@ export async function GET(request: Request) {
       providers,
       keys,
       tools,
+      sources,
       totals: { ...totals, period },
       costBreakdown,
     });

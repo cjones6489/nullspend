@@ -194,6 +194,7 @@ describe("costSummaryResponseSchema", () => {
       },
     ],
     tools: [],
+    sources: [],
     totals: {
       totalCostMicrodollars: 1_000_000,
       totalRequests: 10,
@@ -223,6 +224,7 @@ describe("costSummaryResponseSchema", () => {
       providers: [],
       keys: [],
       tools: [],
+      sources: [],
       totals: { totalCostMicrodollars: 0, totalRequests: 0, period: "7d" },
       costBreakdown: { inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 },
     });

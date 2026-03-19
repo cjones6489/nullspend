@@ -150,6 +150,7 @@ export async function handleMcpEvents(
         toolName: event.toolName,
         toolServer: event.serverName,
         sessionId: ctx.sessionId,
+        source: "mcp" as const,
       }));
 
       // Phase 2: Single batch INSERT (never throws — errors logged internally)

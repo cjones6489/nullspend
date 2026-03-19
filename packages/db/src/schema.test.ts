@@ -95,6 +95,7 @@ describe("costEvents table schema", () => {
     expect(names).toContain("reasoningTokens");
     expect(names).toContain("costMicrodollars");
     expect(names).toContain("durationMs");
+    expect(names).toContain("source");
     expect(names).toContain("createdAt");
   });
 
@@ -145,6 +146,7 @@ describe("costEvents table schema", () => {
       reasoningTokens: 0,
       costMicrodollars: 31250,
       durationMs: 1500,
+      source: "proxy",
       createdAt: new Date(),
     };
     expect(row.costMicrodollars).toBe(31250);
@@ -223,6 +225,7 @@ describe("schema consistency with shared package types", () => {
       reasoningTokens: 0,
       costMicrodollars: 1000,
       durationMs: null,
+      source: "proxy",
       createdAt: new Date(),
     };
     expect(typeof row.costMicrodollars).toBe("number");

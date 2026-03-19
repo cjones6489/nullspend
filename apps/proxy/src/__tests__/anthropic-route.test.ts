@@ -380,6 +380,7 @@ describe("handleAnthropicMessages", () => {
       expect.anything(),
       expect.objectContaining({
         sessionId: "sess-ant-1",
+        source: "proxy",
         upstreamDurationMs: expect.any(Number),
         toolDefinitionTokens: expect.any(Number),
         toolCallsRequested: [{ name: "get_weather", id: "toolu_01X" }],

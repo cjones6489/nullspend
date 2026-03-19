@@ -24,6 +24,7 @@ export async function getCostEventsByActionId(
       costMicrodollars: costEvents.costMicrodollars,
       durationMs: costEvents.durationMs,
       createdAt: costEvents.createdAt,
+      source: costEvents.source,
       keyName: apiKeys.name,
     })
     .from(costEvents)
