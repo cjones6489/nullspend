@@ -85,13 +85,12 @@ describe("GET /api/budgets/status", () => {
     const json = await res.json();
 
     expect(json.source).toBe("postgres");
-    expect(json.hasBudgets).toBe(true);
     expect(json.entities).toHaveLength(2);
     expect(json.entities[0].entityType).toBe("user");
     expect(json.entities[1].entityType).toBe("api_key");
   });
 
-  it("returns hasBudgets: false when no budgets exist", async () => {
+  it("returns empty entities when no budgets exist", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
@@ -101,7 +100,6 @@ describe("GET /api/budgets/status", () => {
     const res = await GET(makeRequest());
     const json = await res.json();
 
-    expect(json.hasBudgets).toBe(false);
     expect(json.source).toBe("postgres");
     expect(json.entities).toEqual([]);
   });
@@ -174,7 +172,7 @@ describe("GET /api/budgets/status", () => {
     const res = await GET(makeRequest());
     const json = await res.json();
 
-    expect(json.hasBudgets).toBe(true);
+    expect(json.entities).toHaveLength(1);
     // Verify the WHERE condition does not contain " or " (only " and ")
     const condition = mockWhere.mock.calls[0][0];
     const chunks = flattenStringChunks(condition);

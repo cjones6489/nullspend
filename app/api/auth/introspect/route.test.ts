@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { checkHasBudgets } from "@/lib/auth/check-has-budgets";
 import { getDevActor } from "@/lib/auth/session";
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { GET } from "./route";
@@ -13,16 +12,11 @@ vi.mock("@/lib/auth/with-api-key-auth", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/auth/check-has-budgets", () => ({
-  checkHasBudgets: vi.fn(),
-}));
-
 vi.mock("@/lib/auth/session", () => ({
   getDevActor: vi.fn(),
 }));
 
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
-const mockedCheckHasBudgets = vi.mocked(checkHasBudgets);
 const mockedGetDevActor = vi.mocked(getDevActor);
 
 const MOCK_USER_ID = "user-abc-123";
@@ -39,34 +33,19 @@ describe("GET /api/auth/introspect", () => {
     vi.resetAllMocks();
   });
 
-  it("managed key returns hasBudgets: true when budgets exist", async () => {
+  it("managed key returns userId and keyId", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
-    mockedCheckHasBudgets.mockResolvedValue(true);
 
     const res = await GET(makeRequest());
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body).toEqual({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID, hasBudgets: true });
-    expect(mockedCheckHasBudgets).toHaveBeenCalledWith(MOCK_USER_ID, MOCK_KEY_ID);
+    expect(body).toEqual({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
   });
 
-  it("managed key returns hasBudgets: false when no budgets", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
-    mockedCheckHasBudgets.mockResolvedValue(false);
-
-    const res = await GET(makeRequest());
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID, hasBudgets: false });
-    expect(mockedCheckHasBudgets).toHaveBeenCalledWith(MOCK_USER_ID, MOCK_KEY_ID);
-  });
-
-  it("dev fallback returns hasBudgets field", async () => {
+  it("dev fallback returns dev identity", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null });
     mockedGetDevActor.mockReturnValue("dev-actor-789");
-    mockedCheckHasBudgets.mockResolvedValue(false);
 
     const res = await GET(makeRequest());
     const body = await res.json();
@@ -76,9 +55,7 @@ describe("GET /api/auth/introspect", () => {
       userId: "dev-actor-789",
       keyId: "dev",
       dev: true,
-      hasBudgets: false,
     });
-    expect(mockedCheckHasBudgets).toHaveBeenCalledWith("dev-actor-789");
   });
 
   it("missing API key returns 401", async () => {
@@ -93,31 +70,15 @@ describe("GET /api/auth/introspect", () => {
     expect(body.error.message).toBe("Invalid or missing API key.");
   });
 
-  it("DB error during budget check returns 500", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
-    mockedCheckHasBudgets.mockRejectedValue(new Error("connection refused"));
-
-    vi.spyOn(console, "error").mockImplementation(() => {});
-
-    const res = await GET(makeRequest());
-    const body = await res.json();
-
-    expect(res.status).toBe(500);
-    expect(body.error.code).toBe("internal_error");
-    expect(body.error.message).toBe("Internal server error.");
-  });
-
   it("dev fallback uses devUserId when getDevActor returns undefined", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null });
     mockedGetDevActor.mockReturnValue(undefined);
-    mockedCheckHasBudgets.mockResolvedValue(true);
 
     const res = await GET(makeRequest());
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(body.userId).toBe("dev-user-456");
-    expect(mockedCheckHasBudgets).toHaveBeenCalledWith("dev-user-456");
   });
 
   it("dev fallback throws 401 when dev mode is disabled", async () => {
@@ -132,17 +93,6 @@ describe("GET /api/auth/introspect", () => {
     expect(res.status).toBe(401);
     expect(body.error.code).toBe("authentication_required");
     expect(body.error.message).toContain("Managed API keys are required");
-    expect(mockedCheckHasBudgets).not.toHaveBeenCalled();
-  });
-
-  it("passes keyId to checkHasBudgets for managed key (checks both user and key budgets)", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
-    mockedCheckHasBudgets.mockResolvedValue(false);
-
-    await GET(makeRequest());
-
-    expect(mockedCheckHasBudgets).toHaveBeenCalledWith(MOCK_USER_ID, MOCK_KEY_ID);
-    expect(mockedCheckHasBudgets).toHaveBeenCalledTimes(1);
   });
 
   it("returns 429 when per-key rate limit is exceeded", async () => {
@@ -155,6 +105,5 @@ describe("GET /api/auth/introspect", () => {
     const res = await GET(makeRequest());
 
     expect(res.status).toBe(429);
-    expect(mockedCheckHasBudgets).not.toHaveBeenCalled();
   });
 });

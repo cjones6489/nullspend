@@ -42,7 +42,6 @@ export const budgetEntitySchema = z.object({
 });
 
 export const budgetStatusResponseSchema = z.object({
-  hasBudgets: z.boolean(),
   source: z.literal("postgres"),
   entities: z.array(budgetEntitySchema),
 });

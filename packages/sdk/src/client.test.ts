@@ -1712,7 +1712,6 @@ describe("reportCostBatch", () => {
 
 describe("checkBudget", () => {
   const budgetResponse = {
-    hasBudgets: true,
     source: "postgres",
     entities: [
       {
@@ -1739,13 +1738,12 @@ describe("checkBudget", () => {
     expect(init.method).toBe("GET");
   });
 
-  it("parses response correctly (hasBudgets, entities with all fields)", async () => {
+  it("parses response correctly (entities with all fields)", async () => {
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse(budgetResponse));
     const client = createClient(fetchFn);
 
     const result = await client.checkBudget();
 
-    expect(result.hasBudgets).toBe(true);
     expect(result.entities).toHaveLength(1);
     expect(result.entities[0]).toEqual({
       entityType: "user",
@@ -1769,9 +1767,8 @@ describe("checkBudget", () => {
     expect(headers["Idempotency-Key"]).toBeUndefined();
   });
 
-  it("returns hasBudgets: false when no budgets", async () => {
+  it("returns empty entities when no budgets", async () => {
     const emptyResponse = {
-      hasBudgets: false,
       source: "postgres",
       entities: [],
     };
@@ -1780,7 +1777,6 @@ describe("checkBudget", () => {
 
     const result = await client.checkBudget();
 
-    expect(result.hasBudgets).toBe(false);
     expect(result.entities).toEqual([]);
   });
 
@@ -1795,7 +1791,7 @@ describe("checkBudget", () => {
 
     const result = await client.checkBudget();
 
-    expect(result.hasBudgets).toBe(true);
+    expect(result.entities).toHaveLength(1);
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
@@ -1810,7 +1806,7 @@ describe("checkBudget", () => {
 
     const result = await client.checkBudget();
 
-    expect(result.hasBudgets).toBe(true);
+    expect(result.entities).toHaveLength(1);
     expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 

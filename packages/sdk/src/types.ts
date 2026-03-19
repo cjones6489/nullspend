@@ -213,6 +213,5 @@ export interface BudgetEntity {
 }
 
 export interface BudgetStatus {
-  hasBudgets: boolean;
   entities: BudgetEntity[];
 }

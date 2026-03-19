@@ -35,7 +35,6 @@ export const GET = withRequestContext(async (request: Request) => {
   }));
 
   const body = budgetStatusResponseSchema.parse({
-    hasBudgets: entities.length > 0,
     source: "postgres",
     entities,
   });
