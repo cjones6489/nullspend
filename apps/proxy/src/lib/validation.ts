@@ -2,14 +2,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export { UUID_RE };
 
-export function validateUUID(value: string | null): string | null {
-  return value && UUID_RE.test(value) ? value : null;
-}
-
 /**
  * Strips a NullSpend prefixed ID (e.g. "ns_act_<uuid>") and returns the raw UUID.
- * Falls back to accepting a raw UUID for backward compatibility during rollout.
- * Returns null if the value is null or invalid.
+ * Returns null if the value is null, missing the expected prefix, or has an invalid UUID.
  */
 export function stripNsPrefix(prefix: string, value: string | null): string | null {
   if (!value) return null;

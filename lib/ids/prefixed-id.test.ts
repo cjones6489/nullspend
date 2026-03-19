@@ -104,11 +104,33 @@ describe("nsIdInput", () => {
     expect(() => schema.parse("")).toThrow();
   });
 
-  it("produces proper Zod validation error (not plain Error)", () => {
+  it("produces proper Zod validation error with prefix in message", () => {
     const schema = nsIdInput("act");
     const result = schema.safeParse("invalid-input");
     expect(result.success).toBe(false);
     if (!result.success) {
+      expect(result.error.issues.length).toBeGreaterThan(0);
+      const messages = result.error.issues.map((i) => i.message).join(" ");
+      expect(messages).toContain("ns_act_");
+    }
+  });
+
+  it("produces Zod error (not plain Error) for wrong prefix", () => {
+    const schema = nsIdInput("act");
+    const result = schema.safeParse(`ns_bgt_${TEST_UUID}`);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message).join(" ");
+      expect(messages).toContain("ns_act_");
+    }
+  });
+
+  it("produces Zod error for invalid UUID after valid prefix", () => {
+    const schema = nsIdInput("act");
+    const result = schema.safeParse("ns_act_not-valid");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // Should fail at the .pipe(z.string().uuid()) stage
       expect(result.error.issues.length).toBeGreaterThan(0);
     }
   });
