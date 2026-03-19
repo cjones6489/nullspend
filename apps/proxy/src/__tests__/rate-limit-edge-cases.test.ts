@@ -150,7 +150,6 @@ describe("per-key rate limiting edge cases", () => {
     mockAuthenticateRequest.mockReset().mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
-      hasBudgets: false,
       hasWebhooks: false,
     });
   });

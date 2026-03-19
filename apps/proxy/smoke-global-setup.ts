@@ -2,9 +2,7 @@
  * Global setup for smoke tests.
  *
  * Ensures a permanent "ceiling" budget exists for the smoke test API key
- * so the proxy's auth cache always returns hasBudgets: true. Without
- * this, non-budget smoke tests that run first cache hasBudgets: false
- * (60s TTL), and subsequent budget tests silently skip enforcement.
+ * so the DO always has at least one budget entity to enforce against.
  *
  * The ceiling budget ($1B on api_key entity) never blocks requests —
  * individual tests create tighter user-entity budgets that actually

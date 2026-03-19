@@ -50,10 +50,6 @@ export async function handleMcpBudgetCheck(
     );
   }
 
-  if (!ctx.auth.hasBudgets) {
-    return Response.json({ allowed: true });
-  }
-
   try {
     const outcome = await checkBudget(env, ctx, parsed.estimateMicrodollars);
 

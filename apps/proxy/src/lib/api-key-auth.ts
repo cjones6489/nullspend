@@ -4,14 +4,13 @@ import { withDbConnection } from "./db-semaphore.js";
 export interface ApiKeyIdentity {
   userId: string;
   keyId: string;
-  hasBudgets: boolean;
   hasWebhooks: boolean;
 }
 
 const CONNECTION_TIMEOUT_MS = 5_000;
 const CACHE_MAX_SIZE = 256;
 const NEGATIVE_CACHE_MAX_SIZE = 2048;
-const POSITIVE_TTL_MS = 60_000; // 60s
+const POSITIVE_TTL_MS = 30_000; // 30s
 const NEGATIVE_TTL_MS = 30_000; // 30s
 
 interface CacheEntry {
@@ -86,11 +85,6 @@ async function lookupKeyInDb(
       const result = await client.query(
         `SELECT k.id, k.user_id,
           EXISTS(
-            SELECT 1 FROM budgets b
-            WHERE (b.entity_type = 'api_key' AND b.entity_id = k.id::text)
-               OR (b.entity_type = 'user' AND b.entity_id = k.user_id)
-          ) AS has_budgets,
-          EXISTS(
             SELECT 1 FROM webhook_endpoints w
             WHERE w.user_id = k.user_id AND w.enabled = true
           ) AS has_webhooks
@@ -106,7 +100,6 @@ async function lookupKeyInDb(
       return {
         userId: result.rows[0].user_id as string,
         keyId: result.rows[0].id as string,
-        hasBudgets: result.rows[0].has_budgets === true,
         hasWebhooks: result.rows[0].has_webhooks === true,
       };
     } catch (err) {
@@ -184,7 +177,7 @@ export async function authenticateApiKey(
 
 /**
  * Invalidate auth cache entries for a specific user.
- * Needed when budget state changes so hasBudgets is re-evaluated on next auth.
+ * Needed when a key is revoked or webhook config changes.
  * Returns the number of evicted entries.
  */
 export function invalidateAuthCacheForUser(userId: string): number {

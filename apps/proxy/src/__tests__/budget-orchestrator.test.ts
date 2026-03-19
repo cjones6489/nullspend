@@ -41,7 +41,7 @@ import type { RequestContext } from "../lib/context.js";
 function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
   return {
     body: {},
-    auth: { userId: "user-1", keyId: "key-1", hasBudgets: true, hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false },
     redis: null,
     connectionString: "postgres://test",
     sessionId: null,
@@ -138,20 +138,11 @@ describe("checkBudget — durable-objects mode", () => {
   });
 
   it("skipped when no userId", async () => {
-    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasBudgets: true, hasWebhooks: false } });
+    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasWebhooks: false } });
 
     const result = await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(result.status).toBe("skipped");
-  });
-
-  it("skipped when hasBudgets=false", async () => {
-    const ctx = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasBudgets: false, hasWebhooks: false } });
-
-    const result = await checkBudget(makeEnv(), ctx, 5_000_000);
-
-    expect(result.status).toBe("skipped");
-    expect(mockLookupBudgetsForDO).not.toHaveBeenCalled();
   });
 
   it("throws on DO error (fail-closed)", async () => {
@@ -446,8 +437,8 @@ describe("checkBudgetDO — lookup cache", () => {
   it("different users get separate cache entries", async () => {
     mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
 
-    const ctx1 = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasBudgets: true, hasWebhooks: false } });
-    const ctx2 = makeCtx({ auth: { userId: "user-2", keyId: "key-2", hasBudgets: true, hasWebhooks: false } });
+    const ctx1 = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false } });
+    const ctx2 = makeCtx({ auth: { userId: "user-2", keyId: "key-2", hasWebhooks: false } });
 
     await checkBudget(makeEnv(), ctx1, 5_000_000);
     await checkBudget(makeEnv(), ctx2, 5_000_000);

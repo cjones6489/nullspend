@@ -5,7 +5,6 @@ export type { ApiKeyIdentity };
 export interface AuthResult {
   userId: string;
   keyId: string;
-  hasBudgets: boolean;
   hasWebhooks: boolean;
 }
 
@@ -26,7 +25,6 @@ export async function authenticateRequest(
   return {
     userId: identity.userId,
     keyId: identity.keyId,
-    hasBudgets: identity.hasBudgets,
     hasWebhooks: identity.hasWebhooks,
   };
 }

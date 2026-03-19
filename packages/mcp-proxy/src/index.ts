@@ -91,8 +91,6 @@ async function main() {
   let costTracker: CostTracker | undefined;
   if (config.costTrackingEnabled) {
     log("Resolving identity from API key...");
-    let hasBudgets = true;
-
     try {
       const resp = await fetch(`${config.nullspendUrl}/api/auth/introspect`, {
         headers: { "x-nullspend-key": config.nullspendApiKey },
@@ -103,9 +101,8 @@ async function main() {
         process.exit(1);
       }
       const identity = (await resp.json()) as {
-        userId: string; keyId: string; dev?: boolean; hasBudgets?: boolean;
+        userId: string; keyId: string; dev?: boolean;
       };
-      hasBudgets = identity.hasBudgets ?? true;
       log(`Authenticated as userId=${identity.userId}, keyId=${identity.keyId}${identity.dev ? " (dev mode)" : ""}`);
     } catch (err) {
       log(`API key introspection failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -118,9 +115,8 @@ async function main() {
       serverName: config.serverName,
       budgetEnforcementEnabled: config.budgetEnforcementEnabled,
       toolCostOverrides: config.toolCostOverrides,
-      hasBudgets,
     });
-    log(`Cost tracking enabled (server: ${config.serverName}, hasBudgets: ${hasBudgets})`);
+    log(`Cost tracking enabled (server: ${config.serverName})`);
 
     // Register discovered tools with dashboard and fetch user-configured costs
     const registry = new ToolCostRegistry({

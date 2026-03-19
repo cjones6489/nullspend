@@ -656,58 +656,6 @@ describe("CostTracker", () => {
     await tracker.shutdown();
   });
 
-  it("checkBudget returns allowed when hasBudgets is false", async () => {
-    globalThis.fetch = vi.fn();
-
-    const tracker = makeTracker({ hasBudgets: false });
-    const result = await tracker.checkBudget("tool", 10_000);
-
-    expect(result.allowed).toBe(true);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-
-    await tracker.shutdown();
-  });
-
-  it("checkBudget calls BudgetClient when hasBudgets is true", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ allowed: true, reservationId: "rsv-1" })),
-    );
-
-    const tracker = makeTracker({ hasBudgets: true });
-    const result = await tracker.checkBudget("tool", 10_000);
-
-    expect(result.allowed).toBe(true);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-
-    await tracker.shutdown();
-  });
-
-  it("checkBudget calls BudgetClient when hasBudgets is undefined (fail-safe)", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ allowed: true })),
-    );
-
-    const tracker = makeTracker(); // no hasBudgets → undefined
-    const result = await tracker.checkBudget("tool", 10_000);
-
-    expect(result.allowed).toBe(true);
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
-
-    await tracker.shutdown();
-  });
-
-  it("checkBudget skips budget check when hasBudgets is false even if enforcement enabled", async () => {
-    globalThis.fetch = vi.fn();
-
-    const tracker = makeTracker({ budgetEnforcementEnabled: true, hasBudgets: false });
-    const result = await tracker.checkBudget("tool", 10_000);
-
-    expect(result.allowed).toBe(true);
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-
-    await tracker.shutdown();
-  });
-
   it("checkBudget returns allowed when budget enforcement is disabled", async () => {
     globalThis.fetch = vi.fn();
 

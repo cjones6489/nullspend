@@ -6,26 +6,21 @@
 **Symptom:** Budget smoke tests get `200 OK` instead of `429 budget_exceeded`. Non-budget tests get `429` instead of `200` after budget tests run.
 **Root cause:** Three-layer state management with incomplete test cleanup and missing auth cache invalidation.
 
-## The Three Layers of Budget State
+**Resolution (2026-03-18):** Removed the `hasBudgets` early-exit from the budget orchestrator. The proxy now always calls the DO for budget checks, eliminating the 60-second enforcement bypass window. The auth cache `hasBudgets` flag and its Postgres EXISTS subquery were removed entirely. Auth cache TTL reduced from 60s to 30s.
 
-The proxy has three independent layers of budget state, each with its own cache lifecycle:
+## The Two Layers of Budget State
+
+The proxy has two layers of budget state (the `hasBudgets` auth cache layer was removed — see Resolution above):
 
 ```
-Layer 1: Auth Cache (hasBudgets flag)
-  ├── Location: Worker isolate module-level Map
-  ├── TTL: 60 seconds (POSITIVE_TTL_MS)
-  ├── Source: Postgres EXISTS query at auth time
-  ├── Purpose: Fast-path skip — if no budgets exist, skip enforcement entirely
-  └── Invalidation: NONE (only expires)
-
-Layer 2: DO Lookup Cache (budget entities)
+Layer 1: DO Lookup Cache (budget entities)
   ├── Location: Worker isolate module-level Map
   ├── TTL: 60 seconds (DO_LOOKUP_TTL_MS)
   ├── Source: Postgres query via lookupBudgetsForDO()
   ├── Purpose: Avoid redundant Postgres queries for DO entity list
   └── Invalidation: invalidateDoLookupCacheForUser() via /internal/budget/invalidate
 
-Layer 3: Durable Object SQLite (authoritative budget data)
+Layer 2: Durable Object SQLite (authoritative budget data)
   ├── Location: Cloudflare Durable Object persistent storage
   ├── TTL: Permanent (until explicitly modified)
   ├── Source: Synced from Postgres via syncBudgets() RPC
@@ -36,11 +31,11 @@ Layer 3: Durable Object SQLite (authoritative budget data)
 ## The Request Flow
 
 ```
-Request → Auth (Layer 1) → Budget Orchestrator → DO Lookup (Layer 2) → DO Check (Layer 3)
-                ↓                                       ↓                     ↓
-         hasBudgets: false?                    No entities in Postgres?    DO SQLite has
-         → SKIP enforcement                   → DO gets empty sync        budget row?
-         → Request proceeds                   → No enforcement            → enforce / skip
+Request → Auth → Budget Orchestrator → DO Lookup (Layer 1) → DO Check (Layer 2)
+                                              ↓                     ↓
+                                     No entities in Postgres?    DO SQLite has
+                                     → DO gets empty sync        budget row?
+                                     → No enforcement            → enforce / skip
 ```
 
 ## Why Smoke Tests Fail
@@ -124,24 +119,13 @@ This is a fundamental race condition in the test architecture. The smoke tests c
 
 Cloudflare Workers distribute requests across multiple isolates. Module-level caches (auth cache, DO lookup cache) are per-isolate. The `/internal/budget/invalidate` endpoint invalidates caches in the isolate that handles the invalidation request, but other isolates retain stale data until their cache TTL expires (60 seconds). This means budget changes propagate with up to 60-second delay across the full Worker fleet.
 
-## The Remaining Issue: Multi-Isolate Auth Cache (`hasBudgets`)
+## Resolved: Multi-Isolate Auth Cache (`hasBudgets`)
 
-The `hasBudgets` flag is cached in the Worker's auth cache for 60 seconds (per-isolate, module-level). The `/internal/budget/invalidate` endpoint now invalidates the auth cache via `invalidateAuthCacheForUser()`, but this only affects the Worker isolate that handles the invalidation request. Other isolates retain their stale `hasBudgets` value until their TTL expires.
-
-This means: if a test request hits an isolate where `hasBudgets` was cached as `false` (from a time when no user budget existed), the budget enforcement pipeline is skipped entirely at `budget-orchestrator.ts:73` (`if (!ctx.auth.hasBudgets) return skipped`), even if the DO has the correct budget state.
-
-**Impact on smoke tests:** Budget denial tests get `200 OK` instead of `429` because the test request hits an isolate with stale `hasBudgets: false`.
-
-**Why the global setup doesn't fully solve this:** The `smoke-global-setup.ts` creates a ceiling `api_key` budget before tests run. The first request on each isolate should see `hasBudgets: true` because the Postgres EXISTS query finds this budget. However, if a non-budget smoke test runs first and authenticates on an isolate before the global setup completes, or if an isolate is recycled and starts fresh without the ceiling budget being visible, the cache can be set to `false`.
-
-**Solutions (not yet implemented):**
-1. **Remove the `hasBudgets` early-exit** — always go through the DO. The DO's `checkAndReserve` already returns "approved" quickly when no budgets exist. Performance impact: one DO RPC per request instead of a fast-path skip. This is the cleanest fix.
-2. **Reduce auth cache TTL** from 60s to 5s — reduces the staleness window but doesn't eliminate it.
-3. **Move `hasBudgets` check into the DO** — the DO always has current state. The Worker asks the DO "do I have budgets?" instead of caching the answer locally.
+**Fixed 2026-03-18.** The `hasBudgets` early-exit was removed entirely. The proxy now always calls the DO for budget checks. The `hasBudgets` field was removed from `ApiKeyIdentity`, `AuthResult`, and the auth SQL query. Auth cache TTL was reduced from 60s to 30s. Budget creation/deletion takes effect immediately on the next request (no stale-cache window).
 
 ## Production Implications
 
-- **Budget creation in the dashboard** inserts into Postgres and calls `/internal/budget/invalidate` which invalidates auth + DO lookup caches on ONE isolate. Other isolates retain stale `hasBudgets: false` for up to 60 seconds. Users may not see enforcement immediately.
-- **Budget deletion** has the same 60-second staleness window for `hasBudgets` going from `true` to `false`.
-- **The DO-level all-entity check** (added in this fix) means that once a request reaches the DO, ALL budget rows are checked — even if the Worker's entity list was incomplete. This is a defense-in-depth improvement.
-- **Consider for v1 launch**: removing the `hasBudgets` early-exit entirely, or reducing the auth cache TTL to 5-10 seconds.
+- **Budget creation in the dashboard** inserts into Postgres and calls `/internal/budget/invalidate` which invalidates DO lookup caches. The next request syncs from Postgres to DO and enforces immediately.
+- **Budget deletion** propagates through the same path. No stale-cache enforcement bypass window.
+- **The DO-level all-entity check** means ALL budget rows in SQLite are checked — even if the Worker's entity list was incomplete. This is a defense-in-depth improvement.
+- **Auth cache TTL** is 30s (reduced from 60s). Only caches userId/keyId/hasWebhooks — no budget state.

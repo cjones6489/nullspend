@@ -564,9 +564,9 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
-| Remove `hasBudgets` early-exit | `checkBudget()` skips enforcement when auth cache says no budgets | Remove early-exit, always call DO for budget check | ~1 hour |
-| Remove `hasBudgets` from auth query | `api-key-auth.ts` runs EXISTS subquery for budgets on every auth | Remove subquery, simplify auth to return only userId/keyId/hasWebhooks | ~30 min |
-| Reduce auth cache TTL | 60s positive cache TTL delays key revocation | Reduce to 30s for faster revocation propagation | ~5 min |
+| ~~Remove `hasBudgets` early-exit~~ **DONE** | ~~`checkBudget()` skips enforcement when auth cache says no budgets~~ | ~~Remove early-exit, always call DO for budget check~~ Completed 2026-03-18 | ~~1 hour~~ |
+| ~~Remove `hasBudgets` from auth query~~ **DONE** | ~~`api-key-auth.ts` runs EXISTS subquery for budgets on every auth~~ | ~~Remove subquery, simplify auth to return only userId/keyId/hasWebhooks~~ Completed 2026-03-18 | ~~30 min~~ |
+| ~~Reduce auth cache TTL~~ **DONE** | ~~60s positive cache TTL delays key revocation~~ | ~~Reduce to 30s for faster revocation propagation~~ Completed 2026-03-18 | ~~5 min~~ |
 
 See Section 11 for full analysis and rationale.
 

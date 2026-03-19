@@ -407,7 +407,6 @@ export interface CostTrackerConfig {
   budgetEnforcementEnabled: boolean;
   toolCostOverrides: Record<string, number>;
   apiKey: string;
-  hasBudgets?: boolean;
 }
 
 export class CostTracker {
@@ -454,9 +453,6 @@ export class CostTracker {
     estimateMicrodollars: number,
   ): Promise<BudgetCheckResponse> {
     if (!this.config.budgetEnforcementEnabled) {
-      return { allowed: true };
-    }
-    if (this.config.hasBudgets === false) {
       return { allowed: true };
     }
     return this.budgetClient.check(

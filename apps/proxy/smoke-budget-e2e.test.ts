@@ -1,10 +1,9 @@
 /**
  * End-to-end budget enforcement tests.
  *
- * Budget state flows through three layers:
- *   1. Auth cache (hasBudgets flag, 60s TTL in Worker isolate)
- *   2. DO lookup cache (budget entities, 60s TTL in Worker isolate)
- *   3. Durable Object SQLite (authoritative budget data, persistent)
+ * Budget state flows through two layers:
+ *   1. DO lookup cache (budget entities, 60s TTL in Worker isolate)
+ *   2. Durable Object SQLite (authoritative budget data, persistent)
  *
  * Setup: Insert budget in Postgres → send a request to force DO sync.
  * Teardown: Call /internal/budget/invalidate to clean DO + caches → delete Postgres row.
@@ -84,8 +83,6 @@ describe("End-to-end budget enforcement", () => {
     // Force Postgres→DO sync via internal endpoint.
     // This bypasses all Worker isolate caches and talks directly to the DO,
     // which is a single global instance. The DO will have the correct budget.
-    // We do NOT invalidate the auth cache — hasBudgets is already true from
-    // the global ceiling budget (api_key entity with $1B).
     await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
 
     // Invalidate DO lookup cache so the Worker re-queries Postgres for the

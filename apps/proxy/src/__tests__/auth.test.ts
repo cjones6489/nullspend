@@ -28,7 +28,6 @@ describe("authenticateRequest", () => {
     mockAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
-      hasBudgets: true,
       hasWebhooks: false,
     });
 
@@ -37,7 +36,7 @@ describe("authenticateRequest", () => {
     });
 
     const result = await authenticateRequest(request, "postgresql://localhost");
-    expect(result).toEqual({ userId: "user-1", keyId: "key-1", hasBudgets: true, hasWebhooks: false });
+    expect(result).toEqual({ userId: "user-1", keyId: "key-1", hasWebhooks: false });
   });
 
   it("returns null when x-nullspend-key header is missing", async () => {
@@ -59,19 +58,4 @@ describe("authenticateRequest", () => {
     expect(result).toBeNull();
   });
 
-  it("propagates hasBudgets: false from identity", async () => {
-    mockAuthenticateApiKey.mockResolvedValue({
-      userId: "user-2",
-      keyId: "key-2",
-      hasBudgets: false,
-      hasWebhooks: false,
-    });
-
-    const request = new Request("http://localhost/v1/chat/completions", {
-      headers: { "x-nullspend-key": "ask_no_budgets" },
-    });
-
-    const result = await authenticateRequest(request, "postgresql://localhost");
-    expect(result).toEqual({ userId: "user-2", keyId: "key-2", hasBudgets: false, hasWebhooks: false });
-  });
 });

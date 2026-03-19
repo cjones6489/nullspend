@@ -64,16 +64,7 @@ export async function checkBudget(
   ctx: RequestContext,
   estimateMicrodollars: number,
 ): Promise<BudgetCheckOutcome> {
-  const skipped: BudgetCheckOutcome = {
-    status: "skipped",
-    reservationId: null,
-    budgetEntities: [],
-  };
-
-  if (!ctx.auth.hasBudgets) return skipped;
-
   const identity = { keyId: ctx.auth.keyId, userId: ctx.auth.userId };
-
   return checkBudgetDO(env, ctx.connectionString, identity, estimateMicrodollars);
 }
 

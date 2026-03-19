@@ -6,10 +6,9 @@
  * dual (user + key) budget enforcement, precise exhaustion, and
  * stream abort spend accuracy.
  *
- * Budget state flows through three layers (see budget-enforcement-architecture.md):
- *   1. Auth cache (hasBudgets flag, 60s TTL)
- *   2. DO lookup cache (budget entities, 60s TTL)
- *   3. Durable Object SQLite (authoritative)
+ * Budget state flows through two layers (see budget-enforcement-architecture.md):
+ *   1. DO lookup cache (budget entities, 60s TTL)
+ *   2. Durable Object SQLite (authoritative)
  *
  * Setup: Postgres INSERT → /internal/budget/invalidate → warm-up request.
  * Teardown: /internal/budget/invalidate → Postgres DELETE.

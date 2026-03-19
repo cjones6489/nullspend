@@ -36,6 +36,11 @@ vi.mock("../lib/cost-logger.js", () => ({
   logCostEvent: (...args: unknown[]) => mockLogCostEvent(...args),
   isLocalConnection: () => false,
 }));
+vi.mock("../lib/budget-orchestrator.js", () => ({
+  checkBudget: vi.fn().mockResolvedValue({ status: "skipped", reservationId: null, budgetEntities: [] }),
+  reconcileBudgetQueued: vi.fn().mockResolvedValue(undefined),
+  getReconcileQueue: vi.fn().mockReturnValue(undefined),
+}));
 
 import { handleAnthropicMessages } from "../routes/anthropic.js";
 
@@ -72,7 +77,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasBudgets: false, hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,

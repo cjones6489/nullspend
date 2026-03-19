@@ -61,6 +61,11 @@ vi.mock("../lib/auth.js", () => ({
 vi.mock("../lib/webhook-dispatch.js", () => ({
   createWebhookDispatcher: vi.fn().mockReturnValue(null),
 }));
+vi.mock("../lib/budget-orchestrator.js", () => ({
+  checkBudget: vi.fn().mockResolvedValue({ status: "skipped", reservationId: null, budgetEntities: [] }),
+  reconcileBudgetQueued: vi.fn().mockResolvedValue(undefined),
+  getReconcileQueue: vi.fn().mockReturnValue(undefined),
+}));
 
 import entrypoint from "../index.js";
 
@@ -90,7 +95,6 @@ describe("Worker entry point routing", () => {
     mockAuthenticateRequest.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
-      hasBudgets: false,
       hasWebhooks: false,
     });
   });

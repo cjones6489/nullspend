@@ -88,7 +88,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasBudgets: true, hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -310,7 +310,7 @@ describe("handleMcpBudgetCheck", () => {
 
     const ctx = makeCtx(
       { toolName: "t", serverName: "s", estimateMicrodollars: 0 },
-      { auth: { userId: "user-abc", keyId: "key-xyz", hasBudgets: true, hasWebhooks: false } },
+      { auth: { userId: "user-abc", keyId: "key-xyz", hasWebhooks: false } },
     );
     await handleMcpBudgetCheck(request, env, ctx);
 
@@ -471,7 +471,7 @@ describe("handleMcpEvents", () => {
 
     const ctx = makeCtx(
       { events },
-      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasBudgets: true, hasWebhooks: false } },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false } },
     );
     await handleMcpEvents(request, env, ctx);
 
@@ -626,7 +626,7 @@ describe("handleMcpEvents", () => {
 
     const ctx = makeCtx(
       { events },
-      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasBudgets: true, hasWebhooks: false } },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false } },
     );
     await handleMcpEvents(request, env, ctx);
     await new Promise((r) => setTimeout(r, 10));
