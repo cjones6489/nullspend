@@ -443,6 +443,25 @@ The `api_version` field (Stripe's pattern) lets you evolve the `data` payload st
 
 **Priority: High.** Event type names are used in webhook endpoint configurations, consumer code switch statements, and monitoring alerts. They're permanent.
 
+### Implementation Notes (2026-03-19)
+
+**What shipped:**
+
+| Change | File(s) |
+|---|---|
+| Locked 11-type taxonomy as `WEBHOOK_EVENT_TYPES` const array | `lib/validations/webhooks.ts` |
+| `api_version` field on all webhook events (default `"2026-04-01"`) | `apps/proxy/src/lib/webhook-events.ts`, `lib/webhooks/dispatch.ts` |
+| `WebhookEvent` interface with `id`, `type`, `api_version`, `created_at`, `data.object` | Both SYNC'd builder files |
+| `api_version` column on `webhook_endpoints` table (default `"2026-04-01"`) | `packages/db/src/schema.ts` |
+| Cross-builder shape test ensuring proxy and dashboard payloads have identical key sets | `lib/webhooks/dispatch.test.ts` |
+| Builder functions for all event types: `cost_event.created`, `budget.exceeded`, `budget.threshold.*`, `budget.reset`, `request.blocked`, `action.*`, `test.ping` | Both SYNC'd builder files |
+
+**Key design decisions:**
+
+- **`api_version` defaults to `"2026-04-01"`.** Single version at launch. Field exists on both the event payload and the `webhook_endpoints` table (per-endpoint version preference for future use).
+- **SYNC'd builders.** Proxy (`apps/proxy/src/lib/webhook-events.ts`) and dashboard (`lib/webhooks/dispatch.ts`) maintain identical `data.object` shapes. Cross-builder shape test enforces key-set parity.
+- **Reserved event types documented but not yet implemented:** `budget.created`, `budget.updated`, `budget.deleted`, `action.pending`, `action.executed`, `action.failed`, `api_key.created`, `api_key.revoked`. Names are locked; builders will be added when features ship.
+
 ---
 
 ## 5. API Versioning Strategy
@@ -524,6 +543,40 @@ All columns are nullable or have defaults — non-breaking additions. Adding the
 
 **Priority: High for `source` and `api_version`.** Medium for the rest.
 
+### Implementation Notes — `source` column on `cost_events` (2026-03-19)
+
+**What shipped:**
+
+| Change | File(s) |
+|---|---|
+| Migration: `ALTER TABLE cost_events ADD COLUMN source text NOT NULL DEFAULT 'proxy' CONSTRAINT cost_events_source_check CHECK (source IN ('proxy', 'api', 'mcp'))` | `drizzle/0021_cost_events_source.sql` |
+| Schema: `COST_EVENT_SOURCES` const + `CostEventSource` type + column definition with `$type<>()` | `packages/db/src/schema.ts` |
+| Proxy insert paths: `source: "proxy"` on all 4 `logCostEvent` calls (streaming + non-streaming, OpenAI + Anthropic) | `apps/proxy/src/routes/openai.ts`, `anthropic.ts` |
+| Proxy insert path: `source: "mcp"` on MCP `costEventRows` mapping | `apps/proxy/src/routes/mcp.ts` |
+| Proxy webhook data: `source: "proxy"` on all 4 `webhookData` constructions | `apps/proxy/src/routes/openai.ts`, `anthropic.ts` |
+| MCP webhook data: spreads `...row` which includes `source: "mcp"` | `apps/proxy/src/routes/mcp.ts` |
+| Dashboard insert path: `source: "api"` in `buildInsertValues()` | `lib/cost-events/ingest.ts` |
+| Dashboard batch returning clause: `source: costEvents.source` | `lib/cost-events/ingest.ts` |
+| Webhook builders: `source` in `CostEventData` interface + `data.object.source` | `apps/proxy/src/lib/webhook-events.ts`, `lib/webhooks/dispatch.ts` |
+| Dashboard webhook dispatch: `source: "api"` on POST, `source: row.source` on batch | `app/api/cost-events/route.ts`, `batch/route.ts` |
+| List query: `source` in SELECT + `?source=` filter (typed `CostEventSource`) | `lib/cost-events/list-cost-events.ts` |
+| Action costs query: `source` in SELECT | `lib/cost-events/get-cost-events-by-action.ts` |
+| Serializer: `source` in `CostEventJoinRow` + return object | `lib/cost-events/serialize-cost-event.ts` |
+| Validation: `source: z.string()` in record schema, `z.enum(["proxy","api","mcp"])` in query schema | `lib/validations/cost-events.ts` |
+| Summary endpoint: `getSourceBreakdown()` + `sourceBreakdownSchema` + `sources` in response | `lib/cost-events/aggregate-cost-events.ts`, `lib/validations/cost-event-summary.ts`, `app/api/cost-events/summary/route.ts` |
+| Frontend query hook: `source` in `CostEventFilters` | `lib/queries/cost-events.ts` |
+| API route GET: `source` query param parsed and forwarded | `app/api/cost-events/route.ts` |
+| Backfill: `UPDATE cost_events SET source = 'api' WHERE request_id LIKE 'sdk_%'`, `UPDATE cost_events SET source = 'mcp' WHERE provider = 'mcp' AND event_type = 'tool'` | Supabase MCP |
+
+**Key design decisions:**
+
+- **CHECK constraint in migration SQL only.** Matches existing `tool_costs` convention — Drizzle schema uses `$type<>()` for TypeScript safety, DB CHECK for runtime enforcement. Avoids drizzle-kit snapshot conflicts.
+- **System-derived, not client-settable.** Each insert path hardcodes its own source value. API consumers cannot set `source` — the dashboard always writes `"api"`, the proxy always writes `"proxy"`, MCP always writes `"mcp"`.
+- **Default is `"proxy"` (not null).** Because `source` has `.default("proxy")` in Drizzle, any insert that forgets to set `source` silently defaults to `"proxy"`. TypeScript won't catch this since `source` is optional in `NewCostEventRow`. Route tests assert correct source values at each call site to catch regressions.
+- **Cross-builder shape test updated.** `"source"` added to `proxyExpectedKeys` in `lib/webhooks/dispatch.test.ts` — bidirectional key match ensures proxy and dashboard webhook payloads stay in sync.
+
+**Scope:** 29 files changed, 1615 tests passing (775 dashboard + 840 proxy). Post-implementation audit scored 8/10, no blocking issues.
+
 ---
 
 ## 7. Webhook Secret Rotation
@@ -577,8 +630,8 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 | ~~Prefixed object IDs (Section 1)~~ **DONE** | ~~Raw UUIDs in API responses~~ | ~~Add `ns_` prefix mapping layer at API boundary~~ Deployed 2026-03-18. Zod schema transforms on all 8 resource types, 47 files changed. Three-pass audit completed. | ~~3 hours~~ |
 | ~~API key format (Section 2)~~ **DONE** | ~~`ask_` prefix, no env/permission encoding~~ | ~~Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning~~ Format migrated 2026-03-18. `ns_live_sk_` + 32 hex chars (43 total). 35+ files updated, three-pass audit completed. GitHub Secret Scanning registration is a follow-up external action. | ~~3 hours~~ |
 | ~~Error response contract~~ **DONE** | ~~Flat `{ error, message }` format~~ | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18. | ~~5-6 hours~~ |
-| Webhook event taxonomy | 6 types defined, no `api_version` on events | Lock full taxonomy + add `api_version` field to event structure | ~1 hour |
-| `source` column on cost_events | Missing | Add column (`DEFAULT 'proxy'`) + set in all ingestion paths | ~30 min |
+| ~~Webhook event taxonomy (Section 4)~~ **DONE** | ~~6 types defined, no `api_version` on events~~ | ~~Lock full taxonomy + add `api_version` field to event structure~~ Deployed 2026-03-19. 11 event types locked, `api_version` field on all events, cross-builder shape test, SYNC'd proxy/dashboard builders. | ~~1 hour~~ |
+| ~~`source` column on cost_events (Section 6)~~ **DONE** | ~~Missing~~ | ~~Add column (`DEFAULT 'proxy'`) + set in all ingestion paths~~ Deployed 2026-03-19. CHECK constraint (`proxy`/`api`/`mcp`), 9 insert paths set explicit source, webhook payloads include `source`, `?source=` filter on list API, source breakdown in summary endpoint. 29 files, 1615 tests passing. | ~~30 min~~ |
 | `api_version` on api_keys | Missing | Add column (`DEFAULT '2026-03-01'`) + header parsing | ~30 min |
 
 ### Completed — Budget Enforcement Architecture (2026-03-18)
@@ -596,7 +649,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
-| Schema columns (Section 6) | Missing columns on 3 tables | Add `source` on cost_events, `api_version` + `environment` on api_keys, `warn_threshold_pct` on budgets | ~1 hour |
+| Schema columns (Section 6) | `source` on cost_events **DONE**. Missing columns on 2 tables | Add `api_version` + `environment` on api_keys, `warn_threshold_pct` on budgets | ~45 min |
 | Webhook secret rotation | No transition period | Add `previous_signing_secret` + dual-signing + 24h expiry | ~1 hour |
 
 ### Low Priority (can do incrementally after launch)

@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~1,600+ tests across ~150 files organized into four tiers.
+NullSpend has ~2,200+ tests across ~130 files organized into four tiers.
 
 ## Quick Reference
 
@@ -41,7 +41,7 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-33 files, ~560 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+52 files, ~840 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
 
 ### Naming Convention
 
@@ -140,7 +140,7 @@ Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accura
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. 650+ tests across 67 files.
+Co-located with source files. 775+ tests across 74 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback
