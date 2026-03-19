@@ -23,8 +23,8 @@
 | Critical | 3 | 3 | 0 | 0 |
 | High | 16 | 16 | 0 | 0 |
 | Medium | 32 | 32 | 0 | 0 |
-| Low | 40 | 39 | 1 | 0 |
-| **Total** | **91** | **90** | **1** | **0** |
+| Low | 40 | 40 | 0 | 0 |
+| **Total** | **91** | **91** | **0** | **0** |
 
 ---
 
@@ -788,14 +788,10 @@ Added `console.info` audit logging for key creation (`userId`, `keyId`, `name`) 
 ### L21 — Redundant `conditions.length > 0` check in `listActions` [DONE]
 Removed — `conditions` always has at least the `ownerUserId` filter.
 
-### L22 — Inconsistent error response format [PARTIAL]
+### L22 — Inconsistent error response format [DONE]
 Proxy and Next.js API return differently shaped error objects.
 
-**Mitigation applied:**
-- Fixed proxy's 2 inconsistent responses (missing `message` field) — all proxy errors now use `{ error: "code", message: "text" }` format
-- Dashboard uses `{ error: "text" }` — changing would require frontend migration
-
-**Remaining:** Unify dashboard error format to match proxy (`{ error: "code", message: "text" }`) in a coordinated frontend+API change.
+**Resolution:** Migrated all error responses to nested `{ error: { code, message, details } }` format across both proxy and dashboard. Completed in commits `f1100d2` (nested format migration), `64be0f9` (remaining flat format fixes), and `3c488f2` (dashboard unification).
 
 ### L23 — `Phase 3` stale planning comment in openai route [DONE]
 Removed stale comment from `apps/proxy/src/routes/openai.ts`.
