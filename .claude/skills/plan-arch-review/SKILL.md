@@ -46,10 +46,10 @@ Wait for the user's response before moving to the next finding.
 1. **Architecture**: Component boundaries, data flow, dependency direction
 2. **Error handling**: What fails? How do we know? How do we recover?
 3. **Data model**: Schema changes, migrations, backward compatibility
-4. **Testing**: What's the test plan? What's hard to test? What's the minimum viable test coverage?
+4. **Testing (TDD-first)**: Write concrete test specifications as part of the plan — not a coverage checklist, but actual test cases with inputs, expected outputs, and assertions. Implementation steps should be framed as "make this test pass." Include both unit tests (mocked) and e2e smoke tests (live stack). The plan is not complete until test specs exist for every new codepath.
 5. **Performance**: Will this add latency? Memory? Connection count?
 6. **Observability**: How do we know this is working in production?
-7. **Scope**: Can this be smaller? Can it ship incrementally?
+7. **Scope**: Can this be smaller? Can it ship incrementally? **If the plan would take more than 30 minutes to implement, break it into sequential plans.** Each plan should be a self-contained, shippable increment.
 
 ## Completion
 

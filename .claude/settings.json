@@ -37,6 +37,15 @@
             "command": "bash .claude/scripts/check-secrets.sh"
           }
         ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/check-audit-before-exit-plan.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
