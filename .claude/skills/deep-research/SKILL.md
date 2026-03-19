@@ -157,7 +157,40 @@ Provide a concrete recommendation for:
 List anything that remains uncertain or needs more validation.
 
 ## Sources and References
-List the key docs, repos, technical references, and sources used.
+List ALL sources consulted during research. This section must be comprehensive — every doc, repo, API reference, spec, blog post, issue tracker thread, and technical source that informed the findings. Group by category:
+
+### Official Documentation
+- Full URLs to official docs pages consulted (e.g., PostgreSQL, Drizzle ORM, Cloudflare Workers, Supabase, Stripe API)
+- Include the specific page/section, not just the root domain
+- Note the version or date accessed when relevant
+
+### Specifications and Standards
+- RFCs, OpenAPI specs, protocol specifications, industry standards (e.g., CloudEvents, OpenTelemetry, FOCUS FinOps)
+- Include spec version numbers
+
+### Platform and Product References
+- Links to specific platform documentation, API references, or product pages that informed competitive analysis
+- Include the specific feature/concept page, not just the homepage
+
+### Repositories and Code References
+- GitHub repos with full URLs, star counts, and last commit activity where relevant
+- Specific files, functions, or patterns referenced within repos
+- NPM packages with version numbers and weekly download counts where relevant
+
+### Issue Trackers and Discussions
+- GitHub issues, PRs, or discussions that revealed implementation details, known bugs, or design decisions
+- Stack Overflow threads or forum posts only if they provided authoritative technical insight
+
+### Blog Posts and Articles
+- Only include if they provided substantive technical depth beyond what official docs cover
+- Note the author's credentials or affiliation when relevant
+- Mark as secondary sources
+
+### Internal Codebase References
+- Files, functions, patterns, and conventions from our own codebase that informed the analysis
+- Include file paths and line numbers for specific references
+
+Every claim, comparison, or recommendation in the research should be traceable to a source listed here. If a finding came from general knowledge rather than a specific source, say so explicitly rather than omitting the citation.
 
 Final instruction:
-This should read like a serious internal technical research memo written by a strong engineering research team. Be rigorous, current, comparative, and practical. Optimize for helping us make the best architecture decision, not for sounding impressive.
+This should read like a serious internal technical research memo written by a strong engineering research team. Be rigorous, current, comparative, and practical. Optimize for helping us make the best architecture decision, not for sounding impressive. Every recommendation must be traceable to evidence.
