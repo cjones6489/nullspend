@@ -152,10 +152,35 @@ export class UserBudgetDO extends DurableObject {
     const periodResets: Array<{ entityType: string; entityId: string; newPeriodStart: number }> = [];
 
     this.ctx.storage.transactionSync(() => {
-      // Phase 1: Check all entities (with inline period reset)
-      const budgetedEntities: Array<{ type: string; id: string }> = [];
+      // Phase 1: Build the full entity list from caller + DO storage.
+      // The caller may pass a stale entity list (from a cached DO lookup).
+      // Always also check all budget rows in SQLite to catch newly synced budgets.
+      const seen = new Set<string>();
+      const allEntities: Array<{ type: string; id: string }> = [];
 
       for (const entity of entities) {
+        const key = `${entity.type}:${entity.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allEntities.push(entity);
+        }
+      }
+
+      const storedRows = this.ctx.storage.sql
+        .exec<BudgetRow>("SELECT * FROM budgets")
+        .toArray();
+      for (const row of storedRows) {
+        const key = `${row.entity_type}:${row.entity_id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allEntities.push({ type: row.entity_type, id: row.entity_id });
+        }
+      }
+
+      // Phase 2: Check each entity's budget
+      const budgetedEntities: Array<{ type: string; id: string }> = [];
+
+      for (const entity of allEntities) {
         const row = this.ctx.storage.sql
           .exec<BudgetRow>(
             "SELECT * FROM budgets WHERE entity_type = ? AND entity_id = ?",
@@ -164,8 +189,7 @@ export class UserBudgetDO extends DurableObject {
           )
           .toArray()[0];
 
-        if (!row) continue; // No budget configured = no limit
-
+        if (!row) continue;
         budgetedEntities.push(entity);
 
         // Inline budget period reset
@@ -210,7 +234,7 @@ export class UserBudgetDO extends DurableObject {
         }
       }
 
-      // Phase 2: Reserve across all entities that have budgets
+      // Phase 3: Reserve across all entities that have budgets
       if (budgetedEntities.length === 0) return;
 
       const entityKeys: string[] = [];
@@ -388,13 +412,47 @@ export class UserBudgetDO extends DurableObject {
     return Array.from(this.budgets.values());
   }
 
-  /** Remove a budget entity (called via internal invalidation endpoint). */
+  /** Remove a budget entity and all associated reservations.
+   *  Called via internal invalidation endpoint.
+   *  Deleting reservations prevents reconciliation from adding spend
+   *  to a subsequently re-created budget row (race condition fix). */
   async removeBudget(entityType: string, entityId: string): Promise<void> {
-    this.ctx.storage.sql.exec(
-      "DELETE FROM budgets WHERE entity_type = ? AND entity_id = ?",
-      entityType,
-      entityId,
-    );
+    const entityKey = `${entityType}:${entityId}`;
+    this.ctx.storage.transactionSync(() => {
+      // Delete reservations that reference this entity
+      const matching = this.ctx.storage.sql
+        .exec<{ id: string; amount: number; entity_keys: string }>(
+          `SELECT r.id, r.amount, r.entity_keys
+           FROM reservations r, json_each(r.entity_keys) j
+           WHERE j.value = ?`,
+          entityKey,
+        )
+        .toArray();
+
+      for (const rsv of matching) {
+        // Decrement reserved on co-covered entities before deleting
+        const keys: string[] = JSON.parse(rsv.entity_keys);
+        for (const key of keys) {
+          const parts = key.split(":");
+          if (parts.length >= 2) {
+            this.ctx.storage.sql.exec(
+              "UPDATE budgets SET reserved = MAX(0, reserved - ?) WHERE entity_type = ? AND entity_id = ?",
+              rsv.amount,
+              parts[0],
+              parts.slice(1).join(":"),
+            );
+          }
+        }
+        this.ctx.storage.sql.exec("DELETE FROM reservations WHERE id = ?", rsv.id);
+      }
+
+      // Delete the budget row
+      this.ctx.storage.sql.exec(
+        "DELETE FROM budgets WHERE entity_type = ? AND entity_id = ?",
+        entityType,
+        entityId,
+      );
+    });
     this.loadBudgets();
   }
 

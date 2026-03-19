@@ -112,18 +112,36 @@ After a request completes, reconciliation runs in `waitUntil()` — asynchronous
 
 This is a fundamental race condition in the test architecture. The smoke tests cannot reliably clean up DO state because `waitUntil` tasks are not awaitable from outside the Worker.
 
-**Possible solutions:**
-- Add a dedicated test-only endpoint that flushes all pending reconciliation tasks and resets DO state
-- Add an explicit sleep (5-10s) in `afterEach` to wait for `waitUntil` tasks before cleanup
-- Move budget smoke tests to a separate test API key with a dedicated DO instance
-- Accept some test flakiness and retry failed tests
+**Applied fixes:**
+- `removeBudget()` now also deletes all associated reservations in a transaction, preventing late-arriving reconciliation from affecting a re-created budget row
+- Added `sync` action to `/internal/budget/invalidate` endpoint that forces Postgres→DO sync (bypasses Worker isolate caches)
+- Added 5-second `afterEach` delay to wait for `waitUntil` reconciliation before cleanup
+- DO's `checkAndReserve()` now checks ALL budget rows in its SQLite storage, not just the entities passed by the Worker (handles stale DO lookup cache)
+
+**Remaining limitation:** These fixes address the reconciliation race but NOT the multi-isolate cache problem (see Problem 6)
 
 ### Problem 6: Multi-isolate cache invalidation
 
 Cloudflare Workers distribute requests across multiple isolates. Module-level caches (auth cache, DO lookup cache) are per-isolate. The `/internal/budget/invalidate` endpoint invalidates caches in the isolate that handles the invalidation request, but other isolates retain stale data until their cache TTL expires (60 seconds). This means budget changes propagate with up to 60-second delay across the full Worker fleet.
 
+## The Remaining Issue: Multi-Isolate Auth Cache (`hasBudgets`)
+
+The `hasBudgets` flag is cached in the Worker's auth cache for 60 seconds (per-isolate, module-level). The `/internal/budget/invalidate` endpoint now invalidates the auth cache via `invalidateAuthCacheForUser()`, but this only affects the Worker isolate that handles the invalidation request. Other isolates retain their stale `hasBudgets` value until their TTL expires.
+
+This means: if a test request hits an isolate where `hasBudgets` was cached as `false` (from a time when no user budget existed), the budget enforcement pipeline is skipped entirely at `budget-orchestrator.ts:73` (`if (!ctx.auth.hasBudgets) return skipped`), even if the DO has the correct budget state.
+
+**Impact on smoke tests:** Budget denial tests get `200 OK` instead of `429` because the test request hits an isolate with stale `hasBudgets: false`.
+
+**Why the global setup doesn't fully solve this:** The `smoke-global-setup.ts` creates a ceiling `api_key` budget before tests run. The first request on each isolate should see `hasBudgets: true` because the Postgres EXISTS query finds this budget. However, if a non-budget smoke test runs first and authenticates on an isolate before the global setup completes, or if an isolate is recycled and starts fresh without the ceiling budget being visible, the cache can be set to `false`.
+
+**Solutions (not yet implemented):**
+1. **Remove the `hasBudgets` early-exit** — always go through the DO. The DO's `checkAndReserve` already returns "approved" quickly when no budgets exist. Performance impact: one DO RPC per request instead of a fast-path skip. This is the cleanest fix.
+2. **Reduce auth cache TTL** from 60s to 5s — reduces the staleness window but doesn't eliminate it.
+3. **Move `hasBudgets` check into the DO** — the DO always has current state. The Worker asks the DO "do I have budgets?" instead of caching the answer locally.
+
 ## Production Implications
 
-- **Budget creation in the dashboard** inserts into Postgres but doesn't invalidate the auth cache. Users may not see enforcement for up to 60 seconds after creating a budget. The dashboard currently calls `/internal/budget/invalidate` but this doesn't touch the auth cache.
+- **Budget creation in the dashboard** inserts into Postgres and calls `/internal/budget/invalidate` which invalidates auth + DO lookup caches on ONE isolate. Other isolates retain stale `hasBudgets: false` for up to 60 seconds. Users may not see enforcement immediately.
 - **Budget deletion** has the same 60-second staleness window for `hasBudgets` going from `true` to `false`.
-- **Consider**: reducing auth cache TTL for `hasBudgets` changes, or adding a dedicated cache invalidation mechanism.
+- **The DO-level all-entity check** (added in this fix) means that once a request reaches the DO, ALL budget rows are checked — even if the Worker's entity list was incomplete. This is a defense-in-depth improvement.
+- **Consider for v1 launch**: removing the `hasBudgets` early-exit entirely, or reducing the auth cache TTL to 5-10 seconds.

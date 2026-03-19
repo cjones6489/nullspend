@@ -23,11 +23,13 @@ import {
   OPENAI_API_KEY,
   NULLSPEND_API_KEY,
   NULLSPEND_SMOKE_USER_ID,
+  NULLSPEND_SMOKE_KEY_ID,
   INTERNAL_SECRET,
   authHeaders,
   smallRequest,
   isServerUp,
   invalidateBudget,
+  syncBudget,
 } from "./smoke-test-helpers.js";
 
 describe("End-to-end budget enforcement", () => {
@@ -46,7 +48,13 @@ describe("End-to-end budget enforcement", () => {
   });
 
   afterEach(async () => {
-    // Clean up all three layers via internal API (DO SQLite + DO lookup cache + auth cache)
+    // Wait for waitUntil reconciliation from the test's requests to complete.
+    // Without this, reconciliation can re-add spend to the DO after we clean it.
+    await new Promise((r) => setTimeout(r, 5_000));
+
+    // Clean up all three layers via internal API.
+    // removeBudget now also deletes associated reservations, preventing
+    // late-arriving reconciliation from affecting the next test.
     await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
     // Remove Postgres row
     await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
@@ -73,32 +81,16 @@ describe("End-to-end budget enforcement", () => {
                     updated_at = NOW()
     `;
 
-    // Invalidate DO + auth + DO-lookup caches so the proxy re-reads from Postgres
+    // Force Postgres→DO sync via internal endpoint.
+    // This bypasses all Worker isolate caches and talks directly to the DO,
+    // which is a single global instance. The DO will have the correct budget.
+    // We do NOT invalidate the auth cache — hasBudgets is already true from
+    // the global ceiling budget (api_key entity with $1B).
+    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+
+    // Invalidate DO lookup cache so the Worker re-queries Postgres for the
+    // entity list on the next request (picking up the user budget).
     await invalidateBudget(userId, "user", userId);
-
-    // Wait for previous test's waitUntil reconciliation to complete,
-    // then let cache invalidation propagate across isolates.
-    await new Promise((r) => setTimeout(r, 2_000));
-
-    // Send TWO warm-up requests:
-    // 1st: forces auth cache refresh (hasBudgets re-evaluated from Postgres)
-    //      and DO population (doBudgetPopulate syncs budget to DO).
-    // 2nd: verifies the DO has the budget by testing enforcement.
-    //      For restrictive budgets (0 or 1 microdollar), both will get 429.
-    const warmup1 = await fetch(`${BASE}/v1/chat/completions`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: smallRequest({ messages: [{ role: "user", content: "warmup1" }] }),
-    });
-    await warmup1.text();
-
-    // Second warm-up ensures DO state is fully committed
-    const warmup2 = await fetch(`${BASE}/v1/chat/completions`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: smallRequest({ messages: [{ role: "user", content: "warmup2" }] }),
-    });
-    await warmup2.text();
   }
 
   /** Remove any existing budget so the user is non-budgeted */

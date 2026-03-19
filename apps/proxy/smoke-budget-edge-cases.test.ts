@@ -34,6 +34,7 @@ import {
   smallRequest,
   isServerUp,
   invalidateBudget,
+  syncBudget,
 } from "./smoke-test-helpers.js";
 
 describe("Budget edge cases (LiteLLM bug avoidance)", () => {
@@ -53,9 +54,11 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
   });
 
   afterEach(async () => {
-    // Clean up all three layers via internal API, then remove Postgres rows.
-    // Preserve the global ceiling budget (api_key with $1B) by only removing
-    // test budgets we created.
+    // Wait for waitUntil reconciliation to complete before cleanup
+    await new Promise((r) => setTimeout(r, 5_000));
+
+    // Clean up all three layers via internal API.
+    // removeBudget now also deletes associated reservations.
     await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
     await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "api_key", NULLSPEND_SMOKE_KEY_ID!);
     await sql`DELETE FROM budgets WHERE entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
@@ -85,16 +88,10 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
                     updated_at = NOW()
     `;
 
-    // Invalidate DO + auth caches so proxy re-reads from Postgres
+    // Force Postgres→DO sync via internal endpoint (bypasses all isolate caches)
+    await syncBudget(NULLSPEND_SMOKE_USER_ID!, NULLSPEND_SMOKE_KEY_ID!);
+    // Invalidate Worker isolate caches
     await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, entityType, entityId);
-
-    // Warm-up request to force auth cache refresh and DO population
-    const warmup = await fetch(`${BASE}/v1/chat/completions`, {
-      method: "POST",
-      headers: authHeaders(),
-      body: smallRequest({ messages: [{ role: "user", content: "warmup" }] }),
-    });
-    await warmup.text();
   }
 
   /** Remove any existing budgets so the user/key is non-budgeted */

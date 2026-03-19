@@ -114,6 +114,35 @@ export async function invalidateBudget(
   }
 }
 
+/**
+ * Force the proxy to sync budget state from Postgres to the Durable Object.
+ * This bypasses all Worker isolate caches — queries Postgres directly and
+ * calls doBudgetPopulate on the DO (which is a single global instance).
+ *
+ * Call this after inserting/updating budgets in Postgres to ensure the DO
+ * has the latest state regardless of which Worker isolate handles the request.
+ */
+export async function syncBudget(
+  userId: string,
+  keyId: string,
+): Promise<void> {
+  if (!INTERNAL_SECRET) {
+    throw new Error("INTERNAL_SECRET required in .env.smoke for budget sync");
+  }
+  const res = await fetch(`${BASE}/internal/budget/invalidate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${INTERNAL_SECRET}`,
+    },
+    body: JSON.stringify({ action: "sync", userId, entityType: "user", entityId: keyId }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Budget sync failed (${res.status}): ${body}`);
+  }
+}
+
 export async function countCostEventsSince(
   sql: postgres.Sql,
   since: Date,

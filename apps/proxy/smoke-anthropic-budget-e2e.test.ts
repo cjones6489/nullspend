@@ -23,11 +23,13 @@ import {
   ANTHROPIC_API_KEY,
   NULLSPEND_API_KEY,
   NULLSPEND_SMOKE_USER_ID,
+  NULLSPEND_SMOKE_KEY_ID,
   INTERNAL_SECRET,
   anthropicAuthHeaders,
   smallAnthropicRequest,
   isServerUp,
   invalidateBudget,
+  syncBudget,
 } from "./smoke-test-helpers.js";
 
 describe("Anthropic end-to-end budget enforcement", () => {
@@ -46,6 +48,9 @@ describe("Anthropic end-to-end budget enforcement", () => {
   });
 
   afterEach(async () => {
+    // Wait for waitUntil reconciliation to complete before cleanup
+    await new Promise((r) => setTimeout(r, 5_000));
+
     await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
     await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
   });
@@ -66,15 +71,10 @@ describe("Anthropic end-to-end budget enforcement", () => {
                     updated_at = NOW()
     `;
 
+    // Force Postgres→DO sync via internal endpoint (bypasses all isolate caches)
+    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+    // Invalidate Worker isolate caches
     await invalidateBudget(userId, "user", userId);
-
-    // Warm-up request to force auth cache refresh and DO population
-    const warmup = await fetch(`${BASE}/v1/messages`, {
-      method: "POST",
-      headers: anthropicAuthHeaders(),
-      body: smallAnthropicRequest({ messages: [{ role: "user", content: "warmup" }] }),
-    });
-    await warmup.text();
   }
 
   async function cleanupBudget() {
