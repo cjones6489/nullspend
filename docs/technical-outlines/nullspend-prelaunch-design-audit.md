@@ -922,3 +922,33 @@ Each phase is independently shippable. Total ~33 hours. See the full spec for da
 - **Auth header name** (`X-NullSpend-Key`) — clear, branded, follows convention. Locked.
 - **TypeScript + Node.js** — CF Workers architecture is the right fit. No language rewrite needed.
 - **Proxy passthrough URL paths** (`/v1/chat/completions`, `/v1/messages`) — these match upstream provider conventions, not NullSpend versioning. Don't change.
+
+---
+
+## 14. Master Status Tracker
+
+Last updated: 2026-03-19
+
+| Priority | Item | Section | Status | Shipped | Effort |
+|---|---|---|---|---|---|
+| **High** | DO-first budget enforcement | 11 | **DONE** | 2026-03-18 | ~3-4h |
+| **High** | Prefixed object IDs | 1 | **DONE** | 2026-03-18 | ~3h |
+| **High** | API key format migration (`ns_live_sk_`) | 2 | **DONE** | 2026-03-18 | ~3h |
+| **High** | Error response contract | 3 | **DONE** | 2026-03-18 | ~5-6h |
+| **High** | Webhook event taxonomy + `api_version` on events | 4 | **DONE** | 2026-03-19 | ~1h |
+| **High** | `source` column on cost_events | 6 | **DONE** | 2026-03-19 | ~30m |
+| **High** | `api_version` on api_keys + header resolution | 5 | **DONE** | 2026-03-19 | ~30m |
+| **Medium** | Webhook secret rotation (dual-signing + 24h expiry) | 7 | Researching | — | ~1h |
+| **Medium** | Configurable budget thresholds (`warn_threshold_pct`) | 6 | Not started | — | ~1.5h |
+| **Low** | `trace_id` on cost_events + `traceparent` extraction | 12 | Not started | — | ~30m |
+| **Low** | `doc_url` on error responses | 3 | Not started | — | ~15m |
+| **Low** | Thin webhook events | 4 | Not started | — | TBD |
+| **Low** | GitHub Secret Scanning registration | 2 | Not started | — | External |
+| **Low** | Budget check result tracking | 6 | Not started | — | TBD |
+| **Low** | `enforcement_latency_ms` on cost_events | 6 | Not started | — | TBD |
+| **Low** | `has_policies` on api_keys | 6 | Not started | — | TBD |
+| **Low** | API version-gating logic | 5 | Not started | — | TBD |
+| **Low** | Postgres → ClickHouse migration | 13 | Not started | — | TBD |
+| **Low** | Multi-region DO replication | 13 | Not started | — | TBD |
+
+**Summary:** 7/7 high-priority items complete. 2 medium-priority items remaining (~2.5h). 9 low-priority items for post-launch.
