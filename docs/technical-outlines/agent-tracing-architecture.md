@@ -74,7 +74,7 @@ Total estimated effort: ~33 hours across 8 phases. Each phase is independently s
 
 ### Inbound: Accept trace context
 
-Accept two header formats (first match wins):
+Accept two trace header formats (first match wins):
 
 | Header | Format | Standard |
 |---|---|---|
@@ -82,6 +82,21 @@ Accept two header formats (first match wins):
 | `X-NullSpend-Trace-Id` | Any string (UUID recommended) | NullSpend custom |
 
 If neither is provided, auto-generate a trace ID (UUID v4).
+
+### Inbound: Accept agent identity headers (optional)
+
+For multi-agent systems where multiple agents share a single API key, accept optional attribution headers:
+
+| Header | Format | Purpose |
+|---|---|---|
+| `X-NullSpend-Agent-Id` | Any string (e.g., `researcher`, `code-reviewer`) | Identifies which agent made this call |
+| `X-NullSpend-Parent-Agent-Id` | Any string | Identifies the agent that delegated to this one |
+
+These enable per-agent cost attribution without requiring separate API keys per agent. Stored on `cost_events` and available in the Phase 3 cost rollup. Both are optional — the system works without them, just with less granular attribution.
+
+**Why this matters:** OpenAI Agents SDK has `HandoffSpanData` (from_agent, to_agent). Google A2A has `collaboratorName`. Microsoft Entra uses OBO delegation chains. Multi-agent is where the market is heading, and agent identity is the foundation. Supporting it from day one avoids a schema migration later.
+
+**Validation:** `agent_id` and `parent_agent_id` are free-form strings, max 128 characters, validated with a simple length + printable ASCII check. No registry or pre-registration required — agents self-identify.
 
 **Parsing `traceparent`:**
 ```
@@ -110,14 +125,39 @@ Add to every proxy response:
 
 **Why `X-NullSpend-Cost`:** LiteLLM does this (`x-litellm-response-cost`). Portkey doesn't. This lets agents self-monitor spend without polling a separate API. For streaming responses, the cost header is only available on the final chunk (cost requires complete token counts).
 
-### Schema change: Add `trace_id` to `cost_events`
+### Schema change: Add `trace_id`, `agent_id`, `parent_agent_id` to `cost_events`
 
 ```sql
 ALTER TABLE cost_events ADD COLUMN trace_id text;
+ALTER TABLE cost_events ADD COLUMN agent_id text;
+ALTER TABLE cost_events ADD COLUMN parent_agent_id text;
 CREATE INDEX cost_events_trace_id_idx ON cost_events (trace_id);
+CREATE INDEX cost_events_agent_id_idx ON cost_events (agent_id);
 ```
 
-This supplements `session_id` (which remains for backward compatibility). `trace_id` is the W3C-compatible correlation key; `session_id` is the caller's application-level session concept.
+`trace_id` supplements `session_id` (which remains for backward compatibility). `trace_id` is the W3C-compatible correlation key; `session_id` is the caller's application-level session concept. `agent_id` and `parent_agent_id` are nullable — only populated when the caller sends the headers.
+
+### Security considerations
+
+**Trace ID scoping:** Trace IDs are a shared namespace — any caller can send any trace ID. Security is enforced at the query layer, not the ingestion layer:
+- The Phase 3 cost rollup API (`/api/traces/:traceId/cost`) filters by authenticated `userId`. User A cannot see user B's trace, even if they guess the trace ID.
+- The `tool_call_stubs` table (Phase 2) is similarly scoped by `userId` via the `requesting_request_id` join to `cost_events`.
+- Trace IDs should NOT be treated as secrets or used as access tokens.
+
+**Collision risk:** If two different users independently generate the same UUID v4 trace ID, their events coexist in the `cost_events` table but are isolated by `userId` in all queries. No data leakage.
+
+**Malformed `traceparent`:** If the `traceparent` header fails W3C format validation (not 4 dash-separated fields, trace_id not 32 hex chars), fall back to `X-NullSpend-Trace-Id`. If that's also absent, auto-generate. Never reject a request due to a bad trace header — tracing is best-effort, not a gate.
+
+### Performance considerations
+
+**Latency impact of Phase 1 changes:**
+- `traceparent` parsing: <0.1ms (regex match + string split)
+- Response header injection: <0.1ms (string concatenation)
+- `trace_id` column write: zero additional latency — already part of the `logCostEvent()` INSERT
+
+**Non-blocking writes:** Tool call stub creation (Phase 2) and cost event logging are performed via `waitUntil()` to avoid blocking the response. The proxy returns the response to the caller immediately; stub writes and cost logging happen asynchronously after the response is sent. If a stub write fails, the tool call is simply not tracked — no impact on the LLM response.
+
+**Memory overhead:** Agent identity headers add two nullable text columns to `cost_events`. No additional in-memory state per request beyond the `RequestContext` fields.
 
 ### Data flow
 
@@ -125,27 +165,29 @@ This supplements `session_id` (which remains for backward compatibility). `trace
 Request arrives
   ├── Extract trace_id from traceparent or X-NullSpend-Trace-Id
   ├── If neither present, generate UUID v4
-  ├── Store in RequestContext
+  ├── Extract agent_id, parent_agent_id from headers (if present)
+  ├── Store all in RequestContext
   │
   ├── Forward to upstream LLM
   ├── Parse response, calculate cost
   │
-  ├── logCostEvent({ ..., traceId })
+  ├── waitUntil: logCostEvent({ ..., traceId, agentId, parentAgentId })
+  ├── waitUntil: createToolCallStubs (Phase 2, if tool_calls in response)
   ├── Add response headers (trace ID, cost, remaining)
-  └── Return response
+  └── Return response immediately
 ```
 
 ### Files to modify
 
 | File | Change |
 |---|---|
-| `apps/proxy/src/lib/context.ts` | Extract trace ID from headers into `RequestContext` |
-| `apps/proxy/src/routes/openai.ts` | Pass `traceId` to cost logger, add response headers |
+| `apps/proxy/src/lib/context.ts` | Extract trace ID + agent identity from headers into `RequestContext` |
+| `apps/proxy/src/routes/openai.ts` | Pass `traceId`, `agentId`, `parentAgentId` to cost logger, add response headers |
 | `apps/proxy/src/routes/anthropic.ts` | Same |
 | `apps/proxy/src/routes/mcp.ts` | Same |
-| `apps/proxy/src/lib/cost-logger.ts` | Accept and store `traceId` |
-| `packages/db/src/schema.ts` | Add `traceId` column to `cost_events` |
-| Drizzle migration | `ALTER TABLE` + index |
+| `apps/proxy/src/lib/cost-logger.ts` | Accept and store `traceId`, `agentId`, `parentAgentId` |
+| `packages/db/src/schema.ts` | Add `traceId`, `agentId`, `parentAgentId` columns to `cost_events` |
+| Drizzle migration | `ALTER TABLE` + indexes |
 
 ### Test plan
 
@@ -154,11 +196,20 @@ Request arrives
 | `traceparent` header parsing (valid, malformed, missing) | Unit | Correct extraction of trace ID from W3C format |
 | `X-NullSpend-Trace-Id` header passthrough | Unit | Custom header accepted, stored, returned |
 | Auto-generation when no header provided | Unit | UUID v4 generated, returned in response |
+| Malformed `traceparent` falls back to custom header | Unit | Graceful degradation, no request rejection |
+| Malformed `traceparent` falls back to auto-generation | Unit | Graceful degradation when both headers invalid |
 | Response headers present on non-streaming response | Unit | All four headers set correctly |
 | Response headers present on streaming response (final chunk) | Unit | Cost header on last SSE event |
 | `trace_id` stored in `cost_events` row | Unit | Cost logger passes trace ID through |
 | Multiple requests with same trace ID group correctly | Integration | Query by trace ID returns all events |
 | `traceparent` takes precedence over `X-NullSpend-Trace-Id` | Unit | Priority order |
+| `X-NullSpend-Agent-Id` stored on cost event | Unit | Agent identity propagated |
+| `X-NullSpend-Parent-Agent-Id` stored on cost event | Unit | Delegation chain propagated |
+| Agent ID max length enforcement (128 chars) | Unit | Rejects oversized values |
+| Agent ID with non-printable chars rejected | Unit | Input validation |
+| Missing agent ID headers produce null columns | Unit | Optional headers don't break flow |
+| Same trace ID, different users — cost rollup isolated | Unit | Security: user A can't see user B's trace |
+| Cost logging via `waitUntil()` doesn't block response | Unit | Response returned before log write completes |
 
 ---
 
@@ -401,6 +452,17 @@ Modify `packages/mcp-proxy/src/proxy.ts` to:
 |---|---|
 | `packages/mcp-proxy/src/proxy.ts` | Inject `_meta` fields on request/response |
 | `packages/mcp-proxy/src/cost-tracker.ts` | Return cost data for `_meta` injection |
+| `packages/mcp-proxy/src/index.ts` | Accept trace ID config for propagation |
+
+### Test plan
+
+| Test | Type | What it verifies |
+|---|---|---|
+| `com.nullspend/cost_microdollars` present in tool call response `_meta` | Unit | Cost metadata injected |
+| `traceparent` injected in outbound tool call `_meta` | Unit | SEP-414 compliance |
+| `com.nullspend/budget_remaining` reflects actual remaining budget | Unit | Correct value from budget check |
+| Missing trace ID config omits `traceparent` from `_meta` | Unit | Graceful when unconfigured |
+| `_meta` fields don't overwrite existing upstream `_meta` | Unit | Merge, not replace |
 
 ---
 
@@ -428,6 +490,10 @@ The `toolDefinition` value is an estimated portion of the `input` cost, not addi
 
 **Calculation:** `toolDefinitionCost = (toolDefinitionTokens / inputTokens) * inputCostMicrodollars`
 
+### Double-counting prevention
+
+The `toolDefinition` cost is a **subset of** `input` cost, not additive. The rollup API (Phase 3) must not sum `toolDefinition` on top of `input` — it's a breakdown within `input`. The response schema makes this explicit by nesting it inside `costBreakdown` alongside `input`, not as a separate top-level field.
+
 ### Files to modify
 
 | File | Change |
@@ -435,6 +501,16 @@ The `toolDefinition` value is an estimated portion of the `input` cost, not addi
 | `apps/proxy/src/routes/openai.ts` | Calculate and include `toolDefinition` in cost breakdown |
 | `apps/proxy/src/routes/anthropic.ts` | Same |
 | `apps/proxy/src/lib/cost-logger.ts` | Pass through to storage |
+
+### Test plan
+
+| Test | Type | What it verifies |
+|---|---|---|
+| `toolDefinition` present in `costBreakdown` when tools in request | Unit | Breakdown populated |
+| `toolDefinition` absent when no tools in request | Unit | No spurious field |
+| `toolDefinition` is a proportion of `input`, not additive | Unit | Math: `toolDef / input = toolDefTokens / inputTokens` |
+| `toolDefinition` is zero when `inputTokens` is zero | Unit | Division by zero guard |
+| Cost rollup (Phase 3) does not double-count `toolDefinition` | Unit | Rollup sums `costMicrodollars`, not breakdown components |
 
 ---
 
@@ -445,6 +521,8 @@ The `toolDefinition` value is an estimated portion of the `input` cost, not addi
 | Table | Column | Type | Index |
 |---|---|---|---|
 | `cost_events` | `trace_id` | `text` | Yes (`cost_events_trace_id_idx`) |
+| `cost_events` | `agent_id` | `text` | Yes (`cost_events_agent_id_idx`) |
+| `cost_events` | `parent_agent_id` | `text` | No (query via `agent_id` join) |
 
 ### New tables
 
@@ -517,6 +595,63 @@ isAnomaly = |zScore| > 3  (3-sigma threshold)
 
 This detects gradual cost creep that fixed thresholds miss. Can run inside the DO with minimal overhead — just two floating-point values per user.
 
+### Configuration
+
+Thresholds are stored in the DO's SQLite alongside budget rows:
+
+```sql
+CREATE TABLE IF NOT EXISTS session_limits (
+  key TEXT PRIMARY KEY,    -- "max_session_spend" | "max_session_requests" | "ewma_alpha" | "ewma_sigma"
+  value INTEGER NOT NULL
+);
+```
+
+Default values applied when no row exists. Configurable via a future dashboard settings page or API endpoint. For MVP, hardcode sensible defaults: max_session_spend = $10 (10,000,000 microdollars), max_session_requests = 200, ewma_alpha = 0.3, ewma_sigma = 3.
+
+### Denial response
+
+When a session circuit breaker triggers, return the standard budget denial format:
+
+```json
+{
+  "error": {
+    "code": "session_limit_exceeded",
+    "message": "Session has exceeded its cost limit. Start a new session or increase the limit.",
+    "details": {
+      "sessionId": "sess_abc",
+      "sessionSpend": 10500000,
+      "sessionLimit": 10000000,
+      "requestCount": 47
+    }
+  }
+}
+```
+
+HTTP status: 429 (same as budget denial — the client retry logic is the same).
+
+### Files to modify
+
+| File | Change |
+|---|---|
+| `apps/proxy/src/durable-objects/user-budget.ts` | Add `session_spend` table, session tracking in `checkAndReserve`, EWMA state |
+| `apps/proxy/src/lib/budget-orchestrator.ts` | Pass `sessionId` to DO RPC |
+| `apps/proxy/src/lib/budget-do-client.ts` | Update `doBudgetCheck` signature |
+| `apps/proxy/src/routes/openai.ts` | Ensure `sessionId` flows through to budget check |
+| `apps/proxy/src/routes/anthropic.ts` | Same |
+
+### Test plan
+
+| Test | Type | What it verifies |
+|---|---|---|
+| Session spend incremented on each request | Unit | DO tracks cumulative session cost |
+| Session denied when spend exceeds limit | Unit | 429 returned with `session_limit_exceeded` |
+| Session denied when request count exceeds limit | Unit | Request counting works |
+| No session tracking when `sessionId` is absent | Unit | Graceful degradation |
+| Stale sessions cleaned up by alarm (>1h inactive) | Unit | No unbounded memory growth |
+| EWMA anomaly detected at 3-sigma spike | Unit | Statistical detection works |
+| EWMA doesn't false-positive during normal variance | Unit | Baseline stability |
+| Session denial includes correct details in response body | Unit | Debugging info present |
+
 ### Estimated effort: ~6 hours
 
 ---
@@ -552,7 +687,31 @@ interface AdaptiveEstimator {
 }
 ```
 
-**Training data:** `cost_events` already contains both estimated (from reservation) and actual costs. A periodic job computes ratios per shape and updates the estimator. Can be stored in the DO's SQLite or in a Worker KV namespace.
+**Training data:** `cost_events` already contains both estimated (from reservation) and actual costs. A periodic job computes ratios per shape and updates the estimator.
+
+**Storage:** Worker KV namespace (`ESTIMATION_RATIOS`). Updated by a Cron Trigger (e.g., hourly) that queries `cost_events` for the last 24h, computes per-shape ratios, and writes to KV. The estimator reads from KV on each request (sub-millisecond KV reads).
+
+**Cold start:** When KV has no data for a shape (new model, new request pattern), fall back to the existing static 1.1x margin. The system is self-improving — accuracy increases as more data flows through.
+
+### Files to modify
+
+| File | Change |
+|---|---|
+| `apps/proxy/src/lib/cost-estimator.ts` | Add adaptive estimation logic, KV read |
+| `apps/proxy/src/lib/anthropic-cost-estimator.ts` | Same for Anthropic |
+| `apps/proxy/wrangler.toml` | Add `ESTIMATION_RATIOS` KV namespace binding |
+| New: `apps/proxy/src/cron/update-estimation-ratios.ts` | Cron job to compute and write ratios |
+
+### Test plan
+
+| Test | Type | What it verifies |
+|---|---|---|
+| Adaptive estimate used when KV has data for shape | Unit | Learned ratio applied |
+| Static 1.1x fallback when KV has no data | Unit | Cold start behavior |
+| Static fallback when `n < 50` samples | Unit | Minimum sample threshold |
+| p95 ratio calculation is correct | Unit | `mean + 1.645 * stddev` math |
+| Different shapes get independent ratios | Unit | No cross-contamination |
+| KV read failure falls back to static | Unit | Resilience |
 
 ### Estimated effort: ~4 hours
 
@@ -585,9 +744,36 @@ data: {"choices":[{"delta":{"content":" world"}}]}
 ### Compatibility
 
 - OpenAI Python/Node SDK: ignores unknown SSE event types
-- Anthropic SDK: ignores unknown event types
+- Anthropic SDK: ignores unknown event types (uses named events like `message_start`, `content_block_delta` — unrecognized event types are dropped by the parser)
 - `curl` / raw SSE consumers: see the events, can parse or ignore
 - NullSpend SDK: can parse `nullspend:usage` events for real-time cost display
+
+### Anthropic SSE format handling
+
+Anthropic uses named SSE events (`event: message_start`, `event: content_block_delta`) rather than the `data:`-only format OpenAI uses. The injected `event: nullspend:usage` is compatible with both — Anthropic clients ignore unknown event types, and OpenAI clients ignore events that aren't `data:` lines.
+
+### Files to modify
+
+| File | Change |
+|---|---|
+| `apps/proxy/src/routes/openai.ts` | Add character counter to streaming TransformStream, inject SSE events |
+| `apps/proxy/src/routes/anthropic.ts` | Same, adapted for Anthropic SSE format |
+| `apps/proxy/src/lib/sse-parser.ts` | Extract character count alongside token accumulation |
+| `apps/proxy/src/lib/anthropic-sse-parser.ts` | Same |
+| New: `apps/proxy/src/lib/cost-injection.ts` | SSE event formatter, injection interval logic |
+
+### Test plan
+
+| Test | Type | What it verifies |
+|---|---|---|
+| `nullspend:usage` events injected every N tokens (OpenAI format) | Unit | Injection cadence |
+| `nullspend:usage` events injected every N tokens (Anthropic format) | Unit | Provider-specific SSE handling |
+| Event includes `tokens_so_far`, `estimated_cost_microdollars` | Unit | Payload shape |
+| Final event has exact cost (not estimate) | Unit | Reconciliation at stream end |
+| Non-streaming responses are unaffected | Unit | No injection on JSON responses |
+| OpenAI SDK ignores injected events (passthrough test) | Integration | Client compatibility |
+| Character-to-token estimation is within 30% of actual | Unit | Heuristic accuracy |
+| Injection disabled when `X-NullSpend-No-Inject: true` header sent | Unit | Opt-out mechanism |
 
 ### Estimated effort: ~4 hours
 
