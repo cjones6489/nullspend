@@ -43,11 +43,33 @@ No proxy-only platform (Portkey, LiteLLM, Helicone) solves this without client c
 
 ## Design Principles
 
-1. **Zero-config baseline.** Everything works without the trace header — per-request cost tracking, budget enforcement, cost events. Tracing is an opt-in upgrade.
-2. **One header, full correlation.** A single `traceparent` header (W3C standard) or `X-NullSpend-Trace-Id` header unlocks agent loop grouping.
-3. **Align with OTel GenAI conventions.** Don't invent custom standards. Use `gen_ai.*` attribute names and W3C `traceparent` format.
-4. **Don't build an observability platform.** Langfuse, Arize Phoenix, and Datadog own full tracing UIs. NullSpend owns cost tracking + budget enforcement. Emit OTel-compatible data that feeds into those platforms.
-5. **Proxy-first, SDK-optional.** The proxy should extract maximum correlation from what it can see (LLM responses contain `tool_calls`). SDK cooperation enriches but isn't required.
+1. **Zero-config baseline.** Everything works without any trace header — per-request cost tracking, budget enforcement, cost events. The proxy auto-generates trace IDs and returns cost in response headers. Value at zero effort.
+2. **Progressive disclosure.** Each header the developer adds unlocks a visible feature: `X-NullSpend-Trace-Id` enables explicit trace grouping, `X-NullSpend-Agent-Id` enables multi-agent attribution, `traceparent` enables OTel integration. But Level 0 (just change `base_url`) already works. *(Ref: Helicone's progressive adoption model — see `developer-adoption-tracing-research.md`)*
+3. **Server-side correlation first.** The proxy should extract maximum correlation from what it can already see — tool_call_id stitching across requests (Phase 2) gives ~80% of trace correlation value with zero client cooperation. Client headers are enrichment, not a requirement. *(Ref: No competitor does server-side tool_call_id stitching — NullSpend-unique)*
+4. **Align with OTel GenAI conventions.** Don't invent custom standards. Use `gen_ai.*` attribute names and W3C `traceparent` format. But pin to a specific semconv version — the spec is "Development" status with active breaking changes. *(Ref: OTel semconv broke 3x in 2026 alone — see `competitor-infrastructure-bugs-research.md`)*
+5. **Don't build an observability platform.** Langfuse, Arize Phoenix, and Datadog own full tracing UIs. NullSpend owns cost tracking + budget enforcement. Emit OTel-compatible data that feeds into those platforms.
+6. **Proxy-first, SDK-optional.** The SDK provides convenience (`createHeaders()`, `wrapOpenAI()`) but is never required. The proxy URL + `defaultHeaders` pattern works with any OpenAI/Anthropic SDK natively. *(Ref: Both SDKs support `default_headers` + `base_url` — see `developer-adoption-tracing-research.md`)*
+
+### Adoption Funnel
+
+Based on developer adoption research, the system is designed for progressive adoption:
+
+```
+Level 0: Change base_url               → per-request cost, auto trace IDs, cost in headers
+         (Zero effort. ~100% of users.)
+
+Level 1: Server-side tool stitching     → auto-grouped agent loops
+         (Automatic. ~80% coverage. NullSpend-unique.)
+
+Level 2: Add X-NullSpend-Trace-Id      → explicit trace grouping across calls
+         (One-time defaultHeaders setup. ~20% of power users.)
+
+Level 3: Use @nullspend/sdk wrapper     → auto-propagation, cost accumulation
+         (~5-10% of users. Highest value.)
+
+Level 4: Full OTel traceparent         → emit to Langfuse/Datadog/etc
+         (~2% enterprise users.)
+```
 
 ---
 
@@ -79,9 +101,16 @@ Accept two trace header formats (first match wins):
 | Header | Format | Standard |
 |---|---|---|
 | `traceparent` | `00-{trace_id}-{parent_id}-{flags}` | W3C Trace Context |
-| `X-NullSpend-Trace-Id` | Any string (UUID recommended) | NullSpend custom |
+| `X-NullSpend-Trace-Id` | Any string, or `"auto"` | NullSpend custom |
 
-If neither is provided, auto-generate a trace ID (UUID v4).
+**Resolution order:**
+1. If `traceparent` is present and valid → extract `trace_id` (32 hex chars)
+2. Else if `X-NullSpend-Trace-Id` is present and is NOT `"auto"` → use as-is
+3. Else → auto-generate a UUID v4 trace ID (covers both `"auto"` and missing header)
+
+**The `"auto"` magic value:** When the developer sets `defaultHeaders: { "X-NullSpend-Trace-Id": "auto" }` on their OpenAI/Anthropic client, the proxy generates a unique trace ID per request. This is the recommended setup for most users — set-and-forget, one line in the constructor, unique trace per request. *(Ref: Both OpenAI and Anthropic SDKs support `default_headers`/`defaultHeaders` natively — no NullSpend SDK required. See `developer-adoption-tracing-research.md`.)*
+
+**Why `"auto"` instead of just omitting the header:** Without the header, the proxy still auto-generates — but the developer has no signal that tracing is active. With `"auto"`, the developer explicitly opts into tracing, and the proxy knows the caller is NullSpend-aware (enabling future features like tool_call_id stitching notifications).
 
 ### Inbound: Accept agent identity headers (optional)
 
@@ -112,18 +141,22 @@ Extract `trace_id` as the NullSpend trace ID. Store `parent_id` for future span 
 
 ### Outbound: Return cost + trace in response headers
 
-Add to every proxy response:
+Add to **every** proxy response (both streaming and non-streaming):
 
-| Header | Value | Example |
-|---|---|---|
-| `X-NullSpend-Trace-Id` | The trace ID (provided or auto-generated) | `0af7651916cd43dd8448eb211c80319c` |
-| `X-NullSpend-Cost` | Cost in microdollars | `1250` (= $0.00125) |
-| `X-NullSpend-Budget-Remaining` | Lowest remaining budget in microdollars, or `unlimited` | `48750000` |
-| `X-NullSpend-Request-Id` | Unique request ID (existing `requestId`) | `req_abc123` |
+| Header | Value | Example | Always present? |
+|---|---|---|---|
+| `X-NullSpend-Request-Id` | Server-generated unique request ID | `ns_req_a1b2c3d4` | Yes |
+| `X-NullSpend-Trace-Id` | The trace ID (provided or auto-generated) | `0af7651916cd43dd8448eb211c80319c` | Yes |
+| `X-NullSpend-Cost` | Cost in microdollars | `1250` (= $0.00125) | Non-streaming: yes. Streaming: final chunk only |
+| `X-NullSpend-Budget-Remaining` | Lowest remaining budget in microdollars, or `unlimited` | `48750000` | Yes |
 
-**Why return `X-NullSpend-Trace-Id` even if caller didn't send one:** Callers can capture the auto-generated trace ID from the first response and pass it on subsequent calls. This enables "lazy trace propagation" — the agent framework doesn't need to pre-generate trace IDs.
+**Why `X-NullSpend-Request-Id` (Stripe pattern):** Every Stripe response includes a server-generated `Request-Id`. The server generates the correlation ID, not the client — this guarantees uniqueness and is more reliable than client-generated trace IDs. Developers include this in support tickets and dashboard queries. *(Ref: Stripe SDK design — see `developer-adoption-tracing-research.md`)*
 
-**Why `X-NullSpend-Cost`:** LiteLLM does this (`x-litellm-response-cost`). Portkey doesn't. This lets agents self-monitor spend without polling a separate API. For streaming responses, the cost header is only available on the final chunk (cost requires complete token counts).
+**Why `X-NullSpend-Trace-Id` always returned:** Even if the caller didn't send a trace header, the proxy auto-generates one and returns it. This enables "lazy trace propagation" — the SDK wrapper (Tier 3) can capture the auto-generated trace ID from the first response and send it on subsequent calls. Note: the native OpenAI/Anthropic SDKs do NOT expose response headers to callers easily, so lazy propagation requires our SDK wrapper or manual `httpx`/`fetch` usage. *(Ref: Lazy propagation research confirmed this limitation — see `developer-adoption-tracing-research.md`)*
+
+**Why `X-NullSpend-Cost`:** LiteLLM does this (`x-litellm-response-cost`) and it's their most-cited feature in developer discussions. Portkey and Helicone don't return cost in headers. This is the "visible payoff" that makes developers want to engage with NullSpend — they see their cost per request without opening any dashboard. *(Ref: Portkey/LiteLLM comparison — see `agent-tracing-cost-correlation-research.md`)*
+
+**Trust boundary — do NOT forward trace headers upstream:** The proxy must strip `traceparent` and `tracestate` before forwarding to OpenAI/Anthropic. These providers don't participate in the client's trace, and forwarding leaks internal trace IDs across the trust boundary. Create a new span at the proxy; use span links (not parent-child) to connect. *(Ref: OTel spec #1633 cross-trust-boundary context leakage — see `competitor-infrastructure-bugs-research.md`)*
 
 ### Schema change: Add `trace_id`, `agent_id`, `parent_agent_id` to `cost_events`
 
@@ -163,17 +196,21 @@ CREATE INDEX cost_events_agent_id_idx ON cost_events (agent_id);
 
 ```
 Request arrives
-  ├── Extract trace_id from traceparent or X-NullSpend-Trace-Id
-  ├── If neither present, generate UUID v4
+  ├── Resolve trace_id:
+  │     1. traceparent valid? → extract trace_id
+  │     2. X-NullSpend-Trace-Id present and not "auto"? → use as-is
+  │     3. Otherwise → generate UUID v4
   ├── Extract agent_id, parent_agent_id from headers (if present)
+  ├── Generate X-NullSpend-Request-Id (server-side, always)
   ├── Store all in RequestContext
   │
+  ├── Strip traceparent/tracestate from upstream request (trust boundary)
   ├── Forward to upstream LLM
   ├── Parse response, calculate cost
   │
   ├── waitUntil: logCostEvent({ ..., traceId, agentId, parentAgentId })
   ├── waitUntil: createToolCallStubs (Phase 2, if tool_calls in response)
-  ├── Add response headers (trace ID, cost, remaining)
+  ├── Add response headers (request ID, trace ID, cost, remaining)
   └── Return response immediately
 ```
 
@@ -195,14 +232,18 @@ Request arrives
 |---|---|---|
 | `traceparent` header parsing (valid, malformed, missing) | Unit | Correct extraction of trace ID from W3C format |
 | `X-NullSpend-Trace-Id` header passthrough | Unit | Custom header accepted, stored, returned |
+| `X-NullSpend-Trace-Id: "auto"` generates unique per-request | Unit | Magic value interpreted correctly |
+| `"auto"` generates different IDs for different requests | Unit | Not a static value |
 | Auto-generation when no header provided | Unit | UUID v4 generated, returned in response |
 | Malformed `traceparent` falls back to custom header | Unit | Graceful degradation, no request rejection |
 | Malformed `traceparent` falls back to auto-generation | Unit | Graceful degradation when both headers invalid |
+| `traceparent` takes precedence over `X-NullSpend-Trace-Id` | Unit | Resolution order respected |
+| `X-NullSpend-Request-Id` present on every response (server-generated) | Unit | Stripe pattern: always present, unique |
 | Response headers present on non-streaming response | Unit | All four headers set correctly |
 | Response headers present on streaming response (final chunk) | Unit | Cost header on last SSE event |
+| `traceparent`/`tracestate` stripped from upstream request | Unit | Trust boundary: not forwarded to OpenAI/Anthropic |
 | `trace_id` stored in `cost_events` row | Unit | Cost logger passes trace ID through |
 | Multiple requests with same trace ID group correctly | Integration | Query by trace ID returns all events |
-| `traceparent` takes precedence over `X-NullSpend-Trace-Id` | Unit | Priority order |
 | `X-NullSpend-Agent-Id` stored on cost event | Unit | Agent identity propagated |
 | `X-NullSpend-Parent-Agent-Id` stored on cost event | Unit | Delegation chain propagated |
 | Agent ID max length enforcement (128 chars) | Unit | Rejects oversized values |
@@ -213,11 +254,13 @@ Request arrives
 
 ---
 
-## Phase 2: Tool Call Stub Extraction
+## Phase 2: Tool Call Stub Extraction (Primary Correlation Mechanism)
 
 ### Concept
 
-The proxy already captures `toolCallsRequested` from LLM responses. Phase 2 creates lightweight "pending tool" records and closes them out when the next LLM call on the same trace arrives with tool results.
+**This is NullSpend's key differentiator.** No competitor does server-side tool_call_id stitching. The proxy already captures `toolCallsRequested` from LLM responses. Phase 2 creates lightweight "pending tool" records and closes them out when the next LLM call on the same trace (or same API key, if no trace header) arrives with tool results.
+
+This gives ~80% of trace correlation value with zero client cooperation beyond the API key. The developer doesn't need to send any trace header — the proxy infers the agent loop structure from the tool_call_id round-trip. *(Ref: No proxy platform (Portkey, LiteLLM, Helicone) does this — see `agent-tracing-cost-correlation-research.md`)*
 
 ### How it works (proxy-side only, no client cooperation beyond trace ID)
 
@@ -779,14 +822,71 @@ Anthropic uses named SSE events (`event: message_start`, `event: content_block_d
 
 ---
 
+## SDK Integration (`@nullspend/sdk`)
+
+The SDK provides convenience layers for trace propagation. Each tier is independently useful; none is required.
+
+### Tier 1: `createHeaders()` Helper
+
+A typed function that constructs NullSpend headers. ~20 lines of code, no runtime magic.
+
+**Python:**
+```python
+from nullspend import create_headers
+
+client = openai.OpenAI(
+    base_url="https://proxy.nullspend.com/v1",
+    default_headers=create_headers(
+        api_key="nsk_abc123",
+        trace_id="auto",           # proxy generates per-request
+        session="agent-run-42",     # optional grouping
+        agent_id="research-bot",    # optional multi-agent identity
+    ),
+)
+```
+
+**TypeScript:**
+```typescript
+import { createHeaders } from "@nullspend/sdk";
+
+const client = new OpenAI({
+    baseURL: "https://proxy.nullspend.com/v1",
+    defaultHeaders: createHeaders({
+        apiKey: "nsk_abc123",
+        traceId: "auto",
+        session: "agent-run-42",
+        agentId: "research-bot",
+    }),
+});
+```
+
+**Implementation:** Maps SDK options to `X-NullSpend-*` headers. Returns a `Record<string, string>`. No HTTP client wrapping, no monkey-patching.
+
+### Tier 2: `wrapOpenAI()` / `wrapAnthropic()` (Deferred)
+
+A wrapper that auto-manages per-request trace IDs by intercepting the HTTP client. Uses `DefaultHttpxClient` with event hooks (Python) or custom `fetch` (TypeScript). Captures `X-NullSpend-Trace-Id` from response headers and propagates to subsequent calls.
+
+**Deferred until there is user demand.** The proxy URL + `defaultHeaders` pattern (Tier 1) covers most use cases. The wrapper adds value only when developers need cross-request trace propagation without explicitly managing trace IDs.
+
+### Tier 3: `nullspend-run` CLI (Deferred)
+
+```bash
+nullspend-run --api-key nsk_abc123 -- python agent.py
+```
+
+Sets `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, and monkey-patches HTTP clients to inject headers. Zero code changes. Follows the Datadog `ddtrace-run` pattern. **Deferred** — high maintenance burden with every SDK version bump.
+
+---
+
 ## What This Does NOT Include
 
 - **Full observability UI** — Langfuse, Arize Phoenix, Datadog own this space. NullSpend emits data they can consume.
-- **SDK instrumentation requirement** — Everything works with zero SDK. The `traceparent` header is the only cooperation needed.
+- **SDK instrumentation requirement** — Everything works with zero SDK. The proxy URL + `defaultHeaders` pattern uses native OpenAI/Anthropic SDK features. *(Ref: Both SDKs support `default_headers` + `base_url` natively)*
 - **Custom tracing protocol** — Aligned with W3C Trace Context and OTel GenAI conventions.
 - **Non-MCP tool execution tracking** — Physically impossible without client cooperation. The SDK's `reportCost()` covers this.
 - **Span hierarchy storage** — Phase 1-3 use flat trace ID grouping. Full parent-child spans are a future extension if needed.
-- **OTel exporter** — Future work. NullSpend could emit OTel spans to external collectors, but the priority is cost tracking, not full tracing.
+- **OTel exporter** — Future work. NullSpend could emit OTel spans to external collectors via `waitUntil()`, but the priority is cost tracking, not full tracing.
+- **Monkey-patching / CLI runner** — Deferred (Tiers 2-3). The proxy-first pattern avoids the maintenance burden of keeping up with SDK internals. *(Ref: AgentOps and Traceloop both have recurring breaks from SDK version bumps — see `developer-adoption-tracing-research.md`)*
 
 ---
 
@@ -797,8 +897,10 @@ Anthropic uses named SSE events (`event: message_start`, `event: content_block_d
 | Proxy-level cost tracking | Yes | Dashboard only | Yes (header) | No | N/A | N/A |
 | Budget enforcement | Yes (DO-based) | No | Yes (virtual keys) | No | No | No |
 | MCP tool cost tracking | Yes + `_meta` conventions | No | No | No | No | No |
-| Trace correlation | Yes (`traceparent`) | Yes (custom header) | Yes (metadata) | Partial (paths) | Yes (SDK) | Yes (SDK) |
+| Trace correlation | Yes (`traceparent` + `auto` + stitching) | Yes (custom header) | Yes (metadata) | Partial (paths) | Yes (SDK) | Yes (SDK) |
+| Server-side tool stitching | **Yes (unique)** | No | No | No | No | No |
 | Tool call round-trip | Yes (stub matching) | Implicit | Implicit | Custom API | Yes (decorator) | Yes (auto-patch) |
+| Zero-SDK integration | Yes (`defaultHeaders`) | Yes (headers) | Yes (body metadata) | Yes (base URL) | No (SDK required) | No (SDK required) |
 | Cost in response headers | Yes | No | Yes | No | N/A | N/A |
 | Cost rollup per trace | Yes (API) | Dashboard only | Dashboard only | No | Yes (SDK) | Per-session |
 | HITL approval gate | Yes (actions) | No | No | No | No | No |
@@ -808,4 +910,4 @@ Anthropic uses named SSE events (`event: message_start`, `event: content_block_d
 | OTel compatibility | Yes (`traceparent`) | Yes | Full | OpenLLMetry | Full | No |
 | Dollar costs in traces | **Yes (first)** | No | No | No | No | No |
 
-**Unique position:** NullSpend would be the only platform combining: proxy-level cost enforcement + MCP tool cost tracking + OTel-compatible trace correlation + per-trace cost rollup + agent loop detection + mid-stream cost visibility + HITL approval gates. No other platform puts dollar costs directly in traces — everyone else gives token counts only.
+**Unique position:** NullSpend would be the only platform combining: proxy-level cost enforcement + server-side tool_call_id stitching (no competitor does this) + MCP tool cost tracking + OTel-compatible trace correlation + per-trace cost rollup + agent loop detection + mid-stream cost visibility + HITL approval gates. No other platform puts dollar costs directly in traces — everyone else gives token counts only. And the zero-SDK integration path (`defaultHeaders` + `"auto"`) means developers get tracing with one line of config.
