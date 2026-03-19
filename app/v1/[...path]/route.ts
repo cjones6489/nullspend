@@ -22,7 +22,7 @@ async function proxyToGateway(request: Request): Promise<Response> {
   const gatewayUrl = process.env.NULLSPEND_GATEWAY_URL;
   if (!gatewayUrl) {
     return NextResponse.json(
-      { error: "gateway_not_configured", message: "NULLSPEND_GATEWAY_URL is not set" },
+      { error: { code: "gateway_not_configured", message: "NULLSPEND_GATEWAY_URL is not set.", details: null } },
       { status: 502 },
     );
   }

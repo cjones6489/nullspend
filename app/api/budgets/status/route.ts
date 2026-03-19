@@ -34,10 +34,7 @@ export const GET = withRequestContext(async (request: Request) => {
     currentPeriodStart: row.currentPeriodStart?.toISOString() ?? null,
   }));
 
-  const body = budgetStatusResponseSchema.parse({
-    source: "postgres",
-    entities,
-  });
+  const body = budgetStatusResponseSchema.parse({ entities });
 
   return applyRateLimitHeaders(NextResponse.json(body), rateLimit);
 });

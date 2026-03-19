@@ -14,8 +14,8 @@ const CONNECTION_TIMEOUT_MS = 5_000;
  * Entities are sorted by (entityType, entityId) before the transaction
  * to prevent deadlocks when concurrent reconciliations overlap.
  *
- * Ensures Postgres spend stays current so Redis cache rebuilds after TTL
- * expiry start from an accurate baseline (Fix 2).
+ * Ensures Postgres spend stays current so DO sync starts from an accurate
+ * baseline.
  */
 export async function updateBudgetSpend(
   connectionString: string,

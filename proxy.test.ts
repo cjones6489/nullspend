@@ -229,8 +229,8 @@ describe("proxy()", () => {
       const response = await proxy(req as any);
       expect(response.status).toBe(403);
       const body = await response.json();
-      expect(body.error).toBe("csrf_rejected");
-      expect(body.message).toBe("Cross-origin request blocked");
+      expect(body.error.code).toBe("csrf_rejected");
+      expect(body.error.message).toBe("Cross-origin request blocked.");
     });
 
     it("allows same-origin POST to /api/ routes", async () => {
@@ -351,8 +351,8 @@ describe("proxy()", () => {
       const response = await proxy(req as any);
       expect(response.status).toBe(413);
       const body = await response.json();
-      expect(body.error).toBe("payload_too_large");
-      expect(body.message).toBe("Payload too large");
+      expect(body.error.code).toBe("payload_too_large");
+      expect(body.error.message).toBe("Payload too large.");
     });
 
     it("allows POST to /api/ with Content-Length under 1MB", async () => {
@@ -401,8 +401,8 @@ describe("proxy()", () => {
       const response = await proxy(req as any);
       expect(response.status).toBe(429);
       const body = await response.json();
-      expect(body.error).toBe("rate_limit_exceeded");
-      expect(body.message).toBe("Too many requests");
+      expect(body.error.code).toBe("rate_limit_exceeded");
+      expect(body.error.message).toBe("Too many requests.");
     });
 
     it("skips rate limiting for non-API routes", async () => {
@@ -430,8 +430,8 @@ describe("proxy()", () => {
       const response = await proxy(req as any);
       expect(response.status).toBe(503);
       const body = await response.json();
-      expect(body.error).toBe("service_unavailable");
-      expect(body.message).toBe("Service temporarily unavailable");
+      expect(body.error.code).toBe("service_unavailable");
+      expect(body.error.message).toBe("Service temporarily unavailable.");
     });
 
     it("clamps Retry-After to minimum 1 when reset is in the past", async () => {

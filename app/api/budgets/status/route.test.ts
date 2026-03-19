@@ -84,7 +84,7 @@ describe("GET /api/budgets/status", () => {
     const res = await GET(makeRequest());
     const json = await res.json();
 
-    expect(json.source).toBe("postgres");
+
     expect(json.entities).toHaveLength(2);
     expect(json.entities[0].entityType).toBe("user");
     expect(json.entities[1].entityType).toBe("api_key");
@@ -100,7 +100,7 @@ describe("GET /api/budgets/status", () => {
     const res = await GET(makeRequest());
     const json = await res.json();
 
-    expect(json.source).toBe("postgres");
+
     expect(json.entities).toEqual([]);
   });
 

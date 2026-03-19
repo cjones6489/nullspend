@@ -1712,7 +1712,6 @@ describe("reportCostBatch", () => {
 
 describe("checkBudget", () => {
   const budgetResponse = {
-    source: "postgres",
     entities: [
       {
         entityType: "user",
@@ -1769,7 +1768,6 @@ describe("checkBudget", () => {
 
   it("returns empty entities when no budgets", async () => {
     const emptyResponse = {
-      source: "postgres",
       entities: [],
     };
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse(emptyResponse));

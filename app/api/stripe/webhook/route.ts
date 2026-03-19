@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!webhookSecret) {
     console.error("[NullSpend] STRIPE_WEBHOOK_SECRET is not set");
     return NextResponse.json(
-      { error: "server_error", message: "Webhook secret not configured" },
+      { error: { code: "server_error", message: "Webhook secret not configured.", details: null } },
       { status: 500 },
     );
   }
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
   if (!signature) {
     return NextResponse.json(
-      { error: "missing_signature", message: "Missing stripe-signature header" },
+      { error: { code: "missing_signature", message: "Missing stripe-signature header.", details: null } },
       { status: 400 },
     );
   }
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[NullSpend] Webhook signature verification failed:", message);
     return NextResponse.json(
-      { error: "signature_invalid", message: "Webhook signature verification failed" },
+      { error: { code: "signature_invalid", message: "Webhook signature verification failed.", details: null } },
       { status: 400 },
     );
   }
@@ -80,13 +80,13 @@ export async function POST(request: Request) {
     if (isTransient) {
       // Return 500 so Stripe retries — the error may resolve on its own.
       return NextResponse.json(
-        { error: "webhook_processing_error", message: "Webhook processing failed (transient)" },
+        { error: { code: "webhook_processing_error", message: "Webhook processing failed (transient).", details: null } },
         { status: 500 },
       );
     }
     // Permanent error: return 200 to prevent Stripe from retrying endlessly.
     // The error is logged above for investigation.
-    return NextResponse.json({ received: true, error: "processing_failed", message: "Permanent webhook processing failure" });
+    return NextResponse.json({ received: true, error: { code: "processing_failed", message: "Permanent webhook processing failure.", details: null } });
   }
 
   return NextResponse.json({ received: true });

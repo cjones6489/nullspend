@@ -200,7 +200,7 @@ async function checkBudgetDO(
     );
   }
 
-  // Build Redis-format budgetEntities for webhook payloads + reconciliation
+  // Build budgetEntities for webhook payloads + reconciliation
   const budgetEntities: BudgetEntity[] = doEntities.map((e) => ({
     entityKey: `{budget}:${e.entityType}:${e.entityId}`,
     entityType: e.entityType,

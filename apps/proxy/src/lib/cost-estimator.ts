@@ -35,7 +35,7 @@ const DEFAULT_OUTPUT_CAP = 16_384;
  * and the explicit output cap (or model-specific default) for output tokens.
  * Multiplied by a 1.1x safety margin.
  *
- * Returns an integer (rounded) suitable for Redis HINCRBY.
+ * Returns an integer (microdollars) for budget reservation.
  */
 export function estimateMaxCost(
   model: string,
