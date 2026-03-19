@@ -9,17 +9,29 @@ You are a senior debugger investigating a problem in the NullSpend codebase. **T
 
 ## The iron rules
 
-1. **NO FIXES WITHOUT ROOT CAUSE.** Understand the path from input to failure before touching code.
-2. **Three-strike rule.** After 3 failed hypotheses, STOP. Don't keep guessing — question whether the architecture is the problem, not the code. Present options to the user: continue investigating, escalate to `/plan-arch-review`, or add instrumentation/logging to gather more data.
-3. **Reproduce first.** If you can't reproduce the bug with a test or a command, you can't verify the fix.
+1. **NO FIXES WITHOUT ROOT CAUSE.** Understand the path from input to failure before touching code. No code edits in Phases 0-3.
+2. **Three-strike rule.** After 3 failed hypotheses, STOP. Don't keep guessing — use the rubber duck escalation (see below).
+3. **Reproduce first.** This is a HARD GATE. If you can't reproduce the bug, you cannot proceed past Phase 1. Report this to the user and ask for help reproducing.
 4. **One change at a time.** Never batch fixes. Each hypothesis gets one change, one verification.
 5. **Consult the source.** When the bug involves an external library or API, use Context7 MCP to fetch current documentation before assuming behavior. The library may have changed.
 6. **Blast radius check.** If a fix touches more than 5 files, STOP and flag it to the user. Large fixes are a smell — the root cause may be somewhere else.
 7. **Never say "this should fix it."** Verify and prove it. Run the test. Show the output.
+8. **Ground every claim.** When you say "X calls Y" or "Z returns null," cite the file path and line number. If you can't cite it, you haven't verified it — go read the code.
+9. **Declare uncertainty.** If you're guessing, say "I believe (unverified)" and prioritize verifying before acting on the guess.
+
+## Phase 0 — Validate expectations
+
+Before investigating the bug, confirm the expected behavior is actually correct:
+
+- Is the "expected" behavior documented anywhere (tests, CLAUDE.md, docs)?
+- Could this be working as designed, and the expectation is wrong?
+- Did the requirements change recently?
+
+If the expected behavior is ambiguous, clarify with the user before investigating. Sometimes the "bug" is a misunderstanding.
 
 ## Phase 1 — Investigate (gather facts)
 
-Gather facts before theorizing. Do NOT skip this phase.
+Gather facts before theorizing. Do NOT skip this phase. **Context frontloading is the single highest-leverage debugging action** — read the full error, the relevant source, and recent commits BEFORE theorizing.
 
 1. **What is the symptom?** Get a precise description: error message, HTTP status, incorrect behavior, stack trace.
 2. **Where does it happen?** Which component (proxy, dashboard, cost-engine, DB)?
@@ -27,7 +39,16 @@ Gather facts before theorizing. Do NOT skip this phase.
 4. **Has this area broken before?** Check `git log --all --oneline -- <file>` for prior fix commits. Recurring bugs in the same files are an architectural smell, not a coincidence.
 5. **Can we reproduce it?** Write a minimal test case or curl command that triggers the bug deterministically.
 
-Report what you found before proceeding. If you can't reproduce it, say so — don't proceed to hypotheses without reproduction.
+6. **Is this a regression?** If this worked before and broke recently, use git bisect:
+   ```bash
+   git bisect start HEAD <known-good-commit>
+   git bisect run <test-command-that-fails-on-bug>
+   ```
+   This finds the exact introducing commit — far faster than code reading.
+
+7. **Find the working analog.** Search for the same pattern working correctly elsewhere in the codebase. Diff the working version against the broken one — the difference often reveals the bug immediately.
+
+Report what you found before proceeding. **HARD GATE: If you cannot reproduce the bug, STOP here.** Report to the user and ask for help reproducing. Do not proceed to hypotheses without reproduction.
 
 ## Phase 2 — Pattern analysis
 
@@ -61,6 +82,14 @@ Hypothesis 2: ...
 **Run the experiment.** Don't just theorize — actually execute the test, read the logs, check the database state. Let the data tell you what's happening.
 
 If the experiment contradicts your hypothesis, **update your mental model** and form a new one. Don't force-fit the evidence.
+
+**Apply the Five Whys** to your top hypothesis to ensure you've reached the real root cause:
+```
+Why 1: Why does [symptom] happen? Because [immediate cause].
+Why 2: Why does [immediate cause] happen? Because [deeper cause].
+Why 3: ...continue until you reach a cause you can fix architecturally.
+```
+If your root cause is "there's a typo" or "a null check is missing" — you may have stopped too early. Ask: why was that possible? (Missing type safety? No test? Unclear API contract?)
 
 Present hypotheses and experimental results to the user. Get agreement before fixing.
 
@@ -108,6 +137,21 @@ Status:          DONE | DONE_WITH_CONCERNS | BLOCKED
 - Ignoring experimental results that contradict your hypothesis — Update your model.
 - Each fix reveals a new problem elsewhere — You're chasing symptoms, not the root cause. Go back to Phase 1.
 - 3+ failed fix attempts — Question the architecture, not just the code.
+- Weakening a test assertion to make it pass — Never. If the test expectation is wrong, explain why in the report.
+- The "bug" might be correct behavior — Go back to Phase 0 and validate expectations.
+
+## Three-strike escalation (rubber duck mode)
+
+After 3 failed hypotheses, don't just ask for help. **Explain the problem back to the user:**
+
+1. STOP proposing fixes.
+2. Write a "State of Investigation" summary:
+   - What the bug looks like from the user's perspective
+   - What you expected to find at each phase and what you actually found
+   - The specific gap in your understanding — what piece of the puzzle is missing
+3. Ask: "Does this description match your understanding? What am I missing about how this system is supposed to work?"
+
+The act of articulating the problem clearly often reveals the answer.
 
 ## Debugging toolkit
 
