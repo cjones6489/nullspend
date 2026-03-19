@@ -14,7 +14,7 @@ import { estimateMaxCost } from "../lib/cost-estimator.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 import { isAllowedUpstream } from "../lib/upstream-allowlist.js";
-import { validateUUID } from "../lib/validation.js";
+import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload, buildBudgetExceededPayload } from "../lib/webhook-events.js";
@@ -31,7 +31,7 @@ export async function handleChatCompletions(
   const attribution: Attribution = {
     userId: ctx.auth.userId,
     apiKeyId: ctx.auth.keyId,
-    actionId: validateUUID(request.headers.get("x-nullspend-action-id")),
+    actionId: stripNsPrefix("ns_act_", request.headers.get("x-nullspend-action-id")),
   };
 
   // --- Upstream resolution ---

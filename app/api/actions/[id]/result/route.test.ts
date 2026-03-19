@@ -36,7 +36,7 @@ describe("app/api/actions/[id]/result/route", () => {
     });
 
     const response = await POST(
-      new Request("http://localhost/api/actions/550e8400-e29b-41d4-a716-446655440000/result", {
+      new Request("http://localhost/api/actions/ns_act_550e8400-e29b-41d4-a716-446655440000/result", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -48,7 +48,7 @@ describe("app/api/actions/[id]/result/route", () => {
         }),
       }),
       {
-        params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440000" }),
+        params: Promise.resolve({ id: "ns_act_550e8400-e29b-41d4-a716-446655440000" }),
       },
     );
 
@@ -72,7 +72,7 @@ describe("app/api/actions/[id]/result/route", () => {
     });
 
     await POST(
-      new Request("http://localhost/api/actions/550e8400-e29b-41d4-a716-446655440000/result", {
+      new Request("http://localhost/api/actions/ns_act_550e8400-e29b-41d4-a716-446655440000/result", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -84,7 +84,7 @@ describe("app/api/actions/[id]/result/route", () => {
         }),
       }),
       {
-        params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440000" }),
+        params: Promise.resolve({ id: "ns_act_550e8400-e29b-41d4-a716-446655440000" }),
       },
     );
 
@@ -103,7 +103,7 @@ describe("app/api/actions/[id]/result/route", () => {
     mockedAuthenticateApiKey.mockResolvedValue(rateLimitResponse);
 
     const response = await POST(
-      new Request("http://localhost/api/actions/550e8400-e29b-41d4-a716-446655440000/result", {
+      new Request("http://localhost/api/actions/ns_act_550e8400-e29b-41d4-a716-446655440000/result", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -115,7 +115,7 @@ describe("app/api/actions/[id]/result/route", () => {
         }),
       }),
       {
-        params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440000" }),
+        params: Promise.resolve({ id: "ns_act_550e8400-e29b-41d4-a716-446655440000" }),
       },
     );
 

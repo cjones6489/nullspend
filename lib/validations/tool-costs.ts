@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
 import { isWithinJsonDepth, MAX_JSON_DEPTH } from "@/lib/validations/actions";
 
 // --- Request schemas ---
@@ -50,8 +51,8 @@ export type DiscoverToolCostsInput = z.infer<typeof discoverToolCostsInputSchema
 // --- Response schemas ---
 
 export const toolCostResponseSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string(),
+  id: nsIdOutput("tc"),
+  userId: nsIdOutput("usr"),
   serverName: z.string(),
   toolName: z.string(),
   costMicrodollars: z.number(),
@@ -74,5 +75,5 @@ export const deleteToolCostResponseSchema = z.object({
 });
 
 export const deleteRouteParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdInput("tc"),
 });

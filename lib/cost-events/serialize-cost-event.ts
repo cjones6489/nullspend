@@ -1,4 +1,4 @@
-import type { CostEventRecord } from "@/lib/validations/cost-events";
+import type { RawCostEventRecord } from "@/lib/validations/cost-events";
 
 interface CostEventJoinRow {
   id: string;
@@ -16,7 +16,7 @@ interface CostEventJoinRow {
   keyName: string;
 }
 
-export function serializeCostEvent(row: CostEventJoinRow): CostEventRecord {
+export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
   return {
     id: row.id,
     requestId: row.requestId,

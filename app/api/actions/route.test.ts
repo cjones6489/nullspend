@@ -157,7 +157,7 @@ describe("app/api/actions/route", () => {
 
     expect(response.status).toBe(201);
     const json = await response.json();
-    expect(json.id).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(json.id).toBe("ns_act_550e8400-e29b-41d4-a716-446655440000");
   });
 
   it("returns 429 when per-key rate limit is exceeded", async () => {
@@ -193,7 +193,7 @@ describe("app/api/actions/route", () => {
       cursor: null,
     });
 
-    const cursorObj = { createdAt: "2026-03-07T12:00:00.000Z", id: "00000000-0000-4000-a000-000000000001" };
+    const cursorObj = { createdAt: "2026-03-07T12:00:00.000Z", id: "ns_act_00000000-0000-4000-a000-000000000001" };
     const cursorParam = encodeURIComponent(JSON.stringify(cursorObj));
 
     const response = await GET(
@@ -206,7 +206,7 @@ describe("app/api/actions/route", () => {
       ownerUserId: "user-123",
       status: "pending",
       limit: 25,
-      cursor: cursorObj,
+      cursor: { createdAt: "2026-03-07T12:00:00.000Z", id: "00000000-0000-4000-a000-000000000001" },
     });
     expect(response.status).toBe(200);
   });

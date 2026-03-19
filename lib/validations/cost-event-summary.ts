@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { nsIdOutput } from "@/lib/ids/prefixed-id";
+
 export const costSummaryQuerySchema = z.object({
   period: z.enum(["7d", "30d", "90d"]).default("30d"),
 });
@@ -27,7 +29,7 @@ export const providerBreakdownSchema = z.object({
 });
 
 export const keyBreakdownSchema = z.object({
-  apiKeyId: z.string().uuid(),
+  apiKeyId: nsIdOutput("key"),
   keyName: z.string(),
   totalCostMicrodollars: z.number().nonnegative(),
   requestCount: z.number().int(),

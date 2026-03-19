@@ -29,7 +29,8 @@ vi.mock("@/lib/db/client", () => ({
 
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 
-const VALID_ID = "00000000-0000-4000-a000-000000000001";
+const RAW_UUID = "00000000-0000-4000-a000-000000000001";
+const VALID_ID = `ns_wh_${RAW_UUID}`;
 
 function makeContext(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -44,7 +45,7 @@ describe("PATCH /api/webhooks/:id", () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
     mockUpdateReturning.mockResolvedValue([
       {
-        id: VALID_ID,
+        id: RAW_UUID,
         url: "https://hooks.example.com/updated",
         description: "Updated",
         eventTypes: [],
@@ -97,7 +98,7 @@ describe("PATCH /api/webhooks/:id", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 for invalid UUID param", async () => {
+  it("returns 400 for invalid prefixed ID param", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
 
     const req = new Request("http://localhost/api/webhooks/not-a-uuid", {
@@ -119,7 +120,7 @@ describe("DELETE /api/webhooks/:id", () => {
 
   it("deletes an owned webhook endpoint", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
-    mockDeleteReturning.mockResolvedValue([{ id: VALID_ID }]);
+    mockDeleteReturning.mockResolvedValue([{ id: RAW_UUID }]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID, {
       method: "DELETE",

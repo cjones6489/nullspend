@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
+
 export const WEBHOOK_EVENT_TYPES = [
   "cost_event.created",
   "budget.threshold.warning",
@@ -65,7 +67,7 @@ export const updateWebhookInputSchema = z.object({
 export type UpdateWebhookInput = z.infer<typeof updateWebhookInputSchema>;
 
 export const webhookRecordSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("wh"),
   url: z.string(),
   description: z.string().nullable(),
   eventTypes: z.array(z.string()),
@@ -77,11 +79,11 @@ export const webhookRecordSchema = z.object({
 export type WebhookRecord = z.infer<typeof webhookRecordSchema>;
 
 export const webhookIdParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdInput("wh"),
 });
 
 export const webhookDeliveryRecordSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("del"),
   eventType: z.string(),
   eventId: z.string(),
   status: z.string(),

@@ -37,12 +37,12 @@ describe("POST /api/actions/[id]/reject", () => {
       rejectedAt: "2026-01-01T00:00:00.000Z",
     });
 
-    const req = new Request("http://localhost/api/actions/action-1/reject", { method: "POST" });
-    const res = await POST(req, makeContext("00000000-0000-4000-a000-000000000001"));
+    const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000001/reject", { method: "POST" });
+    const res = await POST(req, makeContext("ns_act_00000000-0000-4000-a000-000000000001"));
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.id).toBe("00000000-0000-4000-a000-000000000001");
+    expect(body.id).toBe("ns_act_00000000-0000-4000-a000-000000000001");
     expect(body.status).toBe("rejected");
     expect(mockedRejectAction).toHaveBeenCalledWith(
       "00000000-0000-4000-a000-000000000001",
@@ -55,8 +55,8 @@ describe("POST /api/actions/[id]/reject", () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
     mockedRejectAction.mockRejectedValue(new ActionNotFoundError("00000000-0000-4000-a000-000000000002"));
 
-    const req = new Request("http://localhost/api/actions/missing/reject", { method: "POST" });
-    const res = await POST(req, makeContext("00000000-0000-4000-a000-000000000002"));
+    const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000002/reject", { method: "POST" });
+    const res = await POST(req, makeContext("ns_act_00000000-0000-4000-a000-000000000002"));
 
     expect(res.status).toBe(404);
   });
@@ -65,8 +65,8 @@ describe("POST /api/actions/[id]/reject", () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
     mockedRejectAction.mockRejectedValue(new ActionExpiredError("00000000-0000-4000-a000-000000000001"));
 
-    const req = new Request("http://localhost/api/actions/action-1/reject", { method: "POST" });
-    const res = await POST(req, makeContext("00000000-0000-4000-a000-000000000001"));
+    const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000001/reject", { method: "POST" });
+    const res = await POST(req, makeContext("ns_act_00000000-0000-4000-a000-000000000001"));
 
     expect(res.status).toBe(409);
   });
@@ -77,8 +77,8 @@ describe("POST /api/actions/[id]/reject", () => {
       new InvalidActionTransitionError("executed", "rejected"),
     );
 
-    const req = new Request("http://localhost/api/actions/action-1/reject", { method: "POST" });
-    const res = await POST(req, makeContext("00000000-0000-4000-a000-000000000001"));
+    const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000001/reject", { method: "POST" });
+    const res = await POST(req, makeContext("ns_act_00000000-0000-4000-a000-000000000001"));
 
     expect(res.status).toBe(409);
   });
@@ -87,8 +87,8 @@ describe("POST /api/actions/[id]/reject", () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
     mockedResolveSessionContext.mockRejectedValue(new AuthenticationRequiredError());
 
-    const req = new Request("http://localhost/api/actions/action-1/reject", { method: "POST" });
-    const res = await POST(req, makeContext("00000000-0000-4000-a000-000000000001"));
+    const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000001/reject", { method: "POST" });
+    const res = await POST(req, makeContext("ns_act_00000000-0000-4000-a000-000000000001"));
 
     expect(res.status).toBe(401);
   });

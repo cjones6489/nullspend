@@ -112,7 +112,7 @@ describe("POST /api/cost-events/batch", () => {
     expect(res.status).toBe(201);
     expect(json).toEqual({
       inserted: 2,
-      ids: ["ce-1", "ce-2"],
+      ids: ["ns_evt_ce-1", "ns_evt_ce-2"],
     });
   });
 

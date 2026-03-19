@@ -25,7 +25,8 @@ vi.mock("@/lib/webhooks/signer", () => ({
 
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 
-const VALID_ID = "00000000-0000-4000-a000-000000000001";
+const VALID_UUID = "00000000-0000-4000-a000-000000000001";
+const VALID_ID = `ns_wh_${VALID_UUID}`;
 
 function makeContext(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -43,7 +44,7 @@ describe("POST /api/webhooks/:id/test", () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
     mockSelectEndpoint.mockResolvedValue([
       {
-        id: VALID_ID,
+        id: VALID_UUID,
         url: "https://hooks.example.com/test",
         signingSecret: "whsec_testsecret",
       },
@@ -95,7 +96,7 @@ describe("POST /api/webhooks/:id/test", () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
     mockSelectEndpoint.mockResolvedValue([
       {
-        id: VALID_ID,
+        id: VALID_UUID,
         url: "https://unreachable.example.com/hook",
         signingSecret: "whsec_testsecret",
       },
@@ -120,7 +121,7 @@ describe("POST /api/webhooks/:id/test", () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
     mockSelectEndpoint.mockResolvedValue([
       {
-        id: VALID_ID,
+        id: VALID_UUID,
         url: "https://hooks.example.com/broken",
         signingSecret: "whsec_testsecret",
       },

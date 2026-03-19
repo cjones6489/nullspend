@@ -40,7 +40,7 @@ describe("GET /api/auth/introspect", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body).toEqual({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
+    expect(body).toEqual({ userId: `ns_usr_${MOCK_USER_ID}`, keyId: `ns_key_${MOCK_KEY_ID}` });
   });
 
   it("dev fallback returns dev identity", async () => {
@@ -52,7 +52,7 @@ describe("GET /api/auth/introspect", () => {
 
     expect(res.status).toBe(200);
     expect(body).toEqual({
-      userId: "dev-actor-789",
+      userId: "ns_usr_dev-actor-789",
       keyId: "dev",
       dev: true,
     });
@@ -78,7 +78,7 @@ describe("GET /api/auth/introspect", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(body.userId).toBe("dev-user-456");
+    expect(body.userId).toBe("ns_usr_dev-user-456");
   });
 
   it("dev fallback throws 401 when dev mode is disabled", async () => {

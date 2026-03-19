@@ -40,12 +40,12 @@ describe("DELETE /api/keys/[id]", () => {
       { id: "00000000-0000-4000-a000-000000000011", revokedAt: now },
     ]);
 
-    const req = new Request("http://localhost/api/keys/key-1", { method: "DELETE" });
-    const res = await DELETE(req, makeContext("00000000-0000-4000-a000-000000000011"));
+    const req = new Request("http://localhost/api/keys/ns_key_00000000-0000-4000-a000-000000000011", { method: "DELETE" });
+    const res = await DELETE(req, makeContext("ns_key_00000000-0000-4000-a000-000000000011"));
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.id).toBe("00000000-0000-4000-a000-000000000011");
+    expect(body.id).toBe("ns_key_00000000-0000-4000-a000-000000000011");
     expect(body.revokedAt).toBe(now.toISOString());
   });
 
@@ -53,8 +53,8 @@ describe("DELETE /api/keys/[id]", () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
     mockUpdateReturning.mockResolvedValue([]);
 
-    const req = new Request("http://localhost/api/keys/missing", { method: "DELETE" });
-    const res = await DELETE(req, makeContext("00000000-0000-4000-a000-000000000012"));
+    const req = new Request("http://localhost/api/keys/ns_key_00000000-0000-4000-a000-000000000012", { method: "DELETE" });
+    const res = await DELETE(req, makeContext("ns_key_00000000-0000-4000-a000-000000000012"));
 
     expect(res.status).toBe(404);
   });
@@ -63,8 +63,8 @@ describe("DELETE /api/keys/[id]", () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
     mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
 
-    const req = new Request("http://localhost/api/keys/key-1", { method: "DELETE" });
-    const res = await DELETE(req, makeContext("00000000-0000-4000-a000-000000000011"));
+    const req = new Request("http://localhost/api/keys/ns_key_00000000-0000-4000-a000-000000000011", { method: "DELETE" });
+    const res = await DELETE(req, makeContext("ns_key_00000000-0000-4000-a000-000000000011"));
 
     expect(res.status).toBe(401);
   });

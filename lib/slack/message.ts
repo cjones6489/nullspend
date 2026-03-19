@@ -1,4 +1,5 @@
-import type { ActionRecord } from "@/lib/validations/actions";
+import { toExternalId } from "@/lib/ids/prefixed-id";
+import type { RawActionRecord } from "@/lib/validations/actions";
 
 interface SlackBlock {
   type: string;
@@ -28,10 +29,10 @@ function formatPayloadSummary(payload: Record<string, unknown>): string {
 }
 
 export function buildPendingMessage(
-  action: ActionRecord,
+  action: RawActionRecord,
   dashboardUrl: string,
 ): SlackMessage {
-  const actionUrl = `${dashboardUrl}/app/actions/${action.id}`;
+  const actionUrl = `${dashboardUrl}/app/actions/${toExternalId("act", action.id)}`;
   const summary = formatPayloadSummary(action.payload);
 
   const text = `New pending action: ${action.actionType} from ${action.agentId}`;
@@ -97,7 +98,7 @@ export function buildDecisionMessage(
   dashboardUrl: string,
   actionId: string,
 ): SlackMessage {
-  const actionUrl = `${dashboardUrl}/app/actions/${actionId}`;
+  const actionUrl = `${dashboardUrl}/app/actions/${toExternalId("act", actionId)}`;
 
   const statusEmoji =
     decision === "approved"

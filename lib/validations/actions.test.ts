@@ -129,7 +129,7 @@ describe("listActionsQuerySchema", () => {
   it("parses a valid cursor object", () => {
     const cursor = JSON.stringify({
       createdAt: "2026-03-01T00:00:00.000Z",
-      id: "550e8400-e29b-41d4-a716-446655440000",
+      id: "ns_act_550e8400-e29b-41d4-a716-446655440000",
     });
     const result = listActionsQuerySchema.parse({ cursor });
     expect(result.cursor).toEqual({
@@ -150,7 +150,7 @@ describe("listActionsQuerySchema", () => {
   });
 
   it("rejects cursor with missing createdAt field", () => {
-    const cursor = JSON.stringify({ id: "550e8400-e29b-41d4-a716-446655440000" });
+    const cursor = JSON.stringify({ id: "ns_act_550e8400-e29b-41d4-a716-446655440000" });
     expect(() => listActionsQuerySchema.parse({ cursor })).toThrow();
   });
 
@@ -165,7 +165,7 @@ describe("listActionsQuerySchema", () => {
   it("rejects cursor with non-datetime createdAt", () => {
     const cursor = JSON.stringify({
       createdAt: "not-a-date",
-      id: "550e8400-e29b-41d4-a716-446655440000",
+      id: "ns_act_550e8400-e29b-41d4-a716-446655440000",
     });
     expect(() => listActionsQuerySchema.parse({ cursor })).toThrow();
   });
@@ -380,13 +380,15 @@ describe("Zod v4 behavioral audit", () => {
     expect(result.limit).toBe(10);
   });
 
-  it(".uuid() rejects non-RFC-4122 strings", () => {
+  it("nsIdInput rejects unprefixed and invalid IDs", () => {
     expect(() => actionIdParamsSchema.parse({ id: "not-a-uuid" })).toThrow();
     expect(() => actionIdParamsSchema.parse({ id: "" })).toThrow();
-    // Zod 4 enforces strict RFC 4122 — version/variant bits must be valid
-    expect(() => actionIdParamsSchema.parse({ id: "12345678-1234-1234-1234-123456789012" })).toThrow();
-    // Valid v4 UUID passes
-    expect(() => actionIdParamsSchema.parse({ id: "550e8400-e29b-41d4-a716-446655440000" })).not.toThrow();
+    // Raw UUID without prefix is rejected
+    expect(() => actionIdParamsSchema.parse({ id: "550e8400-e29b-41d4-a716-446655440000" })).toThrow();
+    // Wrong prefix type is rejected
+    expect(() => actionIdParamsSchema.parse({ id: "ns_bgt_550e8400-e29b-41d4-a716-446655440000" })).toThrow();
+    // Valid prefixed v4 UUID passes
+    expect(() => actionIdParamsSchema.parse({ id: "ns_act_550e8400-e29b-41d4-a716-446655440000" })).not.toThrow();
   });
 
   it(".optional() fields are truly absent when not provided", () => {

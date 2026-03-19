@@ -3,7 +3,7 @@ import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
 import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 import { actions } from "@nullspend/db";
-import type { CreateActionInput, ActionRecord } from "@/lib/validations/actions";
+import type { CreateActionInput, RawActionRecord } from "@/lib/validations/actions";
 
 function pickMetadataField(
   metadata: Record<string, unknown> | undefined,
@@ -17,7 +17,7 @@ function pickMetadataField(
 export async function createAction(
   input: CreateActionInput,
   ownerUserId: string,
-): Promise<ActionRecord> {
+): Promise<RawActionRecord> {
   const db = getDb();
   const expiresAt = computeExpiresAt(input.expiresInSeconds);
 

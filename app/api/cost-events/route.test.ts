@@ -82,7 +82,7 @@ describe("POST /api/cost-events", () => {
 
     expect(res.status).toBe(201);
     expect(json).toEqual({
-      id: "ce-1",
+      id: "ns_evt_ce-1",
       createdAt: "2026-03-18T00:00:00.000Z",
     });
   });

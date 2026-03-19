@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getDb } from "@/lib/db/client";
-import type { ActionRecord } from "@/lib/validations/actions";
+import type { RawActionRecord } from "@/lib/validations/actions";
 
 import { sendSlackNotification, sendSlackTestNotification } from "./notify";
 
@@ -24,7 +24,7 @@ const mockedGetDb = vi.mocked(getDb);
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-function makeAction(overrides: Partial<ActionRecord> = {}): ActionRecord {
+function makeAction(overrides: Partial<RawActionRecord> = {}): RawActionRecord {
   return {
     id: "550e8400-e29b-41d4-a716-446655440000",
     agentId: "demo-agent",

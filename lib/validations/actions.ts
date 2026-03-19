@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
 import { ACTION_STATUSES, ACTION_TYPES } from "@/lib/utils/status";
 
 const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
@@ -88,7 +89,7 @@ export const createActionInputSchema = z.object({
 });
 
 export const actionIdParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdInput("act"),
 });
 
 export const markResultInputSchema = z
@@ -132,7 +133,7 @@ export const markResultInputSchema = z
   });
 
 export const actionRecordSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("act"),
   agentId: z.string(),
   actionType: actionTypeSchema,
   status: actionStatusSchema,
@@ -152,9 +153,14 @@ export const actionRecordSchema = z.object({
   sourceFramework: z.string().nullable(),
 });
 
-const cursorSchema = z.object({
+const cursorInputSchema = z.object({
   createdAt: z.string().datetime(),
-  id: z.string().uuid(),
+  id: nsIdInput("act"),
+});
+
+const cursorOutputSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: nsIdOutput("act"),
 });
 
 export const listActionsQuerySchema = z.object({
@@ -165,22 +171,22 @@ export const listActionsQuerySchema = z.object({
     .pipe(z.array(actionStatusSchema).min(1))
     .optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.string().transform((s) => JSON.parse(s)).pipe(cursorSchema).optional(),
+  cursor: z.string().transform((s) => JSON.parse(s)).pipe(cursorInputSchema).optional(),
 });
 
 export const listActionsResponseSchema = z.object({
   data: z.array(actionRecordSchema),
-  cursor: cursorSchema.nullable(),
+  cursor: cursorOutputSchema.nullable(),
 });
 
 export const createActionResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("act"),
   status: z.literal("pending"),
   expiresAt: z.string().nullable(),
 });
 
 export const mutateActionResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("act"),
   status: actionStatusSchema,
   approvedAt: z.string().nullable().optional(),
   rejectedAt: z.string().nullable().optional(),
@@ -199,4 +205,5 @@ export interface RejectActionInput {
   rejectedBy: string;
 }
 export type ActionRecord = z.infer<typeof actionRecordSchema>;
+export type RawActionRecord = z.input<typeof actionRecordSchema>;
 export type ListActionsQuery = z.infer<typeof listActionsQuerySchema>;

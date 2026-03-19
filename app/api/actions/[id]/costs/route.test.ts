@@ -23,7 +23,8 @@ const mockedGetAction = vi.mocked(getAction);
 const mockedAssertApiKeyOrSession = vi.mocked(assertApiKeyOrSession);
 const mockedGetCostEventsByActionId = vi.mocked(getCostEventsByActionId);
 
-const ACTION_ID = "550e8400-e29b-41d4-a716-446655440000";
+const ACTION_UUID = "550e8400-e29b-41d4-a716-446655440000";
+const ACTION_ID = `ns_act_${ACTION_UUID}`;
 
 function makeRequest() {
   return new Request(`http://localhost/api/actions/${ACTION_ID}/costs`);
@@ -41,7 +42,7 @@ describe("GET /api/actions/[id]/costs", () => {
   it("returns cost events for a valid action owned by the user", async () => {
     mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
     mockedGetAction.mockResolvedValue({
-      id: ACTION_ID,
+      id: ACTION_UUID,
       agentId: "agent-1",
       actionType: "http_post",
       status: "executed",
@@ -62,9 +63,9 @@ describe("GET /api/actions/[id]/costs", () => {
     });
     mockedGetCostEventsByActionId.mockResolvedValue([
       {
-        id: "ce-1",
+        id: "550e8400-e29b-41d4-a716-446655440001",
         requestId: "req-abc",
-        apiKeyId: "key-1",
+        apiKeyId: "550e8400-e29b-41d4-a716-446655440002",
         provider: "openai",
         model: "gpt-4o",
         inputTokens: 1000,
@@ -83,18 +84,20 @@ describe("GET /api/actions/[id]/costs", () => {
 
     expect(response.status).toBe(200);
     expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe("ns_evt_550e8400-e29b-41d4-a716-446655440001");
+    expect(body.data[0].apiKeyId).toBe("ns_key_550e8400-e29b-41d4-a716-446655440002");
     expect(body.data[0].model).toBe("gpt-4o");
     expect(body.data[0].costMicrodollars).toBe(7250);
 
     expect(mockedAssertApiKeyOrSession).toHaveBeenCalled();
-    expect(mockedGetAction).toHaveBeenCalledWith(ACTION_ID, "user-123");
-    expect(mockedGetCostEventsByActionId).toHaveBeenCalledWith(ACTION_ID, "user-123");
+    expect(mockedGetAction).toHaveBeenCalledWith(ACTION_UUID, "user-123");
+    expect(mockedGetCostEventsByActionId).toHaveBeenCalledWith(ACTION_UUID, "user-123");
   });
 
   it("returns empty array when action has no cost events", async () => {
     mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
     mockedGetAction.mockResolvedValue({
-      id: ACTION_ID,
+      id: ACTION_UUID,
       agentId: "agent-1",
       actionType: "send_email",
       status: "executed",

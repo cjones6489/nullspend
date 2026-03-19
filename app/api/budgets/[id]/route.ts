@@ -7,13 +7,15 @@ import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
+import { budgetIdParamsSchema, budgetResponseSchema } from "@/lib/validations/budgets";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
     const userId = await resolveSessionUserId();
-    const { id } = await readRouteParams(params);
+    const rawParams = await readRouteParams(params);
+    const { id } = budgetIdParamsSchema.parse(rawParams);
     const db = getDb();
 
     const { entityType, entityId } = await db.transaction(async (tx) => {
@@ -50,7 +52,8 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
 export async function POST(_request: Request, { params }: RouteParams) {
   try {
     const userId = await resolveSessionUserId();
-    const { id } = await readRouteParams(params);
+    const rawParams = await readRouteParams(params);
+    const { id } = budgetIdParamsSchema.parse(rawParams);
     const db = getDb();
 
     const updated = await db.transaction(async (tx) => {
@@ -87,12 +90,14 @@ export async function POST(_request: Request, { params }: RouteParams) {
       entityId: updated.entityId,
     }).catch(() => {});
 
-    return NextResponse.json({
-      ...updated,
-      currentPeriodStart: updated.currentPeriodStart?.toISOString() ?? null,
-      createdAt: updated.createdAt.toISOString(),
-      updatedAt: updated.updatedAt.toISOString(),
-    });
+    return NextResponse.json(
+      budgetResponseSchema.parse({
+        ...updated,
+        currentPeriodStart: updated.currentPeriodStart?.toISOString() ?? null,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      }),
+    );
   } catch (error) {
     if (error instanceof NotFoundError) {
       return NextResponse.json({ error: { code: "not_found", message: error.message, details: null } }, { status: 404 });

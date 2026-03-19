@@ -1,9 +1,11 @@
 import { z } from "zod";
 
+import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
+
 export const MAX_KEYS_PER_USER = 20;
 
 export const keyIdParamsSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdInput("key"),
 });
 
 export const createApiKeyInputSchema = z.object({
@@ -11,7 +13,7 @@ export const createApiKeyInputSchema = z.object({
 });
 
 export const apiKeyRecordSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("key"),
   name: z.string(),
   keyPrefix: z.string(),
   lastUsedAt: z.string().nullable(),
@@ -19,30 +21,35 @@ export const apiKeyRecordSchema = z.object({
 });
 
 export const createApiKeyResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("key"),
   name: z.string(),
   keyPrefix: z.string(),
   rawKey: z.string(),
   createdAt: z.string(),
 });
 
-const apiKeyCursorSchema = z.object({
+const apiKeyCursorInputSchema = z.object({
   createdAt: z.string().datetime(),
-  id: z.string().uuid(),
+  id: nsIdInput("key"),
+});
+
+const apiKeyCursorOutputSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: nsIdOutput("key"),
 });
 
 export const listApiKeysQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.string().transform((s) => JSON.parse(s)).pipe(apiKeyCursorSchema).optional(),
+  cursor: z.string().transform((s) => JSON.parse(s)).pipe(apiKeyCursorInputSchema).optional(),
 });
 
 export const listApiKeysResponseSchema = z.object({
   data: z.array(apiKeyRecordSchema),
-  cursor: apiKeyCursorSchema.nullable(),
+  cursor: apiKeyCursorOutputSchema.nullable(),
 });
 
 export const deleteApiKeyResponseSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("key"),
   revokedAt: z.string(),
 });
 

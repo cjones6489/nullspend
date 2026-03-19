@@ -95,6 +95,7 @@ export async function POST(request: Request) {
     return errorMessage("Could not identify the acting user.");
   }
 
+  // Button value is a raw UUID (not prefixed) — internal to Slack integration
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!actionId || !uuidPattern.test(actionId)) {
     return errorMessage("This action was not found.");

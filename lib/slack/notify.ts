@@ -4,7 +4,7 @@ import { getDb } from "@/lib/db/client";
 import { slackConfigs } from "@nullspend/db";
 import { buildPendingMessage, buildTestMessage } from "@/lib/slack/message";
 import { retryWithBackoff } from "@/lib/slack/retry";
-import type { ActionRecord } from "@/lib/validations/actions";
+import type { RawActionRecord } from "@/lib/validations/actions";
 
 export class SlackConfigNotFoundError extends Error {
   constructor() {
@@ -44,7 +44,7 @@ async function postToWebhook(
 }
 
 export async function sendSlackNotification(
-  action: ActionRecord,
+  action: RawActionRecord,
   ownerUserId: string,
 ): Promise<void> {
   const db = getDb();

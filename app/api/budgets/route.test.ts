@@ -231,7 +231,7 @@ describe("POST /api/budgets — proxy invalidation", () => {
     const mockedReadJsonBody = vi.mocked(readJsonBody);
     mockedReadJsonBody.mockResolvedValue({
       entityType: "user",
-      entityId: TEST_USER_ID,
+      entityId: `ns_usr_${TEST_USER_ID}`,
       maxBudgetMicrodollars: 10_000_000,
     });
 

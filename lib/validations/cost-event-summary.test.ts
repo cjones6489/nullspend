@@ -122,8 +122,9 @@ describe("keyBreakdownSchema", () => {
     requestCount: 100,
   };
 
-  it("accepts valid key breakdown entry", () => {
+  it("accepts valid key breakdown entry and transforms apiKeyId to ns_key_ prefix", () => {
     const result = keyBreakdownSchema.parse(validKey);
+    expect(result.apiKeyId).toBe("ns_key_550e8400-e29b-41d4-a716-446655440000");
     expect(result.keyName).toBe("Production Key");
   });
 
@@ -206,11 +207,12 @@ describe("costSummaryResponseSchema", () => {
     },
   };
 
-  it("accepts valid complete response", () => {
+  it("accepts valid complete response and transforms key apiKeyId", () => {
     const result = costSummaryResponseSchema.parse(validResponse);
     expect(result.daily).toHaveLength(1);
     expect(result.models).toHaveLength(1);
     expect(result.keys).toHaveLength(1);
+    expect(result.keys[0].apiKeyId).toBe("ns_key_550e8400-e29b-41d4-a716-446655440000");
     expect(result.totals.period).toBe("30d");
   });
 

@@ -49,9 +49,9 @@ describe("app/api/actions/[id]/route", () => {
     });
 
     const response = await GET(
-      new Request("http://localhost/api/actions/550e8400-e29b-41d4-a716-446655440000"),
+      new Request("http://localhost/api/actions/ns_act_550e8400-e29b-41d4-a716-446655440000"),
       {
-        params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440000" }),
+        params: Promise.resolve({ id: "ns_act_550e8400-e29b-41d4-a716-446655440000" }),
       },
     );
 
@@ -70,9 +70,9 @@ describe("app/api/actions/[id]/route", () => {
     mockedAssertApiKeyOrSession.mockResolvedValue(rateLimitResponse as any);
 
     const response = await GET(
-      new Request("http://localhost/api/actions/550e8400-e29b-41d4-a716-446655440000"),
+      new Request("http://localhost/api/actions/ns_act_550e8400-e29b-41d4-a716-446655440000"),
       {
-        params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440000" }),
+        params: Promise.resolve({ id: "ns_act_550e8400-e29b-41d4-a716-446655440000" }),
       },
     );
 

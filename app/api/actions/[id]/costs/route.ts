@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { getAction } from "@/lib/actions/get-action";
 import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
 import { getCostEventsByActionId } from "@/lib/cost-events/get-cost-events-by-action";
 import { actionIdParamsSchema } from "@/lib/validations/actions";
+import { costEventRecordSchema } from "@/lib/validations/cost-events";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 
 export async function GET(
@@ -20,7 +22,7 @@ export async function GET(
     await getAction(id, ownerUserId);
 
     const costEvents = await getCostEventsByActionId(id, ownerUserId);
-    return NextResponse.json({ data: costEvents });
+    return NextResponse.json({ data: z.array(costEventRecordSchema).parse(costEvents) });
   } catch (error) {
     return handleRouteError(error);
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ActionRecord } from "@/lib/validations/actions";
+import type { RawActionRecord } from "@/lib/validations/actions";
 
 import {
   buildDecisionMessage,
@@ -14,7 +14,7 @@ function narrowBlock<T>(block: unknown): T {
   return block as T;
 }
 
-function makeAction(overrides: Partial<ActionRecord> = {}): ActionRecord {
+function makeAction(overrides: Partial<RawActionRecord> = {}): RawActionRecord {
   return {
     id: "550e8400-e29b-41d4-a716-446655440000",
     agentId: "demo-agent",
@@ -134,7 +134,7 @@ describe("buildPendingMessage", () => {
     expect(actionsBlock.elements[1].style).toBe("danger");
     expect(actionsBlock.elements[2].action_id).toBe("view_dashboard");
     expect(actionsBlock.elements[2].url).toBe(
-      "http://localhost:3000/app/actions/550e8400-e29b-41d4-a716-446655440000",
+      "http://localhost:3000/app/actions/ns_act_550e8400-e29b-41d4-a716-446655440000",
     );
   });
 
@@ -212,7 +212,7 @@ describe("buildDecisionMessage", () => {
 
     expect(actionsBlock.elements).toHaveLength(1);
     expect(actionsBlock.elements[0].url).toBe(
-      "https://prod.example.com/app/actions/uuid-123",
+      "https://prod.example.com/app/actions/ns_act_uuid-123",
     );
   });
 

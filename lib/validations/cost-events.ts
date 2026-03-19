@@ -1,9 +1,11 @@
 import { z } from "zod";
 
+import { nsIdInput, nsIdOutput, nsIdOutputNullable } from "@/lib/ids/prefixed-id";
+
 export const costEventRecordSchema = z.object({
-  id: z.string().uuid(),
+  id: nsIdOutput("evt"),
   requestId: z.string(),
-  apiKeyId: z.string().uuid().nullable(),
+  apiKeyId: nsIdOutputNullable("key"),
   provider: z.string(),
   model: z.string(),
   inputTokens: z.number().int(),
@@ -16,9 +18,14 @@ export const costEventRecordSchema = z.object({
   keyName: z.string(),
 });
 
-const cursorSchema = z.object({
+const cursorInputSchema = z.object({
   createdAt: z.string().datetime(),
-  id: z.string().uuid(),
+  id: nsIdInput("evt"),
+});
+
+const cursorOutputSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: nsIdOutput("evt"),
 });
 
 export const listCostEventsQuerySchema = z.object({
@@ -26,18 +33,19 @@ export const listCostEventsQuerySchema = z.object({
   cursor: z
     .string()
     .transform((s) => JSON.parse(s))
-    .pipe(cursorSchema)
+    .pipe(cursorInputSchema)
     .optional(),
-  apiKeyId: z.string().uuid().optional(),
+  apiKeyId: nsIdInput("key").optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
 });
 
 export const listCostEventsResponseSchema = z.object({
   data: z.array(costEventRecordSchema),
-  cursor: cursorSchema.nullable(),
+  cursor: cursorOutputSchema.nullable(),
 });
 
 export type CostEventRecord = z.infer<typeof costEventRecordSchema>;
+export type RawCostEventRecord = z.input<typeof costEventRecordSchema>;
 export type ListCostEventsQuery = z.infer<typeof listCostEventsQuerySchema>;
 export type ListCostEventsResponse = z.infer<typeof listCostEventsResponseSchema>;

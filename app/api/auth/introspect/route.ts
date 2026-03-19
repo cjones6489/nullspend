@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getDevActor } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
+import { toExternalId } from "@/lib/ids/prefixed-id";
 import { handleRouteError } from "@/lib/utils/http";
 
 export async function GET(request: Request) {
@@ -12,8 +13,8 @@ export async function GET(request: Request) {
     if (authResult.keyId) {
       return applyRateLimitHeaders(
         NextResponse.json({
-          userId: authResult.userId,
-          keyId: authResult.keyId,
+          userId: toExternalId("usr", authResult.userId),
+          keyId: toExternalId("key", authResult.keyId),
         }),
         authResult.rateLimit,
       );
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
     const devActor = getDevActor();
     const resolvedUserId = devActor ?? authResult.userId;
     return NextResponse.json({
-      userId: resolvedUserId,
+      userId: toExternalId("usr", resolvedUserId),
       keyId: "dev",
       dev: true,
     });

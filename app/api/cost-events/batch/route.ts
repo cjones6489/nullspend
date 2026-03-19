@@ -5,6 +5,7 @@ import {
   costEventBatchInputSchema,
   insertCostEventsBatch,
 } from "@/lib/cost-events/ingest";
+import { toExternalId } from "@/lib/ids/prefixed-id";
 import { getLogger, withRequestContext } from "@/lib/observability";
 import { withIdempotency } from "@/lib/resilience/idempotency";
 import { readJsonBody } from "@/lib/utils/http";
@@ -61,7 +62,7 @@ export const POST = withRequestContext(async (request: Request) => {
 
     return applyRateLimitHeaders(
       NextResponse.json(
-        { inserted: result.inserted, ids: result.ids },
+        { inserted: result.inserted, ids: result.ids.map((id) => toExternalId("evt", id)) },
         { status: 201 },
       ),
       authResult.rateLimit,

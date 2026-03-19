@@ -117,7 +117,12 @@ describe("GET /api/cost-events/summary", () => {
     expect(body.daily).toEqual(mockDailyData);
     expect(body.models).toEqual(mockModelData);
     expect(body.providers).toEqual(mockProviderData);
-    expect(body.keys).toEqual(mockKeyData);
+    expect(body.keys).toEqual([
+      {
+        ...mockKeyData[0],
+        apiKeyId: "ns_key_550e8400-e29b-41d4-a716-446655440000",
+      },
+    ]);
     expect(body.tools).toEqual([]);
     expect(body.costBreakdown).toEqual(mockCostBreakdown);
     expect(body.totals.totalCostMicrodollars).toBe(8_000_000);

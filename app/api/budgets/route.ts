@@ -10,6 +10,7 @@ import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 import { getTierForUser, TIERS } from "@/lib/stripe/tiers";
 import { readJsonBody } from "@/lib/utils/http";
 import {
+  budgetResponseSchema,
   createBudgetInputSchema,
   listBudgetsResponseSchema,
 } from "@/lib/validations/budgets";
@@ -153,12 +154,12 @@ export const POST = withRequestContext(async (request: Request) => {
   }).catch(() => {});
 
   return NextResponse.json(
-    {
+    budgetResponseSchema.parse({
       ...budget,
       currentPeriodStart: budget.currentPeriodStart?.toISOString() ?? null,
       createdAt: budget.createdAt.toISOString(),
       updatedAt: budget.updatedAt.toISOString(),
-    },
+    }),
     { status: 201 },
   );
 });

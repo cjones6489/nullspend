@@ -1,11 +1,11 @@
 import type { ActionRow } from "@nullspend/db";
-import type { ActionRecord } from "@/lib/validations/actions";
+import type { RawActionRecord } from "@/lib/validations/actions";
 
 function toIsoString(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
-export function serializeAction(row: ActionRow): ActionRecord {
+export function serializeAction(row: ActionRow): RawActionRecord {
   return {
     id: row.id,
     agentId: row.agentId,

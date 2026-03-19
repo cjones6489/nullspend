@@ -16,7 +16,7 @@ import { handleRouteError } from "@/lib/utils/http";
 
 const validInput = {
   entityType: "api_key" as const,
-  entityId: "550e8400-e29b-41d4-a716-446655440000",
+  entityId: "ns_key_550e8400-e29b-41d4-a716-446655440000",
   maxBudgetMicrodollars: 50_000_000,
 };
 
@@ -31,6 +31,7 @@ describe("createBudgetInputSchema", () => {
     const result = createBudgetInputSchema.parse({
       ...validInput,
       entityType: "user",
+      entityId: "ns_usr_550e8400-e29b-41d4-a716-446655440000",
     });
     expect(result.entityType).toBe("user");
   });
@@ -83,9 +84,21 @@ describe("createBudgetInputSchema", () => {
     ).toThrow(ZodError);
   });
 
-  it("rejects non-UUID entityId", () => {
+  it("rejects unprefixed entityId", () => {
     expect(() =>
       createBudgetInputSchema.parse({ ...validInput, entityId: "not-a-uuid" }),
+    ).toThrow(ZodError);
+  });
+
+  it("rejects raw UUID entityId (must be prefixed)", () => {
+    expect(() =>
+      createBudgetInputSchema.parse({ ...validInput, entityId: "550e8400-e29b-41d4-a716-446655440000" }),
+    ).toThrow(ZodError);
+  });
+
+  it("rejects wrong prefix for entityType", () => {
+    expect(() =>
+      createBudgetInputSchema.parse({ ...validInput, entityType: "api_key", entityId: "ns_usr_550e8400-e29b-41d4-a716-446655440000" }),
     ).toThrow(ZodError);
   });
 
@@ -136,7 +149,8 @@ describe("budgetResponseSchema", () => {
 
   it("accepts valid budget response shape", () => {
     const result = budgetResponseSchema.parse(validResponse);
-    expect(result.id).toBe(validResponse.id);
+    expect(result.id).toBe("ns_bgt_550e8400-e29b-41d4-a716-446655440000");
+    expect(result.entityId).toBe("ns_key_550e8400-e29b-41d4-a716-446655440001");
   });
 
   it("accepts resetInterval null and currentPeriodStart null", () => {

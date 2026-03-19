@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { costEventInputSchema, insertCostEvent } from "@/lib/cost-events/ingest";
+import { toExternalId } from "@/lib/ids/prefixed-id";
 import { listCostEvents } from "@/lib/cost-events/list-cost-events";
 import { getLogger, withRequestContext } from "@/lib/observability";
 import { withIdempotency } from "@/lib/resilience/idempotency";
@@ -72,7 +73,7 @@ export const POST = withRequestContext(async (request: Request) => {
     const status = result.deduplicated ? 200 : 201;
     return applyRateLimitHeaders(
       NextResponse.json(
-        { id: result.id, createdAt: result.createdAt },
+        { id: toExternalId("evt", result.id), createdAt: result.createdAt },
         { status },
       ),
       authResult.rateLimit,
