@@ -1,6 +1,6 @@
 # Agent Tracing & Cost Correlation Research
 
-> **Date:** 2026-03-18
+> **Date:** 2026-03-18 14:30 UTC
 > **Method:** 10 parallel research agents covering competitors, standards, frameworks, cloud providers, emerging platforms, MCP spec, proxy architectures, multi-agent patterns, streaming/billing infrastructure.
 > **Purpose:** Inform NullSpend's tracing architecture. See `docs/technical-outlines/agent-tracing-architecture.md` for the buildout plan.
 

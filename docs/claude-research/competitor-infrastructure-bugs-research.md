@@ -1,6 +1,6 @@
 # Competitor & Infrastructure Bug Research
 
-> **Date:** 2026-03-18
+> **Date:** 2026-03-18 16:45 UTC
 > **Method:** 5 parallel research agents targeting LiteLLM, Langfuse, Helicone, Portkey, OTel GenAI conventions, and Cloudflare Workers/DOs.
 > **Purpose:** Learn from competitors' production failures to bake fixes into NullSpend's tracing architecture before we build it.
 

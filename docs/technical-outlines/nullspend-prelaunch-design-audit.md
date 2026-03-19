@@ -1,7 +1,7 @@
 # NullSpend Pre-Launch Design Patterns Audit
 ## Industry Best Practices vs. Current Implementation
 
-**Date:** 2026-03-18 (revised 2026-03-18)
+**Date:** 2026-03-18 (revised 2026-03-18 15:30 UTC)
 **Purpose:** Detailed comparison of NullSpend's current design decisions against proven patterns from Stripe, Marqeta, PostHog, and modern API platform design. Specific recommendations for changes to make before the API surface becomes permanent.
 
 **Context:** NullSpend has zero external users. Every header, URL, response shape, schema column, and method name can be changed freely right now. After the first external API key is issued, these decisions become permanent. This audit prioritizes getting the design right over minimizing implementation effort.
