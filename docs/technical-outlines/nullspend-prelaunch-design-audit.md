@@ -536,19 +536,26 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 |---|---|---|---|
 | Prefixed object IDs | Raw UUIDs in API responses | Add `ns_` prefix mapping layer at API boundary | ~3 hours |
 | API key format | `ask_` prefix, no env/permission encoding | Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning | ~3 hours |
-| Error response contract | ~~Flat `{ error, message }` format~~ **DONE** | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18 (commit `f1100d2`) | ~~5-6 hours~~ |
+| ~~Error response contract~~ **DONE** | ~~Flat `{ error, message }` format~~ | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18. Second pass (proxy.ts, gateway, Stripe webhook) completed same day. | ~~5-6 hours~~ |
 | Webhook event taxonomy | 6 types defined, no `api_version` on events | Lock full taxonomy + add `api_version` field to event structure | ~1 hour |
 | `source` column on cost_events | Missing | Add column (`DEFAULT 'proxy'`) + set in all ingestion paths | ~30 min |
 | `api_version` on api_keys | Missing | Add column (`DEFAULT '2026-03-01'`) + header parsing | ~30 min |
 
-**Total High Priority effort: ~13-14 hours.**
+### Completed — Budget Enforcement Architecture (2026-03-18)
+
+| Item | Status |
+|---|---|
+| ~~Remove `hasBudgets` early-exit~~ | **DONE** — Removed from budget-orchestrator.ts, mcp.ts route, MCP proxy CostTracker |
+| ~~Remove `hasBudgets` from auth~~ | **DONE** — Removed from ApiKeyIdentity, AuthResult, auth SQL (EXISTS subquery removed), introspect endpoint, budget status response, SDK BudgetStatus type, budgetStatusResponseSchema. Deleted lib/auth/check-has-budgets.ts |
+| ~~Reduce auth cache TTL~~ | **DONE** — 60s → 30s |
+| ~~Remove vestigial `source` field~~ | **DONE** — Removed `source: "postgres"` from budget status response + validation schema (always one source, field was redundant) |
+| ~~Stale Redis comments~~ | **DONE** — Updated 4 proxy comments referencing Redis HINCRBY / cache rebuilds to reference DO architecture |
 
 ### Medium Priority (should complete before launch or within first month)
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
-| `environment` on api_keys | Missing | Add column (`DEFAULT 'live'`) | ~15 min |
-| `warn_threshold_pct` on budgets | Missing | Add column (nullable integer) | ~15 min |
+| Schema columns (Section 6) | Missing columns on 3 tables | Add `source` on cost_events, `api_version` + `environment` on api_keys, `warn_threshold_pct` on budgets | ~1 hour |
 | Webhook secret rotation | No transition period | Add `previous_signing_secret` + dual-signing + 24h expiry | ~1 hour |
 
 ### Low Priority (can do incrementally after launch)
@@ -560,15 +567,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 | `doc_url` on error responses | Missing | Add to error helper when docs site exists | ~15 min |
 | Thin webhook events | Not needed at launch volume | Design is forward-compatible; implement when scale requires it | TBD |
 
-### High Priority — Budget Enforcement Architecture (added 2026-03-18)
-
-| Item | Current State | Action Needed | Effort |
-|---|---|---|---|
-| ~~Remove `hasBudgets` early-exit~~ **DONE** | ~~`checkBudget()` skips enforcement when auth cache says no budgets~~ | ~~Remove early-exit, always call DO for budget check~~ Completed 2026-03-18 | ~~1 hour~~ |
-| ~~Remove `hasBudgets` from auth query~~ **DONE** | ~~`api-key-auth.ts` runs EXISTS subquery for budgets on every auth~~ | ~~Remove subquery, simplify auth to return only userId/keyId/hasWebhooks~~ Completed 2026-03-18 | ~~30 min~~ |
-| ~~Reduce auth cache TTL~~ **DONE** | ~~60s positive cache TTL delays key revocation~~ | ~~Reduce to 30s for faster revocation propagation~~ Completed 2026-03-18 | ~~5 min~~ |
-
-See Section 11 for full analysis and rationale.
+See Section 10 for full budget enforcement architecture analysis and rationale.
 
 ### Explicitly Deferred (not needed pre-launch)
 
@@ -576,7 +575,7 @@ See Section 11 for full analysis and rationale.
 |---|---|
 | `budget_check_result` on cost_events | Wrong table — denials don't create cost events. Use `request.blocked` webhook or future `enforcement_events` table. |
 | `enforcement_latency_ms` on cost_events | Derivable from `durationMs - upstreamDurationMs`. Not worth schema surface area. |
-| `has_policies` on api_keys | No policies feature exists. Add with the feature — mirrors `has_budgets` pattern. |
+| `has_policies` on api_keys | No policies feature exists. Add with the feature. (Note: `has_budgets` pattern was removed — do not reintroduce cached existence flags; always check the authoritative source.) |
 | API version-gating logic | Only one version at launch. The column + header parsing is the important part; build gating when the first breaking change ships. |
 | Postgres to ClickHouse migration | Right choice at launch scale. Migration trigger is well-understood (>1M rows, slow analytics). |
 | Multi-region DO replication | Smart Placement handles latency. Active-active budget enforcement is a hard distributed systems problem not needed until multi-continent users. |
