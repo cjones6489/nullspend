@@ -8,15 +8,16 @@
 
 ## Executive Summary
 
-The research strongly suggests a **minimal, infrastructure-only approach** for pre-launch:
+The research strongly suggests **full resolution plumbing, zero gating logic** for pre-launch:
 
-1. **Add the `api_version` column to `api_keys`** (records which version each key was born into)
-2. **Parse the `NullSpend-Version` header** in API routes (per-request override)
-3. **Return the version in response headers** (so clients can detect drift)
-4. **Wire the SDK to send the version header** (pins behavior)
-5. **Do NOT build version-change modules or transformation logic yet** — there is only one version
+1. **Add the `api_version` column to `api_keys`** — the key's stored version is its default, not just record-keeping
+2. **Wire `apiVersion` through auth** — both proxy and dashboard return it alongside `userId`/`keyId`
+3. **Resolve version with three-tier fallback** — header → key default → system constant
+4. **Send `NullSpend-Version` from the SDK** and echo it back in response headers
+5. **Wire webhook endpoint version to builders** — pass `endpoint.apiVersion` instead of relying on the default constant
+6. **Do NOT build version-change modules or transformation logic yet** — there is only one version
 
-This gives us the data to know what version each consumer expects when a breaking change eventually ships, without building the Stripe-scale transformation machinery we don't need.
+This gives us the complete plumbing so adding a second version later is a data change, not a wiring change — without building the Stripe-scale transformation machinery we don't need.
 
 ---
 
@@ -136,35 +137,46 @@ ALTER TABLE api_keys
   ADD COLUMN api_version text NOT NULL DEFAULT '2026-04-01';
 ```
 
-Records which API version each key was created under. Same safe Postgres 11+ instant-add pattern used for `cost_events.source`.
+Records which API version each key was created under. The key's `api_version` is the **default version for all requests made with that key** — not just record-keeping. Same safe Postgres 11+ instant-add pattern used for `cost_events.source`.
 
-#### 2. Header parsing: `NullSpend-Version`
+#### 2. Version resolution: header → key default → system fallback
 
-Utility function in `lib/api-version.ts`:
+Pure utility function in `lib/api-version.ts`:
 
 ```typescript
 export const SUPPORTED_VERSIONS = ["2026-04-01"] as const;
 export const CURRENT_VERSION = "2026-04-01";
 export type ApiVersion = typeof SUPPORTED_VERSIONS[number];
 
-export function resolveApiVersion(request: Request): ApiVersion {
-  const raw = request.headers.get("nullspend-version");
-  if (raw && SUPPORTED_VERSIONS.includes(raw as ApiVersion)) return raw as ApiVersion;
+export function resolveApiVersion(header: string | null, keyVersion: string): ApiVersion {
+  // Priority: per-request header > key's stored version > system default
+  if (header && SUPPORTED_VERSIONS.includes(header as ApiVersion)) return header as ApiVersion;
+  if (SUPPORTED_VERSIONS.includes(keyVersion as ApiVersion)) return keyVersion as ApiVersion;
   return CURRENT_VERSION;
 }
 ```
 
-Called in route handlers. NOT in proxy.ts middleware (avoid complexity in an already dense file).
+Takes two plain strings, returns the resolved version. No request/auth objects — easy to test all three fallback levels. Called after auth (because we need the key's `api_version`), result flows through request context.
 
-#### 3. Response header: echo version back
+**Dashboard routes:** `resolveApiVersion(request.headers.get("nullspend-version"), authResult.apiVersion)`
+
+**Proxy routes:** `resolveApiVersion(request.headers.get("nullspend-version"), ctx.auth.apiVersion)` — `apiVersion` added to `AuthResult`/`ApiKeyIdentity` alongside existing `userId` and `keyId`.
+
+#### 3. Auth flow: return `apiVersion` from key lookup
+
+The proxy's `api-key-auth.ts` already queries `api_keys` and returns `ApiKeyIdentity { userId, keyId }`. Add `apiVersion` to this interface. The auth SQL already fetches the key row — no additional query needed.
+
+The dashboard's `authenticateApiKey` in `lib/auth/with-api-key-auth.ts` does the same. Add `apiVersion` to its return type.
+
+#### 4. Response header: echo version back
 
 ```
 NullSpend-Version: 2026-04-01
 ```
 
-Lets clients detect version drift.
+Set on every API response so clients can detect version drift.
 
-#### 4. SDK: send version header
+#### 5. SDK: send version header
 
 ```typescript
 // packages/sdk/src/client.ts
@@ -177,33 +189,41 @@ this.apiVersion = config.apiVersion ?? SDK_API_VERSION;
 headers["NullSpend-Version"] = this.apiVersion;
 ```
 
-#### 5. Proxy: read version header
+#### 6. Proxy: version in request context
 
-Same pattern as `x-nullspend-key` — extract from request, store in context. No behavior branching (single version).
+The proxy's `RequestContext` gains a `resolvedApiVersion` field, set after auth. Passed to webhook builders so endpoint-pinned versioning works. No behavior branching (single version).
 
 ### What NOT to Build
 
 - Version-change modules / transformation pipeline (zero breaking changes to transform)
 - Version-gating logic / conditional response shapes (one version)
-- Per-endpoint version overrides in API routes (one version)
 - Version migration tooling (zero consumers to migrate)
 - Historical API documentation per version (one version)
+- Backward-compatibility shims or dual-format support (zero consumers, clean codebase)
 
 ### Webhook Versioning (Already Partially Wired)
 
-The `api_version` from `webhook_endpoints` is stored but not currently passed to `build*Payload()` calls — the default `CURRENT_API_VERSION` is used. This should be wired through so when a second version exists, endpoint-pinned versioning works automatically.
+The `api_version` from `webhook_endpoints` is stored but not currently passed to `build*Payload()` calls — the default `CURRENT_API_VERSION` is used. Wire this through now so endpoint-pinned versioning works automatically when a second version exists.
 
-**The proxy `dispatchToEndpoints()` has access to each endpoint's full data** via `WebhookEndpointWithSecret` — the plumbing is in place, just not connected.
+**The proxy `dispatchToEndpoints()` has access to each endpoint's full data** via `WebhookEndpointWithSecret` — the plumbing is in place, just not connected. Pass `endpoint.apiVersion` to the builder instead of relying on the default.
 
-### Version Resolution Priority (Future)
+### Version Resolution Priority (Locked)
 
-When multiple version sources exist:
+Three-tier fallback, implemented from day one:
 
 1. `NullSpend-Version` request header (highest — per-request override for testing)
-2. API key's `api_version` column (per-key default)
-3. `CURRENT_VERSION` constant (system fallback)
+2. API key's `api_version` column (per-key default, set at key creation)
+3. `CURRENT_VERSION` constant (system fallback for unauthenticated/session routes)
 
-At launch, all three resolve to `"2026-04-01"`.
+At launch, all three resolve to `"2026-04-01"`. The full resolution chain is wired and tested even though the result is always the same — this means adding a second version later is a data change, not a plumbing change.
+
+### Codebase Hygiene Principle
+
+When a version is eventually deprecated and retired:
+- **Remove it completely.** Delete the version from `SUPPORTED_VERSIONS`, delete any transformation code, delete tests for the old version's behavior.
+- **No backward-compatibility shims.** No `// legacy` comments, no re-exports, no dead code.
+- Requests with an unsupported version get a clear error: `{ error: { code: "unsupported_api_version", message: "API version '2026-04-01' is no longer supported. Use '2027-01-01' or later." } }`
+- This matches the project-wide principle: zero external users means zero legacy debt. Even post-launch, published sunset dates give consumers a hard deadline.
 
 ---
 
@@ -213,18 +233,28 @@ At launch, all three resolve to `"2026-04-01"`.
 |---|---|---|
 | Migration: `api_version` on `api_keys` | 5 min | `drizzle/0022_*.sql`, `packages/db/src/schema.ts` |
 | `lib/api-version.ts` utility | 10 min | New file |
+| Proxy auth: add `apiVersion` to `ApiKeyIdentity` + auth SQL | 15 min | `apps/proxy/src/lib/api-key-auth.ts`, `context.ts` |
+| Dashboard auth: add `apiVersion` to auth return type | 10 min | `lib/auth/with-api-key-auth.ts` |
 | SDK: send `NullSpend-Version` header | 15 min | `packages/sdk/src/client.ts`, `types.ts`, `client.test.ts` |
-| Proxy: extract version into context | 10 min | `apps/proxy/src/lib/context.ts`, `index.ts` |
-| Dashboard routes: echo version header | 10 min | `lib/utils/http.ts` or route handlers |
-| Wire webhook endpoint version to builders | 10 min | `apps/proxy/src/lib/webhook-dispatch.ts` |
-| Tests | 20 min | Schema test, SDK test, route tests |
-| **Total** | **~1.5 hours** | |
+| Proxy: resolve version, store in context | 10 min | `apps/proxy/src/lib/context.ts`, route entry points |
+| Dashboard routes: resolve version, echo response header | 10 min | Route handlers, `lib/utils/http.ts` |
+| Wire webhook endpoint version to builders | 10 min | Proxy route webhook dispatch call sites |
+| Tests | 25 min | Schema, auth, SDK, resolution utility, route tests |
+| **Total** | **~2 hours** | |
 
 ---
 
-## Decision: What to Build
+## Decisions (Locked)
 
-**Recommendation: Infrastructure only.** Add the column, parse the header, send it from the SDK, echo it back. Zero version-gating logic. When the first breaking change is needed post-launch, THEN build the minimal transformation needed for that specific change.
+1. **Infrastructure with full resolution chain.** Add the column, wire it through auth, resolve version from header → key → fallback, send from SDK, echo back. The resolution chain is fully wired even though it resolves to a single value today. Adding a second version later is a data/schema change, not a plumbing change.
+
+2. **Key's `api_version` is the default, not just record-keeping.** When no `NullSpend-Version` header is sent, the key's stored version determines response shape. This matches the Stripe model and is the correct architecture.
+
+3. **No version-gating logic.** One version exists. Don't build transformation machinery for hypothetical future versions. Build the minimal transformation for a specific change when that change ships.
+
+4. **Clean deprecation.** When a version is retired, delete it entirely — code, tests, constants. No shims, no backward-compat layers. Published sunset dates give consumers a hard deadline. Zero legacy debt.
+
+5. **Webhook version wired through.** Pass `endpoint.apiVersion` to builders instead of relying on `CURRENT_API_VERSION` default. Costs minutes now, saves a retrofit later.
 
 This follows Google's advice (*"if you don't really need versioning, don't add unnecessary complexity"*), avoids Stripe's acknowledged burden (*"every new version is more code to understand and maintain"*), and captures the critical data (which version each key expects) that is impossible to retrofit later.
 
