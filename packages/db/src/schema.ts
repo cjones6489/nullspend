@@ -42,6 +42,7 @@ export const apiKeys = pgTable("api_keys", {
   keyHash: text("key_hash").notNull(),
   keyPrefix: text("key_prefix").notNull(),
   apiVersion: text("api_version").notNull().default("2026-04-01"),
+  environment: text("environment").notNull().default("live"),
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),

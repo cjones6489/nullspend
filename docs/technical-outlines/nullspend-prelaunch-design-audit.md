@@ -518,7 +518,7 @@ This is minimal implementation cost now. It's impossible to retrofit later witho
 | Column | Type | Why | Priority |
 |---|---|---|---|
 | ~~`api_version`~~ | ~~`text NOT NULL DEFAULT '2026-04-01'`~~ | ~~Stripe-style API versioning. Records which API version this key was created under, used as the default response version.~~ **DONE** — Deployed 2026-03-19. | ~~**High**~~ |
-| `environment` | `text NOT NULL DEFAULT 'live'` | `live` or `test`. Enables sandbox mode later without schema changes. At launch, all keys are `live`. | **Medium** |
+| ~~`environment`~~ | ~~`text NOT NULL DEFAULT 'live'`~~ | ~~`live` or `test`. Enables sandbox mode later without schema changes. At launch, all keys are `live`.~~ **DONE** — Deployed 2026-03-19. Column exists, all keys default to `live`. No code reads it until sandbox mode ships. | ~~**Medium**~~ |
 
 **Columns considered and excluded:**
 
@@ -651,7 +651,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
-| Schema columns (Section 6) | `source` on cost_events **DONE**. `api_version` on api_keys **DONE**. | Add `environment` on api_keys | ~15 min |
+| ~~Schema columns (Section 6)~~ **DONE** | ~~`source` on cost_events, `api_version` on api_keys, `environment` on api_keys~~ | ~~All schema columns added~~ Deployed 2026-03-19. All three pre-launch schema columns shipped. | ~~15 min~~ |
 | Configurable budget thresholds (Section 6) | Thresholds hardcoded at `[50,80,90,95]` in proxy — users cannot configure or discover them | Add `warn_threshold_pct` + `critical_threshold_pct` on budgets, expose in create/update API, read in proxy `detectThresholdCrossings()` | ~1.5 hours |
 | Webhook secret rotation | No transition period | Add `previous_signing_secret` + dual-signing + 24h expiry | ~1 hour |
 
