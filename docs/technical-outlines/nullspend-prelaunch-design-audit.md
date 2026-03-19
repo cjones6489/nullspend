@@ -758,7 +758,33 @@ If the `/internal/budget/invalidate` call fails after a budget mutation, the DO 
 
 ---
 
-## 12. What NOT to Change
+## 12. Agent Tracing & Cost Correlation Gap
+
+### The Problem
+
+NullSpend tracks per-request costs precisely but cannot correlate them across an agent loop. When an agent calls LLM → executes tools → calls LLM again, each step is an isolated `cost_events` row with no causal link. There is no way to answer "how much did this agent run cost?" without manual timestamp correlation. The proxy captures `toolCallsRequested` from LLM responses but can't link them to actual tool executions.
+
+### Industry Validation
+
+No proxy-only platform (Portkey, LiteLLM, Helicone) solves this without client cooperation. The minimum cooperation is **one header per request** — a W3C `traceparent` or custom trace ID. The MCP specification has zero cost tracking primitives; the `_meta` extensibility field is the only mechanism, and nobody has proposed a cost convention. OpenTelemetry GenAI Semantic Conventions (v1.40.0) define the emerging standard span hierarchy but have no cost/billing attributes — an unclaimed space.
+
+### Recommendation
+
+Five-phase buildout detailed in [`docs/technical-outlines/agent-tracing-architecture.md`](agent-tracing-architecture.md):
+
+1. **Accept `traceparent` header + return cost response headers** (~4h) — agent loop grouping + self-monitoring
+2. **Tool call stub extraction from LLM responses** (~6h) — proxy-side tool round-trip correlation
+3. **Cost rollup per trace API** (~4h) — "this run cost $X"
+4. **MCP `_meta` cost conventions** (~3h) — position NullSpend as the cost layer for MCP
+5. **Tool definition cost attribution** (~2h) — break out tool schema overhead
+
+Each phase is independently shippable. Total ~19 hours. See the full spec for data model changes, API designs, wire protocol, and test plans.
+
+**Priority: Medium.** Not a launch blocker (existing per-request tracking and budgets work), but a significant competitive differentiator. Should be the first post-launch feature.
+
+---
+
+## 13. What NOT to Change
 
 - **Postgres as primary store** — right choice at launch scale. ClickHouse migration path is clear when needed.
 - **Cloudflare Workers + DOs architecture** — native DO integration for budget enforcement is the product's architectural advantage.
