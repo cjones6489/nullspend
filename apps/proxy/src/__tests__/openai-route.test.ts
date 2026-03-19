@@ -52,6 +52,21 @@ vi.mock("../lib/budget-orchestrator.js", () => ({
   getReconcileQueue: vi.fn().mockReturnValue(undefined),
 }));
 
+const { mockGetWebhookEndpoints, mockGetWebhookEndpointsWithSecrets } = vi.hoisted(() => {
+  const mockGetWebhookEndpoints = vi.fn().mockResolvedValue([]);
+  const mockGetWebhookEndpointsWithSecrets = vi.fn().mockResolvedValue([]);
+  return { mockGetWebhookEndpoints, mockGetWebhookEndpointsWithSecrets };
+});
+vi.mock("../lib/webhook-cache.js", () => ({
+  getWebhookEndpoints: (...args: unknown[]) => mockGetWebhookEndpoints(...args),
+  getWebhookEndpointsWithSecrets: (...args: unknown[]) => mockGetWebhookEndpointsWithSecrets(...args),
+  invalidateWebhookCache: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../lib/webhook-thresholds.js", () => ({
+  detectThresholdCrossings: vi.fn().mockReturnValue([]),
+}));
+
 import { handleChatCompletions } from "../routes/openai.js";
 
 function makeRequest(
@@ -99,11 +114,12 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     webhookDispatcher: null,
+    resolvedApiVersion: "2026-04-01",
     ...overrides,
   };
 }
@@ -807,6 +823,98 @@ describe("handleChatCompletions", () => {
       expect(res.status).toBe(400);
       const json = await res.json();
       expect(json.error.code).toBe("invalid_model");
+    });
+  });
+
+  it("includes NullSpend-Version header on successful non-streaming response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ model: "gpt-4o-mini", choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-request-id": "req-version-header" },
+      }),
+    );
+
+    const res = await handleChatCompletions(
+      makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      makeEnv(),
+      makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("NullSpend-Version")).toBe("2026-04-01");
+    await res.text();
+  });
+
+  describe("webhook dispatch", () => {
+    beforeEach(() => {
+      mockGetWebhookEndpoints.mockReset();
+      mockGetWebhookEndpointsWithSecrets.mockReset();
+    });
+
+    it("dispatches cost_event with per-endpoint apiVersion for each endpoint", async () => {
+      const mockResponse = {
+        id: "chatcmpl-wh-version",
+        model: "gpt-4o-mini-2024-07-18",
+        choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(mockResponse), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "req-wh-version",
+          },
+        }),
+      );
+
+      // Two endpoints with distinct apiVersions
+      const endpointV1 = { id: "ep-1", url: "https://hooks.example.com/1", signingSecret: "sec1", eventTypes: [], apiVersion: "2026-04-01" };
+      const endpointV2 = { id: "ep-2", url: "https://hooks.example.com/2", signingSecret: "sec2", eventTypes: [], apiVersion: "2099-01-01" };
+
+      // getWebhookEndpoints returns non-empty (cache hit) so the secrets path is entered
+      mockGetWebhookEndpoints.mockResolvedValue([
+        { id: "ep-1", url: "https://hooks.example.com/1", eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-2", url: "https://hooks.example.com/2", eventTypes: [], apiVersion: "2099-01-01" },
+      ]);
+      mockGetWebhookEndpointsWithSecrets.mockResolvedValue([endpointV1, endpointV2]);
+
+      const dispatchSpy = vi.fn().mockResolvedValue(undefined);
+
+      const body = {
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "hi" }],
+        stream: false,
+      };
+
+      const res = await handleChatCompletions(
+        makeRequest(body),
+        makeEnv(),
+        makeCtx(body, {
+          auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+          redis: {} as any,
+          webhookDispatcher: { dispatch: dispatchSpy },
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      await res.text();
+
+      // Allow the waitUntil microtask to complete
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(2);
+
+      // First call: endpoint ep-1 with apiVersion "2026-04-01"
+      const [ep1Arg, event1Arg] = dispatchSpy.mock.calls[0];
+      expect(ep1Arg.id).toBe("ep-1");
+      expect(event1Arg.api_version).toBe("2026-04-01");
+
+      // Second call: endpoint ep-2 with apiVersion "2099-01-01"
+      const [ep2Arg, event2Arg] = dispatchSpy.mock.calls[1];
+      expect(ep2Arg.id).toBe("ep-2");
+      expect(event2Arg.api_version).toBe("2099-01-01");
     });
   });
 

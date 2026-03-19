@@ -30,6 +30,7 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const API_KEY_HEADER = "x-nullspend-key";
 const MAX_RETRIES_CEILING = 10;
+const SDK_API_VERSION = "2026-04-01";
 
 function toFiniteInt(value: number | undefined, fallback: number): number {
   const v = value ?? fallback;
@@ -45,6 +46,7 @@ export class NullSpend {
   private readonly maxRetries: number;
   private readonly retryBaseDelayMs: number;
   private readonly maxRetryTimeMs: number;
+  private readonly apiVersion: string;
   private readonly onRetry: ((info: RetryInfo) => void | boolean) | undefined;
   private readonly costReporter: CostReporter | null;
 
@@ -54,6 +56,7 @@ export class NullSpend {
 
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
     this.apiKey = config.apiKey;
+    this.apiVersion = config.apiVersion ?? SDK_API_VERSION;
     this._fetch = config.fetch ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = Math.max(
       0,
@@ -266,6 +269,7 @@ export class NullSpend {
 
     const headers: Record<string, string> = {
       [API_KEY_HEADER]: this.apiKey,
+      "NullSpend-Version": this.apiVersion,
       Accept: "application/json",
     };
 

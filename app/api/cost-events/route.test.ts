@@ -71,6 +71,7 @@ describe("POST /api/cost-events", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockedInsertCostEvent.mockResolvedValue({
       id: "ce-1",
@@ -92,6 +93,7 @@ describe("POST /api/cost-events", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockedInsertCostEvent.mockResolvedValue({
       id: "ce-existing",
@@ -118,6 +120,7 @@ describe("POST /api/cost-events", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockedInsertCostEvent.mockResolvedValue({
       id: "ce-2",
@@ -138,6 +141,7 @@ describe("POST /api/cost-events", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockedInsertCostEvent.mockResolvedValue({
       id: "ce-3",
@@ -162,6 +166,7 @@ describe("POST /api/cost-events", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockedInsertCostEvent.mockResolvedValue({
       id: "ce-existing",
@@ -178,6 +183,7 @@ describe("POST /api/cost-events", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockedInsertCostEvent.mockResolvedValue({
       id: "ce-4",

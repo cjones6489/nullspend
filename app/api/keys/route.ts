@@ -6,6 +6,7 @@ import {
   hashKey,
   extractPrefix,
 } from "@/lib/auth/api-key";
+import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { apiKeys } from "@nullspend/db";
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
       createdAt: row.createdAt.toISOString(),
     }));
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       listApiKeysResponseSchema.parse({
         data,
         cursor: hasMore && lastRow
@@ -71,6 +72,8 @@ export async function GET(request: Request) {
           : null,
       }),
     );
+    response.headers.set("NullSpend-Version", CURRENT_VERSION);
+    return response;
   } catch (error) {
     return handleRouteError(error);
   }
@@ -105,6 +108,7 @@ export async function POST(request: Request) {
         name: input.name,
         keyHash: hashKey(rawKey),
         keyPrefix: extractPrefix(rawKey),
+        apiVersion: CURRENT_VERSION,
       })
       .returning({
         id: apiKeys.id,

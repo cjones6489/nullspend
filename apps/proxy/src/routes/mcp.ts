@@ -58,12 +58,16 @@ export async function handleMcpBudgetCheck(
         allowed: false,
         denied: true,
         remaining: outcome.remaining,
+      }, {
+        headers: { "NullSpend-Version": ctx.resolvedApiVersion },
       });
     }
 
     return Response.json({
       allowed: true,
       reservationId: outcome.reservationId,
+    }, {
+      headers: { "NullSpend-Version": ctx.resolvedApiVersion },
     });
   } catch {
     return errorResponse("budget_unavailable", "Budget service unavailable", 503);
@@ -190,7 +194,7 @@ export async function handleMcpEvents(
         }
       }
 
-      // Phase 4: Webhook dispatch (one per cost event, single secrets fetch)
+      // Phase 4: Webhook dispatch (one per cost event per endpoint, single secrets fetch)
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         try {
           const redis = ctx.redis;
@@ -199,11 +203,13 @@ export async function handleMcpEvents(
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               for (const row of costEventRows) {
-                const whEvent = buildCostEventPayload({
-                  ...row,
-                  createdAt: new Date().toISOString(),
-                });
-                await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, whEvent);
+                for (const ep of endpoints) {
+                  const whEvent = buildCostEventPayload({
+                    ...row,
+                    createdAt: new Date().toISOString(),
+                  }, ep.apiVersion);
+                  await ctx.webhookDispatcher!.dispatch(ep, whEvent);
+                }
               }
             }
           }
@@ -214,5 +220,7 @@ export async function handleMcpEvents(
     })(),
   );
 
-  return Response.json({ accepted });
+  return Response.json({ accepted }, {
+    headers: { "NullSpend-Version": ctx.resolvedApiVersion },
+  });
 }

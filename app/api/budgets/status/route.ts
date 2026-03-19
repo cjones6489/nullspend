@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, or } from "drizzle-orm";
 
+import { CURRENT_VERSION } from "@/lib/api-version";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { getDb } from "@/lib/db/client";
 import { budgets } from "@nullspend/db";
@@ -36,5 +37,7 @@ export const GET = withRequestContext(async (request: Request) => {
 
   const body = budgetStatusResponseSchema.parse({ entities });
 
-  return applyRateLimitHeaders(NextResponse.json(body), rateLimit);
+  const response = NextResponse.json(body);
+  response.headers.set("NullSpend-Version", CURRENT_VERSION);
+  return applyRateLimitHeaders(response, rateLimit);
 });

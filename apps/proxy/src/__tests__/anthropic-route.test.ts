@@ -77,11 +77,12 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     webhookDispatcher: null,
+    resolvedApiVersion: "2026-04-01",
     ...overrides,
   };
 }
@@ -388,6 +389,29 @@ describe("handleAnthropicMessages", () => {
     );
     const callArgs = mockLogCostEvent.mock.calls[0][1];
     expect(callArgs.toolDefinitionTokens).toBeGreaterThan(0);
+  });
+
+  it("includes NullSpend-Version header on successful non-streaming response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(ANTHROPIC_NON_STREAMING_RESPONSE), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "request-id": "req_version_header_test",
+        },
+      }),
+    );
+
+    const body = {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+    };
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("NullSpend-Version")).toBe("2026-04-01");
+    await res.text();
   });
 
   it("extracts request-id and forwards as x-request-id", async () => {

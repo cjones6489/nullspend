@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertApiKeyWithIdentity, resolveDevFallbackApiKeyUserId } from "@/lib/auth/api-key";
 import { checkKeyRateLimit } from "@/lib/auth/api-key-rate-limit";
+import { CURRENT_VERSION } from "@/lib/api-version";
 import { getLogger } from "@/lib/observability";
 import { setRequestUserId } from "@/lib/observability/request-context";
 import { addSentryBreadcrumb } from "@/lib/observability/sentry";
@@ -14,6 +15,7 @@ export interface RateLimitInfo {
 export interface ApiKeyAuthContext {
   userId: string;
   keyId: string | null; // null for dev-mode env key
+  apiVersion: string;
   rateLimit?: RateLimitInfo; // present when per-key rate limiting is active
 }
 
@@ -47,13 +49,14 @@ export async function authenticateApiKey(
     addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
     return {
       userId, keyId,
+      apiVersion: identity?.apiVersion ?? CURRENT_VERSION,
       rateLimit: { limit: result.limit!, remaining: result.remaining!, reset: result.reset! },
     };
   }
 
   setRequestUserId(userId);
   addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
-  return { userId, keyId };
+  return { userId, keyId, apiVersion: identity?.apiVersion ?? CURRENT_VERSION };
 }
 
 /** Set X-RateLimit-* headers on a response if rate limit info is available. */

@@ -183,6 +183,8 @@ describe("existing tables still have correct structure", () => {
     expect(cols.id.notNull).toBe(true);
     expect(cols.userId.notNull).toBe(true);
     expect(cols.keyHash.notNull).toBe(true);
+    expect(cols.apiVersion.notNull).toBe(true);
+    expect(cols.apiVersion.hasDefault).toBe(true);
   });
 
   it("slackConfigs table has required columns", () => {

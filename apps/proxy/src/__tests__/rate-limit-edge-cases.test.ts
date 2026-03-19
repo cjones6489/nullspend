@@ -151,6 +151,7 @@ describe("per-key rate limiting edge cases", () => {
       userId: "user-1",
       keyId: "key-1",
       hasWebhooks: false,
+      apiVersion: "2026-04-01",
     });
   });
 

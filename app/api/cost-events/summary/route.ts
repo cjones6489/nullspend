@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import {
   getCostBreakdownTotals,
@@ -48,7 +49,9 @@ export async function GET(request: Request) {
       costBreakdown,
     });
 
-    return NextResponse.json(response);
+    const res = NextResponse.json(response);
+    res.headers.set("NullSpend-Version", CURRENT_VERSION);
+    return res;
   } catch (error) {
     return handleRouteError(error);
   }

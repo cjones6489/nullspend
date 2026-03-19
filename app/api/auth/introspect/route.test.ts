@@ -34,7 +34,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("managed key returns userId and keyId", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: MOCK_USER_ID, keyId: MOCK_KEY_ID, apiVersion: "2026-04-01" });
 
     const res = await GET(makeRequest());
     const body = await res.json();
@@ -44,7 +44,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("dev fallback returns dev identity", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null, apiVersion: "2026-04-01" });
     mockedGetDevActor.mockReturnValue("dev-actor-789");
 
     const res = await GET(makeRequest());
@@ -71,7 +71,7 @@ describe("GET /api/auth/introspect", () => {
   });
 
   it("dev fallback uses devUserId when getDevActor returns undefined", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user-456", keyId: null, apiVersion: "2026-04-01" });
     mockedGetDevActor.mockReturnValue(undefined);
 
     const res = await GET(makeRequest());

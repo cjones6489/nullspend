@@ -5,6 +5,7 @@ import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
 import { handleBudgetInvalidation } from "./routes/internal.js";
 import { authenticateRequest } from "./lib/auth.js";
+import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
@@ -207,6 +208,11 @@ export default {
         console.warn("[proxy] User has webhooks but QSTASH_TOKEN is not configured");
       }
 
+      const resolvedApiVersion = resolveApiVersion(
+        request.headers.get("nullspend-version"),
+        auth.apiVersion,
+      );
+
       const ctx: RequestContext = {
         body: result.body,
         auth,
@@ -214,6 +220,7 @@ export default {
         connectionString,
         sessionId: request.headers.get("x-nullspend-session") ?? null,
         webhookDispatcher,
+        resolvedApiVersion,
       };
 
       return await handler(request, env, ctx);

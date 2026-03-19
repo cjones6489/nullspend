@@ -9,6 +9,7 @@ export interface RequestContext {
   connectionString: string;
   sessionId: string | null;     // from x-nullspend-session
   webhookDispatcher: WebhookDispatcher | null;
+  resolvedApiVersion: string;
 }
 
 export type RouteHandler = (

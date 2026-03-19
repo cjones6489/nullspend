@@ -74,6 +74,7 @@ describe("app/api/actions/route", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
       keyId: "key-123",
+      apiVersion: "2026-04-01",
     });
     mockedCreateAction.mockResolvedValue(makeActionRecord());
 
@@ -108,6 +109,7 @@ describe("app/api/actions/route", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "dev-user",
       keyId: null,
+      apiVersion: "2026-04-01",
     });
     mockedCreateAction.mockResolvedValue(makeActionRecord());
 
@@ -136,6 +138,7 @@ describe("app/api/actions/route", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
       keyId: "key-123",
+      apiVersion: "2026-04-01",
     });
     mockedCreateAction.mockResolvedValue(makeActionRecord());
     mockedSendSlackNotification.mockRejectedValue(new Error("Webhook error"));

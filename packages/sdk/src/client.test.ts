@@ -119,12 +119,54 @@ describe("createAction", () => {
     expect(url).toBe("http://localhost:3000/api/actions");
     expect(init.method).toBe("POST");
     expect(init.headers["x-nullspend-key"]).toBe("ns_live_sk_test0001");
+    expect(init.headers["NullSpend-Version"]).toBe("2026-04-01");
     expect(JSON.parse(init.body)).toEqual({
       agentId: "my-agent",
       actionType: "send_email",
       payload: { to: "a@b.com" },
       metadata: { env: "test" },
     });
+  });
+
+  it("sends default NullSpend-Version header", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "pending" }));
+    const client = createClient(fetchFn);
+
+    await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
+
+    const [, init] = fetchFn.mock.calls[0];
+    expect(init.headers["NullSpend-Version"]).toBe("2026-04-01");
+  });
+
+  it("sends custom apiVersion when configured", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "pending" }));
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_test0001",
+      fetch: fetchFn,
+      maxRetries: 0,
+      apiVersion: "2099-01-01",
+    });
+
+    await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
+
+    const [, init] = fetchFn.mock.calls[0];
+    expect(init.headers["NullSpend-Version"]).toBe("2099-01-01");
+  });
+
+  it("persists NullSpend-Version header across retries", async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(new Response("", { status: 500, statusText: "Internal Server Error" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "pending" }));
+    const client = createRetryClient(fetchFn);
+
+    await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
+
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    const [, init1] = fetchFn.mock.calls[0];
+    const [, init2] = fetchFn.mock.calls[1];
+    expect(init1.headers["NullSpend-Version"]).toBe("2026-04-01");
+    expect(init2.headers["NullSpend-Version"]).toBe("2026-04-01");
   });
 
   it("throws NullSpendError on non-OK response", async () => {

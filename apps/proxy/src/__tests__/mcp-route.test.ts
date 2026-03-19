@@ -86,11 +86,12 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     webhookDispatcher: null,
+    resolvedApiVersion: "2026-04-01",
     ...overrides,
   };
 }
@@ -304,7 +305,7 @@ describe("handleMcpBudgetCheck", () => {
 
     const ctx = makeCtx(
       { toolName: "t", serverName: "s", estimateMicrodollars: 0 },
-      { auth: { userId: "user-abc", keyId: "key-xyz", hasWebhooks: false } },
+      { auth: { userId: "user-abc", keyId: "key-xyz", hasWebhooks: false, apiVersion: "2026-04-01" } },
     );
     await handleMcpBudgetCheck(request, env, ctx);
 
@@ -467,7 +468,7 @@ describe("handleMcpEvents", () => {
 
     const ctx = makeCtx(
       { events },
-      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false } },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false, apiVersion: "2026-04-01" } },
     );
     await handleMcpEvents(request, env, ctx);
 
@@ -623,7 +624,7 @@ describe("handleMcpEvents", () => {
 
     const ctx = makeCtx(
       { events },
-      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false } },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false, apiVersion: "2026-04-01" } },
     );
     await handleMcpEvents(request, env, ctx);
     await new Promise((r) => setTimeout(r, 10));
@@ -724,6 +725,23 @@ describe("handleMcpEvents", () => {
 
     // doBudgetReconcile called once per event WITH a reservationId (2, not 3)
     expect(mockDoBudgetReconcile).toHaveBeenCalledTimes(2);
+  });
+
+  it("includes NullSpend-Version header on successful response", async () => {
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
+
+    const request = makeRequest("/v1/mcp/events", {});
+    const env = makeEnv();
+
+    const events = [
+      { toolName: "run_query", serverName: "supabase", durationMs: 100, costMicrodollars: 5000, status: "success" },
+    ];
+
+    const response = await handleMcpEvents(request, env, makeCtx({ events }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("NullSpend-Version")).toBe("2026-04-01");
+    await response.text();
   });
 
   it("does not call lookupBudgetsForDO when no events have reservations", async () => {

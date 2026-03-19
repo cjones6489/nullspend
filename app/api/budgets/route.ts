@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
+import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
@@ -46,7 +47,9 @@ export const GET = withRequestContext(async (_request: Request) => {
     updatedAt: row.updatedAt.toISOString(),
   }));
 
-  return NextResponse.json(listBudgetsResponseSchema.parse({ data }));
+  const response = NextResponse.json(listBudgetsResponseSchema.parse({ data }));
+  response.headers.set("NullSpend-Version", CURRENT_VERSION);
+  return response;
 });
 
 export const POST = withRequestContext(async (request: Request) => {

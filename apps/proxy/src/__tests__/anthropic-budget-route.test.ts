@@ -129,11 +129,12 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01" },
     redis: {} as any,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     webhookDispatcher: null,
+    resolvedApiVersion: "2026-04-01",
     ...overrides,
   };
 }

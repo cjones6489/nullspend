@@ -19,6 +19,7 @@ export class ApiKeyError extends Error {
 export interface ApiKeyIdentity {
   userId: string;
   keyId: string;
+  apiVersion: string;
 }
 
 export function generateRawKey(): string {
@@ -55,11 +56,11 @@ async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
     .update(apiKeys)
     .set({ lastUsedAt: new Date() })
     .where(and(eq(apiKeys.keyHash, hash), isNull(apiKeys.revokedAt)))
-    .returning({ id: apiKeys.id, userId: apiKeys.userId });
+    .returning({ id: apiKeys.id, userId: apiKeys.userId, apiVersion: apiKeys.apiVersion });
 
   if (!row) return null;
 
-  return { userId: row.userId, keyId: row.id };
+  return { userId: row.userId, keyId: row.id, apiVersion: row.apiVersion };
 }
 
 /** @internal Use `authenticateApiKey` from `with-api-key-auth.ts` in route handlers */

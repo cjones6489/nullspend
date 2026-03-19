@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { costEventInputSchema, insertCostEvent } from "@/lib/cost-events/ingest";
@@ -31,7 +32,9 @@ export const GET = withRequestContext(async (request: Request) => {
     source: url.searchParams.get("source") ?? undefined,
   });
   const result = await listCostEvents({ ...query, userId });
-  return NextResponse.json(listCostEventsResponseSchema.parse(result));
+  const response = NextResponse.json(listCostEventsResponseSchema.parse(result));
+  response.headers.set("NullSpend-Version", CURRENT_VERSION);
+  return response;
 });
 
 export const POST = withRequestContext(async (request: Request) => {

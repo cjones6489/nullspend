@@ -69,6 +69,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockWhere.mockResolvedValue([
       makeBudgetRow(),
@@ -94,6 +95,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockWhere.mockResolvedValue([]);
 
@@ -108,6 +110,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockWhere.mockResolvedValue([
       makeBudgetRow({ maxBudgetMicrodollars: 50_000_000 }),
@@ -125,6 +128,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockWhere.mockResolvedValue([
       makeBudgetRow({
@@ -166,6 +170,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: null,
+      apiVersion: "2026-04-01",
     });
     mockWhere.mockResolvedValue([makeBudgetRow()]);
 
@@ -184,6 +189,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockWhere.mockResolvedValue([
       makeBudgetRow({
@@ -203,6 +209,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
     });
     mockWhere.mockResolvedValue([
       makeBudgetRow({
@@ -230,6 +237,7 @@ describe("GET /api/budgets/status", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
+      apiVersion: "2026-04-01",
       rateLimit,
     });
     mockWhere.mockResolvedValue([]);

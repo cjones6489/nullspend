@@ -17,6 +17,7 @@ export function detectThresholdCrossings(
   budgetEntities: BudgetEntity[],
   costMicrodollars: number,
   requestId: string,
+  apiVersion?: string,
 ): WebhookEvent[] {
   const events: WebhookEvent[] = [];
 
@@ -40,7 +41,7 @@ export function detectThresholdCrossings(
             budgetSpendMicrodollars: newSpend,
             thresholdPercent: threshold,
             triggeredByRequestId: requestId,
-          }),
+          }, apiVersion),
         );
       }
     }

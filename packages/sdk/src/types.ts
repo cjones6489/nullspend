@@ -49,6 +49,8 @@ export interface CostReportingConfig {
 export interface NullSpendConfig {
   baseUrl: string;
   apiKey: string;
+  /** Override the API version sent via NullSpend-Version header. Defaults to the SDK's built-in version. */
+  apiVersion?: string;
   /** Custom fetch implementation (defaults to globalThis.fetch). */
   fetch?: typeof globalThis.fetch;
   /** Per-request timeout in milliseconds. Default: 30000 (30s). Set to 0 to disable. */

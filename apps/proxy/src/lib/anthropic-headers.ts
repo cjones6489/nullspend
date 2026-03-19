@@ -29,6 +29,7 @@ export function buildAnthropicUpstreamHeaders(request: Request): Headers {
  */
 export function buildAnthropicClientHeaders(
   upstreamResponse: Response,
+  apiVersion?: string,
 ): Headers {
   const headers = new Headers();
 
@@ -46,6 +47,10 @@ export function buildAnthropicClientHeaders(
 
   const retryAfter = upstreamResponse.headers.get("retry-after");
   if (retryAfter) headers.set("retry-after", retryAfter);
+
+  if (apiVersion) {
+    headers.set("NullSpend-Version", apiVersion);
+  }
 
   return headers;
 }

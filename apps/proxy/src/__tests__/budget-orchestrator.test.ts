@@ -32,11 +32,12 @@ import type { RequestContext } from "../lib/context.js";
 function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
   return {
     body: {},
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
     redis: null,
     connectionString: "postgres://test",
     sessionId: null,
     webhookDispatcher: null,
+    resolvedApiVersion: "2026-04-01",
     ...overrides,
   };
 }
@@ -140,7 +141,7 @@ describe("checkBudget — DO-first mode", () => {
   });
 
   it("skipped when no userId", async () => {
-    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasWebhooks: false } });
+    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" } });
 
     const result = await checkBudget(makeEnv(), ctx, 5_000_000);
 
@@ -230,7 +231,7 @@ describe("checkBudget — DO-first mode", () => {
       hasBudgets: false,
     });
 
-    const ctx = makeCtx({ auth: { userId: "user-1", keyId: null, hasWebhooks: false } });
+    const ctx = makeCtx({ auth: { userId: "user-1", keyId: null, hasWebhooks: false, apiVersion: "2026-04-01" } });
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(

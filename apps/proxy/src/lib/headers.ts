@@ -30,7 +30,7 @@ const CLIENT_FORWARD_HEADERS = [
  * Build headers for the client response.
  * Forwards content-type, request ID, and rate-limit headers from OpenAI.
  */
-export function buildClientHeaders(upstreamResponse: Response): Headers {
+export function buildClientHeaders(upstreamResponse: Response, apiVersion?: string): Headers {
   const headers = new Headers();
 
   for (const name of CLIENT_FORWARD_HEADERS) {
@@ -47,6 +47,10 @@ export function buildClientHeaders(upstreamResponse: Response): Headers {
   const retryAfter = upstreamResponse.headers.get("retry-after");
   if (retryAfter) {
     headers.set("retry-after", retryAfter);
+  }
+
+  if (apiVersion) {
+    headers.set("NullSpend-Version", apiVersion);
   }
 
   return headers;

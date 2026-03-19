@@ -28,7 +28,7 @@ describe("assertApiKeyOrSession", () => {
   });
 
   it("returns userId string for managed API key", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: "user-123", keyId: "key-456" });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "user-123", keyId: "key-456", apiVersion: "2026-04-01" });
 
     const request = new Request("http://localhost/api/actions", {
       headers: { "x-nullspend-key": "ns_live_sk_test0001" },
@@ -41,7 +41,7 @@ describe("assertApiKeyOrSession", () => {
   });
 
   it("returns userId string for dev fallback key", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user", keyId: null });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user", keyId: null, apiVersion: "2026-04-01" });
 
     const request = new Request("http://localhost/api/actions", {
       headers: { "x-nullspend-key": "env-secret" },

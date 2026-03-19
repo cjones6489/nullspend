@@ -161,5 +161,19 @@ describe("buildClientHeaders edge cases", () => {
     expect(headers.get("content-type")).toBeNull();
     expect(headers.get("x-request-id")).toBeNull();
   });
+
+  it("sets NullSpend-Version when apiVersion is provided", () => {
+    const res = makeResponse(200, { "content-type": "application/json" });
+    const headers = buildClientHeaders(res, "2026-04-01");
+
+    expect(headers.get("NullSpend-Version")).toBe("2026-04-01");
+  });
+
+  it("does not set NullSpend-Version when apiVersion is omitted", () => {
+    const res = makeResponse(200, { "content-type": "application/json" });
+    const headers = buildClientHeaders(res);
+
+    expect(headers.get("NullSpend-Version")).toBeNull();
+  });
 });
 

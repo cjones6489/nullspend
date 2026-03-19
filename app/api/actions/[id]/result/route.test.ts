@@ -28,6 +28,7 @@ describe("app/api/actions/[id]/result/route", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
       keyId: "key-123",
+      apiVersion: "2026-04-01",
     });
     mockedMarkResult.mockResolvedValue({
       id: "550e8400-e29b-41d4-a716-446655440000",
@@ -64,6 +65,7 @@ describe("app/api/actions/[id]/result/route", () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "dev-user",
       keyId: null,
+      apiVersion: "2026-04-01",
     });
     mockedMarkResult.mockResolvedValue({
       id: "550e8400-e29b-41d4-a716-446655440000",

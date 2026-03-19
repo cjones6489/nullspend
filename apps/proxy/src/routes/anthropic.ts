@@ -20,7 +20,7 @@ import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildBudgetExceededPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildBudgetExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 
@@ -130,7 +130,7 @@ export async function handleAnthropicMessages(
           reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, ctx.connectionString),
         );
       }
-      const clientHeaders = buildAnthropicClientHeaders(upstreamResponse);
+      const clientHeaders = buildAnthropicClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "anthropic");
       clientHeaders.set("content-type", "application/json");
       return new Response(sanitizedBody, {
@@ -141,7 +141,7 @@ export async function handleAnthropicMessages(
 
     const requestId =
       upstreamResponse.headers.get("request-id") ?? crypto.randomUUID();
-    const clientHeaders = buildAnthropicClientHeaders(upstreamResponse);
+    const clientHeaders = buildAnthropicClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
 
     if (isStreaming) {
       return handleStreaming(
@@ -277,11 +277,14 @@ function handleStreaming(
                 createdAt: new Date().toISOString(),
                 source: "proxy" as const,
               };
-              const whEvent = buildCostEventPayload(webhookData);
-              await dispatchToEndpoints(ctx.webhookDispatcher, endpoints, whEvent);
+              for (const ep of endpoints) {
+                const whEvent = buildCostEventPayload(webhookData, ep.apiVersion);
+                await ctx.webhookDispatcher.dispatch(ep, whEvent);
+              }
 
               if (budgetEntities.length > 0) {
-                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId);
+                const epVersion = endpoints[0]?.apiVersion ?? CURRENT_API_VERSION;
+                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId, epVersion);
                 for (const te of thresholdEvents) {
                   await dispatchToEndpoints(ctx.webhookDispatcher, endpoints, te);
                 }
@@ -393,11 +396,14 @@ async function handleNonStreaming(
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
               const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString(), source: "proxy" as const };
-              const whEvent = buildCostEventPayload(webhookData);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, whEvent);
+              for (const ep of endpoints) {
+                const whEvent = buildCostEventPayload(webhookData, ep.apiVersion);
+                await ctx.webhookDispatcher!.dispatch(ep, whEvent);
+              }
 
               if (budgetEntities.length > 0) {
-                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId);
+                const epVersion = endpoints[0]?.apiVersion ?? CURRENT_API_VERSION;
+                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId, epVersion);
                 for (const te of thresholdEvents) {
                   await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, te);
                 }

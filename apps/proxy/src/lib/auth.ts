@@ -6,6 +6,7 @@ export interface AuthResult {
   userId: string;
   keyId: string;
   hasWebhooks: boolean;
+  apiVersion: string;
 }
 
 /**
@@ -26,5 +27,6 @@ export async function authenticateRequest(
     userId: identity.userId,
     keyId: identity.keyId,
     hasWebhooks: identity.hasWebhooks,
+    apiVersion: identity.apiVersion,
   };
 }

@@ -5,6 +5,7 @@ export interface ApiKeyIdentity {
   userId: string;
   keyId: string;
   hasWebhooks: boolean;
+  apiVersion: string;
 }
 
 const CONNECTION_TIMEOUT_MS = 5_000;
@@ -83,7 +84,7 @@ async function lookupKeyInDb(
       await client.connect();
 
       const result = await client.query(
-        `SELECT k.id, k.user_id,
+        `SELECT k.id, k.user_id, k.api_version,
           EXISTS(
             SELECT 1 FROM webhook_endpoints w
             WHERE w.user_id = k.user_id AND w.enabled = true
@@ -101,6 +102,7 @@ async function lookupKeyInDb(
         userId: result.rows[0].user_id as string,
         keyId: result.rows[0].id as string,
         hasWebhooks: result.rows[0].has_webhooks === true,
+        apiVersion: result.rows[0].api_version as string,
       };
     } catch (err) {
       console.error(
