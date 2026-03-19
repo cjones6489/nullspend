@@ -13,6 +13,7 @@ import {
   createBudgetInputSchema,
   listBudgetsResponseSchema,
 } from "@/lib/validations/budgets";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
 export const GET = withRequestContext(async (_request: Request) => {
   const userId = await resolveSessionUserId();
@@ -143,6 +144,13 @@ export const POST = withRequestContext(async (request: Request) => {
       },
     })
     .returning();
+
+  invalidateProxyCache({
+    action: "sync",
+    userId,
+    entityType: input.entityType,
+    entityId: input.entityId,
+  }).catch(() => {});
 
   return NextResponse.json(
     {

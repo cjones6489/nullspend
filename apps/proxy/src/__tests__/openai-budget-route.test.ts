@@ -31,23 +31,13 @@ vi.mock("@nullspend/cost-engine", () => ({
   costComponent: vi.fn().mockReturnValue(100),
 }));
 
-const { mockLookupBudgetsForDO } = vi.hoisted(() => {
-  const mockLookupBudgetsForDO = vi.fn();
-  return { mockLookupBudgetsForDO };
-});
-vi.mock("../lib/budget-do-lookup.js", () => ({
-  lookupBudgetsForDO: mockLookupBudgetsForDO,
-}));
-
-const { mockDoBudgetCheck, mockDoBudgetReconcile, mockDoBudgetPopulate } = vi.hoisted(() => ({
+const { mockDoBudgetCheck, mockDoBudgetReconcile } = vi.hoisted(() => ({
   mockDoBudgetCheck: vi.fn(),
   mockDoBudgetReconcile: vi.fn().mockResolvedValue(undefined),
-  mockDoBudgetPopulate: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetCheck: (...args: unknown[]) => mockDoBudgetCheck(...args),
   doBudgetReconcile: (...args: unknown[]) => mockDoBudgetReconcile(...args),
-  doBudgetPopulate: (...args: unknown[]) => mockDoBudgetPopulate(...args),
 }));
 
 vi.mock("../lib/budget-spend.js", () => ({
@@ -69,17 +59,14 @@ vi.mock("@upstash/redis/cloudflare", () => ({
 }));
 
 import { handleChatCompletions } from "../routes/openai.js";
-import { doLookupCache } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
 
-const DO_BUDGET_ENTITY = {
+const DO_CHECKED_ENTITY = {
   entityType: "api_key",
   entityId: "test-key-id",
   maxBudget: 10_000_000,
   spend: 1_000_000,
   policy: "hard",
-  resetInterval: null,
-  periodStart: 0,
 };
 
 const OPENAI_RESPONSE = {
@@ -159,11 +146,8 @@ describe("OpenAI budget enforcement", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
-    doLookupCache.clear();
-    mockLookupBudgetsForDO.mockReset();
     mockDoBudgetCheck.mockReset();
     mockDoBudgetReconcile.mockReset().mockResolvedValue(undefined);
-    mockDoBudgetPopulate.mockReset().mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReset().mockReturnValue(500_000);
   });
 
@@ -173,13 +157,14 @@ describe("OpenAI budget enforcement", () => {
   });
 
   it("budget denial returns 429 with budget_exceeded error shape", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([DO_BUDGET_ENTITY]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "denied",
+      hasBudgets: true,
       deniedEntity: "api_key:test-key-id",
       remaining: 100_000,
       maxBudget: 10_000_000,
       spend: 9_900_000,
+      checkedEntities: [DO_CHECKED_ENTITY],
     });
 
     const body = {
@@ -196,10 +181,11 @@ describe("OpenAI budget enforcement", () => {
   });
 
   it("successful non-streaming request reconciles with actual cost", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([DO_BUDGET_ENTITY]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv_test_123",
+      checkedEntities: [DO_CHECKED_ENTITY],
     });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -229,10 +215,11 @@ describe("OpenAI budget enforcement", () => {
   });
 
   it("upstream 4xx error reconciles reservation with 0", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([DO_BUDGET_ENTITY]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv_test_err",
+      checkedEntities: [DO_CHECKED_ENTITY],
     });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -262,7 +249,7 @@ describe("OpenAI budget enforcement", () => {
   });
 
   it("budget lookup failure returns 503 budget_unavailable", async () => {
-    mockLookupBudgetsForDO.mockRejectedValue(new Error("DB connection failed"));
+    mockDoBudgetCheck.mockRejectedValue(new Error("DO connection failed"));
 
     const body = {
       model: "gpt-4o-mini",
@@ -276,7 +263,10 @@ describe("OpenAI budget enforcement", () => {
   });
 
   it("no budget entities skips enforcement entirely", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([]);
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "approved",
+      hasBudgets: false,
+    });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(OPENAI_RESPONSE), {
@@ -295,15 +285,15 @@ describe("OpenAI budget enforcement", () => {
     const res = await handleChatCompletions(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
-    expect(mockDoBudgetCheck).not.toHaveBeenCalled();
     expect(mockDoBudgetReconcile).not.toHaveBeenCalled();
   });
 
   it("streaming request reconciles after stream completes", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([DO_BUDGET_ENTITY]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv_stream_test",
+      checkedEntities: [DO_CHECKED_ENTITY],
     });
 
     const sseChunks = [
@@ -341,10 +331,11 @@ describe("OpenAI budget enforcement", () => {
   });
 
   it("timeout/error reconciles reservation with 0 via outer catch", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([DO_BUDGET_ENTITY]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv_timeout_test",
+      checkedEntities: [DO_CHECKED_ENTITY],
     });
 
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("fetch timeout"));

@@ -40,7 +40,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
 
     // Simulate DO accumulating spend via reconcile
-    const check = await stub.checkAndReserve([{ type: "user", id: "u1" }], 5_000_000);
+    const check = await stub.checkAndReserve(null,5_000_000);
     await stub.reconcile(check.reservationId!, 5_000_000);
 
     // Re-populate with different spend from Postgres (stale)
@@ -55,7 +55,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
     // Create a reservation
-    const check = await stub.checkAndReserve([{ type: "user", id: "u1" }], 10_000_000);
+    const check = await stub.checkAndReserve(null,10_000_000);
     expect(check.status).toBe("approved");
 
     // Re-populate — reserved should survive
@@ -72,7 +72,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 50_000_000, "strict_block", "daily", twoDaysAgo);
 
     // Trigger inline period reset
-    await stub.checkAndReserve([{ type: "user", id: "u1" }], 1_000);
+    await stub.checkAndReserve(null,1_000);
 
     const stateAfterReset = await stub.getBudgetState();
     const dosPeriodStart = stateAfterReset[0].period_start;
@@ -96,109 +96,26 @@ describe("UserBudgetDO", () => {
     expect(state[0].reset_interval).toBe("monthly");
   });
 
-  // ── syncBudgets ────────────────────────────────────────────────
-
-  it("syncBudgets UPSERTs all provided entities", async () => {
-    const stub = getStub("user-sync-upsert");
-    const purged = await stub.syncBudgets([
-      { entityType: "user", entityId: "u1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
-      { entityType: "api_key", entityId: "k1", maxBudget: 10_000_000, spend: 0, policy: "warn", resetInterval: "monthly", periodStart: 1_700_000_000_000 },
-    ]);
-    expect(purged).toBe(0);
-
-    const state = await stub.getBudgetState();
-    expect(state).toHaveLength(2);
-    expect(state.find((b: { entity_type: string }) => b.entity_type === "user")!.max_budget).toBe(50_000_000);
-    expect(state.find((b: { entity_type: string }) => b.entity_type === "api_key")!.policy).toBe("warn");
-  });
-
-  it("syncBudgets purges ghost budgets not in the provided set", async () => {
-    const stub = getStub("user-sync-purge");
-    // Seed two entities via populateIfEmpty
-    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
-    await stub.populateIfEmpty("api_key", "k1", 10_000_000, 0, "warn", null, 0);
-
-    // Sync with only user:u1 — api_key:k1 should be purged
-    const purged = await stub.syncBudgets([
-      { entityType: "user", entityId: "u1", maxBudget: 60_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
-    ]);
-    expect(purged).toBe(1);
-
-    const state = await stub.getBudgetState();
-    expect(state).toHaveLength(1);
-    expect(state[0].entity_type).toBe("user");
-    expect(state[0].max_budget).toBe(60_000_000);
-  });
-
-  it("syncBudgets with empty array purges ALL DO budgets", async () => {
-    const stub = getStub("user-sync-purge-all");
-    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
-    await stub.populateIfEmpty("api_key", "k1", 10_000_000, 0, "warn", null, 0);
-
-    const purged = await stub.syncBudgets([]);
-    expect(purged).toBe(2);
-
-    const state = await stub.getBudgetState();
-    expect(state).toHaveLength(0);
-  });
-
-  it("syncBudgets preserves DO spend/reserved/period_start (UPSERT semantics)", async () => {
-    const stub = getStub("user-sync-preserve");
-    await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
-
-    // Simulate DO accumulating spend via reconcile
-    const check = await stub.checkAndReserve([{ type: "user", id: "u1" }], 5_000_000);
-    await stub.reconcile(check.reservationId!, 5_000_000);
-
-    // syncBudgets with stale spend from Postgres
-    const purged = await stub.syncBudgets([
-      { entityType: "user", entityId: "u1", maxBudget: 99_000_000, spend: 10_000_000, policy: "warn", resetInterval: "daily", periodStart: 0 },
-    ]);
-    expect(purged).toBe(0);
-
-    const state = await stub.getBudgetState();
-    expect(state[0].spend).toBe(15_000_000); // DO's authoritative 10M + 5M, not Postgres's 10M
-    expect(state[0].max_budget).toBe(99_000_000); // Config updated
-    expect(state[0].policy).toBe("warn"); // Config updated
-    expect(state[0].reset_interval).toBe("daily"); // Config updated
-  });
-
-  it("syncBudgets with no ghost rows returns 0", async () => {
-    const stub = getStub("user-sync-no-ghosts");
-    await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
-
-    const purged = await stub.syncBudgets([
-      { entityType: "user", entityId: "u1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
-    ]);
-    expect(purged).toBe(0);
-  });
-
-  it("syncBudgets on fresh DO returns 0", async () => {
-    const stub = getStub("user-sync-fresh");
-    const purged = await stub.syncBudgets([]);
-    expect(purged).toBe(0);
-  });
-
   // ── checkAndReserve ──────────────────────────────────────────────
 
   it("approves when estimate is within budget", async () => {
     const stub = getStub("user-approve-1");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 20_000_000,
-    );
+    const result = await stub.checkAndReserve(null, 20_000_000);
     expect(result.status).toBe("approved");
+    expect(result.hasBudgets).toBe(true);
     expect(result.reservationId).toBeDefined();
     expect(typeof result.reservationId).toBe("string");
+    expect(result.checkedEntities).toHaveLength(1);
+    expect(result.checkedEntities![0].entityType).toBe("user");
   });
 
   it("denies when estimate exceeds remaining budget", async () => {
     const stub = getStub("user-deny-1");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 40_000_000, "strict_block", null, 0);
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 20_000_000,
+    const result = await stub.checkAndReserve(null, 20_000_000,
     );
     expect(result.status).toBe("denied");
     expect(result.deniedEntity).toBe("user:u1");
@@ -214,8 +131,7 @@ describe("UserBudgetDO", () => {
     // API key budget: nearly full
     await stub.populateIfEmpty("api_key", "k1", 10_000_000, 8_000_000, "strict_block", null, 0);
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+    const result = await stub.checkAndReserve("k1",
       5_000_000,
     );
     expect(result.status).toBe("denied");
@@ -229,28 +145,46 @@ describe("UserBudgetDO", () => {
     expect(keyBudget!.reserved).toBe(0);
   });
 
-  it("approves with empty entities array — no reservationId, no reservation stored", async () => {
+  it("empty DO with no budgets returns hasBudgets=false", async () => {
     const stub = getStub("user-empty-entities");
-    const result = await stub.checkAndReserve([], 10_000_000);
+    const result = await stub.checkAndReserve(null, 10_000_000);
     expect(result.status).toBe("approved");
+    expect(result.hasBudgets).toBe(false);
     expect(result.reservationId).toBeUndefined();
   });
 
-  it("approves when entities have no budget rows — no reservationId", async () => {
+  it("keyId=null only checks user-level budgets (ignores api_key)", async () => {
     const stub = getStub("user-no-budget-rows");
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "nonexistent" }], 10_000_000,
-    );
+    // Only api_key budget — no user-level budget
+    await stub.populateIfEmpty("api_key", "k1", 10_000_000, 0, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 10_000_000);
     expect(result.status).toBe("approved");
-    expect(result.reservationId).toBeUndefined();
+    expect(result.hasBudgets).toBe(false);
+  });
+
+  it("keyId filters to matching api_key budget only", async () => {
+    const stub = getStub("user-keyid-filter");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k1", 10_000_000, 9_500_000, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k2", 10_000_000, 0, "strict_block", null, 0);
+
+    // Request with k1 — should be denied (k1 nearly full)
+    const r1 = await stub.checkAndReserve("k1", 1_000_000);
+    expect(r1.status).toBe("denied");
+    expect(r1.deniedEntity).toBe("api_key:k1");
+
+    // Request with k2 — should be approved (k2 has room, k1 ignored)
+    const r2 = await stub.checkAndReserve("k2", 1_000_000);
+    expect(r2.status).toBe("approved");
+    expect(r2.hasBudgets).toBe(true);
   });
 
   it("approves at exact boundary (spend + reserved + estimate === maxBudget)", async () => {
     const stub = getStub("user-exact-boundary");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 30_000_000, "strict_block", null, 0);
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 20_000_000,
+    const result = await stub.checkAndReserve(null, 20_000_000,
     );
     expect(result.status).toBe("approved");
     expect(result.reservationId).toBeDefined();
@@ -261,8 +195,8 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
     const [r1, r2] = await Promise.all([
-      stub.checkAndReserve([{ type: "user", id: "u1" }], 30_000_000),
-      stub.checkAndReserve([{ type: "user", id: "u1" }], 30_000_000),
+      stub.checkAndReserve(null,30_000_000),
+      stub.checkAndReserve(null,30_000_000),
     ]);
 
     const statuses = [r1.status, r2.status].sort();
@@ -275,8 +209,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-soft-block");
     await stub.populateIfEmpty("user", "u1", 10_000_000, 10_000_000, "soft_block", null, 0);
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 5_000_000,
+    const result = await stub.checkAndReserve(null, 5_000_000,
     );
     expect(result.status).toBe("approved");
   });
@@ -285,8 +218,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-warn");
     await stub.populateIfEmpty("user", "u1", 10_000_000, 10_000_000, "warn", null, 0);
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 5_000_000,
+    const result = await stub.checkAndReserve(null, 5_000_000,
     );
     expect(result.status).toBe("approved");
   });
@@ -297,8 +229,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-reconcile-1");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const check = await stub.checkAndReserve(null, 10_000_000,
     );
     expect(check.status).toBe("approved");
 
@@ -321,8 +252,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-reconcile-zero");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 10_000_000, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 5_000_000,
+    const check = await stub.checkAndReserve(null, 5_000_000,
     );
     expect(check.status).toBe("approved");
 
@@ -338,8 +268,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-reconcile-double");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const check = await stub.checkAndReserve(null, 10_000_000,
     );
     const r1 = await stub.reconcile(check.reservationId!, 5_000_000);
     expect(r1.status).toBe("reconciled");
@@ -357,8 +286,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
     await stub.populateIfEmpty("api_key", "k1", 100_000_000, 0, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+    const check = await stub.checkAndReserve("k1",
       10_000_000,
     );
     expect(check.status).toBe("approved");
@@ -383,8 +311,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-reconcile-missing");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const check = await stub.checkAndReserve(null, 10_000_000,
     );
     expect(check.status).toBe("approved");
 
@@ -402,8 +329,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
     await stub.populateIfEmpty("api_key", "k1", 100_000_000, 0, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+    const check = await stub.checkAndReserve("k1",
       10_000_000,
     );
     expect(check.status).toBe("approved");
@@ -428,8 +354,7 @@ describe("UserBudgetDO", () => {
     );
 
     // Budget is fully spent, but period has expired — should reset and approve
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const result = await stub.checkAndReserve(null, 10_000_000,
     );
     expect(result.status).toBe("approved");
 
@@ -446,8 +371,7 @@ describe("UserBudgetDO", () => {
       "user", "u1", 50_000_000, 50_000_000, "strict_block", "daily", twoDaysAgo,
     );
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const result = await stub.checkAndReserve(null, 10_000_000,
     );
 
     expect(result.periodResets).toBeDefined();
@@ -464,8 +388,7 @@ describe("UserBudgetDO", () => {
       "user", "u1", 50_000_000, 10_000_000, "strict_block", "daily", recentStart,
     );
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 5_000_000,
+    const result = await stub.checkAndReserve(null, 5_000_000,
     );
 
     expect(result.status).toBe("approved");
@@ -484,8 +407,7 @@ describe("UserBudgetDO", () => {
       "api_key", "k1", 10_000_000, 9_500_000, "strict_block", null, 0,
     );
 
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+    const result = await stub.checkAndReserve("k1",
       5_000_000,
     );
 
@@ -504,8 +426,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
     // Reserve with very short TTL
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000, 1,
+    const result = await stub.checkAndReserve(null, 10_000_000, 1,
     );
     expect(result.status).toBe("approved");
 
@@ -531,8 +452,7 @@ describe("UserBudgetDO", () => {
     expect(state[0].entity_type).toBe("api_key");
 
     // checkAndReserve should skip removed entity (no budget = no limit)
-    const result = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }],
+    const result = await stub.checkAndReserve("k1",
       15_000_000,
     );
     expect(result.status).toBe("approved");
@@ -554,8 +474,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
     // Create a reservation
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000, 1,
+    const check = await stub.checkAndReserve(null, 10_000_000, 1,
     );
     expect(check.status).toBe("approved");
 
@@ -579,8 +498,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 30_000_000, "strict_block", "daily", oldPeriodStart);
 
     // Add a reservation
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 5_000_000,
+    const check = await stub.checkAndReserve(null, 5_000_000,
     );
     expect(check.status).toBe("approved");
 
@@ -609,16 +527,14 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 50_000_000, "strict_block", null, 0);
 
     // Budget is fully spent — should deny
-    const denied = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 1_000,
+    const denied = await stub.checkAndReserve(null, 1_000,
     );
     expect(denied.status).toBe("denied");
 
     await stub.resetSpend("user", "u1");
 
     // After reset — full budget available
-    const approved = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 49_000_000,
+    const approved = await stub.checkAndReserve(null, 49_000_000,
     );
     expect(approved.status).toBe("approved");
   });
@@ -627,8 +543,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-reset-orphan");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const check = await stub.checkAndReserve(null, 10_000_000,
     );
     expect(check.status).toBe("approved");
 
@@ -649,8 +564,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("api_key", "k1", 50_000_000, 0, "strict_block", null, 0);
 
     // Multi-entity reservation covering both user:u1 and api_key:k1
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }, { type: "api_key", id: "k1" }], 10_000_000,
+    const check = await stub.checkAndReserve("k1", 10_000_000,
     );
     expect(check.status).toBe("approved");
 
@@ -668,8 +582,7 @@ describe("UserBudgetDO", () => {
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
     // Create reservation, then reset
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const check = await stub.checkAndReserve(null, 10_000_000,
     );
     await stub.resetSpend("user", "u1");
 
@@ -678,14 +591,12 @@ describe("UserBudgetDO", () => {
     expect(reconcileResult.status).toBe("not_found");
 
     // Full budget should be available — reserve up to the limit
-    const fullReserve = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 50_000_000,
+    const fullReserve = await stub.checkAndReserve(null, 50_000_000,
     );
     expect(fullReserve.status).toBe("approved");
 
     // Nothing beyond should be allowed
-    const overReserve = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 1,
+    const overReserve = await stub.checkAndReserve(null, 1,
     );
     expect(overReserve.status).toBe("denied");
   });
@@ -696,8 +607,7 @@ describe("UserBudgetDO", () => {
     const stub = getStub("user-lifecycle");
     await stub.populateIfEmpty("user", "u1", 50_000_000, 0, "strict_block", null, 0);
 
-    const check = await stub.checkAndReserve(
-      [{ type: "user", id: "u1" }], 10_000_000,
+    const check = await stub.checkAndReserve(null, 10_000_000,
     );
     let state = await stub.getBudgetState();
     expect(state[0].reserved).toBe(10_000_000);

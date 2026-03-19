@@ -1,7 +1,6 @@
 import { invalidateAuthCacheForUser } from "../lib/api-key-auth.js";
-import { doBudgetRemove, doBudgetResetSpend, doBudgetPopulate } from "../lib/budget-do-client.js";
+import { doBudgetRemove, doBudgetResetSpend, doBudgetUpsertEntities } from "../lib/budget-do-client.js";
 import { lookupBudgetsForDO } from "../lib/budget-do-lookup.js";
-import { invalidateDoLookupCacheForUser } from "../lib/budget-orchestrator.js";
 import { errorResponse } from "../lib/errors.js";
 import { emitMetric } from "../lib/metrics.js";
 
@@ -86,14 +85,14 @@ export async function handleBudgetInvalidation(
     } else if (body.action === "reset_spend") {
       await doBudgetResetSpend(env, body.userId, body.entityType, body.entityId);
     } else {
-      // action === "sync": query Postgres for current budget state and sync to DO
+      // action === "sync": look up specific entity from Postgres and upsert into DO
+      // Uses populateIfEmpty (single-entity upsert) — does NOT purge sibling budgets
       const connectionString = env.HYPERDRIVE.connectionString;
       const identity = { keyId: body.entityId, userId: body.userId };
       const entities = await lookupBudgetsForDO(connectionString, identity);
-      await doBudgetPopulate(env, body.userId, entities);
+      await doBudgetUpsertEntities(env, body.userId, entities);
     }
 
-    invalidateDoLookupCacheForUser(body.userId);
     invalidateAuthCacheForUser(body.userId);
 
     emitMetric("budget_invalidation", {

@@ -87,10 +87,9 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
                     updated_at = NOW()
     `;
 
-    // Force Postgres→DO sync via internal endpoint (bypasses all isolate caches)
+    // Force Postgres→DO sync via internal endpoint.
+    // Under DO-first architecture, no Worker-level cache to invalidate.
     await syncBudget(NULLSPEND_SMOKE_USER_ID!, NULLSPEND_SMOKE_KEY_ID!);
-    // Invalidate Worker isolate caches
-    await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, entityType, entityId);
   }
 
   /** Remove any existing budgets so the user/key is non-budgeted */

@@ -7,20 +7,16 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 
 // ── Mocks (same pattern as internal-route.test.ts) ──────────────────────
-const { mockDoBudgetRemove, mockDoBudgetResetSpend, mockInvalidateCache, mockEmitMetric } = vi.hoisted(() => ({
+const { mockDoBudgetRemove, mockDoBudgetResetSpend, mockEmitMetric } = vi.hoisted(() => ({
   mockDoBudgetRemove: vi.fn(),
   mockDoBudgetResetSpend: vi.fn(),
-  mockInvalidateCache: vi.fn().mockReturnValue(1),
   mockEmitMetric: vi.fn(),
 }));
 
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetRemove: (...args: unknown[]) => mockDoBudgetRemove(...args),
   doBudgetResetSpend: (...args: unknown[]) => mockDoBudgetResetSpend(...args),
-}));
-
-vi.mock("../lib/budget-orchestrator.js", () => ({
-  invalidateDoLookupCacheForUser: (...args: unknown[]) => mockInvalidateCache(...args),
+  doBudgetUpsertEntities: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../lib/metrics.js", () => ({
@@ -643,7 +639,6 @@ describe("Concurrency", () => {
     const statuses = results.map((r) => r.status);
     expect(statuses.every((s) => s === 200)).toBe(true);
     expect(mockDoBudgetRemove).toHaveBeenCalledTimes(100);
-    expect(mockInvalidateCache).toHaveBeenCalledTimes(100);
   });
 
   it("mix of valid and invalid concurrent requests are correctly segregated", async () => {

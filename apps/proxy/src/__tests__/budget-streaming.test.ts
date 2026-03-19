@@ -24,19 +24,15 @@ beforeAll(() => {
 
 const {
   mockWaitUntil,
-  mockLookupBudgetsForDO,
   mockDoBudgetCheck,
   mockDoBudgetReconcile,
-  mockDoBudgetPopulate,
   mockEstimateMaxCost,
   mockUpdateBudgetSpend,
   mockCalculateOpenAICost,
 } = vi.hoisted(() => ({
   mockWaitUntil: vi.fn((promise: Promise<unknown>) => { promise.catch(() => {}); }),
-  mockLookupBudgetsForDO: vi.fn(),
   mockDoBudgetCheck: vi.fn(),
   mockDoBudgetReconcile: vi.fn(),
-  mockDoBudgetPopulate: vi.fn(),
   mockEstimateMaxCost: vi.fn(),
   mockUpdateBudgetSpend: vi.fn(),
   mockCalculateOpenAICost: vi.fn(),
@@ -59,14 +55,9 @@ vi.mock("@nullspend/cost-engine", () => ({
   }),
 }));
 
-vi.mock("../lib/budget-do-lookup.js", () => ({
-  lookupBudgetsForDO: (...args: unknown[]) => mockLookupBudgetsForDO(...args),
-}));
-
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetCheck: (...args: unknown[]) => mockDoBudgetCheck(...args),
   doBudgetReconcile: (...args: unknown[]) => mockDoBudgetReconcile(...args),
-  doBudgetPopulate: (...args: unknown[]) => mockDoBudgetPopulate(...args),
 }));
 
 vi.mock("../lib/cost-estimator.js", () => ({
@@ -93,7 +84,6 @@ vi.mock("@upstash/redis/cloudflare", () => ({
 }));
 
 import { handleChatCompletions } from "../routes/openai.js";
-import { doLookupCache } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
 
 function makeRequest(
@@ -166,14 +156,12 @@ const streamBody = {
   stream: true,
 };
 
-const doEntity = {
+const checkedEntity = {
   entityType: "api_key",
   entityId: "key-uuid-123",
   maxBudget: 50_000_000,
   spend: 10_000_000,
   policy: "strict_block",
-  resetInterval: null,
-  periodStart: 0,
 };
 
 const sseWithUsage = [
@@ -195,16 +183,12 @@ describe("Streaming + Budget Integration", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     mockWaitUntil.mockClear();
-    doLookupCache.clear();
-    mockLookupBudgetsForDO.mockReset();
     mockDoBudgetCheck.mockReset();
     mockDoBudgetReconcile.mockReset();
-    mockDoBudgetPopulate.mockReset();
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
     mockCalculateOpenAICost.mockReset();
     mockDoBudgetReconcile.mockResolvedValue(undefined);
-    mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
   });
@@ -215,8 +199,7 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming success with usage reconciles with actual cost > 0", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
-    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-stream-1" });
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: true, reservationId: "rsv-stream-1", checkedEntities: [checkedEntity] });
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -242,8 +225,7 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming success with usage triggers doBudgetReconcile", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
-    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-stream-spend" });
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: true, reservationId: "rsv-stream-spend", checkedEntities: [checkedEntity] });
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 75_000 });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -269,8 +251,7 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming success without usage reconciles with actualCost=0", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
-    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-no-usage" });
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: true, reservationId: "rsv-no-usage", checkedEntities: [checkedEntity] });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(makeSSEStream(sseWithoutUsage), {
@@ -295,8 +276,7 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming without usage does NOT call updateBudgetSpend", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
-    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-no-spend" });
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: true, reservationId: "rsv-no-spend", checkedEntities: [checkedEntity] });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(makeSSEStream(sseWithoutUsage), {
@@ -314,8 +294,7 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming with null upstream body returns 502 and reconciles with 0", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
-    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-null-body" });
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: true, reservationId: "rsv-null-body", checkedEntities: [checkedEntity] });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(null, {
@@ -339,8 +318,7 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming cost calculation failure still reconciles with 0 (last-resort)", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
-    mockDoBudgetCheck.mockResolvedValue({ status: "approved", reservationId: "rsv-cost-err" });
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: true, reservationId: "rsv-cost-err", checkedEntities: [checkedEntity] });
     mockCalculateOpenAICost.mockImplementation(() => {
       throw new Error("cost calc explosion");
     });
@@ -364,13 +342,14 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming + budget denied returns 429", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "denied",
+      hasBudgets: true,
       deniedEntity: "api_key:key-uuid-123",
       remaining: 100_000,
       maxBudget: 50_000_000,
       spend: 49_400_000,
+      checkedEntities: [checkedEntity],
     });
 
     const res = await handleChatCompletions(makeRequest(streamBody), makeEnv(), makeCtx(streamBody));
@@ -380,7 +359,7 @@ describe("Streaming + Budget Integration", () => {
   });
 
   it("streaming + no budget configured passes through without budget calls", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: false });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(makeSSEStream(sseWithUsage), {
@@ -393,7 +372,6 @@ describe("Streaming + Budget Integration", () => {
     expect(res.status).toBe(200);
     await res.text();
 
-    expect(mockDoBudgetCheck).not.toHaveBeenCalled();
     expect(mockDoBudgetReconcile).not.toHaveBeenCalled();
     expect(mockUpdateBudgetSpend).not.toHaveBeenCalled();
   });

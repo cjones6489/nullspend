@@ -3,12 +3,17 @@ import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 
 const log = getLogger("proxy-invalidate");
 
+const MAX_RETRIES = 2;
+const RETRY_DELAYS_MS = [1_000, 3_000];
+
 /**
- * Fire-and-forget dashboard→proxy cache invalidation.
+ * Dashboard→proxy cache invalidation with retry.
+ * Retries up to MAX_RETRIES times on failure (network error or non-2xx).
  * No-ops silently when PROXY_INTERNAL_URL is unconfigured (local dev).
+ * Never throws — all errors are logged and swallowed.
  */
 export async function invalidateProxyCache(params: {
-  action: "remove" | "reset_spend";
+  action: "remove" | "reset_spend" | "sync";
   userId: string;
   entityType: string;
   entityId: string;
@@ -17,41 +22,57 @@ export async function invalidateProxyCache(params: {
   const secret = process.env.PROXY_INTERNAL_SECRET;
   if (!url || !secret) return;
 
-  try {
-    const res = await fetch(`${url}/internal/budget/invalidate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${secret}`,
-      },
-      body: JSON.stringify(params),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!res.ok) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(`${url}/internal/budget/invalidate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${secret}`,
+        },
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (res.ok) {
+        log.info(
+          { action: params.action, userId: params.userId,
+            entityType: params.entityType, entityId: params.entityId,
+            ...(attempt > 0 && { retries: attempt }) },
+          "Proxy cache invalidated",
+        );
+        return;
+      }
+
+      // Non-2xx — log and retry
       log.error(
         { status: res.status, action: params.action, userId: params.userId,
-          entityType: params.entityType, entityId: params.entityId },
+          entityType: params.entityType, entityId: params.entityId, attempt },
         "Proxy cache invalidation failed",
       );
-      addSentryBreadcrumb("proxy-invalidate", "Invalidation failed", {
-        status: res.status, action: params.action, userId: params.userId,
-      });
-    } else {
-      log.info(
-        { action: params.action, userId: params.userId,
-          entityType: params.entityType, entityId: params.entityId },
-        "Proxy cache invalidated",
+      if (attempt === MAX_RETRIES) {
+        addSentryBreadcrumb("proxy-invalidate", "Invalidation failed after retries", {
+          status: res.status, action: params.action, userId: params.userId,
+          retries: MAX_RETRIES,
+        });
+        return;
+      }
+    } catch (err) {
+      log.error(
+        { err, action: params.action, userId: params.userId,
+          entityType: params.entityType, entityId: params.entityId, attempt },
+        "Proxy cache invalidation error",
       );
+      if (attempt === MAX_RETRIES) {
+        addSentryBreadcrumb("proxy-invalidate", "Invalidation error after retries", {
+          error: err instanceof Error ? err.message : String(err),
+          action: params.action, userId: params.userId,
+          retries: MAX_RETRIES,
+        });
+        return;
+      }
     }
-  } catch (err) {
-    log.error(
-      { err, action: params.action, userId: params.userId,
-        entityType: params.entityType, entityId: params.entityId },
-      "Proxy cache invalidation error",
-    );
-    addSentryBreadcrumb("proxy-invalidate", "Invalidation error", {
-      error: err instanceof Error ? err.message : String(err),
-      action: params.action, userId: params.userId,
-    });
+
+    // Wait before retry
+    await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
   }
 }

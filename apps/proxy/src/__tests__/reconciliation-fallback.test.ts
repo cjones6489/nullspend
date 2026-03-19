@@ -8,14 +8,9 @@ vi.mock("cloudflare:workers", () => ({
   waitUntil: vi.fn(),
 }));
 
-vi.mock("../lib/budget-do-lookup.js", () => ({
-  lookupBudgetsForDO: vi.fn(),
-}));
-
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetCheck: vi.fn(),
   doBudgetReconcile: vi.fn(),
-  doBudgetPopulate: vi.fn(),
 }));
 
 vi.mock("../lib/budget-spend.js", () => ({

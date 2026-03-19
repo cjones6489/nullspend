@@ -15,14 +15,13 @@ vi.mock("../lib/metrics.js", () => ({
 
 vi.mock("../durable-objects/user-budget.js", () => ({}));
 
-import { doBudgetCheck, doBudgetReconcile, doBudgetPopulate, doBudgetRemove, doBudgetResetSpend } from "../lib/budget-do-client.js";
+import { doBudgetCheck, doBudgetReconcile, doBudgetUpsertEntities, doBudgetRemove, doBudgetResetSpend } from "../lib/budget-do-client.js";
 
 function makeStub(overrides: Record<string, unknown> = {}) {
   return {
     checkAndReserve: vi.fn().mockResolvedValue({ status: "approved", reservationId: "rsv-1" }),
     reconcile: vi.fn().mockResolvedValue({ status: "reconciled" }),
     populateIfEmpty: vi.fn().mockResolvedValue(true),
-    syncBudgets: vi.fn().mockResolvedValue(0),
     removeBudget: vi.fn().mockResolvedValue(undefined),
     resetSpend: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -41,28 +40,30 @@ function makeEnv(stub: ReturnType<typeof makeStub>): Env {
 describe("doBudgetCheck", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("calls stub.checkAndReserve and returns CheckResult", async () => {
+  it("calls stub.checkAndReserve with keyId and returns CheckResult", async () => {
     const stub = makeStub();
     const env = makeEnv(stub);
 
-    const result = await doBudgetCheck(
-      env,
-      "user-1",
-      [{ type: "user", id: "user-1" }],
-      5_000_000,
-    );
+    const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith(
-      [{ type: "user", id: "user-1" }],
-      5_000_000,
-    );
+    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000);
     expect(result).toEqual({ status: "approved", reservationId: "rsv-1" });
+  });
+
+  it("passes null keyId when no API key", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetCheck(env, "user-1", null, 5_000_000);
+
+    expect(stub.checkAndReserve).toHaveBeenCalledWith(null, 5_000_000);
   });
 
   it("returns denied result from DO", async () => {
     const stub = makeStub({
       checkAndReserve: vi.fn().mockResolvedValue({
         status: "denied",
+        hasBudgets: true,
         deniedEntity: "user:user-1",
         remaining: 100,
         maxBudget: 50_000_000,
@@ -71,7 +72,7 @@ describe("doBudgetCheck", () => {
     });
     const env = makeEnv(stub);
 
-    const result = await doBudgetCheck(env, "user-1", [{ type: "user", id: "user-1" }], 5_000_000);
+    const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000);
 
     expect(result.status).toBe("denied");
     expect(result.deniedEntity).toBe("user:user-1");
@@ -84,8 +85,45 @@ describe("doBudgetCheck", () => {
     const env = makeEnv(stub);
 
     await expect(
-      doBudgetCheck(env, "user-1", [{ type: "user", id: "user-1" }], 5_000_000),
+      doBudgetCheck(env, "user-1", "key-1", 5_000_000),
     ).rejects.toThrow("DO unavailable");
+  });
+
+  it("emits do_budget_check metric with status, hasBudgets, durationMs", async () => {
+    const stub = makeStub({
+      checkAndReserve: vi.fn().mockResolvedValue({
+        status: "approved",
+        hasBudgets: true,
+        reservationId: "rsv-1",
+      }),
+    });
+    const env = makeEnv(stub);
+
+    await doBudgetCheck(env, "user-1", "key-1", 5_000_000);
+
+    expect(mockEmitMetric).toHaveBeenCalledWith("do_budget_check", {
+      status: "approved",
+      hasBudgets: true,
+      durationMs: expect.any(Number),
+    });
+  });
+
+  it("emits do_budget_check metric with hasBudgets=false for tracking-only users", async () => {
+    const stub = makeStub({
+      checkAndReserve: vi.fn().mockResolvedValue({
+        status: "approved",
+        hasBudgets: false,
+      }),
+    });
+    const env = makeEnv(stub);
+
+    await doBudgetCheck(env, "user-1", null, 5_000_000);
+
+    expect(mockEmitMetric).toHaveBeenCalledWith("do_budget_check", {
+      status: "approved",
+      hasBudgets: false,
+      durationMs: expect.any(Number),
+    });
   });
 });
 
@@ -384,14 +422,14 @@ describe("doBudgetResetSpend", () => {
   });
 });
 
-describe("doBudgetPopulate", () => {
+describe("doBudgetUpsertEntities", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("calls stub.syncBudgets with mapped entity array", async () => {
+  it("calls populateIfEmpty for each entity", async () => {
     const stub = makeStub();
     const env = makeEnv(stub);
 
-    await doBudgetPopulate(env, "user-1", [
+    await doBudgetUpsertEntities(env, "user-1", [
       {
         entityType: "user",
         entityId: "user-1",
@@ -401,80 +439,33 @@ describe("doBudgetPopulate", () => {
         resetInterval: "monthly",
         periodStart: 1_700_000_000_000,
       },
-      {
-        entityType: "api_key",
-        entityId: "key-1",
-        maxBudget: 10_000_000,
-        spend: 0,
-        policy: "warn",
-        resetInterval: null,
-        periodStart: 0,
-      },
     ]);
 
-    expect(stub.syncBudgets).toHaveBeenCalledTimes(1);
-    expect(stub.syncBudgets).toHaveBeenCalledWith([
-      {
-        entityType: "user",
-        entityId: "user-1",
-        maxBudget: 50_000_000,
-        spend: 10_000_000,
-        policy: "strict_block",
-        resetInterval: "monthly",
-        periodStart: 1_700_000_000_000,
-      },
-      {
-        entityType: "api_key",
-        entityId: "key-1",
-        maxBudget: 10_000_000,
-        spend: 0,
-        policy: "warn",
-        resetInterval: null,
-        periodStart: 0,
-      },
-    ]);
-  });
-
-  it("calls stub.syncBudgets with empty array", async () => {
-    const stub = makeStub();
-    const env = makeEnv(stub);
-
-    await doBudgetPopulate(env, "user-1", []);
-
-    expect(stub.syncBudgets).toHaveBeenCalledWith([]);
-  });
-
-  it("emits do_ghost_budget_purge metric when purged > 0", async () => {
-    const stub = makeStub({ syncBudgets: vi.fn().mockResolvedValue(3) });
-    const env = makeEnv(stub);
-
-    await doBudgetPopulate(env, "user-1", []);
-
-    expect(mockEmitMetric).toHaveBeenCalledWith("do_ghost_budget_purge", {
-      userId: "user-1",
-      purged: 3,
-    });
-  });
-
-  it("does not emit metric when purged = 0", async () => {
-    const stub = makeStub({ syncBudgets: vi.fn().mockResolvedValue(0) });
-    const env = makeEnv(stub);
-
-    await doBudgetPopulate(env, "user-1", [
-      {
-        entityType: "user",
-        entityId: "user-1",
-        maxBudget: 50_000_000,
-        spend: 0,
-        policy: "strict_block",
-        resetInterval: null,
-        periodStart: 0,
-      },
-    ]);
-
-    expect(mockEmitMetric).not.toHaveBeenCalledWith(
-      "do_ghost_budget_purge",
-      expect.anything(),
+    expect(stub.populateIfEmpty).toHaveBeenCalledTimes(1);
+    expect(stub.populateIfEmpty).toHaveBeenCalledWith(
+      "user", "user-1", 50_000_000, 10_000_000,
+      "strict_block", "monthly", 1_700_000_000_000,
     );
+  });
+
+  it("handles multiple entities", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetUpsertEntities(env, "user-1", [
+      { entityType: "user", entityId: "user-1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
+      { entityType: "api_key", entityId: "key-1", maxBudget: 10_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
+    ]);
+
+    expect(stub.populateIfEmpty).toHaveBeenCalledTimes(2);
+  });
+
+  it("handles empty entity list", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetUpsertEntities(env, "user-1", []);
+
+    expect(stub.populateIfEmpty).not.toHaveBeenCalled();
   });
 });

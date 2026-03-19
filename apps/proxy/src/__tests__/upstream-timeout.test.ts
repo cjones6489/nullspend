@@ -17,19 +17,15 @@ beforeAll(() => {
 
 const {
   mockWaitUntil,
-  mockLookupBudgetsForDO,
   mockDoBudgetCheck,
   mockDoBudgetReconcile,
-  mockDoBudgetPopulate,
   mockEstimateMaxCost,
   mockUpdateBudgetSpend,
   mockCalculateOpenAICost,
 } = vi.hoisted(() => ({
   mockWaitUntil: vi.fn((promise: Promise<unknown>) => { promise.catch(() => {}); }),
-  mockLookupBudgetsForDO: vi.fn(),
   mockDoBudgetCheck: vi.fn(),
   mockDoBudgetReconcile: vi.fn(),
-  mockDoBudgetPopulate: vi.fn(),
   mockEstimateMaxCost: vi.fn(),
   mockUpdateBudgetSpend: vi.fn(),
   mockCalculateOpenAICost: vi.fn(),
@@ -50,14 +46,9 @@ vi.mock("@nullspend/cost-engine", () => ({
   }),
 }));
 
-vi.mock("../lib/budget-do-lookup.js", () => ({
-  lookupBudgetsForDO: (...args: unknown[]) => mockLookupBudgetsForDO(...args),
-}));
-
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetCheck: (...args: unknown[]) => mockDoBudgetCheck(...args),
   doBudgetReconcile: (...args: unknown[]) => mockDoBudgetReconcile(...args),
-  doBudgetPopulate: (...args: unknown[]) => mockDoBudgetPopulate(...args),
 }));
 
 vi.mock("../lib/cost-estimator.js", () => ({
@@ -88,7 +79,6 @@ vi.mock("../lib/sanitize-upstream-error.js", () => ({
 }));
 
 import { handleChatCompletions } from "../routes/openai.js";
-import { doLookupCache } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
 
 // ---------------------------------------------------------------------------
@@ -141,14 +131,12 @@ async function drainWaitUntil() {
 
 const defaultBody = { model: "gpt-4o", messages: [{ role: "user", content: "hi" }] };
 
-const doEntity = {
+const checkedEntity = {
   entityType: "api_key",
   entityId: "key-uuid-123",
   maxBudget: 50_000_000,
   spend: 10_000_000,
   policy: "strict_block",
-  resetInterval: null,
-  periodStart: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -160,9 +148,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    doLookupCache.clear();
     mockDoBudgetReconcile.mockResolvedValue(undefined);
-    mockDoBudgetPopulate.mockResolvedValue(undefined);
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
@@ -173,10 +159,11 @@ describe("upstream timeout / error — reservation cleanup", () => {
   });
 
   it("upstream fetch timeout triggers reservation cleanup", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv-timeout",
+      checkedEntities: [checkedEntity],
     });
 
     globalThis.fetch = vi.fn().mockRejectedValue(
@@ -200,10 +187,11 @@ describe("upstream timeout / error — reservation cleanup", () => {
   });
 
   it("upstream network error triggers reservation cleanup", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv-timeout",
+      checkedEntities: [checkedEntity],
     });
 
     globalThis.fetch = vi.fn().mockRejectedValue(
@@ -227,7 +215,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
   });
 
   it("no reservation — timeout does NOT attempt reconciliation", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: false });
 
     globalThis.fetch = vi.fn().mockRejectedValue(
       new DOMException("The operation was aborted", "AbortError"),
@@ -243,10 +231,11 @@ describe("upstream timeout / error — reservation cleanup", () => {
   });
 
   it("upstream 4xx error — reservation reconciled with cost=0", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv-4xx",
+      checkedEntities: [checkedEntity],
     });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -271,10 +260,11 @@ describe("upstream timeout / error — reservation cleanup", () => {
   });
 
   it("upstream 5xx error — reservation reconciled with cost=0", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv-5xx",
+      checkedEntities: [checkedEntity],
     });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -299,10 +289,11 @@ describe("upstream timeout / error — reservation cleanup", () => {
   });
 
   it("successful response — reservation reconciled with actual cost", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv-success",
+      checkedEntities: [checkedEntity],
     });
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 75_000 });
 

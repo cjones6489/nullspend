@@ -9,15 +9,23 @@ const PG_RETRY_DELAYS = [200, 800];
 /**
  * Check budget via the UserBudgetDO.
  * Throws on DO error (fail-closed).
+ * Emits `do_budget_check` metric with latency, status, and hasBudgets.
  */
 export async function doBudgetCheck(
   env: Env,
   userId: string,
-  entities: Array<{ type: string; id: string }>,
+  keyId: string | null,
   estimateMicrodollars: number,
 ): Promise<CheckResult> {
+  const startMs = Date.now();
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
-  return await stub.checkAndReserve(entities, estimateMicrodollars);
+  const result = await stub.checkAndReserve(keyId, estimateMicrodollars);
+  emitMetric("do_budget_check", {
+    status: result.status,
+    hasBudgets: result.hasBudgets,
+    durationMs: Date.now() - startMs,
+  });
+  return result;
 }
 
 /**
@@ -134,28 +142,21 @@ export async function doBudgetResetSpend(
 }
 
 /**
- * Sync all DO budget entities from Postgres via a single `syncBudgets` RPC.
- * UPSERTs config fields and purges ghost rows (budgets deleted from Postgres
- * but still present in the DO). Emits a metric when ghost rows are purged.
+ * Upsert individual budget entities into the DO via `populateIfEmpty`.
+ * Does NOT purge other entities — safe for single-entity mutations
+ * (budget create/update from dashboard POST).
  */
-export async function doBudgetPopulate(
+export async function doBudgetUpsertEntities(
   env: Env,
   userId: string,
   entities: DOBudgetEntity[],
 ): Promise<void> {
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
-  const purged = await stub.syncBudgets(
-    entities.map((e) => ({
-      entityType: e.entityType,
-      entityId: e.entityId,
-      maxBudget: e.maxBudget,
-      spend: e.spend,
-      policy: e.policy,
-      resetInterval: e.resetInterval,
-      periodStart: e.periodStart,
-    })),
-  );
-  if (purged > 0) {
-    emitMetric("do_ghost_budget_purge", { userId, purged });
+  for (const e of entities) {
+    await stub.populateIfEmpty(
+      e.entityType, e.entityId, e.maxBudget, e.spend,
+      e.policy, e.resetInterval, e.periodStart,
+    );
   }
 }
+

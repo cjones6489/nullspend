@@ -13,14 +13,24 @@ export interface BudgetRow {
   period_start: number;
 }
 
+export interface CheckedEntity {
+  entityType: string;
+  entityId: string;
+  maxBudget: number;
+  spend: number;
+  policy: string;
+}
+
 export interface CheckResult {
   status: "approved" | "denied";
+  hasBudgets: boolean;
   reservationId?: string;
   deniedEntity?: string;
   remaining?: number;
   maxBudget?: number;
   spend?: number;
   periodResets?: Array<{ entityType: string; entityId: string; newPeriodStart: number }>;
+  checkedEntities?: CheckedEntity[];
 }
 
 export interface ReconcileResult {
@@ -136,63 +146,43 @@ export class UserBudgetDO extends DurableObject {
   // ── RPC Methods ────────────────────────────────────────────────────
 
   /**
-   * Atomic budget check + reservation across all entity budgets.
+   * Atomic budget check + reservation.
+   * Queries SQLite for matching budgets (user-level + keyId-specific api_key).
    * Handles inline period resets. Only strict_block denies.
    */
   async checkAndReserve(
-    entities: Array<{ type: string; id: string }>,
+    keyId: string | null,
     estimateMicrodollars: number,
     reservationTtlMs: number = 30_000,
   ): Promise<CheckResult> {
     const reservationId = crypto.randomUUID();
     const now = Date.now();
 
-    let result: CheckResult = { status: "approved" };
+    let result: CheckResult = { status: "approved", hasBudgets: false };
     let reserved = false;
     const periodResets: Array<{ entityType: string; entityId: string; newPeriodStart: number }> = [];
+    const checkedEntities: CheckedEntity[] = [];
 
     this.ctx.storage.transactionSync(() => {
-      // Phase 1: Build the full entity list from caller + DO storage.
-      // The caller may pass a stale entity list (from a cached DO lookup).
-      // Always also check all budget rows in SQLite to catch newly synced budgets.
-      const seen = new Set<string>();
-      const allEntities: Array<{ type: string; id: string }> = [];
+      // Phase 1: Query matching budgets from SQLite
+      const rows: BudgetRow[] = keyId
+        ? this.ctx.storage.sql
+            .exec<BudgetRow>(
+              "SELECT * FROM budgets WHERE entity_type = 'user' OR (entity_type = 'api_key' AND entity_id = ?)",
+              keyId,
+            )
+            .toArray()
+        : this.ctx.storage.sql
+            .exec<BudgetRow>("SELECT * FROM budgets WHERE entity_type = 'user'")
+            .toArray();
 
-      for (const entity of entities) {
-        const key = `${entity.type}:${entity.id}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          allEntities.push(entity);
-        }
+      if (rows.length === 0) {
+        result = { status: "approved", hasBudgets: false };
+        return;
       }
 
-      const storedRows = this.ctx.storage.sql
-        .exec<BudgetRow>("SELECT * FROM budgets")
-        .toArray();
-      for (const row of storedRows) {
-        const key = `${row.entity_type}:${row.entity_id}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          allEntities.push({ type: row.entity_type, id: row.entity_id });
-        }
-      }
-
-      // Phase 2: Check each entity's budget
-      const budgetedEntities: Array<{ type: string; id: string }> = [];
-
-      for (const entity of allEntities) {
-        const row = this.ctx.storage.sql
-          .exec<BudgetRow>(
-            "SELECT * FROM budgets WHERE entity_type = ? AND entity_id = ?",
-            entity.type,
-            entity.id,
-          )
-          .toArray()[0];
-
-        if (!row) continue;
-        budgetedEntities.push(entity);
-
-        // Inline budget period reset
+      // Phase 1.5: Period resets + collect checkedEntities
+      for (const row of rows) {
         if (row.reset_interval && row.period_start > 0) {
           const newPeriodStart = currentPeriodStart(
             row.reset_interval,
@@ -204,16 +194,27 @@ export class UserBudgetDO extends DurableObject {
               `UPDATE budgets SET spend = 0, reserved = 0, period_start = ?
                WHERE entity_type = ? AND entity_id = ?`,
               newPeriodStart,
-              entity.type,
-              entity.id,
+              row.entity_type,
+              row.entity_id,
             );
             row.spend = 0;
             row.reserved = 0;
             row.period_start = newPeriodStart;
-            periodResets.push({ entityType: entity.type, entityId: entity.id, newPeriodStart });
+            periodResets.push({ entityType: row.entity_type, entityId: row.entity_id, newPeriodStart });
           }
         }
 
+        checkedEntities.push({
+          entityType: row.entity_type,
+          entityId: row.entity_id,
+          maxBudget: row.max_budget,
+          spend: row.spend,
+          policy: row.policy,
+        });
+      }
+
+      // Phase 2: Check each entity's budget
+      for (const row of rows) {
         const remaining = row.max_budget - row.spend - row.reserved;
 
         if (
@@ -222,29 +223,28 @@ export class UserBudgetDO extends DurableObject {
         ) {
           result = {
             status: "denied",
-            deniedEntity: `${entity.type}:${entity.id}`,
+            hasBudgets: true,
+            deniedEntity: `${row.entity_type}:${row.entity_id}`,
             remaining,
             maxBudget: row.max_budget,
             spend: row.spend,
           };
           console.log(
-            `[UserBudgetDO] denied: entity=${entity.type}:${entity.id} remaining=${remaining} estimate=${estimateMicrodollars}`,
+            `[UserBudgetDO] denied: entity=${row.entity_type}:${row.entity_id} remaining=${remaining} estimate=${estimateMicrodollars}`,
           );
           return; // Exit transactionSync — no reservation made
         }
       }
 
       // Phase 3: Reserve across all entities that have budgets
-      if (budgetedEntities.length === 0) return;
-
       const entityKeys: string[] = [];
-      for (const entity of budgetedEntities) {
-        const key = `${entity.type}:${entity.id}`;
+      for (const row of rows) {
+        const key = `${row.entity_type}:${row.entity_id}`;
         this.ctx.storage.sql.exec(
           "UPDATE budgets SET reserved = reserved + ? WHERE entity_type = ? AND entity_id = ?",
           estimateMicrodollars,
-          entity.type,
-          entity.id,
+          row.entity_type,
+          row.entity_id,
         );
         entityKeys.push(key);
       }
@@ -260,13 +260,16 @@ export class UserBudgetDO extends DurableObject {
         now + reservationTtlMs,
       );
 
-      result = { status: "approved", reservationId };
+      result = { status: "approved", hasBudgets: true, reservationId };
       reserved = true;
     });
 
-    // Attach period resets to result (declared outside transactionSync to survive early returns)
+    // Attach period resets and checkedEntities to result
     if (periodResets.length > 0) {
       result.periodResets = periodResets;
+    }
+    if (checkedEntities.length > 0) {
+      result.checkedEntities = checkedEntities;
     }
 
     // Update in-memory cache
@@ -454,62 +457,6 @@ export class UserBudgetDO extends DurableObject {
       );
     });
     this.loadBudgets();
-  }
-
-  /**
-   * Atomically sync all budget entities from Postgres into the DO.
-   * UPSERTs config fields (max_budget, policy, reset_interval) and purges
-   * any DO rows not present in the Postgres set (ghost budget cleanup).
-   * Returns the number of ghost rows purged.
-   */
-  async syncBudgets(
-    entities: Array<{
-      entityType: string; entityId: string; maxBudget: number;
-      spend: number; policy: string; resetInterval: string | null; periodStart: number;
-    }>,
-  ): Promise<number> {
-    let purged = 0;
-    this.ctx.storage.transactionSync(() => {
-      // Phase 1: UPSERT all entities from Postgres
-      for (const e of entities) {
-        this.ctx.storage.sql.exec(
-          `INSERT INTO budgets
-           (entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start)
-           VALUES (?, ?, ?, ?, 0, ?, ?, ?)
-           ON CONFLICT(entity_type, entity_id) DO UPDATE SET
-             max_budget = excluded.max_budget,
-             policy = excluded.policy,
-             reset_interval = excluded.reset_interval`,
-          e.entityType, e.entityId, e.maxBudget, e.spend, e.policy, e.resetInterval, e.periodStart,
-        );
-      }
-
-      // Phase 2: Purge ghost rows not in the Postgres set
-      const allRows = this.ctx.storage.sql
-        .exec<{ entity_type: string; entity_id: string }>(
-          "SELECT entity_type, entity_id FROM budgets",
-        )
-        .toArray();
-
-      const validKeys = new Set(entities.map((e) => `${e.entityType}:${e.entityId}`));
-      for (const row of allRows) {
-        const key = `${row.entity_type}:${row.entity_id}`;
-        if (!validKeys.has(key)) {
-          this.ctx.storage.sql.exec(
-            "DELETE FROM budgets WHERE entity_type = ? AND entity_id = ?",
-            row.entity_type, row.entity_id,
-          );
-          purged++;
-        }
-      }
-    });
-
-    if (purged > 0) {
-      console.log(`[UserBudgetDO] syncBudgets: purged ${purged} ghost budget(s)`);
-    }
-
-    this.loadBudgets();
-    return purged;
   }
 
   /** Reset spend for a budget entity (called via internal invalidation endpoint). */

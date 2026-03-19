@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { GET } from "@/app/api/budgets/route";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
+import { GET, POST } from "@/app/api/budgets/route";
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
@@ -16,6 +17,32 @@ vi.mock("@/lib/observability/sentry", () => ({
   captureExceptionWithContext: vi.fn(),
   addSentryBreadcrumb: vi.fn(),
 }));
+
+vi.mock("@/lib/proxy-invalidate", () => ({
+  invalidateProxyCache: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/stripe/subscription", () => ({
+  getSubscriptionByUserId: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/stripe/tiers", () => ({
+  getTierForUser: vi.fn().mockReturnValue("free"),
+  TIERS: {
+    free: { label: "Free", spendCapMicrodollars: 100_000_000_000, maxBudgets: Infinity },
+    pro: { label: "Pro", spendCapMicrodollars: 1_000_000_000_000, maxBudgets: Infinity },
+  },
+}));
+
+vi.mock("@/lib/utils/http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/utils/http")>();
+  return {
+    ...actual,
+    readJsonBody: vi.fn(),
+  };
+});
+
+const mockedInvalidateProxyCache = vi.mocked(invalidateProxyCache);
 
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 const mockedGetDb = vi.mocked(getDb);
@@ -184,5 +211,58 @@ describe("GET /api/budgets", () => {
     const response = await GET(makeRequest());
     const json = await response.json();
     expect(json.data).toHaveLength(3);
+  });
+});
+
+describe("POST /api/budgets — proxy invalidation", () => {
+  const TEST_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedResolveSessionUserId.mockResolvedValue(TEST_USER_ID);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("calls invalidateProxyCache with sync action after budget creation", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: TEST_USER_ID,
+      maxBudgetMicrodollars: 10_000_000,
+    });
+
+    // Mock DB chain: verifyEntityOwnership skipped for user type
+    // existingForEntity (already exists → skip count check) + insert/upsert
+    const budgetRow = makeBudgetRow({ entityId: TEST_USER_ID });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]); // existingForEntity returns 1 row
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    expect(mockedInvalidateProxyCache).toHaveBeenCalledWith({
+      action: "sync",
+      userId: TEST_USER_ID,
+      entityType: "user",
+      entityId: TEST_USER_ID,
+    });
   });
 });

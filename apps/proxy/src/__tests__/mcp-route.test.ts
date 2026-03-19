@@ -29,11 +29,9 @@ vi.mock("../lib/budget-do-lookup.js", () => ({
 
 const mockDoBudgetCheck = vi.fn();
 const mockDoBudgetReconcile = vi.fn();
-const mockDoBudgetPopulate = vi.fn();
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetCheck: (...args: unknown[]) => mockDoBudgetCheck(...args),
   doBudgetReconcile: (...args: unknown[]) => mockDoBudgetReconcile(...args),
-  doBudgetPopulate: (...args: unknown[]) => mockDoBudgetPopulate(...args),
 }));
 
 vi.mock("../lib/budget-spend.js", () => ({
@@ -113,7 +111,6 @@ describe("handleMcpBudgetCheck", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockLookupBudgetsForDO.mockReset();
     mockDoBudgetCheck.mockReset();
-    mockDoBudgetPopulate.mockReset().mockResolvedValue(undefined);
     mockDoBudgetReconcile.mockReset().mockResolvedValue(undefined);
   });
 
@@ -201,7 +198,7 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns allowed: true when no budget entities exist", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([]);
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: false });
 
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
@@ -218,10 +215,11 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns allowed: true with reservationId when budget check passes", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
+      hasBudgets: true,
       reservationId: "rsv-123",
+      checkedEntities: [{ entityType: doEntity.entityType, entityId: doEntity.entityId, maxBudget: doEntity.maxBudget, spend: doEntity.spend, policy: doEntity.policy }],
     });
 
     const request = makeRequest("/v1/mcp/budget/check", {});
@@ -240,17 +238,14 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns denied when budget is exceeded", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([{
-      ...doEntity,
-      maxBudget: 100,
-      spend: 90,
-    }]);
     mockDoBudgetCheck.mockResolvedValue({
       status: "denied",
+      hasBudgets: true,
       deniedEntity: "user:user-1",
       remaining: 10,
       maxBudget: 100,
       spend: 90,
+      checkedEntities: [{ entityType: "user", entityId: "user-1", maxBudget: 100, spend: 90, policy: "strict_block" }],
     });
 
     const request = makeRequest("/v1/mcp/budget/check", {});
@@ -270,7 +265,7 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns 503 when budget lookup fails", async () => {
-    mockLookupBudgetsForDO.mockRejectedValue(new Error("DB down"));
+    mockDoBudgetCheck.mockRejectedValue(new Error("DO down"));
 
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
@@ -287,7 +282,6 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns 503 when doBudgetCheck fails", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([doEntity]);
     mockDoBudgetCheck.mockRejectedValue(new Error("DO unavailable"));
 
     const request = makeRequest("/v1/mcp/budget/check", {});
@@ -302,8 +296,8 @@ describe("handleMcpBudgetCheck", () => {
     expect(response.status).toBe(503);
   });
 
-  it("passes userId and keyId from auth result to lookupBudgetsForDO", async () => {
-    mockLookupBudgetsForDO.mockResolvedValue([]);
+  it("passes userId and keyId from auth result to doBudgetCheck", async () => {
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: false });
 
     const request = makeRequest("/v1/mcp/budget/check", {});
     const env = makeEnv();
@@ -314,9 +308,11 @@ describe("handleMcpBudgetCheck", () => {
     );
     await handleMcpBudgetCheck(request, env, ctx);
 
-    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith(
-      expect.any(String),
-      { keyId: "key-xyz", userId: "user-abc" },
+    expect(mockDoBudgetCheck).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-abc",
+      "key-xyz",
+      0,
     );
   });
 });

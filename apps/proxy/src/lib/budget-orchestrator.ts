@@ -1,47 +1,9 @@
 import { waitUntil } from "cloudflare:workers";
 import type { RequestContext } from "./context.js";
 import type { BudgetEntity } from "./budget-do-lookup.js";
-import { lookupBudgetsForDO, type DOBudgetEntity } from "./budget-do-lookup.js";
-import { doBudgetCheck, doBudgetReconcile, doBudgetPopulate } from "./budget-do-client.js";
+import { doBudgetCheck, doBudgetReconcile } from "./budget-do-client.js";
 import { resetBudgetPeriod } from "./budget-spend.js";
 import { enqueueReconciliation } from "./reconciliation-queue.js";
-
-// ---------------------------------------------------------------------------
-// DO lookup cache (module-level, persists across requests in same isolate)
-// ---------------------------------------------------------------------------
-
-const DO_LOOKUP_TTL_MS = 60_000;
-const DO_LOOKUP_MAX_SIZE = 256;
-
-interface DOLookupCacheEntry {
-  entities: DOBudgetEntity[];
-  expiresAt: number;
-}
-
-/** @internal Exported for testing only. */
-export const doLookupCache = new Map<string, DOLookupCacheEntry>();
-
-function evictOldestIfNeeded<V>(cache: Map<string, V>, maxSize: number): void {
-  if (cache.size <= maxSize) return;
-  const oldest = cache.keys().next().value;
-  if (oldest !== undefined) cache.delete(oldest);
-}
-
-function doLookupCacheKey(identity: { keyId: string | null; userId: string | null }): string {
-  return `${identity.userId ?? ""}:${identity.keyId ?? ""}`;
-}
-
-/** Evict all doLookupCache entries for a given userId. */
-export function invalidateDoLookupCacheForUser(userId: string): number {
-  let evicted = 0;
-  for (const key of [...doLookupCache.keys()]) {
-    if (key.startsWith(`${userId}:`)) {
-      doLookupCache.delete(key);
-      evicted++;
-    }
-  }
-  return evicted;
-}
 
 export interface BudgetCheckOutcome {
   status: "approved" | "denied" | "skipped";
@@ -64,8 +26,7 @@ export async function checkBudget(
   ctx: RequestContext,
   estimateMicrodollars: number,
 ): Promise<BudgetCheckOutcome> {
-  const identity = { keyId: ctx.auth.keyId, userId: ctx.auth.userId };
-  return checkBudgetDO(env, ctx.connectionString, identity, estimateMicrodollars);
+  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.auth.userId, estimateMicrodollars);
 }
 
 // ---------------------------------------------------------------------------
@@ -146,50 +107,26 @@ export async function reconcileBudgetQueued(
 }
 
 // ---------------------------------------------------------------------------
-// Internal: DO path
+// Internal: DO-first path — single RPC, no Postgres on hot path
 // ---------------------------------------------------------------------------
 
 async function checkBudgetDO(
   env: Env,
   connectionString: string,
-  identity: { keyId: string | null; userId: string | null },
+  keyId: string | null,
+  userId: string | null,
   estimateMicrodollars: number,
 ): Promise<BudgetCheckOutcome> {
-  const userId = identity.userId;
   if (!userId) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
 
-  // Cache-first lookup: skip Postgres + DO populate on cache hit
-  const cacheKey = doLookupCacheKey(identity);
-  const now = Date.now();
-  const cached = doLookupCache.get(cacheKey);
+  // Single DO RPC — no Postgres lookup, no cache
+  const checkResult = await doBudgetCheck(env, userId, keyId, estimateMicrodollars);
 
-  let doEntities: DOBudgetEntity[];
-  if (cached && cached.expiresAt > now) {
-    doEntities = cached.entities;
-  } else {
-    doEntities = await lookupBudgetsForDO(connectionString, identity);
-
-    // Only cache non-empty results — empty results must re-query on every
-    // request so that newly-created budgets take effect immediately rather
-    // than being invisible for up to 60s (fails-open).
-    if (doEntities.length > 0) {
-      doLookupCache.set(cacheKey, { entities: doEntities, expiresAt: now + DO_LOOKUP_TTL_MS });
-      evictOldestIfNeeded(doLookupCache, DO_LOOKUP_MAX_SIZE);
-    }
-    // Always sync to the DO — even when Postgres returns empty — so that
-    // ghost budget rows (deleted from Postgres but retained in DO) get purged.
-    await doBudgetPopulate(env, userId, doEntities);
-  }
-
-  if (doEntities.length === 0) {
+  if (!checkResult.hasBudgets) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
-
-  // Check budget
-  const entities = doEntities.map((e) => ({ type: e.entityType, id: e.entityId }));
-  const checkResult = await doBudgetCheck(env, userId, entities, estimateMicrodollars);
 
   // Write back period resets to Postgres (registered with waitUntil to survive Worker lifecycle)
   if (checkResult.periodResets?.length && connectionString) {
@@ -200,8 +137,8 @@ async function checkBudgetDO(
     );
   }
 
-  // Build budgetEntities for webhook payloads + reconciliation
-  const budgetEntities: BudgetEntity[] = doEntities.map((e) => ({
+  // Build budgetEntities from DO response
+  const budgetEntities: BudgetEntity[] = (checkResult.checkedEntities ?? []).map((e) => ({
     entityKey: `{budget}:${e.entityType}:${e.entityId}`,
     entityType: e.entityType,
     entityId: e.entityId,

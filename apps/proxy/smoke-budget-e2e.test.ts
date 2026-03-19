@@ -81,13 +81,9 @@ describe("End-to-end budget enforcement", () => {
     `;
 
     // Force Postgres→DO sync via internal endpoint.
-    // This bypasses all Worker isolate caches and talks directly to the DO,
-    // which is a single global instance. The DO will have the correct budget.
+    // This calls populateIfEmpty on the DO, upserting the budget entity.
+    // Under DO-first architecture, no Worker-level cache to invalidate.
     await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
-
-    // Invalidate DO lookup cache so the Worker re-queries Postgres for the
-    // entity list on the next request (picking up the user budget).
-    await invalidateBudget(userId, "user", userId);
   }
 
   /** Remove any existing budget so the user is non-budgeted */

@@ -1,19 +1,15 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 
-const { mockDoBudgetRemove, mockDoBudgetResetSpend, mockInvalidateCache, mockEmitMetric } = vi.hoisted(() => ({
+const { mockDoBudgetRemove, mockDoBudgetResetSpend, mockEmitMetric } = vi.hoisted(() => ({
   mockDoBudgetRemove: vi.fn(),
   mockDoBudgetResetSpend: vi.fn(),
-  mockInvalidateCache: vi.fn().mockReturnValue(1),
   mockEmitMetric: vi.fn(),
 }));
 
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetRemove: (...args: unknown[]) => mockDoBudgetRemove(...args),
   doBudgetResetSpend: (...args: unknown[]) => mockDoBudgetResetSpend(...args),
-}));
-
-vi.mock("../lib/budget-orchestrator.js", () => ({
-  invalidateDoLookupCacheForUser: (...args: unknown[]) => mockInvalidateCache(...args),
+  doBudgetUpsertEntities: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../lib/metrics.js", () => ({
@@ -198,7 +194,6 @@ describe("handleBudgetInvalidation", () => {
     expect(mockDoBudgetRemove).toHaveBeenCalledWith(
       expect.anything(), "user-1", "api_key", "key-1",
     );
-    expect(mockInvalidateCache).toHaveBeenCalledWith("user-1");
     expect(mockEmitMetric).toHaveBeenCalledWith("budget_invalidation", expect.objectContaining({
       action: "remove",
       status: "ok",
