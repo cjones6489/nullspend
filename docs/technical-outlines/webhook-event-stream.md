@@ -142,9 +142,13 @@ type WebhookEventType =
   | "budget.exceeded"             // request blocked by budget
 
   // Enforcement events
-  | "request.blocked"             // any enforcement check denied request
-  | "request.blocked.budget"      // specifically budget denial
-  | "request.blocked.policy"      // specifically policy denial (future)
+  | "request.blocked"             // enforcement check denied request (reason in data.object.reason)
+  | "budget.reset"                // budget period reset
+  | "action.created"              // HITL action created
+  | "action.approved"             // HITL action approved
+  | "action.rejected"             // HITL action rejected
+  | "action.expired"              // HITL action expired
+  | "test.ping"                   // test webhook event
 ```
 
 Customers configure which event types each endpoint receives. Empty array

@@ -1,16 +1,26 @@
+// SYNC: Dashboard WebhookEvent interface in lib/webhooks/dispatch.ts must match this shape
+
+export const CURRENT_API_VERSION = "2026-04-01";
+
 export type WebhookEventType =
   | "cost_event.created"
   | "budget.threshold.warning"
   | "budget.threshold.critical"
   | "budget.exceeded"
+  | "budget.reset"
   | "request.blocked"
-  | "request.blocked.budget";
+  | "action.created"
+  | "action.approved"
+  | "action.rejected"
+  | "action.expired"
+  | "test.ping";
 
 export interface WebhookEvent {
   id: string;
   type: WebhookEventType;
-  created_at: string;
-  data: Record<string, unknown>;
+  api_version: string;
+  created_at: number;
+  data: { object: Record<string, unknown> };
 }
 
 interface CostEventData {
@@ -35,27 +45,33 @@ interface CostEventData {
 
 export function buildCostEventPayload(
   costEvent: CostEventData,
+  apiVersion: string = CURRENT_API_VERSION,
 ): WebhookEvent {
   return {
     id: `evt_${crypto.randomUUID()}`,
     type: "cost_event.created",
-    created_at: new Date().toISOString(),
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
     data: {
-      request_id: costEvent.requestId,
-      event_type: costEvent.eventType,
-      provider: costEvent.provider,
-      model: costEvent.model,
-      input_tokens: costEvent.inputTokens,
-      output_tokens: costEvent.outputTokens,
-      cached_input_tokens: costEvent.cachedInputTokens,
-      cost_microdollars: costEvent.costMicrodollars,
-      duration_ms: costEvent.durationMs,
-      upstream_duration_ms: costEvent.upstreamDurationMs ?? null,
-      session_id: costEvent.sessionId ?? null,
-      tool_calls_requested: costEvent.toolCallsRequested ?? null,
-      tool_definition_tokens: costEvent.toolDefinitionTokens ?? 0,
-      api_key_id: costEvent.apiKeyId,
-      created_at: costEvent.createdAt ?? new Date().toISOString(),
+      object: {
+        request_id: costEvent.requestId,
+        event_type: costEvent.eventType,
+        provider: costEvent.provider,
+        model: costEvent.model,
+        input_tokens: costEvent.inputTokens,
+        output_tokens: costEvent.outputTokens,
+        cached_input_tokens: costEvent.cachedInputTokens,
+        cost_microdollars: costEvent.costMicrodollars,
+        duration_ms: costEvent.durationMs,
+        upstream_duration_ms: costEvent.upstreamDurationMs ?? null,
+        session_id: costEvent.sessionId ?? null,
+        tool_name: costEvent.toolName ?? null,
+        tool_server: costEvent.toolServer ?? null,
+        tool_calls_requested: costEvent.toolCallsRequested ?? null,
+        tool_definition_tokens: costEvent.toolDefinitionTokens ?? 0,
+        api_key_id: costEvent.apiKeyId,
+        created_at: costEvent.createdAt ?? new Date().toISOString(),
+      },
     },
   };
 }
@@ -72,20 +88,24 @@ interface BudgetExceededData {
 
 export function buildBudgetExceededPayload(
   data: BudgetExceededData,
+  apiVersion: string = CURRENT_API_VERSION,
 ): WebhookEvent {
   return {
     id: `evt_${crypto.randomUUID()}`,
     type: "budget.exceeded",
-    created_at: new Date().toISOString(),
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
     data: {
-      budget_entity_type: data.budgetEntityType,
-      budget_entity_id: data.budgetEntityId,
-      budget_limit_microdollars: data.budgetLimitMicrodollars,
-      budget_spend_microdollars: data.budgetSpendMicrodollars,
-      estimated_request_cost_microdollars: data.estimatedRequestCostMicrodollars,
-      model: data.model,
-      provider: data.provider,
-      blocked_at: new Date().toISOString(),
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        budget_limit_microdollars: data.budgetLimitMicrodollars,
+        budget_spend_microdollars: data.budgetSpendMicrodollars,
+        estimated_request_cost_microdollars: data.estimatedRequestCostMicrodollars,
+        model: data.model,
+        provider: data.provider,
+        blocked_at: new Date().toISOString(),
+      },
     },
   };
 }
@@ -101,6 +121,7 @@ interface ThresholdData {
 
 export function buildThresholdPayload(
   data: ThresholdData,
+  apiVersion: string = CURRENT_API_VERSION,
 ): WebhookEvent {
   const type: WebhookEventType = data.thresholdPercent >= 90
     ? "budget.threshold.critical"
@@ -109,16 +130,95 @@ export function buildThresholdPayload(
   return {
     id: `evt_${crypto.randomUUID()}`,
     type,
-    created_at: new Date().toISOString(),
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
     data: {
-      budget_entity_type: data.budgetEntityType,
-      budget_entity_id: data.budgetEntityId,
-      budget_limit_microdollars: data.budgetLimitMicrodollars,
-      budget_spend_microdollars: data.budgetSpendMicrodollars,
-      threshold_percent: data.thresholdPercent,
-      budget_remaining_microdollars:
-        data.budgetLimitMicrodollars - data.budgetSpendMicrodollars,
-      triggered_by_request_id: data.triggeredByRequestId,
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        budget_limit_microdollars: data.budgetLimitMicrodollars,
+        budget_spend_microdollars: data.budgetSpendMicrodollars,
+        threshold_percent: data.thresholdPercent,
+        budget_remaining_microdollars:
+          data.budgetLimitMicrodollars - data.budgetSpendMicrodollars,
+        triggered_by_request_id: data.triggeredByRequestId,
+      },
+    },
+  };
+}
+
+interface BudgetResetData {
+  budgetEntityType: string;
+  budgetEntityId: string;
+  budgetLimitMicrodollars: number;
+  previousSpendMicrodollars: number;
+  newPeriodStart: string;
+  resetInterval: string;
+}
+
+export function buildBudgetResetPayload(
+  data: BudgetResetData,
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "budget.reset",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        budget_limit_microdollars: data.budgetLimitMicrodollars,
+        previous_spend_microdollars: data.previousSpendMicrodollars,
+        new_period_start: data.newPeriodStart,
+        reset_interval: data.resetInterval,
+      },
+    },
+  };
+}
+
+interface RequestBlockedData {
+  reason: "budget" | "rate_limit" | "policy";
+  model: string;
+  provider: string;
+  apiKeyId: string | null;
+  details: string | null;
+}
+
+export function buildRequestBlockedPayload(
+  data: RequestBlockedData,
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "request.blocked",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        reason: data.reason,
+        model: data.model,
+        provider: data.provider,
+        api_key_id: data.apiKeyId,
+        details: data.details,
+      },
+    },
+  };
+}
+
+export function buildTestPingPayload(
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "test.ping",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        message: "Test webhook event",
+      },
     },
   };
 }

@@ -22,7 +22,9 @@ describe("detectThresholdCrossings", () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe("budget.threshold.warning");
-    expect(events[0].data.threshold_percent).toBe(50);
+    expect(events[0].api_version).toBe("2026-04-01");
+    expect(typeof events[0].created_at).toBe("number");
+    expect(events[0].data.object.threshold_percent).toBe(50);
   });
 
   it("detects 80% threshold crossing", () => {
@@ -31,7 +33,7 @@ describe("detectThresholdCrossings", () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe("budget.threshold.warning");
-    expect(events[0].data.threshold_percent).toBe(80);
+    expect(events[0].data.object.threshold_percent).toBe(80);
   });
 
   it("detects 90% threshold crossing as critical", () => {
@@ -40,7 +42,7 @@ describe("detectThresholdCrossings", () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe("budget.threshold.critical");
-    expect(events[0].data.threshold_percent).toBe(90);
+    expect(events[0].data.object.threshold_percent).toBe(90);
   });
 
   it("detects 95% threshold crossing as critical", () => {
@@ -49,7 +51,7 @@ describe("detectThresholdCrossings", () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe("budget.threshold.critical");
-    expect(events[0].data.threshold_percent).toBe(95);
+    expect(events[0].data.object.threshold_percent).toBe(95);
   });
 
   it("detects multiple threshold crossings in a single request", () => {
@@ -58,7 +60,7 @@ describe("detectThresholdCrossings", () => {
     const events = detectThresholdCrossings([entity], 85_000_000, "req_1");
 
     expect(events).toHaveLength(2);
-    const types = events.map((e) => e.data.threshold_percent);
+    const types = events.map((e) => e.data.object.threshold_percent);
     expect(types).toContain(50);
     expect(types).toContain(80);
   });
@@ -84,10 +86,10 @@ describe("detectThresholdCrossings", () => {
     const events = detectThresholdCrossings(entities, 2_000_000, "req_1");
 
     expect(events).toHaveLength(2);
-    expect(events[0].data.threshold_percent).toBe(50);
-    expect(events[0].data.budget_entity_id).toBe("u1");
-    expect(events[1].data.threshold_percent).toBe(90);
-    expect(events[1].data.budget_entity_id).toBe("k1");
+    expect(events[0].data.object.threshold_percent).toBe(50);
+    expect(events[0].data.object.budget_entity_id).toBe("u1");
+    expect(events[1].data.object.threshold_percent).toBe(90);
+    expect(events[1].data.object.budget_entity_id).toBe("k1");
   });
 
   it("skips entities with zero maxBudget", () => {
@@ -106,7 +108,7 @@ describe("detectThresholdCrossings", () => {
     const events = detectThresholdCrossings([entity], 2_000_000, "req_xyz");
 
     expect(events).toHaveLength(1);
-    expect(events[0].data).toEqual(expect.objectContaining({
+    expect(events[0].data.object).toEqual(expect.objectContaining({
       budget_entity_type: "api_key",
       budget_entity_id: "key_abc",
       budget_limit_microdollars: 50_000_000,
@@ -123,6 +125,6 @@ describe("detectThresholdCrossings", () => {
     const events = detectThresholdCrossings([entity], 1_000_000, "req_1");
 
     expect(events).toHaveLength(1);
-    expect(events[0].data.threshold_percent).toBe(50);
+    expect(events[0].data.object.threshold_percent).toBe(50);
   });
 });

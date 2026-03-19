@@ -20,6 +20,7 @@ const CONNECTION_TIMEOUT_MS = 5_000;
  */
 export interface WebhookEndpointWithSecret extends CachedWebhookEndpoint {
   signingSecret: string;
+  apiVersion: string;
 }
 
 /**
@@ -160,7 +161,7 @@ async function queryActiveEndpoints(
     await client.connect();
 
     const result = await client.query(
-      `SELECT id, url, signing_secret, event_types
+      `SELECT id, url, signing_secret, event_types, api_version
        FROM webhook_endpoints
        WHERE user_id = $1 AND enabled = true`,
       [userId],
@@ -171,6 +172,7 @@ async function queryActiveEndpoints(
       url: row.url as string,
       signingSecret: row.signing_secret as string,
       eventTypes: (row.event_types as string[]) ?? [],
+      apiVersion: (row.api_version as string) ?? "2026-04-01",
     }));
   } finally {
     if (client) {

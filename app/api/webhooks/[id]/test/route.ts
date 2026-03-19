@@ -7,6 +7,7 @@ import { webhookEndpoints } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { webhookIdParamsSchema } from "@/lib/validations/webhooks";
 import { signPayload } from "@/lib/webhooks/signer";
+import { buildTestPingPayload } from "@/lib/webhooks/dispatch";
 
 const TEST_TIMEOUT_MS = 5_000;
 
@@ -42,25 +43,7 @@ export async function POST(
       );
     }
 
-    const testEvent = {
-      id: `evt_test_${crypto.randomUUID()}`,
-      type: "cost_event.created",
-      created_at: new Date().toISOString(),
-      data: {
-        request_id: "req_test_000",
-        event_type: "llm",
-        provider: "openai",
-        model: "gpt-4o-mini",
-        input_tokens: 100,
-        output_tokens: 50,
-        cached_input_tokens: 0,
-        cost_microdollars: 1500,
-        duration_ms: 500,
-        api_key_id: null,
-        session_id: null,
-        _test: true,
-      },
-    };
+    const testEvent = buildTestPingPayload();
 
     const payload = JSON.stringify(testEvent);
     const timestamp = Math.floor(Date.now() / 1000);

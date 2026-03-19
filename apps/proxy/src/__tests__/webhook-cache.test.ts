@@ -51,12 +51,14 @@ const mockDbRows = [
     url: "https://hooks.example.com/1",
     signing_secret: "whsec_secret1",
     event_types: ["cost_event.created"],
+    api_version: "2026-04-01",
   },
   {
     id: "ep-2",
     url: "https://hooks.example.com/2",
     signing_secret: "whsec_secret2",
     event_types: [],
+    api_version: "2026-04-01",
   },
 ];
 

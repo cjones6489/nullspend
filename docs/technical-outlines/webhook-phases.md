@@ -433,8 +433,13 @@ export const WEBHOOK_EVENT_TYPES = [
   "budget.threshold.warning",
   "budget.threshold.critical",
   "budget.exceeded",
+  "budget.reset",
   "request.blocked",
-  "request.blocked.budget",
+  "action.created",
+  "action.approved",
+  "action.rejected",
+  "action.expired",
+  "test.ping",
 ] as const;
 
 export const MAX_WEBHOOK_ENDPOINTS_PER_USER = 10;

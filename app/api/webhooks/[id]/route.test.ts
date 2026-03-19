@@ -50,6 +50,7 @@ describe("PATCH /api/webhooks/:id", () => {
         description: "Updated",
         eventTypes: [],
         enabled: true,
+        apiVersion: "2026-04-01",
         createdAt: new Date("2026-01-01"),
         updatedAt: new Date("2026-01-02"),
       },
@@ -66,6 +67,7 @@ describe("PATCH /api/webhooks/:id", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data.url).toBe("https://hooks.example.com/updated");
+    expect(body.data.apiVersion).toBe("2026-04-01");
     expect(body.data).not.toHaveProperty("signingSecret");
   });
 

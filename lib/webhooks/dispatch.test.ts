@@ -2,6 +2,12 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 
 import {
   buildCostEventWebhookPayload,
+  buildActionCreatedPayload,
+  buildActionApprovedPayload,
+  buildActionRejectedPayload,
+  buildActionExpiredPayload,
+  buildTestPingPayload,
+  buildBudgetResetPayload,
   dispatchToEndpoints,
   type WebhookEvent,
 } from "./dispatch";
@@ -34,18 +40,19 @@ describe("buildCostEventWebhookPayload", () => {
 
     expect(result.type).toBe("cost_event.created");
     expect(result.id).toMatch(/^evt_/);
-    expect(result.created_at).toBeTruthy();
-    expect(result.data.request_id).toBe("req-1");
-    expect(result.data.provider).toBe("openai");
-    expect(result.data.model).toBe("gpt-4o");
-    expect(result.data.input_tokens).toBe(100);
-    expect(result.data.output_tokens).toBe(50);
-    expect(result.data.cached_input_tokens).toBe(10);
-    expect(result.data.cost_microdollars).toBe(1500);
-    expect(result.data.duration_ms).toBe(200);
-    expect(result.data.event_type).toBe("llm");
-    expect(result.data.session_id).toBe("sess-1");
-    expect(result.data.api_key_id).toBe("key-1");
+    expect(result.api_version).toBe("2026-04-01");
+    expect(typeof result.created_at).toBe("number");
+    expect(result.data.object.request_id).toBe("req-1");
+    expect(result.data.object.provider).toBe("openai");
+    expect(result.data.object.model).toBe("gpt-4o");
+    expect(result.data.object.input_tokens).toBe(100);
+    expect(result.data.object.output_tokens).toBe(50);
+    expect(result.data.object.cached_input_tokens).toBe(10);
+    expect(result.data.object.cost_microdollars).toBe(1500);
+    expect(result.data.object.duration_ms).toBe(200);
+    expect(result.data.object.event_type).toBe("llm");
+    expect(result.data.object.session_id).toBe("sess-1");
+    expect(result.data.object.api_key_id).toBe("key-1");
   });
 
   it("includes proxy-compatible fields (upstream_duration_ms, tool_calls_requested, tool_definition_tokens, created_at)", () => {
@@ -63,11 +70,32 @@ describe("buildCostEventWebhookPayload", () => {
     });
 
     // These fields must exist for schema compatibility with the proxy
-    expect(result.data).toHaveProperty("upstream_duration_ms", null);
-    expect(result.data).toHaveProperty("tool_calls_requested", null);
-    expect(result.data).toHaveProperty("tool_definition_tokens", 0);
-    expect(result.data).toHaveProperty("created_at");
-    expect(result.data.created_at).toBe(result.created_at);
+    expect(result.data.object).toHaveProperty("upstream_duration_ms", null);
+    expect(result.data.object).toHaveProperty("tool_calls_requested", null);
+    expect(result.data.object).toHaveProperty("tool_definition_tokens", 0);
+    expect(result.data.object).toHaveProperty("created_at");
+  });
+
+  it("passes through upstreamDurationMs, toolCallsRequested, toolDefinitionTokens", () => {
+    const result = buildCostEventWebhookPayload({
+      requestId: "req-4",
+      provider: "openai",
+      model: "gpt-4o",
+      inputTokens: 100,
+      outputTokens: 50,
+      cachedInputTokens: 0,
+      costMicrodollars: 1500,
+      durationMs: 200,
+      eventType: "llm",
+      apiKeyId: "key-1",
+      upstreamDurationMs: 180,
+      toolCallsRequested: [{ name: "search", id: "call_1" }],
+      toolDefinitionTokens: 500,
+    });
+
+    expect(result.data.object.upstream_duration_ms).toBe(180);
+    expect(result.data.object.tool_calls_requested).toEqual([{ name: "search", id: "call_1" }]);
+    expect(result.data.object.tool_definition_tokens).toBe(500);
   });
 
   it("nullifies missing optional fields", () => {
@@ -84,11 +112,227 @@ describe("buildCostEventWebhookPayload", () => {
       apiKeyId: null,
     });
 
-    expect(result.data.session_id).toBeNull();
-    expect(result.data.tool_name).toBeNull();
-    expect(result.data.tool_server).toBeNull();
-    expect(result.data.api_key_id).toBeNull();
-    expect(result.data.duration_ms).toBeNull();
+    expect(result.data.object.session_id).toBeNull();
+    expect(result.data.object.tool_name).toBeNull();
+    expect(result.data.object.tool_server).toBeNull();
+    expect(result.data.object.api_key_id).toBeNull();
+    expect(result.data.object.duration_ms).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Action lifecycle builders
+// ---------------------------------------------------------------------------
+
+describe("buildActionCreatedPayload", () => {
+  it("produces correct action.created shape", () => {
+    const result = buildActionCreatedPayload({
+      id: "act-1",
+      actionType: "http_post",
+      agentId: "agent-1",
+      status: "pending",
+      payloadJson: { url: "https://example.com" },
+      createdAt: "2026-03-19T00:00:00Z",
+      expiresAt: "2026-03-20T00:00:00Z",
+    });
+
+    expect(result.type).toBe("action.created");
+    expect(result.api_version).toBe("2026-04-01");
+    expect(typeof result.created_at).toBe("number");
+    expect(result.data.object.action_id).toBe("act-1");
+    expect(result.data.object.action_type).toBe("http_post");
+    expect(result.data.object.agent_id).toBe("agent-1");
+    expect(result.data.object.status).toBe("pending");
+    expect(result.data.object.payload).toEqual({ url: "https://example.com" });
+    expect(result.data.object.created_at).toBe("2026-03-19T00:00:00Z");
+    expect(result.data.object.expires_at).toBe("2026-03-20T00:00:00Z");
+  });
+
+  it("nullifies missing expiresAt", () => {
+    const result = buildActionCreatedPayload({
+      id: "act-2",
+      actionType: "send_email",
+      agentId: "agent-2",
+      status: "pending",
+      payloadJson: {},
+      createdAt: "2026-03-19T00:00:00Z",
+    });
+
+    expect(result.data.object.expires_at).toBeNull();
+  });
+});
+
+describe("buildActionApprovedPayload", () => {
+  it("produces correct action.approved shape", () => {
+    const result = buildActionApprovedPayload({
+      id: "act-1",
+      actionType: "http_post",
+      agentId: "agent-1",
+      status: "approved",
+      approvedBy: "user-1",
+      approvedAt: "2026-03-19T01:00:00Z",
+    });
+
+    expect(result.type).toBe("action.approved");
+    expect(result.api_version).toBe("2026-04-01");
+    expect(result.data.object.action_id).toBe("act-1");
+    expect(result.data.object.approved_by).toBe("user-1");
+    expect(result.data.object.approved_at).toBe("2026-03-19T01:00:00Z");
+  });
+});
+
+describe("buildActionRejectedPayload", () => {
+  it("produces correct action.rejected shape with reason", () => {
+    const result = buildActionRejectedPayload({
+      id: "act-1",
+      actionType: "http_post",
+      agentId: "agent-1",
+      status: "rejected",
+      rejectedBy: "user-1",
+      rejectedAt: "2026-03-19T01:00:00Z",
+      errorMessage: "Not authorized",
+    });
+
+    expect(result.type).toBe("action.rejected");
+    expect(result.api_version).toBe("2026-04-01");
+    expect(result.data.object.action_id).toBe("act-1");
+    expect(result.data.object.rejected_by).toBe("user-1");
+    expect(result.data.object.rejected_at).toBe("2026-03-19T01:00:00Z");
+    expect(result.data.object.reason).toBe("Not authorized");
+  });
+
+  it("nullifies missing errorMessage", () => {
+    const result = buildActionRejectedPayload({
+      id: "act-2",
+      actionType: "send_email",
+      agentId: "agent-2",
+      status: "rejected",
+      rejectedBy: null,
+      rejectedAt: null,
+    });
+
+    expect(result.data.object.reason).toBeNull();
+  });
+});
+
+describe("buildActionExpiredPayload", () => {
+  it("produces correct action.expired shape", () => {
+    const result = buildActionExpiredPayload({
+      id: "act-1",
+      actionType: "http_post",
+      agentId: "agent-1",
+      status: "expired",
+      expiredAt: "2026-03-20T00:00:00Z",
+    });
+
+    expect(result.type).toBe("action.expired");
+    expect(result.api_version).toBe("2026-04-01");
+    expect(result.data.object.action_id).toBe("act-1");
+    expect(result.data.object.expired_at).toBe("2026-03-20T00:00:00Z");
+  });
+});
+
+describe("buildTestPingPayload", () => {
+  it("produces correct test.ping shape", () => {
+    const result = buildTestPingPayload();
+
+    expect(result.type).toBe("test.ping");
+    expect(result.id).toMatch(/^evt_/);
+    expect(result.api_version).toBe("2026-04-01");
+    expect(typeof result.created_at).toBe("number");
+    expect(result.data.object.message).toBe("Test webhook event");
+  });
+});
+
+describe("buildBudgetResetPayload", () => {
+  it("produces correct budget.reset shape", () => {
+    const result = buildBudgetResetPayload({
+      budgetEntityType: "user",
+      budgetEntityId: "user-1",
+      budgetLimitMicrodollars: 50_000_000,
+      previousSpendMicrodollars: 45_000_000,
+      newPeriodStart: "2026-04-01T00:00:00Z",
+      resetInterval: "monthly",
+    });
+
+    expect(result.type).toBe("budget.reset");
+    expect(result.api_version).toBe("2026-04-01");
+    expect(typeof result.created_at).toBe("number");
+    expect(result.data.object.budget_entity_type).toBe("user");
+    expect(result.data.object.budget_entity_id).toBe("user-1");
+    expect(result.data.object.budget_limit_microdollars).toBe(50_000_000);
+    expect(result.data.object.previous_spend_microdollars).toBe(45_000_000);
+    expect(result.data.object.new_period_start).toBe("2026-04-01T00:00:00Z");
+    expect(result.data.object.reset_interval).toBe("monthly");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-builder shape compatibility
+// ---------------------------------------------------------------------------
+
+describe("cross-builder shape compatibility", () => {
+  // Shared input that exercises all optional fields
+  const sharedInput = {
+    requestId: "req-1",
+    provider: "openai",
+    model: "gpt-4o",
+    inputTokens: 100,
+    outputTokens: 50,
+    cachedInputTokens: 10,
+    costMicrodollars: 1500,
+    durationMs: 200,
+    eventType: "llm",
+    toolName: "search",
+    toolServer: "mcp-server",
+    sessionId: "sess-1",
+    apiKeyId: "key-1",
+    upstreamDurationMs: 180,
+    toolCallsRequested: [{ name: "search", id: "call_1" }] as { name: string; id: string }[],
+    toolDefinitionTokens: 500,
+  };
+
+  it("proxy and dashboard cost_event.created builders produce identical data.object key sets", async () => {
+    // Dashboard builder
+    const dashboardEvent = buildCostEventWebhookPayload(sharedInput);
+    const dashboardKeys = Object.keys(dashboardEvent.data.object).sort();
+
+    // Proxy builder — import dynamically to get the actual proxy output
+    // Since we can't import from apps/proxy in dashboard tests, we hardcode
+    // the expected key set that the proxy builder MUST produce.
+    // If proxy adds/removes a key, this test must be updated in lockstep.
+    const proxyExpectedKeys = [
+      "api_key_id",
+      "cached_input_tokens",
+      "cost_microdollars",
+      "created_at",
+      "duration_ms",
+      "event_type",
+      "input_tokens",
+      "model",
+      "output_tokens",
+      "provider",
+      "request_id",
+      "session_id",
+      "tool_calls_requested",
+      "tool_definition_tokens",
+      "tool_name",
+      "tool_server",
+      "upstream_duration_ms",
+    ];
+
+    // Bidirectional: dashboard must have ALL proxy keys
+    for (const key of proxyExpectedKeys) {
+      expect(dashboardKeys, `dashboard missing proxy key: ${key}`).toContain(key);
+    }
+
+    // Bidirectional: dashboard must NOT have EXTRA keys beyond proxy
+    for (const key of dashboardKeys) {
+      expect(proxyExpectedKeys, `dashboard has extra key not in proxy: ${key}`).toContain(key);
+    }
+
+    // Belt-and-suspenders: exact length match
+    expect(dashboardKeys).toHaveLength(proxyExpectedKeys.length);
   });
 });
 
@@ -100,8 +344,9 @@ describe("dispatchToEndpoints", () => {
   const mockEvent: WebhookEvent = {
     id: "evt_test",
     type: "cost_event.created",
-    created_at: "2026-03-18T00:00:00Z",
-    data: { test: true },
+    api_version: "2026-04-01",
+    created_at: 1710547200,
+    data: { object: { test: true } },
   };
 
   it("sends POST to each matching endpoint", async () => {
@@ -109,8 +354,8 @@ describe("dispatchToEndpoints", () => {
 
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", eventTypes: [] },
-        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", eventTypes: [] },
+        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", eventTypes: [], apiVersion: "2026-04-01" },
       ],
       mockEvent,
     );
@@ -125,8 +370,8 @@ describe("dispatchToEndpoints", () => {
 
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", eventTypes: ["budget.exceeded"] },
-        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", eventTypes: [] }, // all events
+        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", eventTypes: ["budget.exceeded"], apiVersion: "2026-04-01" },
+        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", eventTypes: [], apiVersion: "2026-04-01" }, // all events
       ],
       mockEvent,
     );
@@ -139,7 +384,7 @@ describe("dispatchToEndpoints", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
 
     await dispatchToEndpoints(
-      [{ id: "ep-1", url: "https://a.com/hook", signingSecret: "secret", eventTypes: [] }],
+      [{ id: "ep-1", url: "https://a.com/hook", signingSecret: "secret", eventTypes: [], apiVersion: "2026-04-01" }],
       mockEvent,
     );
 
@@ -157,8 +402,8 @@ describe("dispatchToEndpoints", () => {
     // Should not throw
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://down.com/hook", signingSecret: "s1", eventTypes: [] },
-        { id: "ep-2", url: "https://up.com/hook", signingSecret: "s2", eventTypes: [] },
+        { id: "ep-1", url: "https://down.com/hook", signingSecret: "s1", eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-2", url: "https://up.com/hook", signingSecret: "s2", eventTypes: [], apiVersion: "2026-04-01" },
       ],
       mockEvent,
     );

@@ -53,6 +53,7 @@ export async function PATCH(
         description: webhookEndpoints.description,
         eventTypes: webhookEndpoints.eventTypes,
         enabled: webhookEndpoints.enabled,
+        apiVersion: webhookEndpoints.apiVersion,
         createdAt: webhookEndpoints.createdAt,
         updatedAt: webhookEndpoints.updatedAt,
       });

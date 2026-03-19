@@ -26,6 +26,7 @@ function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): Webho
     url: "https://hooks.example.com/webhook",
     signingSecret: "whsec_secret",
     eventTypes: [],
+    apiVersion: "2026-04-01",
     ...overrides,
   };
 }
@@ -34,8 +35,9 @@ function makeEvent(overrides: Partial<WebhookEvent> = {}): WebhookEvent {
   return {
     id: "evt_test123",
     type: "cost_event.created",
-    created_at: "2026-03-16T00:00:00Z",
-    data: { request_id: "req_1" },
+    api_version: "2026-04-01",
+    created_at: 1710547200,
+    data: { object: { request_id: "req_1" } },
     ...overrides,
   };
 }

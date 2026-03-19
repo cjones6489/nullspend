@@ -360,8 +360,13 @@ export const WEBHOOK_EVENT_TYPES = [
   "budget.threshold.warning",
   "budget.threshold.critical",
   "budget.exceeded",
+  "budget.reset",
   "request.blocked",
-  "request.blocked.budget",
+  "action.created",
+  "action.approved",
+  "action.rejected",
+  "action.expired",
+  "test.ping",
 ] as const;
 ```
 
@@ -370,8 +375,9 @@ The webhook event structure (`lib/webhooks/dispatch.ts`):
 export interface WebhookEvent {
   id: string;        // "evt_{uuid}"
   type: string;      // from WEBHOOK_EVENT_TYPES
-  created_at: string; // ISO 8601
-  data: Record<string, unknown>;
+  api_version: string; // "2026-04-01"
+  created_at: number;  // Unix timestamp seconds
+  data: { object: Record<string, unknown> };
 }
 ```
 
@@ -391,8 +397,7 @@ budget.threshold.critical   — Budget crossed a critical threshold
 budget.exceeded             — A request was denied due to budget exhaustion
 
 # Request enforcement (active)
-request.blocked             — A request was blocked by the enforcement pipeline
-request.blocked.budget      — A request was blocked due to budget exhaustion
+request.blocked             — A request was blocked by the enforcement pipeline (reason in data.object.reason: "budget" | "rate_limit" | "policy")
 
 # Budget lifecycle (future — reserve names now)
 budget.created              — A new budget was configured

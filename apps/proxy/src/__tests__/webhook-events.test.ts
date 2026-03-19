@@ -3,6 +3,10 @@ import {
   buildCostEventPayload,
   buildBudgetExceededPayload,
   buildThresholdPayload,
+  buildBudgetResetPayload,
+  buildRequestBlockedPayload,
+  buildTestPingPayload,
+  CURRENT_API_VERSION,
 } from "../lib/webhook-events.js";
 
 describe("buildCostEventPayload", () => {
@@ -20,26 +24,31 @@ describe("buildCostEventPayload", () => {
       eventType: "llm",
       sessionId: "session-1",
       upstreamDurationMs: 1400,
+      toolName: "search",
+      toolServer: "mcp-server",
       toolCallsRequested: [{ name: "search", id: "call_1" }],
       toolDefinitionTokens: 800,
     });
 
     expect(event.type).toBe("cost_event.created");
     expect(event.id).toMatch(/^evt_/);
-    expect(event.created_at).toBeTruthy();
-    expect(event.data.request_id).toBe("req_123");
-    expect(event.data.provider).toBe("openai");
-    expect(event.data.model).toBe("gpt-4o");
-    expect(event.data.input_tokens).toBe(1000);
-    expect(event.data.output_tokens).toBe(500);
-    expect(event.data.cached_input_tokens).toBe(200);
-    expect(event.data.cost_microdollars).toBe(25000);
-    expect(event.data.duration_ms).toBe(1500);
-    expect(event.data.api_key_id).toBe("key_abc");
-    expect(event.data.session_id).toBe("session-1");
-    expect(event.data.upstream_duration_ms).toBe(1400);
-    expect(event.data.tool_calls_requested).toEqual([{ name: "search", id: "call_1" }]);
-    expect(event.data.tool_definition_tokens).toBe(800);
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.request_id).toBe("req_123");
+    expect(event.data.object.provider).toBe("openai");
+    expect(event.data.object.model).toBe("gpt-4o");
+    expect(event.data.object.input_tokens).toBe(1000);
+    expect(event.data.object.output_tokens).toBe(500);
+    expect(event.data.object.cached_input_tokens).toBe(200);
+    expect(event.data.object.cost_microdollars).toBe(25000);
+    expect(event.data.object.duration_ms).toBe(1500);
+    expect(event.data.object.api_key_id).toBe("key_abc");
+    expect(event.data.object.session_id).toBe("session-1");
+    expect(event.data.object.upstream_duration_ms).toBe(1400);
+    expect(event.data.object.tool_name).toBe("search");
+    expect(event.data.object.tool_server).toBe("mcp-server");
+    expect(event.data.object.tool_calls_requested).toEqual([{ name: "search", id: "call_1" }]);
+    expect(event.data.object.tool_definition_tokens).toBe(800);
   });
 
   it("handles null optional fields", () => {
@@ -56,12 +65,16 @@ describe("buildCostEventPayload", () => {
       eventType: "llm",
     });
 
-    expect(event.data.duration_ms).toBeNull();
-    expect(event.data.api_key_id).toBeNull();
-    expect(event.data.session_id).toBeNull();
-    expect(event.data.upstream_duration_ms).toBeNull();
-    expect(event.data.tool_calls_requested).toBeNull();
-    expect(event.data.tool_definition_tokens).toBe(0);
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.duration_ms).toBeNull();
+    expect(event.data.object.api_key_id).toBeNull();
+    expect(event.data.object.session_id).toBeNull();
+    expect(event.data.object.upstream_duration_ms).toBeNull();
+    expect(event.data.object.tool_name).toBeNull();
+    expect(event.data.object.tool_server).toBeNull();
+    expect(event.data.object.tool_calls_requested).toBeNull();
+    expect(event.data.object.tool_definition_tokens).toBe(0);
   });
 
   it("generates unique event IDs", () => {
@@ -76,6 +89,25 @@ describe("buildCostEventPayload", () => {
       costMicrodollars: 1000, durationMs: 500, apiKeyId: "k1", eventType: "llm",
     });
     expect(event1.id).not.toBe(event2.id);
+  });
+
+  it("accepts custom apiVersion", () => {
+    const event = buildCostEventPayload({
+      requestId: "req_1", provider: "openai", model: "gpt-4o",
+      inputTokens: 100, outputTokens: 50, cachedInputTokens: 0,
+      costMicrodollars: 1000, durationMs: 500, apiKeyId: "k1", eventType: "llm",
+    }, "2027-01-01");
+    expect(event.api_version).toBe("2027-01-01");
+  });
+
+  it("data.object.created_at is ISO string (cost event's own timestamp)", () => {
+    const event = buildCostEventPayload({
+      requestId: "req_1", provider: "openai", model: "gpt-4o",
+      inputTokens: 100, outputTokens: 50, cachedInputTokens: 0,
+      costMicrodollars: 1000, durationMs: 500, apiKeyId: "k1", eventType: "llm",
+      createdAt: "2026-03-19T00:00:00Z",
+    });
+    expect(event.data.object.created_at).toBe("2026-03-19T00:00:00Z");
   });
 });
 
@@ -93,14 +125,16 @@ describe("buildBudgetExceededPayload", () => {
 
     expect(event.type).toBe("budget.exceeded");
     expect(event.id).toMatch(/^evt_/);
-    expect(event.data.budget_entity_type).toBe("api_key");
-    expect(event.data.budget_entity_id).toBe("key_xxx");
-    expect(event.data.budget_limit_microdollars).toBe(50_000_000);
-    expect(event.data.budget_spend_microdollars).toBe(48_200_000);
-    expect(event.data.estimated_request_cost_microdollars).toBe(3_500_000);
-    expect(event.data.model).toBe("gpt-4o");
-    expect(event.data.provider).toBe("openai");
-    expect(event.data.blocked_at).toBeTruthy();
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.budget_entity_type).toBe("api_key");
+    expect(event.data.object.budget_entity_id).toBe("key_xxx");
+    expect(event.data.object.budget_limit_microdollars).toBe(50_000_000);
+    expect(event.data.object.budget_spend_microdollars).toBe(48_200_000);
+    expect(event.data.object.estimated_request_cost_microdollars).toBe(3_500_000);
+    expect(event.data.object.model).toBe("gpt-4o");
+    expect(event.data.object.provider).toBe("openai");
+    expect(event.data.object.blocked_at).toBeTruthy();
   });
 });
 
@@ -116,9 +150,11 @@ describe("buildThresholdPayload", () => {
     });
 
     expect(event.type).toBe("budget.threshold.warning");
-    expect(event.data.threshold_percent).toBe(80);
-    expect(event.data.budget_remaining_microdollars).toBe(9_900_000);
-    expect(event.data.triggered_by_request_id).toBe("req_xyz");
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.threshold_percent).toBe(80);
+    expect(event.data.object.budget_remaining_microdollars).toBe(9_900_000);
+    expect(event.data.object.triggered_by_request_id).toBe("req_xyz");
   });
 
   it("builds a critical event for threshold >= 90", () => {
@@ -132,7 +168,9 @@ describe("buildThresholdPayload", () => {
     });
 
     expect(event.type).toBe("budget.threshold.critical");
-    expect(event.data.threshold_percent).toBe(95);
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.threshold_percent).toBe(95);
   });
 
   it("builds a critical event for exactly 90%", () => {
@@ -159,5 +197,100 @@ describe("buildThresholdPayload", () => {
     });
 
     expect(event.type).toBe("budget.threshold.warning");
+  });
+});
+
+describe("buildBudgetResetPayload", () => {
+  it("builds a valid budget.reset payload", () => {
+    const event = buildBudgetResetPayload({
+      budgetEntityType: "user",
+      budgetEntityId: "user_abc",
+      budgetLimitMicrodollars: 50_000_000,
+      previousSpendMicrodollars: 45_000_000,
+      newPeriodStart: "2026-04-01T00:00:00Z",
+      resetInterval: "monthly",
+    });
+
+    expect(event.type).toBe("budget.reset");
+    expect(event.id).toMatch(/^evt_/);
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.budget_entity_type).toBe("user");
+    expect(event.data.object.budget_entity_id).toBe("user_abc");
+    expect(event.data.object.budget_limit_microdollars).toBe(50_000_000);
+    expect(event.data.object.previous_spend_microdollars).toBe(45_000_000);
+    expect(event.data.object.new_period_start).toBe("2026-04-01T00:00:00Z");
+    expect(event.data.object.reset_interval).toBe("monthly");
+  });
+});
+
+describe("buildRequestBlockedPayload", () => {
+  it("builds a valid request.blocked payload with budget reason", () => {
+    const event = buildRequestBlockedPayload({
+      reason: "budget",
+      model: "gpt-4o",
+      provider: "openai",
+      apiKeyId: "key_abc",
+      details: "Budget exceeded for api_key key_abc",
+    });
+
+    expect(event.type).toBe("request.blocked");
+    expect(event.id).toMatch(/^evt_/);
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.reason).toBe("budget");
+    expect(event.data.object.model).toBe("gpt-4o");
+    expect(event.data.object.provider).toBe("openai");
+    expect(event.data.object.api_key_id).toBe("key_abc");
+    expect(event.data.object.details).toBe("Budget exceeded for api_key key_abc");
+  });
+
+  it("builds payload with rate_limit reason", () => {
+    const event = buildRequestBlockedPayload({
+      reason: "rate_limit",
+      model: "claude-3-5-sonnet",
+      provider: "anthropic",
+      apiKeyId: null,
+      details: null,
+    });
+
+    expect(event.data.object.reason).toBe("rate_limit");
+    expect(event.data.object.api_key_id).toBeNull();
+    expect(event.data.object.details).toBeNull();
+  });
+
+  it("builds payload with policy reason", () => {
+    const event = buildRequestBlockedPayload({
+      reason: "policy",
+      model: "gpt-4o",
+      provider: "openai",
+      apiKeyId: "key_xyz",
+      details: "Model not allowed by policy",
+    });
+
+    expect(event.data.object.reason).toBe("policy");
+  });
+});
+
+describe("buildTestPingPayload", () => {
+  it("builds a valid test.ping payload", () => {
+    const event = buildTestPingPayload();
+
+    expect(event.type).toBe("test.ping");
+    expect(event.id).toMatch(/^evt_/);
+    expect(event.api_version).toBe("2026-04-01");
+    expect(typeof event.created_at).toBe("number");
+    expect(event.data.object.message).toBe("Test webhook event");
+  });
+
+  it("accepts custom apiVersion", () => {
+    const event = buildTestPingPayload("2027-01-01");
+    expect(event.api_version).toBe("2027-01-01");
+  });
+});
+
+describe("CURRENT_API_VERSION", () => {
+  it("is 2026-04-01", () => {
+    expect(CURRENT_API_VERSION).toBe("2026-04-01");
   });
 });

@@ -115,8 +115,13 @@ webhook-signature: v1,K5oZfzN95Z9UVu1EsfQ...
 | `budget.threshold.warning` | Defined, not firing | Spend crosses 50% or 80% |
 | `budget.threshold.critical` | Defined, not firing | Spend crosses 90% or 95% |
 | `budget.exceeded` | Defined, not firing | Budget limit reached |
-| `request.blocked` | Defined, not firing | Generic blocked request |
-| `request.blocked.budget` | Defined, not firing | Budget-specific block |
+| `request.blocked` | Defined, not firing | Blocked request (reason in data.object.reason) |
+| `budget.reset` | Defined, not firing | Budget period reset |
+| `action.created` | Defined, not firing | HITL action created |
+| `action.approved` | Defined, not firing | HITL action approved |
+| `action.rejected` | Defined, not firing | HITL action rejected |
+| `action.expired` | Defined, not firing | HITL action expired |
+| `test.ping` | Defined, not firing | Test webhook event |
 
 ### Current Envelope
 

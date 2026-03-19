@@ -49,6 +49,7 @@ describe("GET /api/webhooks", () => {
         description: "Slack alerts",
         eventTypes: ["cost_event.created"],
         enabled: true,
+        apiVersion: "2026-04-01",
         createdAt: new Date("2026-01-01"),
         updatedAt: new Date("2026-01-01"),
       },
@@ -60,6 +61,7 @@ describe("GET /api/webhooks", () => {
     const body = await res.json();
     expect(body.data).toHaveLength(1);
     expect(body.data[0].url).toBe("https://hooks.example.com/1");
+    expect(body.data[0].apiVersion).toBe("2026-04-01");
     expect(body.data[0]).not.toHaveProperty("signingSecret");
   });
 
@@ -88,6 +90,7 @@ describe("POST /api/webhooks", () => {
         description: null,
         eventTypes: [],
         enabled: true,
+        apiVersion: "2026-04-01",
         createdAt: new Date("2026-01-01"),
         updatedAt: new Date("2026-01-01"),
       },
@@ -105,6 +108,7 @@ describe("POST /api/webhooks", () => {
     const body = await res.json();
     expect(body.data.signingSecret).toMatch(/^whsec_[0-9a-f]{64}$/);
     expect(body.data.url).toBe("https://hooks.example.com/new");
+    expect(body.data.apiVersion).toBe("2026-04-01");
   });
 
   it("returns 409 when max endpoints reached", async () => {
@@ -247,6 +251,7 @@ describe("POST /api/webhooks", () => {
         description: "Budget alerts only",
         eventTypes: ["budget.exceeded", "budget.threshold.warning"],
         enabled: true,
+        apiVersion: "2026-04-01",
         createdAt: new Date("2026-01-01"),
         updatedAt: new Date("2026-01-01"),
       },

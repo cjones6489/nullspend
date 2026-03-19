@@ -1,3 +1,5 @@
+// SYNC: Proxy WebhookEvent interface in apps/proxy/src/lib/webhook-events.ts must match this shape
+
 import { eq, and } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
@@ -5,11 +7,14 @@ import { getLogger } from "@/lib/observability";
 import { webhookEndpoints } from "@nullspend/db";
 import { signPayload } from "./signer";
 
+const CURRENT_API_VERSION = "2026-04-01";
+
 export interface WebhookEvent {
   id: string;
   type: string;
-  created_at: string;
-  data: Record<string, unknown>;
+  api_version: string;
+  created_at: number;
+  data: { object: Record<string, unknown> };
 }
 
 interface WebhookEndpoint {
@@ -17,6 +22,7 @@ interface WebhookEndpoint {
   url: string;
   signingSecret: string;
   eventTypes: string[];
+  apiVersion: string;
 }
 
 const DISPATCH_TIMEOUT_MS = 5_000;
@@ -36,6 +42,7 @@ export async function fetchWebhookEndpoints(
       url: webhookEndpoints.url,
       signingSecret: webhookEndpoints.signingSecret,
       eventTypes: webhookEndpoints.eventTypes,
+      apiVersion: webhookEndpoints.apiVersion,
     })
     .from(webhookEndpoints)
     .where(
@@ -130,31 +137,204 @@ export function buildCostEventWebhookPayload(
     toolServer?: string | null;
     sessionId?: string | null;
     apiKeyId: string | null;
+    upstreamDurationMs?: number | null;
+    toolCallsRequested?: { name: string; id: string }[] | null;
+    toolDefinitionTokens?: number;
   },
+  apiVersion: string = CURRENT_API_VERSION,
 ): WebhookEvent {
-  const now = new Date().toISOString();
   return {
     id: `evt_${crypto.randomUUID()}`,
     type: "cost_event.created",
-    created_at: now,
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
     data: {
-      request_id: costEvent.requestId,
-      event_type: costEvent.eventType,
-      provider: costEvent.provider,
-      model: costEvent.model,
-      input_tokens: costEvent.inputTokens,
-      output_tokens: costEvent.outputTokens,
-      cached_input_tokens: costEvent.cachedInputTokens,
-      cost_microdollars: costEvent.costMicrodollars,
-      duration_ms: costEvent.durationMs,
-      upstream_duration_ms: null,
-      session_id: costEvent.sessionId ?? null,
-      tool_name: costEvent.toolName ?? null,
-      tool_server: costEvent.toolServer ?? null,
-      tool_calls_requested: null,
-      tool_definition_tokens: 0,
-      api_key_id: costEvent.apiKeyId,
-      created_at: now,
+      object: {
+        request_id: costEvent.requestId,
+        event_type: costEvent.eventType,
+        provider: costEvent.provider,
+        model: costEvent.model,
+        input_tokens: costEvent.inputTokens,
+        output_tokens: costEvent.outputTokens,
+        cached_input_tokens: costEvent.cachedInputTokens,
+        cost_microdollars: costEvent.costMicrodollars,
+        duration_ms: costEvent.durationMs,
+        upstream_duration_ms: costEvent.upstreamDurationMs ?? null,
+        session_id: costEvent.sessionId ?? null,
+        tool_name: costEvent.toolName ?? null,
+        tool_server: costEvent.toolServer ?? null,
+        tool_calls_requested: costEvent.toolCallsRequested ?? null,
+        tool_definition_tokens: costEvent.toolDefinitionTokens ?? 0,
+        api_key_id: costEvent.apiKeyId,
+        created_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
+/**
+ * Build action lifecycle webhook payloads.
+ * WH-2: wire into action lifecycle
+ */
+export function buildActionCreatedPayload(
+  action: {
+    id: string;
+    actionType: string;
+    agentId: string;
+    status: string;
+    payloadJson: Record<string, unknown>;
+    createdAt: string;
+    expiresAt?: string | null;
+  },
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "action.created",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        action_id: action.id,
+        action_type: action.actionType,
+        agent_id: action.agentId,
+        status: action.status,
+        payload: action.payloadJson,
+        created_at: action.createdAt,
+        expires_at: action.expiresAt ?? null,
+      },
+    },
+  };
+}
+
+export function buildActionApprovedPayload(
+  action: {
+    id: string;
+    actionType: string;
+    agentId: string;
+    status: string;
+    approvedBy: string | null;
+    approvedAt: string | null;
+  },
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "action.approved",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        action_id: action.id,
+        action_type: action.actionType,
+        agent_id: action.agentId,
+        status: action.status,
+        approved_by: action.approvedBy,
+        approved_at: action.approvedAt,
+      },
+    },
+  };
+}
+
+export function buildActionRejectedPayload(
+  action: {
+    id: string;
+    actionType: string;
+    agentId: string;
+    status: string;
+    rejectedBy: string | null;
+    rejectedAt: string | null;
+    errorMessage?: string | null;
+  },
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "action.rejected",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        action_id: action.id,
+        action_type: action.actionType,
+        agent_id: action.agentId,
+        status: action.status,
+        rejected_by: action.rejectedBy,
+        rejected_at: action.rejectedAt,
+        reason: action.errorMessage ?? null,
+      },
+    },
+  };
+}
+
+export function buildActionExpiredPayload(
+  action: {
+    id: string;
+    actionType: string;
+    agentId: string;
+    status: string;
+    expiredAt: string | null;
+  },
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "action.expired",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        action_id: action.id,
+        action_type: action.actionType,
+        agent_id: action.agentId,
+        status: action.status,
+        expired_at: action.expiredAt,
+      },
+    },
+  };
+}
+
+export function buildTestPingPayload(
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "test.ping",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        message: "Test webhook event",
+      },
+    },
+  };
+}
+
+export function buildBudgetResetPayload(
+  data: {
+    budgetEntityType: string;
+    budgetEntityId: string;
+    budgetLimitMicrodollars: number;
+    previousSpendMicrodollars: number;
+    newPeriodStart: string;
+    resetInterval: string;
+  },
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "budget.reset",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        budget_limit_microdollars: data.budgetLimitMicrodollars,
+        previous_spend_microdollars: data.previousSpendMicrodollars,
+        new_period_start: data.newPeriodStart,
+        reset_interval: data.resetInterval,
+      },
     },
   };
 }

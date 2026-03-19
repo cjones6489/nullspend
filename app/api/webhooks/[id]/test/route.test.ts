@@ -72,11 +72,18 @@ describe("POST /api/webhooks/:id/test", () => {
         method: "POST",
         headers: expect.objectContaining({
           "X-NullSpend-Signature": expect.any(String),
-          "X-NullSpend-Webhook-Id": expect.stringContaining("evt_test_"),
+          "X-NullSpend-Webhook-Id": expect.stringContaining("evt_"),
           "User-Agent": "NullSpend-Webhooks/1.0",
         }),
       }),
     );
+
+    // Verify event body uses builder shape (test.ping with new envelope)
+    const sentBody = JSON.parse(mockFetch.mock.calls[0][1]!.body as string);
+    expect(sentBody.type).toBe("test.ping");
+    expect(sentBody.api_version).toBe("2026-04-01");
+    expect(typeof sentBody.created_at).toBe("number");
+    expect(sentBody.data.object.message).toBe("Test webhook event");
   });
 
   it("returns 404 for non-owned endpoint", async () => {

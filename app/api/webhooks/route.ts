@@ -25,6 +25,7 @@ export async function GET() {
         description: webhookEndpoints.description,
         eventTypes: webhookEndpoints.eventTypes,
         enabled: webhookEndpoints.enabled,
+        apiVersion: webhookEndpoints.apiVersion,
         createdAt: webhookEndpoints.createdAt,
         updatedAt: webhookEndpoints.updatedAt,
       })
@@ -83,6 +84,7 @@ export async function POST(request: Request) {
         description: webhookEndpoints.description,
         eventTypes: webhookEndpoints.eventTypes,
         enabled: webhookEndpoints.enabled,
+        apiVersion: webhookEndpoints.apiVersion,
         createdAt: webhookEndpoints.createdAt,
         updatedAt: webhookEndpoints.updatedAt,
       });
