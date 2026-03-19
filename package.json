@@ -70,7 +70,8 @@
     ],
     "overrides": {
       "drizzle-orm": "^0.45.1",
-      "recharts": "2.15.4"
+      "recharts": "2.15.4",
+      "zod": "^4.3.6"
     }
   },
   "devDependencies": {

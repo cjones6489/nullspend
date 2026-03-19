@@ -530,11 +530,13 @@ Misconfigured staging with `NODE_ENV=development` enables auth bypass. `instrume
 
 ---
 
-### L20 — Dual zod versions in lockfile (3.x + 4.x) [TODO]
+### L20 — Dual zod versions in lockfile (3.x + 4.x) [DONE]
 
 **Agent:** Dependency/Supply Chain
 
 `@modelcontextprotocol/sdk` brings zod 3.x alongside project's zod 4.x.
+
+**Remediation:** Added `"zod": "^4.3.6"` to `pnpm.overrides` to deduplicate. MCP SDK declares `zod: ^3.25 || ^4.0` as a peer dependency, so this is safe.
 
 ---
 
