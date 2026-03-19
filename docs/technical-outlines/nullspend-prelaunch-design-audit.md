@@ -604,6 +604,8 @@ This is a small change with disproportionate impact on developer trust. It means
 
 **Priority: Medium.** Not blocking for launch, but should be in the first month.
 
+**Status: DONE** — Deployed 2026-03-19. Migration `0024_webhook_secret_rotation.sql` adds `previous_signing_secret` and `secret_rotated_at` to `webhook_endpoints`. Rotation endpoint (`POST /api/webhooks/:id/rotate-secret`) atomically copies `signing_secret → previous_signing_secret` via Drizzle SQL column reference. Both proxy (`dualSignWebhookPayload`, Web Crypto) and dashboard (`dualSignPayload`, Node crypto) produce `t={ts},v1={new},v1={old}` during the 24h window. Lazy expiry at dispatch time NULLs stale secrets (fire-and-forget in both proxy and dashboard). Cross-signer equivalence tests verify both crypto implementations produce identical output. 20 files changed, 1,675 tests passing.
+
 ---
 
 ## 8. Rate Limiting Response Headers
@@ -653,7 +655,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 |---|---|---|---|
 | ~~Schema columns (Section 6)~~ **DONE** | ~~`source` on cost_events, `api_version` on api_keys, `environment` on api_keys~~ | ~~All schema columns added~~ Deployed 2026-03-19. All three pre-launch schema columns shipped. | ~~15 min~~ |
 | Configurable budget thresholds (Section 6) | Thresholds hardcoded at `[50,80,90,95]` in proxy — users cannot configure or discover them | Add `warn_threshold_pct` + `critical_threshold_pct` on budgets, expose in create/update API, read in proxy `detectThresholdCrossings()` | ~1.5 hours |
-| Webhook secret rotation | No transition period | Add `previous_signing_secret` + dual-signing + 24h expiry | ~1 hour |
+| ~~Webhook secret rotation~~ **DONE** | ~~No transition period~~ | ~~Add `previous_signing_secret` + dual-signing + 24h expiry~~ Deployed 2026-03-19. Migration 0024 adds `previous_signing_secret` + `secret_rotated_at` to `webhook_endpoints`. Rotation endpoint atomically copies current→previous via SQL column reference. Dual-sign helpers in both proxy (Web Crypto) and dashboard (Node crypto) with cross-signer equivalence tests. Lazy expiry cleans up stale secrets at dispatch time (fire-and-forget). 20 files, 1675 tests passing. | ~~~1 hour~~ |
 
 ### Low Priority (can do incrementally after launch)
 
@@ -927,7 +929,7 @@ Each phase is independently shippable. Total ~33 hours. See the full spec for da
 
 ## 14. Master Status Tracker
 
-Last updated: 2026-03-19
+Last updated: 2026-03-20
 
 | Priority | Item | Section | Status | Shipped | Effort |
 |---|---|---|---|---|---|
@@ -938,7 +940,7 @@ Last updated: 2026-03-19
 | **High** | Webhook event taxonomy + `api_version` on events | 4 | **DONE** | 2026-03-19 | ~1h |
 | **High** | `source` column on cost_events | 6 | **DONE** | 2026-03-19 | ~30m |
 | **High** | `api_version` on api_keys + header resolution | 5 | **DONE** | 2026-03-19 | ~30m |
-| **Medium** | Webhook secret rotation (dual-signing + 24h expiry) | 7 | Researching | — | ~1h |
+| **Medium** | Webhook secret rotation (dual-signing + 24h expiry) | 7 | **DONE** | 2026-03-19 | ~1h |
 | **Medium** | Configurable budget thresholds (`warn_threshold_pct`) | 6 | Not started | — | ~1.5h |
 | **Low** | `trace_id` on cost_events + `traceparent` extraction | 12 | Not started | — | ~30m |
 | **Low** | `doc_url` on error responses | 3 | Not started | — | ~15m |
@@ -951,4 +953,4 @@ Last updated: 2026-03-19
 | **Low** | Postgres → ClickHouse migration | 13 | Not started | — | TBD |
 | **Low** | Multi-region DO replication | 13 | Not started | — | TBD |
 
-**Summary:** 7/7 high-priority items complete. 2 medium-priority items remaining (~2.5h). 9 low-priority items for post-launch.
+**Summary:** 7/7 high-priority items complete. 1/2 medium-priority items remaining (~1.5h). 9 low-priority items for post-launch.
