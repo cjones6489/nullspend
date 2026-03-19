@@ -464,7 +464,9 @@ The `api_version` field (Stripe's pattern) lets you evolve the `data` payload st
 
 ---
 
-## 5. API Versioning Strategy
+## 5. API Versioning Strategy — DONE
+
+> **Deployed 2026-03-19.** Full three-tier resolution (header → key → constant), `NullSpend-Version` header sent by SDK and echoed on all responses, per-endpoint webhook versioning. See `docs/research/api-versioning.md` for design research and `4296704` for implementation commit.
 
 ### Industry Pattern
 
@@ -515,7 +517,7 @@ This is minimal implementation cost now. It's impossible to retrofit later witho
 
 | Column | Type | Why | Priority |
 |---|---|---|---|
-| `api_version` | `text NOT NULL DEFAULT '2026-03-01'` | Stripe-style API versioning. Records which API version this key was created under, used as the default response version. | **High** |
+| ~~`api_version`~~ | ~~`text NOT NULL DEFAULT '2026-04-01'`~~ | ~~Stripe-style API versioning. Records which API version this key was created under, used as the default response version.~~ **DONE** — Deployed 2026-03-19. | ~~**High**~~ |
 | `environment` | `text NOT NULL DEFAULT 'live'` | `live` or `test`. Enables sandbox mode later without schema changes. At launch, all keys are `live`. | **Medium** |
 
 **Columns considered and excluded:**
@@ -632,7 +634,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 | ~~Error response contract~~ **DONE** | ~~Flat `{ error, message }` format~~ | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18. | ~~5-6 hours~~ |
 | ~~Webhook event taxonomy (Section 4)~~ **DONE** | ~~6 types defined, no `api_version` on events~~ | ~~Lock full taxonomy + add `api_version` field to event structure~~ Deployed 2026-03-19. 11 event types locked, `api_version` field on all events, cross-builder shape test, SYNC'd proxy/dashboard builders. | ~~1 hour~~ |
 | ~~`source` column on cost_events (Section 6)~~ **DONE** | ~~Missing~~ | ~~Add column (`DEFAULT 'proxy'`) + set in all ingestion paths~~ Deployed 2026-03-19. CHECK constraint (`proxy`/`api`/`mcp`), 9 insert paths set explicit source, webhook payloads include `source`, `?source=` filter on list API, source breakdown in summary endpoint. 29 files, 1615 tests passing. | ~~30 min~~ |
-| `api_version` on api_keys | Missing | Add column (`DEFAULT '2026-03-01'`) + header parsing | ~30 min |
+| ~~`api_version` on api_keys (Section 5/6)~~ **DONE** | ~~Missing~~ | ~~Add column + three-tier resolution + SDK header + response headers + per-endpoint webhooks~~ Deployed 2026-03-19. `api_version` column on `api_keys` (`NOT NULL DEFAULT '2026-04-01'`), `resolveApiVersion(header → key → constant)` SYNC'd in dashboard + proxy, `NullSpend-Version` header sent by SDK and echoed on all responses, cost_event webhooks use per-endpoint `apiVersion`. 49 files, 858 proxy tests + 785 dashboard tests passing. | ~~30 min~~ |
 
 ### Completed — Budget Enforcement Architecture (2026-03-18)
 
@@ -649,7 +651,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
-| Schema columns (Section 6) | `source` on cost_events **DONE**. Missing columns on 2 tables | Add `api_version` + `environment` on api_keys | ~30 min |
+| Schema columns (Section 6) | `source` on cost_events **DONE**. `api_version` on api_keys **DONE**. | Add `environment` on api_keys | ~15 min |
 | Configurable budget thresholds (Section 6) | Thresholds hardcoded at `[50,80,90,95]` in proxy — users cannot configure or discover them | Add `warn_threshold_pct` + `critical_threshold_pct` on budgets, expose in create/update API, read in proxy `detectThresholdCrossings()` | ~1.5 hours |
 | Webhook secret rotation | No transition period | Add `previous_signing_secret` + dual-signing + 24h expiry | ~1 hour |
 

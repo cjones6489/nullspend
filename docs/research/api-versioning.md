@@ -120,15 +120,28 @@ TCP/IP, HTTP, and HTML demonstrate this works at massive scale.
 
 ## NullSpend-Specific Architecture
 
-### What We Already Have
+### Implementation Status: COMPLETE (deployed 2026-03-19)
+
+All items below have been implemented. 49 files changed, 534 insertions. Commit `4296704`.
+
+- `api_keys.api_version` column (`NOT NULL DEFAULT '2026-04-01'`) — migration `0022`
+- `resolveApiVersion(header, keyVersion)` utility — SYNC'd copies in `lib/api-version.ts` and `apps/proxy/src/lib/api-version.ts`
+- Proxy auth chain: `ApiKeyIdentity` → `AuthResult` → `RequestContext` carry `apiVersion` / `resolvedApiVersion`
+- Dashboard auth chain: `ApiKeyAuthContext` carries `apiVersion`, dev-mode fallback returns `CURRENT_VERSION`
+- SDK sends `NullSpend-Version` header on every request, custom override via `config.apiVersion`
+- `NullSpend-Version` response header echoed on all proxy responses (OpenAI, Anthropic, MCP) and session-auth dashboard routes
+- Cost event webhooks use per-endpoint `ep.apiVersion`; threshold/budget events use `endpoints[0]?.apiVersion`
+- Key creation explicitly sets `apiVersion: CURRENT_VERSION`
+- 8 new tests, 20 test files updated for interface changes
+
+### What Was Already In Place (Before This Implementation)
 
 - `webhook_endpoints.api_version` column (default `'2026-04-01'`) — added in Section 4
 - `WebhookEvent` interface includes `api_version: string`
 - All `build*Payload()` functions accept `apiVersion` parameter
 - `CURRENT_API_VERSION = "2026-04-01"` constant in both proxy and dashboard
-- SDK (`packages/sdk/src/client.ts`) sends `x-nullspend-key` but no version header
 
-### What Needs to Be Added
+### Implementation Details (Preserved for Reference)
 
 #### 1. Schema: `api_version` on `api_keys`
 
@@ -227,20 +240,20 @@ When a version is eventually deprecated and retired:
 
 ---
 
-## Implementation Estimate
+## Implementation Summary (Completed 2026-03-19)
 
-| Item | Effort | Files |
-|---|---|---|
-| Migration: `api_version` on `api_keys` | 5 min | `drizzle/0022_*.sql`, `packages/db/src/schema.ts` |
-| `lib/api-version.ts` utility | 10 min | New file |
-| Proxy auth: add `apiVersion` to `ApiKeyIdentity` + auth SQL | 15 min | `apps/proxy/src/lib/api-key-auth.ts`, `context.ts` |
-| Dashboard auth: add `apiVersion` to auth return type | 10 min | `lib/auth/with-api-key-auth.ts` |
-| SDK: send `NullSpend-Version` header | 15 min | `packages/sdk/src/client.ts`, `types.ts`, `client.test.ts` |
-| Proxy: resolve version, store in context | 10 min | `apps/proxy/src/lib/context.ts`, route entry points |
-| Dashboard routes: resolve version, echo response header | 10 min | Route handlers, `lib/utils/http.ts` |
-| Wire webhook endpoint version to builders | 10 min | Proxy route webhook dispatch call sites |
-| Tests | 25 min | Schema, auth, SDK, resolution utility, route tests |
-| **Total** | **~2 hours** | |
+| Item | Files Changed |
+|---|---|
+| Migration: `api_version` on `api_keys` | `drizzle/0022_api_keys_api_version.sql`, `packages/db/src/schema.ts` |
+| `lib/api-version.ts` utility (+ proxy SYNC copy) | `lib/api-version.ts`, `apps/proxy/src/lib/api-version.ts` |
+| Proxy auth chain | `api-key-auth.ts`, `auth.ts`, `context.ts`, `index.ts` |
+| Dashboard auth chain | `lib/auth/api-key.ts`, `lib/auth/with-api-key-auth.ts` |
+| SDK: `NullSpend-Version` header | `packages/sdk/src/client.ts`, `types.ts` |
+| Response headers (proxy + dashboard) | `headers.ts`, `anthropic-headers.ts`, `openai.ts`, `anthropic.ts`, `mcp.ts`, 5 dashboard routes |
+| Webhook per-endpoint wiring | `openai.ts`, `anthropic.ts`, `mcp.ts`, `webhook-thresholds.ts` |
+| Key creation | `app/api/keys/route.ts` |
+| Tests | 8 new test files/tests, 20 existing test files updated |
+| **Total** | **49 files, 534 insertions, 67 deletions** |
 
 ---
 
