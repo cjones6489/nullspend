@@ -790,19 +790,29 @@ NullSpend tracks per-request costs precisely but cannot correlate them across an
 
 ### Industry Validation
 
-No proxy-only platform (Portkey, LiteLLM, Helicone) solves this without client cooperation. The minimum cooperation is **one header per request** — a W3C `traceparent` or custom trace ID. The MCP specification has zero cost tracking primitives; the `_meta` extensibility field is the only mechanism, and nobody has proposed a cost convention. OpenTelemetry GenAI Semantic Conventions (v1.40.0) define the emerging standard span hierarchy but have no cost/billing attributes — an unclaimed space.
+No proxy-only platform (Portkey, LiteLLM, Helicone) solves this without client cooperation. However, DX research shows **server-side tool_call_id stitching** (matching `tool_calls` in LLM responses to `role: "tool"` messages in subsequent requests) can provide ~80% of trace correlation value with zero client headers. No competitor does this. Additionally: the MCP specification has zero cost tracking primitives, and OTel GenAI conventions have no cost/billing attributes — both are unclaimed spaces.
 
 ### Recommendation
 
-Five-phase buildout detailed in [`docs/technical-outlines/agent-tracing-architecture.md`](agent-tracing-architecture.md):
+Eight-phase buildout detailed in [`docs/technical-outlines/agent-tracing-architecture.md`](agent-tracing-architecture.md):
 
-1. **Accept `traceparent` header + return cost response headers** (~4h) — agent loop grouping + self-monitoring
-2. **Tool call stub extraction from LLM responses** (~6h) — proxy-side tool round-trip correlation
-3. **Cost rollup per trace API** (~4h) — "this run cost $X"
-4. **MCP `_meta` cost conventions** (~3h) — position NullSpend as the cost layer for MCP
-5. **Tool definition cost attribution** (~2h) — break out tool schema overhead
+| Phase | What | Effort |
+|---|---|---|
+| 1 | Accept trace headers (`traceparent`, `X-NullSpend-Trace-Id: "auto"`) + return cost/trace response headers | ~4h |
+| 2 | **Server-side tool_call_id stitching** (primary correlation, NullSpend-unique) | ~6h |
+| 3 | Cost rollup per trace API | ~4h |
+| 4 | MCP `_meta` cost conventions (`com.nullspend/*`) | ~3h |
+| 5 | Tool definition cost attribution | ~2h |
+| 6 | Agent loop detection + session circuit breakers (EWMA anomaly detection) | ~6h |
+| 7 | Adaptive cost estimation (learned multiplier per model+shape) | ~4h |
+| 8 | Mid-stream SSE cost injection (real-time cost during streaming) | ~4h |
 
-Each phase is independently shippable. Total ~19 hours. See the full spec for data model changes, API designs, wire protocol, and test plans.
+Each phase is independently shippable. Total ~33 hours. See the full spec for data model changes, API designs, SDK integration tiers, wire protocol, defensive architecture checklist, and test plans.
+
+**Supporting research:**
+- [`docs/claude-research/agent-tracing-cost-correlation-research.md`](../claude-research/agent-tracing-cost-correlation-research.md) — 10-agent competitive/standards survey, 100+ references
+- [`docs/claude-research/competitor-infrastructure-bugs-research.md`](../claude-research/competitor-infrastructure-bugs-research.md) — 80+ bugs across LiteLLM, Langfuse, Helicone, Portkey, OTel, Cloudflare
+- [`docs/claude-research/developer-adoption-tracing-research.md`](../claude-research/developer-adoption-tracing-research.md) — DX adoption patterns, SDK design, progressive disclosure
 
 **Priority: Medium.** Not a launch blocker (existing per-request tracking and budgets work), but a significant competitive differentiator. Should be the first post-launch feature.
 
