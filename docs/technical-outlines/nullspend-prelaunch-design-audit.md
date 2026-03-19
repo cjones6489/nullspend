@@ -534,6 +534,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 | Item | Current State | Action Needed | Effort |
 |---|---|---|---|
+| DO-first budget enforcement (Section 11) | Postgres queried on every cache miss (30-150ms) | Eliminate Postgres from hot path — DO is the only read-side authority | ~3-4 hours |
 | Prefixed object IDs | Raw UUIDs in API responses | Add `ns_` prefix mapping layer at API boundary | ~3 hours |
 | API key format | `ask_` prefix, no env/permission encoding | Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning | ~3 hours |
 | ~~Error response contract~~ **DONE** | ~~Flat `{ error, message }` format~~ | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18. Second pass (proxy.ts, gateway, Stripe webhook) completed same day. | ~~5-6 hours~~ |
@@ -664,7 +665,100 @@ The DO's `checkAndReserve()` already handles the "no budgets" case efficiently �
 
 ---
 
-## 11. What NOT to Change
+## 11. DO-First Budget Enforcement: Eliminate Postgres from the Hot Path
+
+### The Problem
+
+After removing the `hasBudgets` early-exit (Section 10), every request calls `checkBudgetDO()` which queries Postgres via `lookupBudgetsForDO()` to discover which budget entities exist before calling the DO. This adds 15-50ms to every cache miss. Worse, empty results (tracking-only users) are intentionally not cached, so tracking-only users pay a Postgres roundtrip on **every request**.
+
+| Scenario | Current latency added | Bottleneck |
+|---|---|---|
+| With budgets, cache hit | 2-5ms | DO RPC only |
+| With budgets, cache miss | 30-150ms | Postgres lookup |
+| Tracking-only (no budgets) | 30-80ms per request | Postgres lookup, never cached |
+
+The DO's internal computation (SQLite check + reserve) is sub-millisecond. The DO RPC hop is 1-5ms colocated. **Postgres is the only thing keeping us from sub-5ms enforcement on every request.**
+
+### Industry Precedent
+
+| System | Pattern | Per-request latency |
+|---|---|---|
+| **Stripe Issuing** | Pre-load all spend controls, evaluate locally, timeout fallback | Sub-50ms internal |
+| **LaunchDarkly** | Download all rules via streaming, evaluate in-memory, zero network per eval | Sub-1ms |
+| **Marqeta JIT Funding** | Card balance is $0, authorize by funding exact amount in real-time | Sub-3s end-to-end |
+| **Envoy local rate limit** | In-process token bucket, no external calls | Sub-microsecond |
+| **CF Native Rate Limiting** | Per-location counters, async backing store sync | Sub-1ms |
+
+The common pattern: **pre-load state into a local evaluator, evaluate with zero network calls per request, sync state changes asynchronously.**
+
+NullSpend's DO already implements this pattern at 90% — `blockConcurrencyWhile` loads all budget rows into memory, `checkAndReserve` evaluates against the in-memory Map. The remaining 10% is removing the Postgres query that gates access to the DO.
+
+### Recommended Architecture: DO as the Only Read Path
+
+Remove `lookupBudgetsForDO()` from the request hot path. The DO already knows its own state.
+
+```
+Current flow (3 network calls on cache miss):
+  Auth → Postgres (lookupBudgetsForDO) → DO (syncBudgets) → DO (checkAndReserve) → LLM
+
+Recommended flow (1 network call, always):
+  Auth → DO (checkAndReserve) → LLM
+```
+
+**How it works:**
+
+1. **Every request calls the DO directly** — `checkAndReserve(userId, keyId, estimate)`. The DO checks its own SQLite for budget rows. If none exist, it returns "approved" in sub-millisecond time. If budgets exist, it evaluates and reserves atomically.
+
+2. **Postgres is write-only on the hot path** — Budget CRUD (dashboard), cost event logging, and reconciliation write to Postgres. The DO is the read-side authority for enforcement.
+
+3. **Postgres→DO sync happens on budget mutations only** — When the dashboard creates/updates/deletes a budget, the `/internal/budget/invalidate` endpoint calls `syncBudgets()` on the DO. This is the only time Postgres data flows to the DO.
+
+4. **Remove `lookupBudgetsForDO()`** — The entire Postgres lookup + DO lookup cache layer is eliminated. No more cache miss penalty. No more tracking-only penalty.
+
+5. **DO `populateIfEmpty` handles cold start** — On first access (new DO instance or after eviction), `blockConcurrencyWhile` loads budget rows from Postgres via `populateIfEmpty()`. This is a one-time cost per DO instance, not per request.
+
+**Latency after this change:**
+
+| Scenario | Latency | What happens |
+|---|---|---|
+| With budgets | 1-5ms | DO RPC → in-memory check → reserve |
+| Tracking-only | 1-5ms | DO RPC → empty SQLite → "approved" |
+| DO cold start (first request for a user) | 15-50ms | `blockConcurrencyWhile` loads from Postgres, then check |
+| Budget mutation | Async | Dashboard → Postgres → `/internal/budget/invalidate` → DO sync |
+
+**What this eliminates:**
+- `lookupBudgetsForDO()` — Postgres query per request on cache miss
+- `doLookupCache` — the entire module-level Map cache and its TTL logic
+- `doBudgetPopulate()` calls from the orchestrator — sync only happens on mutations and cold start
+- The tracking-only penalty — every user pays the same 1-5ms
+
+**Consistency guarantees:**
+- Budget creation: takes effect as soon as the dashboard calls `/internal/budget/invalidate` with `action: "sync"`. The DO receives the new budget and enforces on the next request.
+- Budget deletion: same path. The DO removes the budget row from SQLite.
+- DO eviction + cold start: `blockConcurrencyWhile` re-loads from Postgres. Requests queue behind this (CF guarantees no concurrent access during construction). No enforcement gap.
+- Reconciliation: unchanged — async write-back to Postgres + DO spend update.
+
+**Risk: stale DO state if sync fails:**
+If the `/internal/budget/invalidate` call fails after a budget mutation, the DO has stale data until the next cold start. Mitigation: the dashboard should retry the invalidation call, and the DO's `populateIfEmpty` re-syncs on every cold start.
+
+### Implementation Plan
+
+1. Modify `checkBudgetDO()` in `budget-orchestrator.ts` to call the DO directly without `lookupBudgetsForDO()`
+2. Update the DO's `checkAndReserve` to accept `keyId` so it can check both user and api_key budgets without the caller specifying entity types
+3. Remove the `doLookupCache` (module-level Map, TTL logic, eviction logic)
+4. Remove the `lookupBudgetsForDO()` import and its `doBudgetPopulate()` call from the orchestrator
+5. Ensure the DO's `populateIfEmpty()` (called in `blockConcurrencyWhile`) handles the cold-start Postgres load correctly
+6. Verify `/internal/budget/invalidate` sync action properly updates the DO
+7. Update tests — remove DO lookup cache tests, update orchestrator tests
+8. Add budget check latency instrumentation (`checkBudget` duration metric)
+
+**Estimated effort:** ~3-4 hours.
+
+**Priority: High.** This is the right long-term architecture. It makes budget enforcement O(1) for every request — same latency whether you have 0 or 100 budgets, cache hit or miss. It also simplifies the codebase by removing an entire caching layer.
+
+---
+
+## 12. What NOT to Change
 
 - **Postgres as primary store** — right choice at launch scale. ClickHouse migration path is clear when needed.
 - **Cloudflare Workers + DOs architecture** — native DO integration for budget enforcement is the product's architectural advantage.
