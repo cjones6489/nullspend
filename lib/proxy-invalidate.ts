@@ -50,6 +50,12 @@ export async function invalidateProxyCache(params: {
         "Proxy cache invalidation failed",
       );
       if (attempt === MAX_RETRIES) {
+        log.warn(
+          { action: params.action, userId: params.userId,
+            entityType: params.entityType, entityId: params.entityId,
+            retries: MAX_RETRIES },
+          "Budget sync gap: budget exists in Postgres but is not enforced by DO until next successful sync",
+        );
         addSentryBreadcrumb("proxy-invalidate", "Invalidation failed after retries", {
           status: res.status, action: params.action, userId: params.userId,
           retries: MAX_RETRIES,
@@ -63,6 +69,12 @@ export async function invalidateProxyCache(params: {
         "Proxy cache invalidation error",
       );
       if (attempt === MAX_RETRIES) {
+        log.warn(
+          { action: params.action, userId: params.userId,
+            entityType: params.entityType, entityId: params.entityId,
+            retries: MAX_RETRIES },
+          "Budget sync gap: budget exists in Postgres but is not enforced by DO until next successful sync",
+        );
         addSentryBreadcrumb("proxy-invalidate", "Invalidation error after retries", {
           error: err instanceof Error ? err.message : String(err),
           action: params.action, userId: params.userId,

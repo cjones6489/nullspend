@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockError = vi.fn();
 const mockInfo = vi.fn();
+const mockWarn = vi.fn();
 
 vi.mock("@/lib/observability", () => ({
-  getLogger: () => ({ error: mockError, info: mockInfo }),
+  getLogger: () => ({ error: mockError, info: mockInfo, warn: mockWarn }),
 }));
 
 const mockAddSentryBreadcrumb = vi.fn();
@@ -22,6 +23,7 @@ describe("invalidateProxyCache", () => {
     vi.restoreAllMocks();
     mockError.mockClear();
     mockInfo.mockClear();
+    mockWarn.mockClear();
     mockAddSentryBreadcrumb.mockClear();
     process.env = { ...originalEnv };
   });
@@ -118,6 +120,10 @@ describe("invalidateProxyCache", () => {
       expect.objectContaining({ action: "remove", userId: "user-1", attempt: 0 }),
       "Proxy cache invalidation error",
     );
+    expect(mockWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "remove", userId: "user-1", retries: 2 }),
+      expect.stringContaining("Budget sync gap"),
+    );
 
     vi.useRealTimers();
   });
@@ -143,6 +149,10 @@ describe("invalidateProxyCache", () => {
     expect(mockError).toHaveBeenCalledWith(
       expect.objectContaining({ status: 401, action: "reset_spend", userId: "user-1" }),
       "Proxy cache invalidation failed",
+    );
+    expect(mockWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "reset_spend", userId: "user-1", retries: 2 }),
+      expect.stringContaining("Budget sync gap"),
     );
 
     vi.useRealTimers();
@@ -190,6 +200,7 @@ describe("invalidateProxyCache", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     await promise;
 
+    expect(mockWarn).toHaveBeenCalledTimes(1);
     expect(mockAddSentryBreadcrumb).toHaveBeenCalledWith(
       "proxy-invalidate",
       "Invalidation failed after retries",
@@ -215,6 +226,7 @@ describe("invalidateProxyCache", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     await promise;
 
+    expect(mockWarn).toHaveBeenCalledTimes(1);
     expect(mockAddSentryBreadcrumb).toHaveBeenCalledWith(
       "proxy-invalidate",
       "Invalidation error after retries",
@@ -325,8 +337,9 @@ describe("invalidateProxyCache", () => {
     await promise;
 
     expect(mockFetch).toHaveBeenCalledTimes(3);
-    // Error logged for each attempt
+    // Error logged for each attempt, plus one warn for sync gap
     expect(mockError).toHaveBeenCalledTimes(3);
+    expect(mockWarn).toHaveBeenCalledTimes(1);
 
     vi.useRealTimers();
   });
