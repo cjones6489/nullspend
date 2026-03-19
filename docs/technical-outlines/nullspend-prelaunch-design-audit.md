@@ -536,7 +536,7 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 |---|---|---|---|
 | Prefixed object IDs | Raw UUIDs in API responses | Add `ns_` prefix mapping layer at API boundary | ~3 hours |
 | API key format | `ask_` prefix, no env/permission encoding | Migrate to `ns_live_sk_` format + register with GitHub Secret Scanning | ~3 hours |
-| Error response contract | Flat `{ error, message }` format | Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy | ~5-6 hours |
+| Error response contract | ~~Flat `{ error, message }` format~~ **DONE** | ~~Migrate to nested `{ error: { code, message, details } }` + SDK parsing + proxy~~ Completed 2026-03-18 (commit `f1100d2`) | ~~5-6 hours~~ |
 | Webhook event taxonomy | 6 types defined, no `api_version` on events | Lock full taxonomy + add `api_version` field to event structure | ~1 hour |
 | `source` column on cost_events | Missing | Add column (`DEFAULT 'proxy'`) + set in all ingestion paths | ~30 min |
 | `api_version` on api_keys | Missing | Add column (`DEFAULT '2026-03-01'`) + header parsing | ~30 min |
@@ -560,6 +560,16 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 | `doc_url` on error responses | Missing | Add to error helper when docs site exists | ~15 min |
 | Thin webhook events | Not needed at launch volume | Design is forward-compatible; implement when scale requires it | TBD |
 
+### High Priority — Budget Enforcement Architecture (added 2026-03-18)
+
+| Item | Current State | Action Needed | Effort |
+|---|---|---|---|
+| Remove `hasBudgets` early-exit | `checkBudget()` skips enforcement when auth cache says no budgets | Remove early-exit, always call DO for budget check | ~1 hour |
+| Remove `hasBudgets` from auth query | `api-key-auth.ts` runs EXISTS subquery for budgets on every auth | Remove subquery, simplify auth to return only userId/keyId/hasWebhooks | ~30 min |
+| Reduce auth cache TTL | 60s positive cache TTL delays key revocation | Reduce to 30s for faster revocation propagation | ~5 min |
+
+See Section 11 for full analysis and rationale.
+
 ### Explicitly Deferred (not needed pre-launch)
 
 | Item | Why deferred |
@@ -573,7 +583,89 @@ Verify that the header names are consistent across all surfaces (proxy, dashboar
 
 ---
 
-## 10. What NOT to Change
+## 10. Budget Enforcement Architecture: Remove `hasBudgets` Early-Exit
+
+### The Problem
+
+The proxy's budget enforcement pipeline has a critical fast-path optimization that creates a 60-second enforcement bypass window after every budget creation or deletion:
+
+```
+checkBudget() [budget-orchestrator.ts:73]
+  └─ if (!ctx.auth.hasBudgets) return skipped  ← EARLY EXIT
+  └─ checkBudgetDO(...)  ← never reached if hasBudgets is false
+```
+
+The `hasBudgets` flag is determined by a Postgres `EXISTS` subquery during API key authentication and cached for 60 seconds in a module-level Map (per Worker isolate). When a user creates their first budget:
+
+1. Isolates that already cached `hasBudgets: false` continue skipping enforcement for up to 60 seconds
+2. The `/internal/budget/invalidate` endpoint clears the auth cache on the isolate that handles the request, but Cloudflare distributes requests across multiple isolates — other isolates retain stale caches
+3. There is **no mechanism** to broadcast cache invalidation across Worker isolates (confirmed by Cloudflare documentation)
+
+This is not a test issue — it affects production. A user who creates a budget and immediately sends an AI request may not see enforcement for up to 60 seconds.
+
+### Root Cause Analysis (from debugging session 2026-03-18)
+
+Three layers of budget state were identified:
+
+| Layer | Location | TTL | Invalidation |
+|---|---|---|---|
+| Auth cache (`hasBudgets`) | Per-isolate module-level Map | 60s | Only on the isolate that handles the invalidation request |
+| DO lookup cache (entity list) | Per-isolate module-level Map | 60s | `invalidateDoLookupCacheForUser()` — same isolate limitation |
+| Durable Object SQLite | Single global instance per userId | Permanent | `removeBudget()`, `syncBudgets()` — always consistent |
+
+The DO (Layer 3) is always correct. The problem is that Layer 1 gates access to the DO — if the auth cache says "no budgets", the request never reaches the DO.
+
+### Industry Precedent
+
+**Stripe Issuing** and **Marqeta** both evaluate spend controls synchronously on every transaction. Neither caches "does this entity have controls?" — they always check. The rationale: caching the *existence* of controls is a false optimization when the control check itself is fast.
+
+### Recommended Architecture
+
+**Remove the `hasBudgets` early-exit entirely. Always call the DO.**
+
+```
+Current flow:
+  Auth (Postgres + cache) → hasBudgets check → DO lookup (Postgres + cache) → DO check
+
+Recommended flow:
+  Auth (Postgres + cache) → DO lookup (Postgres + cache) → DO check
+```
+
+The DO's `checkAndReserve()` already handles the "no budgets" case efficiently — a `SELECT * FROM budgets` on an empty table completes in microseconds (same-thread SQLite, zero network hop). The `checkAndReserve` method was also updated to defensively read ALL rows in its SQLite storage, not just the entities the caller passes, so stale DO lookup caches can't cause missed enforcement.
+
+**Performance impact:** The DO RPC call adds 1-20ms for same-region traffic. Upstream LLM API calls take 500ms-60s. The overhead is negligible (<1% of total request time).
+
+**Implementation:**
+
+1. In `budget-orchestrator.ts`: remove `if (!ctx.auth.hasBudgets) return skipped` at line 73
+2. In `api-key-auth.ts`: remove the `EXISTS(SELECT 1 FROM budgets ...)` subquery from the auth SQL. Remove `hasBudgets` from the `ApiKeyIdentity` interface. This simplifies the auth query and reduces Postgres load.
+3. In `auth.ts`: remove `hasBudgets` from the `AuthResult` interface
+4. Keep the `doLookupCache` as-is — it caches the Postgres→DO entity sync and is an optimization for avoiding redundant Postgres queries. Its staleness is safe because the DO checks all its own rows regardless.
+5. Reduce auth cache TTL from 60s to 30s for faster key revocation propagation (independent improvement)
+6. Update unit tests that mock `hasBudgets`
+
+**Estimated effort:** ~1.5 hours (remove field from 3 interfaces, update auth SQL, remove early-exit, update ~30 test fixtures).
+
+### Alternatives Considered and Rejected
+
+| Alternative | Why rejected |
+|---|---|
+| **KV as cache coordination layer** | KV propagation is also eventually consistent (30-60s). Trades one consistency window for another, adds a new dependency. |
+| **Reduce auth cache TTL to 5s** | Shrinks the window but doesn't eliminate it. Increases Postgres load by 12x. |
+| **Broadcast invalidation via DO** | DOs can't push to Worker isolates. The communication is pull-only (Worker→DO). |
+| **Use Cache API for cross-isolate state** | Cache API is per-colo, not per-isolate. Better than module-level Maps but still not globally consistent. |
+
+### What This Enables
+
+- Budget creation takes effect **immediately** on the next request (no 60-second window)
+- Budget deletion takes effect immediately (no stale `hasBudgets: true` allowing DO checks on deleted budgets)
+- Simplified auth SQL (one fewer subquery per request)
+- Simplified codebase (remove `hasBudgets` from 3 interfaces and all test fixtures)
+- Budget smoke tests become reliable (the primary failure mode is eliminated)
+
+---
+
+## 11. What NOT to Change
 
 - **Postgres as primary store** — right choice at launch scale. ClickHouse migration path is clear when needed.
 - **Cloudflare Workers + DOs architecture** — native DO integration for budget enforcement is the product's architectural advantage.
