@@ -202,6 +202,8 @@ export const webhookEndpoints = pgTable("webhook_endpoints", {
   url: text("url").notNull(),
   description: text("description"),
   signingSecret: text("signing_secret").notNull(),
+  previousSigningSecret: text("previous_signing_secret"),
+  secretRotatedAt: timestamp("secret_rotated_at", { withTimezone: true }),
   eventTypes: text("event_types").array().notNull().default([]),
   enabled: boolean("enabled").notNull().default(true),
   apiVersion: text("api_version").notNull().default("2026-04-01"),

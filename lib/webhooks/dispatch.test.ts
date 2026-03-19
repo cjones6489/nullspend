@@ -1,5 +1,16 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 
+const mockWhere = vi.fn().mockResolvedValue([]);
+const mockSet = vi.fn().mockReturnValue({ where: mockWhere });
+
+vi.mock("@/lib/db/client", () => ({
+  getDb: vi.fn(() => ({
+    update: () => ({
+      set: mockSet,
+    }),
+  })),
+}));
+
 import {
   buildCostEventWebhookPayload,
   buildActionCreatedPayload,
@@ -356,8 +367,8 @@ describe("dispatchToEndpoints", () => {
 
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", eventTypes: [], apiVersion: "2026-04-01" },
-        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
       ],
       mockEvent,
     );
@@ -372,8 +383,8 @@ describe("dispatchToEndpoints", () => {
 
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", eventTypes: ["budget.exceeded"], apiVersion: "2026-04-01" },
-        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", eventTypes: [], apiVersion: "2026-04-01" }, // all events
+        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: ["budget.exceeded"], apiVersion: "2026-04-01" },
+        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" }, // all events
       ],
       mockEvent,
     );
@@ -386,7 +397,7 @@ describe("dispatchToEndpoints", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
 
     await dispatchToEndpoints(
-      [{ id: "ep-1", url: "https://a.com/hook", signingSecret: "secret", eventTypes: [], apiVersion: "2026-04-01" }],
+      [{ id: "ep-1", url: "https://a.com/hook", signingSecret: "secret", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" }],
       mockEvent,
     );
 
@@ -404,8 +415,8 @@ describe("dispatchToEndpoints", () => {
     // Should not throw
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://down.com/hook", signingSecret: "s1", eventTypes: [], apiVersion: "2026-04-01" },
-        { id: "ep-2", url: "https://up.com/hook", signingSecret: "s2", eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-1", url: "https://down.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-2", url: "https://up.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
       ],
       mockEvent,
     );
@@ -414,11 +425,126 @@ describe("dispatchToEndpoints", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("produces dual signature header when previous secret is active", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchToEndpoints(
+      [{
+        id: "ep-1",
+        url: "https://a.com/hook",
+        signingSecret: "current_secret",
+        previousSigningSecret: "old_secret",
+        secretRotatedAt: new Date(), // just rotated
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+      }],
+      mockEvent,
+    );
+
+    const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
+    // Should have two v1 values
+    expect(headers["X-NullSpend-Signature"]).toMatch(/^t=\d+,v1=[0-9a-f]+,v1=[0-9a-f]+$/);
+  });
+
+  it("produces single signature header when no previous secret", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchToEndpoints(
+      [{
+        id: "ep-1",
+        url: "https://a.com/hook",
+        signingSecret: "current_secret",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+      }],
+      mockEvent,
+    );
+
+    const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
+    expect(headers["X-NullSpend-Signature"]).toMatch(/^t=\d+,v1=[0-9a-f]+$/);
+    // Should NOT have two v1 values
+    expect(headers["X-NullSpend-Signature"]).not.toMatch(/,v1=.*,v1=/);
+  });
+
+  it("produces single signature when rotation window expired", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchToEndpoints(
+      [{
+        id: "ep-1",
+        url: "https://a.com/hook",
+        signingSecret: "current_secret",
+        previousSigningSecret: "old_secret",
+        secretRotatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // 25 hours ago
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+      }],
+      mockEvent,
+    );
+
+    const headers = fetchSpy.mock.calls[0][1]!.headers as Record<string, string>;
+    expect(headers["X-NullSpend-Signature"]).toMatch(/^t=\d+,v1=[0-9a-f]+$/);
+    expect(headers["X-NullSpend-Signature"]).not.toMatch(/,v1=.*,v1=/);
+  });
+
   it("does nothing for empty endpoints", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     await dispatchToEndpoints([], mockEvent);
 
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fires lazy expiry for endpoints with expired rotation (fire-and-forget)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+    mockSet.mockClear();
+    mockWhere.mockClear();
+
+    await dispatchToEndpoints(
+      [{
+        id: "ep-expired",
+        url: "https://a.com/hook",
+        signingSecret: "current",
+        previousSigningSecret: "old",
+        secretRotatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // 25h ago
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+      }],
+      mockEvent,
+    );
+
+    // Give fire-and-forget microtask a chance to run
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+      }),
+    );
+  });
+
+  it("does NOT fire lazy expiry for endpoints within rotation window", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+    mockSet.mockClear();
+
+    await dispatchToEndpoints(
+      [{
+        id: "ep-active",
+        url: "https://a.com/hook",
+        signingSecret: "current",
+        previousSigningSecret: "old",
+        secretRotatedAt: new Date(), // just rotated
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+      }],
+      mockEvent,
+    );
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockSet).not.toHaveBeenCalled();
   });
 });

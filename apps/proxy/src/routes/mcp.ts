@@ -7,6 +7,7 @@ import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/bu
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
+import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 import { UUID_RE } from "../lib/validation.js";
 
 // ---------------------------------------------------------------------------
@@ -211,6 +212,7 @@ export async function handleMcpEvents(
                   await ctx.webhookDispatcher!.dispatch(ep, whEvent);
                 }
               }
+              expireRotatedSecrets(ctx.connectionString, endpoints).catch(() => {});
             }
           }
         } catch (err) {

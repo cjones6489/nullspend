@@ -23,6 +23,7 @@ import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webh
 import { buildCostEventPayload, buildBudgetExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
+import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 
 const UPSTREAM_TIMEOUT_MS = 120_000;
 
@@ -289,6 +290,7 @@ function handleStreaming(
                   await dispatchToEndpoints(ctx.webhookDispatcher, endpoints, te);
                 }
               }
+              expireRotatedSecrets(connectionString, endpoints).catch(() => {});
             }
           }
         } catch (err) {
@@ -408,6 +410,7 @@ async function handleNonStreaming(
                   await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, te);
                 }
               }
+              expireRotatedSecrets(connectionString, endpoints).catch(() => {});
             }
           } catch (err) {
             console.error("[anthropic-route] Webhook dispatch failed:", err);

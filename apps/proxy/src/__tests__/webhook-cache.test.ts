@@ -50,6 +50,8 @@ const mockDbRows = [
     id: "ep-1",
     url: "https://hooks.example.com/1",
     signing_secret: "whsec_secret1",
+    previous_signing_secret: null,
+    secret_rotated_at: null,
     event_types: ["cost_event.created"],
     api_version: "2026-04-01",
   },
@@ -57,6 +59,8 @@ const mockDbRows = [
     id: "ep-2",
     url: "https://hooks.example.com/2",
     signing_secret: "whsec_secret2",
+    previous_signing_secret: null,
+    secret_rotated_at: null,
     event_types: [],
     api_version: "2026-04-01",
   },
@@ -184,6 +188,8 @@ describe("getWebhookEndpointsWithSecrets", () => {
     expect(result).toHaveLength(2);
     expect(result[0].signingSecret).toBe("whsec_secret1");
     expect(result[1].signingSecret).toBe("whsec_secret2");
+    expect(result[0].previousSigningSecret).toBeNull();
+    expect(result[0].secretRotatedAt).toBeNull();
   });
 
   it("returns empty array on database error (fail-open)", async () => {

@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import {
   signWebhookPayload,
+  dualSignWebhookPayload,
   parseSignature,
   verifyWebhookSignature,
+  SECRET_ROTATION_WINDOW_SECONDS,
 } from "../lib/webhook-signer.js";
 
 beforeAll(() => {
@@ -110,6 +112,77 @@ describe("verifyWebhookSignature", () => {
     const sig = await signWebhookPayload(payload, secret, recentTimestamp);
 
     const valid = await verifyWebhookSignature(payload, sig, secret, 300);
+    expect(valid).toBe(true);
+  });
+});
+
+describe("dualSignWebhookPayload", () => {
+  it("with null previousSecret produces single v1 (matches signWebhookPayload)", async () => {
+    const payload = '{"test":true}';
+    const secret = "whsec_current";
+    const ts = 1710612181;
+
+    const dualSig = await dualSignWebhookPayload(payload, secret, null, ts);
+    const singleSig = await signWebhookPayload(payload, secret, ts);
+
+    expect(dualSig).toBe(singleSig);
+    const parsed = parseSignature(dualSig);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.signatures).toHaveLength(1);
+  });
+
+  it("with previousSecret produces two v1 values", async () => {
+    const payload = '{"test":true}';
+    const currentSecret = "whsec_current";
+    const previousSecret = "whsec_previous";
+    const ts = 1710612181;
+
+    const sig = await dualSignWebhookPayload(payload, currentSecret, previousSecret, ts);
+    const parsed = parseSignature(sig);
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.signatures).toHaveLength(2);
+    expect(parsed!.timestamp).toBe(ts);
+  });
+
+  it("first v1 is current secret, second is previous", async () => {
+    const payload = '{"data":"hello"}';
+    const currentSecret = "whsec_current";
+    const previousSecret = "whsec_previous";
+    const ts = 1710612181;
+
+    const dualSig = await dualSignWebhookPayload(payload, currentSecret, previousSecret, ts);
+    const parsed = parseSignature(dualSig);
+
+    // Generate individual signatures for comparison
+    const currentSig = await signWebhookPayload(payload, currentSecret, ts);
+    const previousSig = await signWebhookPayload(payload, previousSecret, ts);
+    const currentParsed = parseSignature(currentSig);
+    const previousParsed = parseSignature(previousSig);
+
+    expect(parsed!.signatures[0]).toBe(currentParsed!.signatures[0]);
+    expect(parsed!.signatures[1]).toBe(previousParsed!.signatures[0]);
+  });
+
+  it("verifyWebhookSignature succeeds against dual header with current secret", async () => {
+    const payload = '{"event":"rotation_test"}';
+    const currentSecret = "whsec_current";
+    const previousSecret = "whsec_previous";
+    const ts = Math.floor(Date.now() / 1000);
+
+    const dualSig = await dualSignWebhookPayload(payload, currentSecret, previousSecret, ts);
+    const valid = await verifyWebhookSignature(payload, dualSig, currentSecret);
+    expect(valid).toBe(true);
+  });
+
+  it("verifyWebhookSignature succeeds against dual header with previous secret", async () => {
+    const payload = '{"event":"rotation_test"}';
+    const currentSecret = "whsec_current";
+    const previousSecret = "whsec_previous";
+    const ts = Math.floor(Date.now() / 1000);
+
+    const dualSig = await dualSignWebhookPayload(payload, currentSecret, previousSecret, ts);
+    const valid = await verifyWebhookSignature(payload, dualSig, previousSecret);
     expect(valid).toBe(true);
   });
 });

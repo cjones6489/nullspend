@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getTableColumns } from "drizzle-orm";
-import { budgets, costEvents, actions, apiKeys, slackConfigs } from "./schema";
+import { budgets, costEvents, actions, apiKeys, slackConfigs, webhookEndpoints } from "./schema";
 import type { BudgetRow, NewBudgetRow, CostEventRow, NewCostEventRow } from "./schema";
 
 describe("budgets table schema", () => {
@@ -247,5 +247,17 @@ describe("schema consistency with shared package types", () => {
     // $1M budget = 1 trillion — still safe (MAX_SAFE_INTEGER is ~9 quadrillion)
     const hugeBudget = 1_000_000_000_000;
     expect(Number.isSafeInteger(hugeBudget)).toBe(true);
+  });
+});
+
+describe("webhookEndpoints table schema", () => {
+  const cols = getTableColumns(webhookEndpoints);
+
+  it("previousSigningSecret is nullable", () => {
+    expect(cols.previousSigningSecret.notNull).toBe(false);
+  });
+
+  it("secretRotatedAt is nullable", () => {
+    expect(cols.secretRotatedAt.notNull).toBe(false);
   });
 });

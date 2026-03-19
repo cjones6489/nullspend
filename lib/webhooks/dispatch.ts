@@ -1,11 +1,11 @@
 // SYNC: Proxy WebhookEvent interface in apps/proxy/src/lib/webhook-events.ts must match this shape
 
-import { eq, and } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { getLogger } from "@/lib/observability";
 import { webhookEndpoints } from "@nullspend/db";
-import { signPayload } from "./signer";
+import { dualSignPayload, SECRET_ROTATION_WINDOW_SECONDS } from "./signer";
 
 const CURRENT_API_VERSION = "2026-04-01";
 
@@ -21,6 +21,8 @@ interface WebhookEndpoint {
   id: string;
   url: string;
   signingSecret: string;
+  previousSigningSecret: string | null;
+  secretRotatedAt: Date | null;
   eventTypes: string[];
   apiVersion: string;
 }
@@ -41,6 +43,8 @@ export async function fetchWebhookEndpoints(
       id: webhookEndpoints.id,
       url: webhookEndpoints.url,
       signingSecret: webhookEndpoints.signingSecret,
+      previousSigningSecret: webhookEndpoints.previousSigningSecret,
+      secretRotatedAt: webhookEndpoints.secretRotatedAt,
       eventTypes: webhookEndpoints.eventTypes,
       apiVersion: webhookEndpoints.apiVersion,
     })
@@ -51,6 +55,11 @@ export async function fetchWebhookEndpoints(
         eq(webhookEndpoints.enabled, true),
       ),
     );
+}
+
+function isSecretActive(ep: WebhookEndpoint): boolean {
+  if (!ep.previousSigningSecret || !ep.secretRotatedAt) return false;
+  return Date.now() - ep.secretRotatedAt.getTime() < SECRET_ROTATION_WINDOW_SECONDS * 1000;
 }
 
 /**
@@ -76,7 +85,8 @@ export async function dispatchToEndpoints(
     }
 
     try {
-      const signature = signPayload(payload, endpoint.signingSecret, timestamp);
+      const previousSecret = isSecretActive(endpoint) ? endpoint.previousSigningSecret : null;
+      const signature = dualSignPayload(payload, endpoint.signingSecret, previousSecret, timestamp);
 
       await fetch(endpoint.url, {
         method: "POST",
@@ -96,6 +106,32 @@ export async function dispatchToEndpoints(
         `Failed to dispatch ${event.type} to endpoint ${endpoint.id}`,
       );
     }
+  }
+
+  // Lazy expiry: clean up expired rotation secrets (fire-and-forget, never awaited)
+  const cutoff = new Date(Date.now() - SECRET_ROTATION_WINDOW_SECONDS * 1000);
+  const expiredEndpoints = endpoints.filter(
+    (ep) => ep.secretRotatedAt && ep.secretRotatedAt < cutoff,
+  );
+  if (expiredEndpoints.length > 0) {
+    const db = getDb();
+    void (async () => {
+      for (const ep of expiredEndpoints) {
+        try {
+          await db
+            .update(webhookEndpoints)
+            .set({ previousSigningSecret: null, secretRotatedAt: null })
+            .where(
+              and(
+                eq(webhookEndpoints.id, ep.id),
+                lt(webhookEndpoints.secretRotatedAt, cutoff),
+              ),
+            );
+        } catch {
+          // fire-and-forget
+        }
+      }
+    })();
   }
 }
 

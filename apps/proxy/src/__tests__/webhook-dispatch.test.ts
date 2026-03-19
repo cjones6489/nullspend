@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockPublishJSON, MockQStashClient } = vi.hoisted(() => {
+const { mockPublishJSON, MockQStashClient, mockDualSign } = vi.hoisted(() => {
   const mockPublishJSON = vi.fn().mockResolvedValue({ messageId: "msg_1" });
   const MockQStashClient = vi.fn().mockImplementation(function (this: any) {
     this.publishJSON = mockPublishJSON;
   });
-  return { mockPublishJSON, MockQStashClient };
+  const mockDualSign = vi.fn().mockResolvedValue("t=1000,v1=abc123");
+  return { mockPublishJSON, MockQStashClient, mockDualSign };
 });
 
 vi.mock("@upstash/qstash", () => ({
@@ -13,7 +14,8 @@ vi.mock("@upstash/qstash", () => ({
 }));
 
 vi.mock("../lib/webhook-signer.js", () => ({
-  signWebhookPayload: vi.fn().mockResolvedValue("t=1000,v1=abc123"),
+  dualSignWebhookPayload: mockDualSign,
+  SECRET_ROTATION_WINDOW_SECONDS: 86_400,
 }));
 
 import { createWebhookDispatcher, dispatchToEndpoints } from "../lib/webhook-dispatch.js";
@@ -25,6 +27,8 @@ function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): Webho
     id: "ep-1",
     url: "https://hooks.example.com/webhook",
     signingSecret: "whsec_secret",
+    previousSigningSecret: null,
+    secretRotatedAt: null,
     eventTypes: [],
     apiVersion: "2026-04-01",
     ...overrides,
@@ -155,5 +159,64 @@ describe("dispatchToEndpoints", () => {
     await expect(
       dispatchToEndpoints(dispatcher, [makeEndpoint()], makeEvent()),
     ).resolves.not.toThrow();
+  });
+});
+
+describe("dual-signing in dispatch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPublishJSON.mockResolvedValue({ messageId: "msg_1" });
+  });
+
+  it("uses previousSigningSecret when within rotation window", async () => {
+    const dispatcher = createWebhookDispatcher("qstash_token")!;
+    const endpoint = makeEndpoint({
+      previousSigningSecret: "whsec_old",
+      secretRotatedAt: new Date().toISOString(), // just rotated
+    });
+    const event = makeEvent();
+
+    await dispatcher.dispatch(endpoint, event);
+
+    expect(mockDualSign).toHaveBeenCalledWith(
+      expect.any(String),
+      "whsec_secret",
+      "whsec_old", // previousSecret passed through
+      expect.any(Number),
+    );
+  });
+
+  it("passes null previousSecret when no rotation in progress", async () => {
+    const dispatcher = createWebhookDispatcher("qstash_token")!;
+    const endpoint = makeEndpoint(); // no previousSigningSecret
+    const event = makeEvent();
+
+    await dispatcher.dispatch(endpoint, event);
+
+    expect(mockDualSign).toHaveBeenCalledWith(
+      expect.any(String),
+      "whsec_secret",
+      null,
+      expect.any(Number),
+    );
+  });
+
+  it("passes null previousSecret when rotation window expired", async () => {
+    const dispatcher = createWebhookDispatcher("qstash_token")!;
+    const expired = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(); // 25 hours ago
+    const endpoint = makeEndpoint({
+      previousSigningSecret: "whsec_old",
+      secretRotatedAt: expired,
+    });
+    const event = makeEvent();
+
+    await dispatcher.dispatch(endpoint, event);
+
+    expect(mockDualSign).toHaveBeenCalledWith(
+      expect.any(String),
+      "whsec_secret",
+      null, // expired, so null
+      expect.any(Number),
+    );
   });
 });

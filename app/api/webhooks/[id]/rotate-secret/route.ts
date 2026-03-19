@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
@@ -21,9 +21,15 @@ export async function POST(
 
     const db = getDb();
 
+    const secretRotatedAt = new Date();
+
     const [updated] = await db
       .update(webhookEndpoints)
-      .set({ signingSecret: newSecret })
+      .set({
+        previousSigningSecret: sql`${webhookEndpoints.signingSecret}`,
+        signingSecret: newSecret,
+        secretRotatedAt,
+      })
       .where(
         and(
           eq(webhookEndpoints.id, id),
@@ -44,7 +50,7 @@ export async function POST(
     );
 
     return NextResponse.json({
-      data: { signingSecret: newSecret },
+      data: { signingSecret: newSecret, secretRotatedAt: secretRotatedAt.toISOString() },
     });
   } catch (error) {
     return handleRouteError(error);

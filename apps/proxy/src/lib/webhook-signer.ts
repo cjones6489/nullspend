@@ -1,10 +1,12 @@
 const SIGNATURE_VERSION = "v1";
 
+/** 24-hour dual-signing window for secret rotation. SYNC: lib/webhooks/signer.ts */
+export const SECRET_ROTATION_WINDOW_SECONDS = 86_400;
+
 /**
- * Sign a webhook payload using HMAC-SHA256.
- * Returns a Stripe-format signature: `t={timestamp},v1={hex}`
+ * Compute HMAC-SHA256 hex for a payload+timestamp using Web Crypto API.
  */
-export async function signWebhookPayload(
+async function computeHmacHex(
   payload: string,
   secret: string,
   timestamp: number,
@@ -26,11 +28,41 @@ export async function signWebhookPayload(
     encoder.encode(signedContent),
   );
 
-  const hex = [...new Uint8Array(signature)]
+  return [...new Uint8Array(signature)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
 
+/**
+ * Sign a webhook payload using HMAC-SHA256.
+ * Returns a Stripe-format signature: `t={timestamp},v1={hex}`
+ */
+export async function signWebhookPayload(
+  payload: string,
+  secret: string,
+  timestamp: number,
+): Promise<string> {
+  const hex = await computeHmacHex(payload, secret, timestamp);
   return `t=${timestamp},${SIGNATURE_VERSION}=${hex}`;
+}
+
+/**
+ * Dual-sign a webhook payload with current and (optionally) previous secret.
+ * During rotation window: `t={ts},v1={currentHex},v1={previousHex}`
+ * After rotation window (previousSecret is null): `t={ts},v1={currentHex}`
+ */
+export async function dualSignWebhookPayload(
+  payload: string,
+  currentSecret: string,
+  previousSecret: string | null,
+  timestamp: number,
+): Promise<string> {
+  const currentHex = await computeHmacHex(payload, currentSecret, timestamp);
+  if (!previousSecret) {
+    return `t=${timestamp},${SIGNATURE_VERSION}=${currentHex}`;
+  }
+  const previousHex = await computeHmacHex(payload, previousSecret, timestamp);
+  return `t=${timestamp},${SIGNATURE_VERSION}=${currentHex},${SIGNATURE_VERSION}=${previousHex}`;
 }
 
 /**
