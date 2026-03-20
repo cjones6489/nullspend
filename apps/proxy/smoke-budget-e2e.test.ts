@@ -29,6 +29,7 @@ import {
   isServerUp,
   invalidateBudget,
   syncBudget,
+  waitForBudgetSpend,
 } from "./smoke-test-helpers.js";
 
 describe("End-to-end budget enforcement", () => {
@@ -183,17 +184,9 @@ describe("End-to-end budget enforcement", () => {
     expect(res.status).toBe(200);
     await res.json();
 
-    // Wait for waitUntil reconciliation to complete
-    await new Promise((r) => setTimeout(r, 5_000));
-
-    // Verify budget spend increased in Postgres (reconciliation writes back)
-    const rows = await sql`
-      SELECT spend_microdollars::text as spend
-      FROM budgets
-      WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}
-    `;
-    expect(rows.length).toBe(1);
-    const spend = Number(rows[0].spend);
+    // Poll Postgres until reconciliation writes spend back.
+    // Reconciliation is async: waitUntil → Queue (up to 5s batch timeout) → DO → Postgres.
+    const spend = await waitForBudgetSpend(sql, "user", NULLSPEND_SMOKE_USER_ID!, 15_000);
     expect(spend).toBeGreaterThan(0);
   }, 30_000);
 

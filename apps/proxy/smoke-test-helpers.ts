@@ -86,6 +86,32 @@ export async function waitForCostEvent(
 }
 
 /**
+ * Poll Postgres until budget spend is > 0, or timeout.
+ * Used to wait for async reconciliation (waitUntil + queue consumer)
+ * to write spend back to Postgres after a proxied request completes.
+ */
+export async function waitForBudgetSpend(
+  sql: postgres.Sql,
+  entityType: string,
+  entityId: string,
+  timeoutMs = 15_000,
+): Promise<number> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const rows = await sql`
+      SELECT spend_microdollars::text as spend
+      FROM budgets
+      WHERE entity_type = ${entityType} AND entity_id = ${entityId}
+    `;
+    if (rows.length > 0 && Number(rows[0].spend) > 0) {
+      return Number(rows[0].spend);
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return 0;
+}
+
+/**
  * Call the proxy's internal budget invalidation endpoint to properly clean up
  * all three layers of budget state: DO SQLite, DO lookup cache, and auth cache.
  *
