@@ -39,6 +39,7 @@ function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
     tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
+    requestStartMs: performance.now(),
     ...overrides,
   };
 }

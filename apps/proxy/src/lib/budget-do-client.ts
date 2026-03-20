@@ -1,4 +1,4 @@
-import type { CheckResult } from "../durable-objects/user-budget.js";
+import type { CheckResult, VelocityState } from "../durable-objects/user-budget.js";
 import type { DOBudgetEntity } from "./budget-do-lookup.js";
 import { updateBudgetSpend } from "./budget-spend.js";
 import { emitMetric } from "./metrics.js";
@@ -57,6 +57,17 @@ export async function doBudgetReconcile(
   try {
     const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
     const reconcileResult = await stub.reconcile(reservationId, actualCost);
+
+    if (reconcileResult.status === "not_found") {
+      // Reservation already reconciled (expired by alarm or duplicate call).
+      // Do NOT write to Postgres — the spend was already counted.
+      console.warn("[budget-do-client] Reservation not found in DO (already reconciled?)", {
+        reservationId,
+        costMicrodollars: actualCost,
+      });
+      emitMetric("reconcile_not_found", { reservationId, costMicrodollars: actualCost });
+      return "ok";
+    }
 
     if (reconcileResult.budgetsMissing && reconcileResult.budgetsMissing.length > 0) {
       console.warn("[budget-do-client] Reconciled reservation has missing budgets", {
@@ -141,6 +152,18 @@ export async function doBudgetResetSpend(
 ): Promise<void> {
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
   await stub.resetSpend(entityType, entityId);
+}
+
+/**
+ * Read velocity state from the UserBudgetDO.
+ * Returns all velocity_state rows for the user.
+ */
+export async function doBudgetGetVelocityState(
+  env: Env,
+  userId: string,
+): Promise<VelocityState[]> {
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  return stub.getVelocityState();
 }
 
 /**

@@ -249,6 +249,36 @@ export function buildVelocityExceededPayload(
   };
 }
 
+interface VelocityRecoveredData {
+  budgetEntityType: string;
+  budgetEntityId: string;
+  velocityLimitMicrodollars: number;
+  velocityWindowSeconds: number;
+  velocityCooldownSeconds: number;
+}
+
+export function buildVelocityRecoveredPayload(
+  data: VelocityRecoveredData,
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "velocity.recovered",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        velocity_limit_microdollars: data.velocityLimitMicrodollars,
+        velocity_window_seconds: data.velocityWindowSeconds,
+        velocity_cooldown_seconds: data.velocityCooldownSeconds,
+        recovered_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
 export function buildTestPingPayload(
   apiVersion: string = CURRENT_API_VERSION,
 ): WebhookEvent {

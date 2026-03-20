@@ -212,6 +212,7 @@ function makeCtx(
     tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
+    requestStartMs: performance.now(),
     ...overrides,
   };
 }
@@ -905,18 +906,21 @@ describe("CheckResult interface — velocity fields", () => {
     expect(result.velocityDetails!.currentMicrodollars).toBe(15_000_000);
   });
 
-  it("velocityRecovered is an array of entity descriptors", () => {
+  it("velocityRecovered is an array of entity descriptors with velocity config", () => {
     const result: CheckResult = {
       status: "approved",
       hasBudgets: true,
       reservationId: "rsv-1",
       velocityRecovered: [
-        { entityType: "api_key", entityId: "key-1" },
-        { entityType: "user", entityId: "user-1" },
+        { entityType: "api_key", entityId: "key-1", velocityLimitMicrodollars: 10_000_000, velocityWindowSeconds: 300, velocityCooldownSeconds: 60 },
+        { entityType: "user", entityId: "user-1", velocityLimitMicrodollars: 5_000_000, velocityWindowSeconds: 60, velocityCooldownSeconds: 120 },
       ],
     };
     expect(result.velocityRecovered).toHaveLength(2);
-    expect(result.velocityRecovered![0]).toEqual({ entityType: "api_key", entityId: "key-1" });
+    expect(result.velocityRecovered![0]).toEqual({
+      entityType: "api_key", entityId: "key-1",
+      velocityLimitMicrodollars: 10_000_000, velocityWindowSeconds: 300, velocityCooldownSeconds: 60,
+    });
   });
 
   it("all velocity fields are optional (backward compatible)", () => {
@@ -1044,7 +1048,7 @@ describe("Circuit breaker — tripped/cooldown/recovery", () => {
       hasBudgets: true,
       reservationId: "rsv-recovered",
       velocityRecovered: [
-        { entityType: "user", entityId: "user-1" },
+        { entityType: "user", entityId: "user-1", velocityLimitMicrodollars: 10_000_000, velocityWindowSeconds: 300, velocityCooldownSeconds: 60 },
       ],
       checkedEntities: [
         { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 50_000_000, policy: "strict_block" },

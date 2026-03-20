@@ -84,6 +84,60 @@ describe("lookupBudgetsForDO", () => {
     });
   });
 
+  it("converts velocity fields from seconds to ms", async () => {
+    const mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{
+        maxBudgetMicrodollars: 50_000_000,
+        spendMicrodollars: 10_000_000,
+        policy: "strict_block",
+        resetInterval: "monthly",
+        currentPeriodStart: new Date("2025-03-01T00:00:00Z"),
+        velocityLimitMicrodollars: 5_000_000,
+        velocityWindowSeconds: 120,
+        velocityCooldownSeconds: 90,
+      }]),
+    };
+    mockDrizzle.mockReturnValue(mockDb);
+
+    const result = await lookupBudgetsForDO("postgres://test", {
+      keyId: null,
+      userId: "user-1",
+    });
+
+    expect(result[0].velocityLimit).toBe(5_000_000);
+    expect(result[0].velocityWindow).toBe(120_000); // 120s * 1000
+    expect(result[0].velocityCooldown).toBe(90_000); // 90s * 1000
+  });
+
+  it("defaults velocity window and cooldown to 60s when null", async () => {
+    const mockDb = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{
+        maxBudgetMicrodollars: 50_000_000,
+        spendMicrodollars: 0,
+        policy: "strict_block",
+        resetInterval: null,
+        currentPeriodStart: null,
+        velocityLimitMicrodollars: null,
+        velocityWindowSeconds: null,
+        velocityCooldownSeconds: null,
+      }]),
+    };
+    mockDrizzle.mockReturnValue(mockDb);
+
+    const result = await lookupBudgetsForDO("postgres://test", {
+      keyId: null,
+      userId: "user-1",
+    });
+
+    expect(result[0].velocityLimit).toBeNull();
+    expect(result[0].velocityWindow).toBe(60_000); // default 60s * 1000
+    expect(result[0].velocityCooldown).toBe(60_000); // default 60s * 1000
+  });
+
   it("converts timestamp to epoch ms", async () => {
     const date = new Date("2025-06-15T12:00:00Z");
     const mockDb = {

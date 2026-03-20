@@ -121,6 +121,7 @@ function makeCtx(
     tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
+    requestStartMs: performance.now(),
     ...overrides,
   };
 }
@@ -959,6 +960,108 @@ describe("handleChatCompletions", () => {
       const [ep2Arg, event2Arg] = dispatchSpy.mock.calls[1];
       expect(ep2Arg.id).toBe("ep-2");
       expect(event2Arg.api_version).toBe("2099-01-01");
+    });
+  });
+
+  describe("latency timing headers", () => {
+    it("non-streaming response includes x-nullspend-overhead-ms header", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ model: "gpt-4o-mini", choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-timing" },
+        }),
+      );
+
+      const res = await handleChatCompletions(
+        makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+        makeEnv(),
+        makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-nullspend-overhead-ms")).toMatch(/^\d+$/);
+      const serverTiming = res.headers.get("Server-Timing")!;
+      expect(serverTiming).toContain("overhead;dur=");
+      expect(serverTiming).toContain("upstream;dur=");
+      expect(serverTiming).toContain("total;dur=");
+      await res.text();
+    });
+
+    it("streaming response includes timing headers", async () => {
+      const sseChunks = [
+        'data: {"id":"chatcmpl-t","model":"gpt-4o-mini","choices":[{"delta":{"content":"hi"}}]}\n\n',
+        'data: {"id":"chatcmpl-t","model":"gpt-4o-mini","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}\n\n',
+        "data: [DONE]\n\n",
+      ];
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(makeSSEStream(sseChunks), {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "x-request-id": "req-stream-timing" },
+        }),
+      );
+
+      const res = await handleChatCompletions(
+        makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], stream: true }),
+        makeEnv(),
+        makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }], stream: true }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("x-nullspend-overhead-ms")).toMatch(/^\d+$/);
+      expect(res.headers.get("Server-Timing")).toContain("overhead;dur=");
+      await res.text();
+    });
+
+    it("upstream error response includes timing headers", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: "Server error", type: "server_error" } }), {
+          status: 500,
+          headers: { "content-type": "application/json", "x-request-id": "req-err-timing" },
+        }),
+      );
+
+      const res = await handleChatCompletions(
+        makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+        makeEnv(),
+        makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      );
+
+      expect(res.status).toBe(500);
+      expect(res.headers.get("x-nullspend-overhead-ms")).toMatch(/^\d+$/);
+      expect(res.headers.get("Server-Timing")).toContain("upstream;dur=");
+    });
+
+    it("emits proxy_latency metric on non-streaming response", async () => {
+      const logSpy = vi.spyOn(console, "log");
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ model: "gpt-4o-mini", choices: [], usage: { prompt_tokens: 1, completion_tokens: 1 } }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-metric" },
+        }),
+      );
+
+      const res = await handleChatCompletions(
+        makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+        makeEnv(),
+        makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      );
+
+      expect(res.status).toBe(200);
+      await res.text();
+
+      const metricCall = logSpy.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes('"_metric":"proxy_latency"'),
+      );
+      expect(metricCall).toBeTruthy();
+      const parsed = JSON.parse(metricCall![0] as string);
+      expect(parsed.provider).toBe("openai");
+      expect(parsed.model).toBe("gpt-4o-mini");
+      expect(typeof parsed.overheadMs).toBe("number");
+      expect(typeof parsed.upstreamMs).toBe("number");
+      expect(typeof parsed.totalMs).toBe("number");
+      expect(parsed.streaming).toBe(false);
     });
   });
 

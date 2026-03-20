@@ -259,6 +259,32 @@ describe("doBudgetReconcile", () => {
     vi.useRealTimers();
   });
 
+  it("skips Postgres write when DO returns not_found (already reconciled)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stub = makeStub({
+      reconcile: vi.fn().mockResolvedValue({ status: "not_found" }),
+    });
+    const env = makeEnv(stub);
+
+    const result = await doBudgetReconcile(
+      env, "user-1", "rsv-1", 1_000,
+      [{ entityType: "user", entityId: "user-1" }],
+      "postgres://test",
+    );
+
+    expect(result).toBe("ok");
+    expect(mockUpdateBudgetSpend).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[budget-do-client] Reservation not found in DO (already reconciled?)",
+      expect.objectContaining({ reservationId: "rsv-1" }),
+    );
+    expect(mockEmitMetric).toHaveBeenCalledWith("reconcile_not_found", expect.objectContaining({
+      reservationId: "rsv-1",
+      costMicrodollars: 1_000,
+    }));
+    warnSpy.mockRestore();
+  });
+
   it("DO stub.reconcile failure → error status returned, Postgres write skipped", async () => {
     const stub = makeStub({
       reconcile: vi.fn().mockRejectedValue(new Error("DO error")),

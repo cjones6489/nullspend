@@ -3,7 +3,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { handleChatCompletions } from "./routes/openai.js";
 import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
-import { handleBudgetInvalidation } from "./routes/internal.js";
+import { handleBudgetInvalidation, handleVelocityState } from "./routes/internal.js";
 import { authenticateRequest } from "./lib/auth.js";
 import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
@@ -144,6 +144,7 @@ export default {
     env: Env,
     _ctx: ExecutionContext,
   ): Promise<Response> {
+    const requestStartMs = performance.now();
     const globals = globalThis as Record<string, unknown>;
     globals.__FORCE_DB_PERSIST =
       (env as Record<string, unknown>).FORCE_DB_PERSIST === "true";
@@ -171,9 +172,12 @@ export default {
         }
       }
 
-      // Internal endpoint — separate auth pipeline (shared secret, not API key)
+      // Internal endpoints — separate auth pipeline (shared secret, not API key)
       if (url.pathname === "/internal/budget/invalidate" && request.method === "POST") {
         return handleBudgetInvalidation(request, env);
+      }
+      if (url.pathname === "/internal/budget/velocity-state" && request.method === "GET") {
+        return handleVelocityState(request, env);
       }
 
       // Route lookup
@@ -223,6 +227,7 @@ export default {
         tags: parseTags(request.headers.get("x-nullspend-tags")),
         webhookDispatcher,
         resolvedApiVersion,
+        requestStartMs,
       };
 
       return await handler(request, env, ctx);

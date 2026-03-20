@@ -11,6 +11,7 @@ export interface RequestContext {
   tags: Record<string, string>; // from x-nullspend-tags
   webhookDispatcher: WebhookDispatcher | null;
   resolvedApiVersion: string;
+  requestStartMs: number;       // performance.now() at request entry
 }
 
 export type RouteHandler = (

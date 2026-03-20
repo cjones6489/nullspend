@@ -91,6 +91,37 @@ export function useResetBudget() {
   });
 }
 
+// SYNC: VelocityState interface in apps/proxy/src/durable-objects/user-budget.ts
+export interface VelocityStateEntry {
+  entity_key: string;
+  window_size_ms: number;
+  window_start_ms: number;
+  current_count: number;
+  current_spend: number;
+  prev_count: number;
+  prev_spend: number;
+  tripped_at: number | null;
+}
+
+interface VelocityStatusResponse {
+  velocityState: VelocityStateEntry[];
+}
+
+export const velocityStatusKeys = {
+  all: ["velocityStatus"] as const,
+};
+
+export function useVelocityStatus(enabled: boolean = true) {
+  return useQuery<VelocityStatusResponse>({
+    queryKey: velocityStatusKeys.all,
+    queryFn: () => apiGet("/api/budgets/velocity-status"),
+    enabled,
+    refetchInterval: enabled ? 10_000 : false,
+    refetchIntervalInBackground: false,
+    staleTime: 5_000,
+  });
+}
+
 export function useDeleteBudget() {
   const queryClient = useQueryClient();
 

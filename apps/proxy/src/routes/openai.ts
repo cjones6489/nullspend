@@ -2,7 +2,7 @@ import { waitUntil } from "cloudflare:workers";
 import type { Redis } from "@upstash/redis/cloudflare";
 import type { RequestContext } from "../lib/context.js";
 import { errorResponse } from "../lib/errors.js";
-import { buildUpstreamHeaders, buildClientHeaders } from "../lib/headers.js";
+import { buildUpstreamHeaders, buildClientHeaders, appendTimingHeaders } from "../lib/headers.js";
 import { ensureStreamOptions, extractModelFromBody } from "../lib/request-utils.js";
 import { createSSEParser } from "../lib/sse-parser.js";
 import { calculateOpenAICost } from "../lib/cost-calculator.js";
@@ -17,7 +17,7 @@ import { isAllowedUpstream } from "../lib/upstream-allowlist.js";
 import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -144,6 +144,30 @@ export async function handleChatCompletions(
 
     reservationId = outcome.reservationId;
     budgetEntities = outcome.budgetEntities;
+
+    // Velocity recovery webhook (fires on approved requests where circuit breaker just cleared)
+    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      waitUntil((async () => {
+        try {
+          const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+          if (cached.length > 0) {
+            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+            for (const recovered of outcome.velocityRecovered!) {
+              const event = buildVelocityRecoveredPayload({
+                budgetEntityType: recovered.entityType,
+                budgetEntityId: recovered.entityId,
+                velocityLimitMicrodollars: recovered.velocityLimitMicrodollars,
+                velocityWindowSeconds: recovered.velocityWindowSeconds,
+                velocityCooldownSeconds: recovered.velocityCooldownSeconds,
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          }
+        } catch (err) {
+          console.error("[openai-route] Velocity recovery webhook dispatch failed:", err);
+        }
+      })());
+    }
   } catch {
     return errorResponse("budget_unavailable", "Budget service unavailable", 503);
   }
@@ -178,6 +202,8 @@ export async function handleChatCompletions(
         );
       }
       const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
+      const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs);
+      emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "openai");
       clientHeaders.set("content-type", "application/json");
       return new Response(sanitizedBody, {
@@ -369,6 +395,8 @@ function handleStreaming(
   clientHeaders.set("cache-control", "no-cache, no-transform");
   clientHeaders.set("x-accel-buffering", "no");
   clientHeaders.set("connection", "keep-alive");
+  const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs);
+  emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: true });
 
   return new Response(readable, {
     status: upstreamResponse.status,
@@ -477,6 +505,9 @@ async function handleNonStreaming(
       );
     }
   }
+
+  const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs);
+  emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: false });
 
   return new Response(responseText, {
     status: upstreamResponse.status,

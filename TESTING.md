@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~2,200+ tests across ~130 files organized into four tiers.
+NullSpend has ~2,200+ tests across ~140 files organized into four tiers.
 
 ## Quick Reference
 
@@ -41,7 +41,7 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-52 files, ~840 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+55 files, ~980 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
 
 ### Naming Convention
 
@@ -89,6 +89,9 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `budget-streaming.test.ts` | Streaming responses with budget reservation lifecycle |
 | `budget-reconcile-failures.test.ts` | Partial failures: Redis/Postgres divergence, TTL expiry, zero cost |
 | `budget-lua-integration.test.ts` | **Real Redis** — Lua script correctness against live Upstash |
+| `velocity-limits.test.ts` | Velocity limit enforcement: sliding window, circuit breaker, recovery, edge cases |
+| `velocity-webhook-recovery.test.ts` | `velocity.recovered` webhook builder + route dispatch (OpenAI, MCP, multi-entity) |
+| `velocity-state-internal.test.ts` | `GET /internal/budget/velocity-state` — auth, validation, happy path, DO error |
 
 **Route Handlers**
 | File | What it tests |
@@ -140,7 +143,7 @@ Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accura
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. 775+ tests across 74 files.
+Co-located with source files. 846 tests across 77 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback
@@ -161,6 +164,7 @@ Co-located with source files. 775+ tests across 74 files.
 
 **API Routes** (`app/api/`)
 - One test file per route: actions CRUD, keys CRUD, budgets, cost-events, slack config/callback/test
+- `velocity-status/route.test.ts` — Live velocity state polling: auth, proxy fetch, graceful degradation
 
 **Other**
 - `lib/queries/actions.test.ts`, `lib/utils/format.test.ts`, `lib/slack/*.test.ts`

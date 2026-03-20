@@ -22,7 +22,13 @@ export interface BudgetCheckOutcome {
     windowSeconds: number;
     currentMicrodollars: number;
   };
-  velocityRecovered?: Array<{ entityType: string; entityId: string }>;
+  velocityRecovered?: Array<{
+    entityType: string;
+    entityId: string;
+    velocityLimitMicrodollars: number;
+    velocityWindowSeconds: number;
+    velocityCooldownSeconds: number;
+  }>;
 }
 
 // ---------------------------------------------------------------------------

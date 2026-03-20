@@ -41,7 +41,13 @@ export interface CheckResult {
     windowSeconds: number;
     currentMicrodollars: number;
   };
-  velocityRecovered?: Array<{ entityType: string; entityId: string }>;
+  velocityRecovered?: Array<{
+    entityType: string;
+    entityId: string;
+    velocityLimitMicrodollars: number;
+    velocityWindowSeconds: number;
+    velocityCooldownSeconds: number;
+  }>;
 }
 
 export interface ReconcileResult {
@@ -50,7 +56,7 @@ export interface ReconcileResult {
   budgetsMissing?: string[];
 }
 
-interface VelocityState {
+export interface VelocityState {
   entity_key: string;
   window_size_ms: number;
   window_start_ms: number;
@@ -213,7 +219,13 @@ export class UserBudgetDO extends DurableObject {
     let reserved = false;
     const periodResets: Array<{ entityType: string; entityId: string; newPeriodStart: number }> = [];
     const checkedEntities: CheckedEntity[] = [];
-    const velocityRecovered: Array<{ entityType: string; entityId: string }> = [];
+    const velocityRecovered: Array<{
+      entityType: string;
+      entityId: string;
+      velocityLimitMicrodollars: number;
+      velocityWindowSeconds: number;
+      velocityCooldownSeconds: number;
+    }> = [];
 
     this.ctx.storage.transactionSync(() => {
       // Phase 1: Query matching budgets from SQLite
@@ -313,7 +325,13 @@ export class UserBudgetDO extends DurableObject {
               window_start_ms = ?
             WHERE entity_key = ?`, now, entityKey,
           );
-          velocityRecovered.push({ entityType: row.entity_type, entityId: row.entity_id });
+          velocityRecovered.push({
+            entityType: row.entity_type,
+            entityId: row.entity_id,
+            velocityLimitMicrodollars: row.velocity_limit!,
+            velocityWindowSeconds: Math.round((row.velocity_window ?? 60_000) / 1000),
+            velocityCooldownSeconds: Math.round((row.velocity_cooldown ?? 60_000) / 1000),
+          });
           // Defer increment with fresh counters
           pendingVelocityIncrements.push({
             entityKey, windowMs, windowStart: now,
@@ -641,6 +659,13 @@ export class UserBudgetDO extends DurableObject {
   /** Read-only budget state (for dashboard queries or debugging). */
   async getBudgetState(): Promise<BudgetRow[]> {
     return Array.from(this.budgets.values());
+  }
+
+  /** Read-only velocity state (for dashboard live status). */
+  async getVelocityState(): Promise<VelocityState[]> {
+    return this.ctx.storage.sql.exec<VelocityState>(
+      "SELECT * FROM velocity_state",
+    ).toArray();
   }
 
   /** Remove a budget entity and all associated reservations.

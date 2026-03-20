@@ -125,6 +125,7 @@ function makeCtx(
     tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
+    requestStartMs: performance.now(),
     ...overrides,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronRight, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -46,6 +46,8 @@ import {
   useCurrentUserId,
   useDeleteBudget,
   useResetBudget,
+  useVelocityStatus,
+  type VelocityStateEntry,
 } from "@/lib/queries/budgets";
 import {
   budgetHealthColor,
@@ -61,6 +63,9 @@ interface BudgetData {
   spendMicrodollars: number;
   resetInterval: string | null;
   currentPeriodStart: string | null;
+  velocityLimitMicrodollars: number | null;
+  velocityWindowSeconds: number | null;
+  velocityCooldownSeconds: number | null;
 }
 
 export default function BudgetsPage() {
@@ -70,6 +75,9 @@ export default function BudgetsPage() {
   const [editBudget, setEditBudget] = useState<EditBudgetData | undefined>();
 
   const budgets = data?.data ?? [];
+  const hasAnyVelocity = budgets.some((b) => b.velocityLimitMicrodollars != null);
+  const { data: velocityData } = useVelocityStatus(hasAnyVelocity);
+  const velocityEntries = velocityData?.velocityState ?? [];
   const keyMap = new Map(
     (keysData?.data ?? []).map((k) => [k.id, k.name]),
   );
@@ -80,6 +88,15 @@ export default function BudgetsPage() {
       entityId: budget.entityId,
       limitDollars: (budget.maxBudgetMicrodollars / 1_000_000).toString(),
       resetInterval: budget.resetInterval ?? "none",
+      velocityLimitDollars: budget.velocityLimitMicrodollars != null
+        ? (budget.velocityLimitMicrodollars / 1_000_000).toString()
+        : "",
+      velocityWindowSeconds: budget.velocityWindowSeconds != null
+        ? String(budget.velocityWindowSeconds)
+        : "60",
+      velocityCooldownSeconds: budget.velocityCooldownSeconds != null
+        ? String(budget.velocityCooldownSeconds)
+        : "60",
     });
   }
 
@@ -152,6 +169,7 @@ export default function BudgetsPage() {
                         : keyMap.get(budget.entityId) ?? budget.entityId.slice(0, 8)
                     }
                     onEditClick={() => handleEditClick(budget)}
+                    velocityEntries={velocityEntries}
                   />
                 ))}
               </TableBody>
@@ -202,14 +220,28 @@ function StatCard({
   );
 }
 
+/** Strip ns_{prefix}_ from external ID to get raw UUID for matching against DO entity_key. */
+function matchesEntityKey(
+  budgetEntityType: string,
+  budgetEntityId: string,
+  velocityEntityKey: string,
+): boolean {
+  // velocityEntityKey is "entityType:entityId" (raw internal IDs)
+  // budgetEntityId is "ns_{prefix}_{uuid}" (external prefixed IDs)
+  const rawId = budgetEntityId.replace(/^ns_[a-z]+_/, "");
+  return velocityEntityKey === `${budgetEntityType}:${rawId}`;
+}
+
 function BudgetRow({
   budget,
   entityName,
   onEditClick,
+  velocityEntries,
 }: {
   budget: BudgetData;
   entityName: string;
   onEditClick: () => void;
+  velocityEntries: VelocityStateEntry[];
 }) {
   const resetBudget = useResetBudget();
   const deleteBudget = useDeleteBudget();
@@ -250,6 +282,18 @@ function BudgetRow({
 
   const daysLeft = computeDaysLeft(budget.resetInterval, budget.currentPeriodStart);
 
+  // Velocity status
+  const hasVelocity = budget.velocityLimitMicrodollars != null;
+  const velocityEntry = hasVelocity
+    ? velocityEntries.find((v) => matchesEntityKey(budget.entityType, budget.entityId, v.entity_key))
+    : undefined;
+  const cooldownMs = (budget.velocityCooldownSeconds ?? 60) * 1000;
+  const isInCooldown = velocityEntry?.tripped_at != null
+    && (velocityEntry.tripped_at + cooldownMs > Date.now());
+  const cooldownRemainingSec = isInCooldown
+    ? Math.ceil((velocityEntry!.tripped_at! + cooldownMs - Date.now()) / 1000)
+    : 0;
+
   return (
     <TableRow className="border-border/30 transition-colors hover:bg-accent/40">
       <TableCell>
@@ -258,8 +302,22 @@ function BudgetRow({
           <p className="text-[11px] text-muted-foreground">{budget.entityType}</p>
         </div>
       </TableCell>
-      <TableCell className="text-[13px] tabular-nums text-foreground">
-        {formatMicrodollars(budget.maxBudgetMicrodollars)}
+      <TableCell>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] tabular-nums text-foreground">
+            {formatMicrodollars(budget.maxBudgetMicrodollars)}
+          </span>
+          {hasVelocity && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`Velocity: ${formatMicrodollars(budget.velocityLimitMicrodollars!)}/${budget.velocityWindowSeconds}s`}>
+              <Zap className="h-3 w-3" />
+            </span>
+          )}
+          {isInCooldown && (
+            <span className="inline-flex items-center rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-red-400">
+              Cooldown {cooldownRemainingSec}s
+            </span>
+          )}
+        </div>
       </TableCell>
       <TableCell>
         <div className="space-y-1.5">
@@ -382,6 +440,9 @@ interface EditBudgetData {
   entityId: string;
   limitDollars: string;
   resetInterval: string;
+  velocityLimitDollars: string;
+  velocityWindowSeconds: string;
+  velocityCooldownSeconds: string;
 }
 
 function BudgetDialog({
@@ -409,12 +470,20 @@ function BudgetDialog({
   const [resetInterval, setResetInterval] = useState<string>(
     editBudget?.resetInterval ?? "none",
   );
+  const [velocityEnabled, setVelocityEnabled] = useState(!!editBudget?.velocityLimitDollars);
+  const [velocityLimitDollars, setVelocityLimitDollars] = useState(editBudget?.velocityLimitDollars ?? "");
+  const [velocityWindowSeconds, setVelocityWindowSeconds] = useState(editBudget?.velocityWindowSeconds ?? "60");
+  const [velocityCooldownSeconds, setVelocityCooldownSeconds] = useState(editBudget?.velocityCooldownSeconds ?? "60");
 
   function resetForm() {
     setEntityType("user");
     setSelectedKeyId("");
     setLimitDollars("");
     setResetInterval("none");
+    setVelocityEnabled(false);
+    setVelocityLimitDollars("");
+    setVelocityWindowSeconds("60");
+    setVelocityCooldownSeconds("60");
   }
 
   function handleSubmit() {
@@ -439,6 +508,18 @@ function BudgetDialog({
       return;
     }
 
+    if (velocityEnabled) {
+      const velDollars = parseFloat(velocityLimitDollars);
+      if (isNaN(velDollars) || velDollars <= 0) {
+        toast.error("Enter a valid velocity limit amount");
+        return;
+      }
+    }
+
+    const velocityLimit = velocityEnabled && velocityLimitDollars
+      ? Math.round(parseFloat(velocityLimitDollars) * 1_000_000)
+      : null;
+
     createBudget.mutate(
       {
         entityType,
@@ -448,6 +529,11 @@ function BudgetDialog({
           resetInterval === "none"
             ? undefined
             : (resetInterval as "daily" | "weekly" | "monthly"),
+        velocityLimitMicrodollars: velocityLimit,
+        ...(velocityEnabled && {
+          velocityWindowSeconds: parseInt(velocityWindowSeconds, 10) || 60,
+          velocityCooldownSeconds: parseInt(velocityCooldownSeconds, 10) || 60,
+        }),
       },
       {
         onSuccess: () => {
@@ -592,6 +678,71 @@ function BudgetDialog({
                 <SelectItem value="monthly">Monthly</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Velocity limit section */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setVelocityEnabled(!velocityEnabled)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight className={cn(
+                "h-3 w-3 transition-transform",
+                velocityEnabled && "rotate-90",
+              )} />
+              <Zap className="h-3 w-3" />
+              {velocityEnabled ? "Velocity limit (enabled)" : "Velocity limit (optional)"}
+            </button>
+
+            {velocityEnabled && (
+              <div className="space-y-3 rounded-md border border-border/30 bg-secondary/20 p-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Velocity limit</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
+                      $
+                    </span>
+                    <Input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="10.00"
+                      value={velocityLimitDollars}
+                      onChange={(e) => setVelocityLimitDollars(e.target.value)}
+                      className="h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Max spend per sliding window. Triggers a cooldown if exceeded.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Window (seconds)</Label>
+                    <Input
+                      type="number"
+                      min="10"
+                      max="3600"
+                      value={velocityWindowSeconds}
+                      onChange={(e) => setVelocityWindowSeconds(e.target.value)}
+                      className="h-9 border-border/50 bg-background text-[13px] tabular-nums"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Cooldown (seconds)</Label>
+                    <Input
+                      type="number"
+                      min="10"
+                      max="3600"
+                      value={velocityCooldownSeconds}
+                      onChange={(e) => setVelocityCooldownSeconds(e.target.value)}
+                      className="h-9 border-border/50 bg-background text-[13px] tabular-nums"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

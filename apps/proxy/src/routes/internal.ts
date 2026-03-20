@@ -1,5 +1,5 @@
 import { invalidateAuthCacheForUser } from "../lib/api-key-auth.js";
-import { doBudgetRemove, doBudgetResetSpend, doBudgetUpsertEntities } from "../lib/budget-do-client.js";
+import { doBudgetRemove, doBudgetResetSpend, doBudgetUpsertEntities, doBudgetGetVelocityState } from "../lib/budget-do-client.js";
 import { lookupBudgetsForDO } from "../lib/budget-do-lookup.js";
 import { errorResponse } from "../lib/errors.js";
 import { emitMetric } from "../lib/metrics.js";
@@ -116,5 +116,55 @@ export async function handleBudgetInvalidation(
     });
 
     return errorResponse("internal_error", "Invalidation failed", 500);
+  }
+}
+
+export async function handleVelocityState(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  // Validate INTERNAL_SECRET is configured
+  if (!env.INTERNAL_SECRET) {
+    console.error("[internal] INTERNAL_SECRET not configured");
+    return errorResponse("internal_error", "Server misconfigured", 500);
+  }
+
+  // Auth: timing-safe comparison of Bearer token
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return errorResponse("unauthorized", "Missing or malformed Authorization header", 401);
+  }
+
+  const token = authHeader.slice(7);
+  if (!timingSafeStringEqual(token, env.INTERNAL_SECRET)) {
+    return errorResponse("unauthorized", "Invalid token", 401);
+  }
+
+  // Read userId from query param
+  const url = new URL(request.url);
+  const userId = url.searchParams.get("userId");
+  if (!userId || userId.length === 0 || userId.length > MAX_FIELD_LENGTH) {
+    return errorResponse("bad_request", "Missing or invalid userId query parameter", 400);
+  }
+
+  try {
+    const velocityState = await doBudgetGetVelocityState(env, userId);
+
+    emitMetric("velocity_state_lookup", {
+      userId,
+      count: velocityState.length,
+      status: "ok",
+    });
+
+    return Response.json({ velocityState });
+  } catch (err) {
+    console.error("[internal] Velocity state lookup failed:", err);
+
+    emitMetric("velocity_state_lookup", {
+      userId,
+      status: "error",
+    });
+
+    return errorResponse("internal_error", "Velocity state lookup failed", 500);
   }
 }

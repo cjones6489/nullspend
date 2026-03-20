@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildUpstreamHeaders,
   buildClientHeaders,
+  appendTimingHeaders,
 } from "../lib/headers.js";
 
 function makeRequest(headers: Record<string, string> = {}): Request {
@@ -174,6 +175,59 @@ describe("buildClientHeaders edge cases", () => {
     const headers = buildClientHeaders(res);
 
     expect(headers.get("NullSpend-Version")).toBeNull();
+  });
+});
+
+describe("appendTimingHeaders", () => {
+  it("sets x-nullspend-overhead-ms with numeric value", () => {
+    const headers = new Headers();
+    const startMs = performance.now() - 50; // simulate 50ms ago
+    appendTimingHeaders(headers, startMs, 30);
+
+    const overhead = headers.get("x-nullspend-overhead-ms");
+    expect(overhead).toMatch(/^\d+$/);
+  });
+
+  it("sets Server-Timing with all three components", () => {
+    const headers = new Headers();
+    const startMs = performance.now() - 100;
+    appendTimingHeaders(headers, startMs, 60);
+
+    const serverTiming = headers.get("Server-Timing")!;
+    expect(serverTiming).toContain("overhead;dur=");
+    expect(serverTiming).toContain('desc="Proxy overhead"');
+    expect(serverTiming).toContain("upstream;dur=60");
+    expect(serverTiming).toContain('desc="Provider latency"');
+    expect(serverTiming).toContain("total;dur=");
+  });
+
+  it("returns totalMs and overheadMs as non-negative numbers", () => {
+    const headers = new Headers();
+    const startMs = performance.now() - 20;
+    const { totalMs, overheadMs } = appendTimingHeaders(headers, startMs, 10);
+
+    expect(typeof totalMs).toBe("number");
+    expect(typeof overheadMs).toBe("number");
+    expect(totalMs).toBeGreaterThanOrEqual(0);
+    expect(overheadMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("clamps overheadMs to 0 when upstream exceeds total", () => {
+    const headers = new Headers();
+    // Start time very close to now but upstream duration larger
+    const startMs = performance.now();
+    const { overheadMs } = appendTimingHeaders(headers, startMs, 9999);
+
+    expect(overheadMs).toBe(0);
+    expect(headers.get("x-nullspend-overhead-ms")).toBe("0");
+  });
+
+  it("returns totalMs >= upstreamDurationMs in normal conditions", () => {
+    const headers = new Headers();
+    const startMs = performance.now() - 100;
+    const { totalMs } = appendTimingHeaders(headers, startMs, 50);
+
+    expect(totalMs).toBeGreaterThanOrEqual(50);
   });
 });
 

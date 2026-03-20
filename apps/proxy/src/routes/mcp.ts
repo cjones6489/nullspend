@@ -5,7 +5,7 @@ import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.j
 import { logCostEventsBatch } from "../lib/cost-logger.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildVelocityExceededPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 import { UUID_RE } from "../lib/validation.js";
@@ -101,6 +101,30 @@ export async function handleMcpBudgetCheck(
       }, {
         headers: { "NullSpend-Version": ctx.resolvedApiVersion },
       });
+    }
+
+    // Velocity recovery webhook (fires on approved requests where circuit breaker just cleared)
+    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      waitUntil((async () => {
+        try {
+          const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+          if (cached.length > 0) {
+            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+            for (const recovered of outcome.velocityRecovered!) {
+              const event = buildVelocityRecoveredPayload({
+                budgetEntityType: recovered.entityType,
+                budgetEntityId: recovered.entityId,
+                velocityLimitMicrodollars: recovered.velocityLimitMicrodollars,
+                velocityWindowSeconds: recovered.velocityWindowSeconds,
+                velocityCooldownSeconds: recovered.velocityCooldownSeconds,
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          }
+        } catch (err) {
+          console.error("[mcp-route] Velocity recovery webhook dispatch failed:", err);
+        }
+      })());
     }
 
     return Response.json({

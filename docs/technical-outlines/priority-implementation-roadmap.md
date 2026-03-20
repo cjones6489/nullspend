@@ -54,19 +54,11 @@ The #1 FinOps request universally. LiteLLM, FOCUS spec, and CloudZero all emphas
 
 **Why now:** Highest-impact schema addition for enterprise adoption. Zero users means zero migration cost. Enables cost attribution without structural schema changes for every new dimension.
 
-### 1.2 Loop/Runaway Detection
-**Effort:** ~3-4h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 1, Frontier section 5.2
+### 1.2 Loop/Runaway Detection — ✅ Done
+**Shipped:** v1.0 (2026-03-19) — sliding window cost-rate detection with circuit breaker.
+**Shipped:** v1.1 (2026-03-19) — dashboard UI (velocity form fields, live cooldown status), `velocity.recovered` webhook, DO `getVelocityState()` RPC, internal velocity-state endpoint, dashboard polling API.
 
-The #1 unaddressed enterprise pain point. Fortune 500 collectively leaked $400M in uncontrolled AI costs (2025). A single recursive agent loop can cost $100K+. Multi-agent systems show quadratic token growth.
-
-**What to build:**
-- Add `velocity_limit_microdollars_per_minute` column to budgets (nullable, opt-in)
-- In DO's `checkAndReserve`, check rolling spend in last 60s from reservations table
-- If velocity exceeds limit, return denial with `reason: "velocity_limit"`
-- New webhook event type: `budget.velocity.exceeded`
-- Dashboard: velocity limit field on budget create/edit form
-
-**Why now:** DO already has alarms and per-entity state. TrueFoundry's Agent Gateway and AgentBudget both offer loop detection — NullSpend should match this before launch.
+Includes: sliding window counter in DO, circuit breaker with configurable cooldown, `velocity.exceeded` + `velocity.recovered` webhooks, dashboard create/edit velocity config, live cooldown badge via 10s polling, `Zap` icon indicator.
 
 ### 1.3 W3C `traceparent` Propagation + `trace_id` Column
 **Effort:** ~1h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 2; [Agent Tracing Architecture](agent-tracing-architecture.md) — Phase 1
