@@ -2,7 +2,7 @@
  * GET /health/metrics — aggregate proxy latency percentiles.
  *
  * Reads from KV cache (sub-ms). On cache miss, queries Cloudflare
- * Analytics Engine SQL API for p50/p95/p99 overhead, caches for 60s.
+ * Analytics Engine SQL API for p50/p95/p99 overhead, caches for 90s.
  *
  * Supports content negotiation:
  *   Accept: application/json → JSON (default)
@@ -81,6 +81,7 @@ export async function handleMetrics(
           "Content-Type": "text/plain",
         },
         body: sql,
+        signal: AbortSignal.timeout(5000),
       },
     );
 
@@ -175,5 +176,5 @@ function toPrometheus(m: LatencyMetrics): string {
   lines.push(`nullspend_total_latency_ms_count ${m.request_count}`);
   lines.push("");
 
-  return lines.join("\n");
+  return lines.join("\n") + "\n";
 }

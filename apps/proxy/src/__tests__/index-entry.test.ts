@@ -75,6 +75,7 @@ function makeEnv(): Env {
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres" },
     UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
     UPSTASH_REDIS_REST_TOKEN: "fake-token",
+    CACHE_KV: { get: vi.fn().mockResolvedValue(null), put: vi.fn() },
   } as Env;
 }
 
