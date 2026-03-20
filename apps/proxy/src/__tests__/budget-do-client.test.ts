@@ -46,7 +46,7 @@ describe("doBudgetCheck", () => {
 
     const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000);
+    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, null);
     expect(result).toEqual({ status: "approved", reservationId: "rsv-1" });
   });
 
@@ -56,7 +56,7 @@ describe("doBudgetCheck", () => {
 
     await doBudgetCheck(env, "user-1", null, 5_000_000);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith(null, 5_000_000);
+    expect(stub.checkAndReserve).toHaveBeenCalledWith(null, 5_000_000, 30_000, null);
   });
 
   it("returns denied result from DO", async () => {
@@ -107,6 +107,7 @@ describe("doBudgetCheck", () => {
       durationMs: expect.any(Number),
       velocityDenied: false,
       velocityRecovered: false,
+      sessionLimitDenied: false,
     });
   });
 
@@ -127,6 +128,7 @@ describe("doBudgetCheck", () => {
       durationMs: expect.any(Number),
       velocityDenied: false,
       velocityRecovered: false,
+      sessionLimitDenied: false,
     });
   });
 });
@@ -472,6 +474,7 @@ describe("doBudgetUpsertEntities", () => {
         velocityWindow: 60_000,
         velocityCooldown: 60_000,
         thresholdPercentages: [50, 80, 90, 95],
+        sessionLimit: null,
       },
     ]);
 
@@ -479,7 +482,7 @@ describe("doBudgetUpsertEntities", () => {
     expect(stub.populateIfEmpty).toHaveBeenCalledWith(
       "user", "user-1", 50_000_000, 10_000_000,
       "strict_block", "monthly", 1_700_000_000_000,
-      null, 60_000, 60_000, [50, 80, 90, 95],
+      null, 60_000, 60_000, [50, 80, 90, 95], null,
     );
   });
 
@@ -488,8 +491,8 @@ describe("doBudgetUpsertEntities", () => {
     const env = makeEnv(stub);
 
     await doBudgetUpsertEntities(env, "user-1", [
-      { entityType: "user", entityId: "user-1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000, thresholdPercentages: [50, 80, 90, 95] },
-      { entityType: "api_key", entityId: "key-1", maxBudget: 10_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000, thresholdPercentages: [50, 80, 90, 95] },
+      { entityType: "user", entityId: "user-1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000, thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+      { entityType: "api_key", entityId: "key-1", maxBudget: 10_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000, thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
     ]);
 
     expect(stub.populateIfEmpty).toHaveBeenCalledTimes(2);

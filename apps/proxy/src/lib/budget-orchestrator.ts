@@ -29,6 +29,10 @@ export interface BudgetCheckOutcome {
     velocityWindowSeconds: number;
     velocityCooldownSeconds: number;
   }>;
+  sessionLimitDenied?: boolean;
+  sessionId?: string;
+  sessionSpend?: number;
+  sessionLimit?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +44,7 @@ export async function checkBudget(
   ctx: RequestContext,
   estimateMicrodollars: number,
 ): Promise<BudgetCheckOutcome> {
-  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.auth.userId, estimateMicrodollars);
+  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.auth.userId, estimateMicrodollars, ctx.sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,13 +134,14 @@ async function checkBudgetDO(
   keyId: string | null,
   userId: string | null,
   estimateMicrodollars: number,
+  sessionId: string | null = null,
 ): Promise<BudgetCheckOutcome> {
   if (!userId) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
 
   // Single DO RPC — no Postgres lookup, no cache
-  const checkResult = await doBudgetCheck(env, userId, keyId, estimateMicrodollars);
+  const checkResult = await doBudgetCheck(env, userId, keyId, estimateMicrodollars, sessionId);
 
   if (!checkResult.hasBudgets) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
@@ -184,6 +189,21 @@ async function checkBudgetDO(
         velocityDenied: true,
         retryAfterSeconds: checkResult.retryAfterSeconds,
         velocityDetails: checkResult.velocityDetails,
+      };
+    }
+
+    // Session limit denial — separate from both velocity and budget exhaustion
+    if (checkResult.sessionLimitDenied) {
+      return {
+        status: "denied",
+        reservationId: null,
+        budgetEntities,
+        deniedEntityType,
+        deniedEntityId,
+        sessionLimitDenied: true,
+        sessionId: checkResult.sessionId,
+        sessionSpend: checkResult.sessionSpend,
+        sessionLimit: checkResult.sessionLimit,
       };
     }
 

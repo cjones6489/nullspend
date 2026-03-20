@@ -17,7 +17,7 @@ import { isAllowedUpstream } from "../lib/upstream-allowlist.js";
 import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -115,6 +115,52 @@ export async function handleChatCompletions(
           headers: {
             "Content-Type": "application/json",
             "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+            "X-NullSpend-Trace-Id": ctx.traceId,
+          },
+        },
+      );
+    }
+
+    // Session limit denial
+    if (outcome.status === "denied" && outcome.sessionLimitDenied) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+        waitUntil((async () => {
+          try {
+            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+              const event = buildSessionLimitExceededPayload({
+                budgetEntityType: outcome.deniedEntityType ?? "unknown",
+                budgetEntityId: outcome.deniedEntityId ?? "unknown",
+                sessionId: outcome.sessionId ?? "unknown",
+                sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
+                sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
+                model: requestModel,
+                provider: "openai",
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          } catch (err) {
+            console.error("[openai-route] Session limit webhook dispatch failed:", err);
+          }
+        })());
+      }
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "session_limit_exceeded",
+            message: "Request blocked: session spend exceeds session limit. Start a new session.",
+            details: {
+              session_id: outcome.sessionId ?? null,
+              session_spend_microdollars: outcome.sessionSpend ?? 0,
+              session_limit_microdollars: outcome.sessionLimit ?? 0,
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
             "X-NullSpend-Trace-Id": ctx.traceId,
           },
         },

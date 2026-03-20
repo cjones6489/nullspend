@@ -16,16 +16,18 @@ export async function doBudgetCheck(
   userId: string,
   keyId: string | null,
   estimateMicrodollars: number,
+  sessionId: string | null = null,
 ): Promise<CheckResult> {
   const startMs = Date.now();
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
-  const result = await stub.checkAndReserve(keyId, estimateMicrodollars);
+  const result = await stub.checkAndReserve(keyId, estimateMicrodollars, 30_000, sessionId);
   emitMetric("do_budget_check", {
     status: result.status,
     hasBudgets: result.hasBudgets,
     durationMs: Date.now() - startMs,
     velocityDenied: result.velocityDenied ?? false,
     velocityRecovered: (result.velocityRecovered?.length ?? 0) > 0,
+    sessionLimitDenied: result.sessionLimitDenied ?? false,
   });
   return result;
 }
@@ -182,7 +184,7 @@ export async function doBudgetUpsertEntities(
       e.entityType, e.entityId, e.maxBudget, e.spend,
       e.policy, e.resetInterval, e.periodStart,
       e.velocityLimit, e.velocityWindow, e.velocityCooldown,
-      e.thresholdPercentages,
+      e.thresholdPercentages, e.sessionLimit,
     );
   }
 }

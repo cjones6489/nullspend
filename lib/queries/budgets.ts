@@ -23,6 +23,7 @@ interface BudgetRecord {
   velocityLimitMicrodollars: number | null;
   velocityWindowSeconds: number | null;
   velocityCooldownSeconds: number | null;
+  sessionLimitMicrodollars: number | null;
 }
 
 interface ListBudgetsResponse {

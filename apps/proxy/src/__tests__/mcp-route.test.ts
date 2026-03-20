@@ -346,6 +346,7 @@ describe("handleMcpBudgetCheck", () => {
       "user-abc",
       "key-xyz",
       0,
+      null,
     );
   });
 });

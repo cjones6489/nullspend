@@ -45,7 +45,7 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/validation.ts` — shared validation helpers (UUID regex, etc.)
 
 **Budget Enforcement (Durable Object)**
-- `src/durable-objects/user-budget.ts` — UserBudgetDO: SQLite tables (budgets, reservations, velocity_state, session_spend), checkAndReserve, reconcile, alarm cleanup
+- `src/durable-objects/user-budget.ts` — UserBudgetDO: SQLite tables (budgets, reservations, velocity_state, session_spend), checkAndReserve (with session limit enforcement), reconcile (with session spend correction), alarm cleanup (with session TTL)
 - `src/lib/budget-orchestrator.ts` — checkBudget + reconcileBudget orchestration
 - `src/lib/budget-do-client.ts` — DO RPC client (check, reconcile, upsert, remove, reset, velocity state)
 - `src/lib/budget-do-lookup.ts` — Postgres → DOBudgetEntity lookup for DO population

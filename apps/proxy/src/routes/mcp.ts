@@ -5,7 +5,7 @@ import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.j
 import { logCostEventsBatch } from "../lib/cost-logger.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload } from "../lib/webhook-events.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -93,6 +93,47 @@ export async function handleMcpBudgetCheck(
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+          "X-NullSpend-Trace-Id": ctx.traceId,
+        },
+      });
+    }
+
+    // Session limit denial
+    if (outcome.status === "denied" && outcome.sessionLimitDenied) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+        waitUntil((async () => {
+          try {
+            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+              const event = buildSessionLimitExceededPayload({
+                budgetEntityType: outcome.deniedEntityType ?? "unknown",
+                budgetEntityId: outcome.deniedEntityId ?? "unknown",
+                sessionId: outcome.sessionId ?? "unknown",
+                sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
+                sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
+                model: `${parsed.serverName}/${parsed.toolName}`,
+                provider: "mcp",
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          } catch (err) {
+            console.error("[mcp-route] Session limit webhook dispatch failed:", err);
+          }
+        })());
+      }
+      return Response.json({
+        allowed: false,
+        denied: true,
+        reason: "session_limit_exceeded",
+        sessionId: outcome.sessionId ?? null,
+        sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
+        sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
+        traceId: ctx.traceId,
+      }, {
+        status: 429,
+        headers: {
+          "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,
         },
       });
@@ -264,6 +305,7 @@ export async function handleMcpEvents(
             reserved: 0,
             policy: e.policy,
             thresholdPercentages: e.thresholdPercentages ?? [50, 80, 90, 95],
+            sessionLimit: e.sessionLimit ?? null,
           }));
         } catch {
           // best-effort

@@ -92,7 +92,7 @@ describe("checkBudget — DO-first mode", () => {
     expect(result.status).toBe("approved");
     expect(result.reservationId).toBe("rsv-do-1");
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-      expect.anything(), "user-1", "key-1", 5_000_000,
+      expect.anything(), "user-1", "key-1", 5_000_000, null,
     );
   });
 
@@ -238,7 +238,7 @@ describe("checkBudget — DO-first mode", () => {
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-      expect.anything(), "user-1", null, 5_000_000,
+      expect.anything(), "user-1", null, 5_000_000, null,
     );
   });
 

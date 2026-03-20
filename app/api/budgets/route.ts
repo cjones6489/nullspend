@@ -143,6 +143,7 @@ export const POST = withRequestContext(async (request: Request) => {
       ...(input.velocityCooldownSeconds != null && { velocityCooldownSeconds: input.velocityCooldownSeconds }),
       // Reset window/cooldown to defaults when velocity limit is explicitly removed
       ...(input.velocityLimitMicrodollars === null && { velocityWindowSeconds: 60, velocityCooldownSeconds: 60 }),
+      ...(input.sessionLimitMicrodollars !== undefined && { sessionLimitMicrodollars: input.sessionLimitMicrodollars }),
     })
     .onConflictDoUpdate({
       target: [budgets.entityType, budgets.entityId],
@@ -155,6 +156,7 @@ export const POST = withRequestContext(async (request: Request) => {
         ...(input.velocityWindowSeconds != null && { velocityWindowSeconds: input.velocityWindowSeconds }),
         ...(input.velocityCooldownSeconds != null && { velocityCooldownSeconds: input.velocityCooldownSeconds }),
         ...(input.velocityLimitMicrodollars === null && { velocityWindowSeconds: 60, velocityCooldownSeconds: 60 }),
+        ...(input.sessionLimitMicrodollars !== undefined && { sessionLimitMicrodollars: input.sessionLimitMicrodollars }),
         updatedAt: sql`NOW()`,
       },
     })

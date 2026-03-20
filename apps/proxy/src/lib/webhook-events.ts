@@ -15,6 +15,7 @@ export type WebhookEventType =
   | "action.expired"
   | "velocity.exceeded"
   | "velocity.recovered"
+  | "session.limit_exceeded"
   | "test.ping";
 
 export interface WebhookEvent {
@@ -279,6 +280,40 @@ export function buildVelocityRecoveredPayload(
         velocity_window_seconds: data.velocityWindowSeconds,
         velocity_cooldown_seconds: data.velocityCooldownSeconds,
         recovered_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
+interface SessionLimitExceededData {
+  budgetEntityType: string;
+  budgetEntityId: string;
+  sessionId: string;
+  sessionSpendMicrodollars: number;
+  sessionLimitMicrodollars: number;
+  model: string;
+  provider: string;
+}
+
+export function buildSessionLimitExceededPayload(
+  data: SessionLimitExceededData,
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "session.limit_exceeded",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        session_id: data.sessionId,
+        session_spend_microdollars: data.sessionSpendMicrodollars,
+        session_limit_microdollars: data.sessionLimitMicrodollars,
+        model: data.model,
+        provider: data.provider,
+        blocked_at: new Date().toISOString(),
       },
     },
   };

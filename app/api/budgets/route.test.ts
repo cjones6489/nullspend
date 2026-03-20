@@ -60,6 +60,7 @@ function makeBudgetRow(overrides: Record<string, unknown> = {}) {
     velocityLimitMicrodollars: null,
     velocityWindowSeconds: 60,
     velocityCooldownSeconds: 60,
+    sessionLimitMicrodollars: null,
     currentPeriodStart: new Date("2026-03-01T00:00:00Z"),
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-03-01T00:00:00Z"),

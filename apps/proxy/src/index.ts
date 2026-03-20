@@ -128,6 +128,13 @@ async function parseRequestBody(
   }
 }
 
+const MAX_SESSION_ID_LENGTH = 256;
+
+function truncateSessionId(raw: string | null): string | null {
+  if (!raw) return null;
+  return raw.length > MAX_SESSION_ID_LENGTH ? raw.slice(0, MAX_SESSION_ID_LENGTH) : raw;
+}
+
 export default {
   async queue(
     batch: MessageBatch<ReconciliationMessage>,
@@ -227,7 +234,7 @@ export default {
         auth,
         redis: auth.hasWebhooks ? Redis.fromEnv(env) : null,
         connectionString,
-        sessionId: request.headers.get("x-nullspend-session") ?? null,
+        sessionId: truncateSessionId(request.headers.get("x-nullspend-session")),
         traceId,
         tags: parseTags(request.headers.get("x-nullspend-tags")),
         webhookDispatcher,

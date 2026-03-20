@@ -37,6 +37,7 @@ export const GET = withRequestContext(async (request: Request) => {
     velocityLimitMicrodollars: row.velocityLimitMicrodollars ?? null,
     velocityWindowSeconds: row.velocityWindowSeconds ?? null,
     velocityCooldownSeconds: row.velocityCooldownSeconds ?? null,
+    sessionLimitMicrodollars: row.sessionLimitMicrodollars ?? null,
   }));
 
   const body = budgetStatusResponseSchema.parse({ entities });

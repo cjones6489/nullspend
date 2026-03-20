@@ -280,6 +280,44 @@ describe("createBudgetInputSchema", () => {
       expect(result.velocityCooldownSeconds).toBe(3600);
     });
   });
+
+  describe("session limits", () => {
+    it("accepts valid sessionLimitMicrodollars", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        sessionLimitMicrodollars: 5_000_000,
+      });
+      expect(result.sessionLimitMicrodollars).toBe(5_000_000);
+    });
+
+    it("accepts null sessionLimitMicrodollars (disable)", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        sessionLimitMicrodollars: null,
+      });
+      expect(result.sessionLimitMicrodollars).toBeNull();
+    });
+
+    it("omitting sessionLimitMicrodollars is valid (optional)", () => {
+      const result = createBudgetInputSchema.parse(validInput);
+      expect(result.sessionLimitMicrodollars).toBeUndefined();
+    });
+
+    it("rejects non-positive sessionLimitMicrodollars", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, sessionLimitMicrodollars: 0 }),
+      ).toThrow(ZodError);
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, sessionLimitMicrodollars: -100 }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects float sessionLimitMicrodollars", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, sessionLimitMicrodollars: 1.5 }),
+      ).toThrow(ZodError);
+    });
+  });
 });
 
 describe("budgetResponseSchema", () => {
@@ -298,6 +336,7 @@ describe("budgetResponseSchema", () => {
     velocityLimitMicrodollars: null,
     velocityWindowSeconds: 60,
     velocityCooldownSeconds: 60,
+    sessionLimitMicrodollars: null,
   };
 
   it("accepts valid budget response shape", () => {
@@ -344,6 +383,7 @@ describe("budgetEntitySchema", () => {
       velocityLimitMicrodollars: 5_000_000,
       velocityWindowSeconds: 60,
       velocityCooldownSeconds: 120,
+      sessionLimitMicrodollars: null,
     });
     expect(result.thresholdPercentages).toEqual([25, 50, 75]);
   });
@@ -362,6 +402,7 @@ describe("budgetEntitySchema", () => {
       velocityLimitMicrodollars: 5_000_000,
       velocityWindowSeconds: 30,
       velocityCooldownSeconds: 90,
+      sessionLimitMicrodollars: null,
     });
     expect(result.velocityLimitMicrodollars).toBe(5_000_000);
     expect(result.velocityWindowSeconds).toBe(30);
@@ -382,8 +423,28 @@ describe("budgetEntitySchema", () => {
       velocityLimitMicrodollars: null,
       velocityWindowSeconds: null,
       velocityCooldownSeconds: null,
+      sessionLimitMicrodollars: null,
     });
     expect(result.velocityLimitMicrodollars).toBeNull();
+  });
+
+  it("includes sessionLimitMicrodollars in output", () => {
+    const result = budgetEntitySchema.parse({
+      entityType: "user",
+      entityId: "550e8400-e29b-41d4-a716-446655440000",
+      limitMicrodollars: 10_000_000,
+      spendMicrodollars: 0,
+      remainingMicrodollars: 10_000_000,
+      policy: "strict_block",
+      resetInterval: null,
+      currentPeriodStart: null,
+      thresholdPercentages: [50, 80, 90, 95],
+      velocityLimitMicrodollars: null,
+      velocityWindowSeconds: null,
+      velocityCooldownSeconds: null,
+      sessionLimitMicrodollars: 5_000_000,
+    });
+    expect(result.sessionLimitMicrodollars).toBe(5_000_000);
   });
 });
 

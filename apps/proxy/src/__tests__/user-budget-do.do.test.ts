@@ -618,6 +618,288 @@ describe("UserBudgetDO", () => {
     expect(state[0].reserved).toBe(0);
     expect(state[0].spend).toBe(7_000_000);
   });
+
+  // ── Session limits ──────────────────────────────────────────────
+
+  it("session limit: denies when session spend + estimate exceeds limit", async () => {
+    const stub = getStub("user-session-deny");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000, // sessionLimit = $5
+    );
+
+    // First request: under limit → approved, session spend = 3M
+    const r1 = await stub.checkAndReserve(null, 3_000_000, 30_000, "sess-1");
+    expect(r1.status).toBe("approved");
+    await stub.reconcile(r1.reservationId!, 3_000_000);
+
+    // Second request: 3M + 3M = 6M > 5M limit → denied
+    const r2 = await stub.checkAndReserve(null, 3_000_000, 30_000, "sess-1");
+    expect(r2.status).toBe("denied");
+    expect(r2.sessionLimitDenied).toBe(true);
+    expect(r2.sessionId).toBe("sess-1");
+    expect(r2.sessionSpend).toBe(3_000_000);
+    expect(r2.sessionLimit).toBe(5_000_000);
+  });
+
+  it("session limit: approves when under limit", async () => {
+    const stub = getStub("user-session-approve");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 10_000_000,
+    );
+
+    const r = await stub.checkAndReserve(null, 5_000_000, 30_000, "sess-2");
+    expect(r.status).toBe("approved");
+  });
+
+  it("session limit: no enforcement when sessionId is null", async () => {
+    const stub = getStub("user-session-no-id");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 1_000, // tiny limit
+    );
+
+    // Even with a tiny session limit, null sessionId skips enforcement
+    const r = await stub.checkAndReserve(null, 50_000_000, 30_000, null);
+    expect(r.status).toBe("approved");
+    expect(r.sessionLimitDenied).toBeUndefined();
+  });
+
+  it("session limit: no enforcement when session_limit is null", async () => {
+    const stub = getStub("user-session-no-limit");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], null, // no session limit
+    );
+
+    const r1 = await stub.checkAndReserve(null, 50_000_000, 30_000, "sess-3");
+    expect(r1.status).toBe("approved");
+    await stub.reconcile(r1.reservationId!, 50_000_000);
+
+    // Even with 50M spent in this session, no session limit means no denial
+    const r2 = await stub.checkAndReserve(null, 40_000_000, 30_000, "sess-3");
+    expect(r2.status).toBe("approved");
+  });
+
+  it("session limit: different sessions tracked independently", async () => {
+    const stub = getStub("user-session-multi");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Session A: spend 4M
+    const rA = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-A");
+    expect(rA.status).toBe("approved");
+    await stub.reconcile(rA.reservationId!, 4_000_000);
+
+    // Session B: fresh, should be approved even though A is near limit
+    const rB = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-B");
+    expect(rB.status).toBe("approved");
+
+    // Session A: 4M + 2M = 6M > 5M → denied
+    const rA2 = await stub.checkAndReserve(null, 2_000_000, 30_000, "sess-A");
+    expect(rA2.status).toBe("denied");
+    expect(rA2.sessionLimitDenied).toBe(true);
+  });
+
+  it("session limit: reconcile corrects session spend (overestimate)", async () => {
+    const stub = getStub("user-session-reconcile-over");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Reserve estimate of 4M, actual only 1M
+    const r1 = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-rc");
+    expect(r1.status).toBe("approved");
+    await stub.reconcile(r1.reservationId!, 1_000_000);
+
+    // Session spend should be 1M after correction (4M - 3M delta)
+    // So 1M + 4M = 5M ≤ 5M → should be approved at boundary
+    const r2 = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-rc");
+    expect(r2.status).toBe("approved");
+  });
+
+  it("session limit: reconcile corrects session spend (zero cost)", async () => {
+    const stub = getStub("user-session-reconcile-zero");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Reserve 4M, actual 0 (e.g., upstream error)
+    const r1 = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-zero");
+    expect(r1.status).toBe("approved");
+    await stub.reconcile(r1.reservationId!, 0);
+
+    // Session spend should be 0 after zero-cost correction
+    // Full session limit available again
+    const r2 = await stub.checkAndReserve(null, 5_000_000, 30_000, "sess-zero");
+    expect(r2.status).toBe("approved");
+  });
+
+  it("session limit: alarm reverses session spend for expired reservation", async () => {
+    const stub = getStub("user-session-alarm-reverse");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Reserve 4M with short TTL, don't reconcile (let it expire)
+    const r1 = await stub.checkAndReserve(null, 4_000_000, 1, "sess-alarm");
+    expect(r1.status).toBe("approved");
+
+    // Wait for expiry and trigger alarm
+    await new Promise((r) => setTimeout(r, 10));
+    await runDurableObjectAlarm(stub);
+
+    // Session spend should be reversed — full limit available
+    const r2 = await stub.checkAndReserve(null, 5_000_000, 30_000, "sess-alarm");
+    expect(r2.status).toBe("approved");
+  });
+
+  it("session limit: removeBudget clears session_spend", async () => {
+    const stub = getStub("user-session-remove");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Spend 4M in session
+    const r1 = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-rm");
+    await stub.reconcile(r1.reservationId!, 4_000_000);
+
+    // Remove budget and re-create
+    await stub.removeBudget("user", "u1");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Session spend should be cleared — full limit available
+    const r2 = await stub.checkAndReserve(null, 5_000_000, 30_000, "sess-rm");
+    expect(r2.status).toBe("approved");
+  });
+
+  it("session limit: resetSpend clears session_spend", async () => {
+    const stub = getStub("user-session-reset");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Spend 4M in session
+    const r1 = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-rs");
+    await stub.reconcile(r1.reservationId!, 4_000_000);
+
+    // Reset spend
+    await stub.resetSpend("user", "u1");
+
+    // Session spend should be cleared — full limit available
+    const r2 = await stub.checkAndReserve(null, 5_000_000, 30_000, "sess-rs");
+    expect(r2.status).toBe("approved");
+  });
+
+  it("session limit: boundary — spend exactly at limit allows, next request denied", async () => {
+    const stub = getStub("user-session-boundary");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Spend exactly 5M (estimate 5M, actual 5M)
+    const r1 = await stub.checkAndReserve(null, 5_000_000, 30_000, "sess-bnd");
+    expect(r1.status).toBe("approved");
+    await stub.reconcile(r1.reservationId!, 5_000_000);
+
+    // Next request of any amount → denied (5M + 1 > 5M)
+    const r2 = await stub.checkAndReserve(null, 1, 30_000, "sess-bnd");
+    expect(r2.status).toBe("denied");
+    expect(r2.sessionLimitDenied).toBe(true);
+    expect(r2.sessionSpend).toBe(5_000_000);
+  });
+
+  it("session limit: period reset does NOT reset session spend", async () => {
+    const stub = getStub("user-session-period-reset");
+    const twoDaysAgo = Date.now() - 2 * 86_400_000;
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 90_000_000, "strict_block", "daily", twoDaysAgo,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    // Spend 4M in session (triggers period reset on budget but not session)
+    const r1 = await stub.checkAndReserve(null, 4_000_000, 30_000, "sess-pr");
+    expect(r1.status).toBe("approved");
+    expect(r1.periodResets).toHaveLength(1); // budget period reset
+    await stub.reconcile(r1.reservationId!, 4_000_000);
+
+    // Session spend is still 4M despite period reset — 4M + 2M = 6M > 5M
+    const r2 = await stub.checkAndReserve(null, 2_000_000, 30_000, "sess-pr");
+    expect(r2.status).toBe("denied");
+    expect(r2.sessionLimitDenied).toBe(true);
+  });
+
+  it("session limit: multi-entity with different session limits", async () => {
+    const stub = getStub("user-session-multi-entity");
+    // User budget: $10 session limit
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 10_000_000,
+    );
+    // API key budget: $3 session limit (more restrictive)
+    await stub.populateIfEmpty(
+      "api_key", "k1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 3_000_000,
+    );
+
+    // First request: 2M → approved (under both limits)
+    const r1 = await stub.checkAndReserve("k1", 2_000_000, 30_000, "sess-me");
+    expect(r1.status).toBe("approved");
+    await stub.reconcile(r1.reservationId!, 2_000_000);
+
+    // Second request: 2M → 2M + 2M = 4M > 3M api_key limit → denied
+    const r2 = await stub.checkAndReserve("k1", 2_000_000, 30_000, "sess-me");
+    expect(r2.status).toBe("denied");
+    expect(r2.sessionLimitDenied).toBe(true);
+    expect(r2.deniedEntity).toBe("api_key:k1");
+  });
+
+  it("session limit: populateIfEmpty stores session_limit", async () => {
+    const stub = getStub("user-session-populate");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 7_500_000,
+    );
+
+    const state = await stub.getBudgetState();
+    expect(state[0].session_limit).toBe(7_500_000);
+  });
+
+  it("session limit: populateIfEmpty with null session_limit", async () => {
+    const stub = getStub("user-session-populate-null");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], null,
+    );
+
+    const state = await stub.getBudgetState();
+    expect(state[0].session_limit).toBeNull();
+  });
+
+  it("session limit: checkedEntities includes sessionLimit", async () => {
+    const stub = getStub("user-session-checked");
+    await stub.populateIfEmpty(
+      "user", "u1", 100_000_000, 0, "strict_block", null, 0,
+      null, 60_000, 60_000, [50, 80, 90, 95], 5_000_000,
+    );
+
+    const r = await stub.checkAndReserve(null, 1_000, 30_000, "sess-ch");
+    expect(r.checkedEntities).toHaveLength(1);
+    expect(r.checkedEntities![0].sessionLimit).toBe(5_000_000);
+  });
+
 });
 
 // ── currentPeriodStart unit tests ────────────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
+import { ChevronRight, Clock, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -67,6 +67,7 @@ interface BudgetData {
   velocityWindowSeconds: number | null;
   velocityCooldownSeconds: number | null;
   thresholdPercentages: number[];
+  sessionLimitMicrodollars: number | null;
 }
 
 export default function BudgetsPage() {
@@ -106,6 +107,9 @@ export default function BudgetsPage() {
         : "60",
       thresholdPercentages: isDefaultThresholds ? "" : budget.thresholdPercentages.join(", "),
       _thresholdsCustomized: !isDefaultThresholds,
+      sessionLimitDollars: budget.sessionLimitMicrodollars != null
+        ? (budget.sessionLimitMicrodollars / 1_000_000).toString()
+        : "",
     });
   }
 
@@ -321,6 +325,11 @@ function BudgetRow({
               <Zap className="h-3 w-3" />
             </span>
           )}
+          {budget.sessionLimitMicrodollars != null && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`Session limit: ${formatMicrodollars(budget.sessionLimitMicrodollars)}`}>
+              <Clock className="h-3 w-3" />
+            </span>
+          )}
           {isInCooldown && (
             <span className="inline-flex items-center rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-red-400">
               Cooldown {cooldownRemainingSec}s
@@ -454,6 +463,7 @@ interface EditBudgetData {
   velocityCooldownSeconds: string;
   thresholdPercentages: string;
   _thresholdsCustomized?: boolean;
+  sessionLimitDollars: string;
 }
 
 function BudgetDialog({
@@ -487,6 +497,8 @@ function BudgetDialog({
   const [velocityCooldownSeconds, setVelocityCooldownSeconds] = useState(editBudget?.velocityCooldownSeconds ?? "60");
   const [thresholdsCustomized, setThresholdsCustomized] = useState(editBudget?._thresholdsCustomized ?? !!editBudget?.thresholdPercentages);
   const [thresholdPercentages, setThresholdPercentages] = useState(editBudget?.thresholdPercentages ?? "");
+  const [sessionLimitEnabled, setSessionLimitEnabled] = useState(!!editBudget?.sessionLimitDollars);
+  const [sessionLimitDollars, setSessionLimitDollars] = useState(editBudget?.sessionLimitDollars ?? "");
 
   function resetForm() {
     setEntityType("user");
@@ -499,6 +511,8 @@ function BudgetDialog({
     setVelocityCooldownSeconds("60");
     setThresholdsCustomized(false);
     setThresholdPercentages("");
+    setSessionLimitEnabled(false);
+    setSessionLimitDollars("");
   }
 
   function handleSubmit() {
@@ -527,6 +541,14 @@ function BudgetDialog({
       const velDollars = parseFloat(velocityLimitDollars);
       if (isNaN(velDollars) || velDollars <= 0) {
         toast.error("Enter a valid velocity limit amount");
+        return;
+      }
+    }
+
+    if (sessionLimitEnabled) {
+      const sessDollars = parseFloat(sessionLimitDollars);
+      if (isNaN(sessDollars) || sessDollars <= 0) {
+        toast.error("Enter a valid session limit amount");
         return;
       }
     }
@@ -574,6 +596,9 @@ function BudgetDialog({
           velocityCooldownSeconds: parseInt(velocityCooldownSeconds, 10) || 60,
         }),
         ...(parsedThresholds !== undefined && { thresholdPercentages: parsedThresholds }),
+        sessionLimitMicrodollars: sessionLimitEnabled && sessionLimitDollars
+          ? Math.round(parseFloat(sessionLimitDollars) * 1_000_000)
+          : null,
       },
       {
         onSuccess: () => {
@@ -811,6 +836,45 @@ function BudgetDialog({
                 />
                 <p className="text-[10px] text-muted-foreground">
                   Comma-separated percentages (1-100). Webhook alerts fire when spend crosses each threshold. Leave empty to disable alerts.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Session limit section */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setSessionLimitEnabled(!sessionLimitEnabled)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight className={cn(
+                "h-3 w-3 transition-transform",
+                sessionLimitEnabled && "rotate-90",
+              )} />
+              <Clock className="h-3 w-3" />
+              {sessionLimitEnabled ? "Session limit (enabled)" : "Session limit (optional)"}
+            </button>
+
+            {sessionLimitEnabled && (
+              <div className="space-y-1.5 rounded-md border border-border/30 bg-secondary/20 p-3">
+                <Label className="text-xs text-muted-foreground">Session limit</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">
+                    $
+                  </span>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="5.00"
+                    value={sessionLimitDollars}
+                    onChange={(e) => setSessionLimitDollars(e.target.value)}
+                    className="h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Max spend per session. Agents set sessions via X-NullSpend-Session-Id header. Hard cap regardless of budget policy.
                 </p>
               </div>
             )}

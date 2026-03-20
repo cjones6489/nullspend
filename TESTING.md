@@ -149,6 +149,11 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `tags.test.ts` | `X-NullSpend-Tags` header parsing, validation, size limits |
 | `validation.test.ts` | Shared validation helpers (UUID regex, etc.) |
 
+**Session Limits**
+| File | What it tests |
+|---|---|
+| `session-limits.test.ts` | Session limit enforcement: orchestrator pass-through, OpenAI/Anthropic/MCP denial responses (429 session_limit_exceeded), webhook dispatch, no-enforcement when session limit or sessionId absent, buildSessionLimitExceededPayload builder |
+
 **Rate Limiting**
 | File | What it tests |
 |---|---|

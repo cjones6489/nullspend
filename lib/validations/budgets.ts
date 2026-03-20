@@ -34,6 +34,7 @@ export const createBudgetInputSchema = z
     velocityLimitMicrodollars: z.number().int().positive().nullable().optional(),
     velocityWindowSeconds: z.number().int().min(10).max(3600).optional(),
     velocityCooldownSeconds: z.number().int().min(10).max(3600).optional(),
+    sessionLimitMicrodollars: z.number().int().positive().nullable().optional(),
   })
   .superRefine((val, ctx) => {
     const prefix = entityIdPrefixForType(val.entityType);
@@ -75,6 +76,7 @@ export const budgetResponseSchema = z
     velocityLimitMicrodollars: z.number().nullable(),
     velocityWindowSeconds: z.number().nullable(),
     velocityCooldownSeconds: z.number().nullable(),
+    sessionLimitMicrodollars: z.number().nullable(),
   })
   .transform((val) => ({
     ...val,
@@ -104,6 +106,7 @@ export const budgetEntitySchema = z
     velocityLimitMicrodollars: z.number().nullable(),
     velocityWindowSeconds: z.number().nullable(),
     velocityCooldownSeconds: z.number().nullable(),
+    sessionLimitMicrodollars: z.number().nullable(),
   })
   .transform((val) => ({
     ...val,

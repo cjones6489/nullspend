@@ -208,6 +208,7 @@ describe("Budget Edge Cases", () => {
       "user-uuid-456",
       null,
       expect.any(Number),
+      null,
     );
   });
 
@@ -248,6 +249,7 @@ describe("Budget Edge Cases", () => {
       "user-uuid-456",
       expect.anything(),
       0,
+      null,
     );
   });
 

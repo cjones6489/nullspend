@@ -15,6 +15,7 @@ export interface BudgetRow {
   velocity_window: number;
   velocity_cooldown: number;
   threshold_percentages: string | null;
+  session_limit: number | null;
 }
 
 export interface CheckedEntity {
@@ -24,6 +25,7 @@ export interface CheckedEntity {
   spend: number;
   policy: string;
   thresholdPercentages: number[];
+  sessionLimit: number | null;
 }
 
 export interface CheckResult {
@@ -50,6 +52,10 @@ export interface CheckResult {
     velocityWindowSeconds: number;
     velocityCooldownSeconds: number;
   }>;
+  sessionLimitDenied?: boolean;
+  sessionId?: string;
+  sessionSpend?: number;
+  sessionLimit?: number;
 }
 
 export interface ReconcileResult {
@@ -216,12 +222,34 @@ export class UserBudgetDO extends DurableObject {
       try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN threshold_percentages TEXT DEFAULT '[50,80,90,95]'"); } catch { /* already exists */ }
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (3)");
     }
+
+    // v4 migration: session limits
+    const v4Version = this.ctx.storage.sql.exec<{ version: number }>(
+      "SELECT MAX(version) as version FROM _schema_version",
+    ).toArray()[0]?.version ?? 1;
+
+    if (v4Version < 4) {
+      this.ctx.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS session_spend (
+          entity_key TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          spend INTEGER NOT NULL DEFAULT 0,
+          request_count INTEGER NOT NULL DEFAULT 0,
+          last_seen INTEGER NOT NULL,
+          PRIMARY KEY (entity_key, session_id)
+        );
+        CREATE INDEX IF NOT EXISTS session_spend_last_seen_idx ON session_spend(last_seen);
+      `);
+      try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN session_limit INTEGER"); } catch { /* already exists */ }
+      try { this.ctx.storage.sql.exec("ALTER TABLE reservations ADD COLUMN session_id TEXT"); } catch { /* already exists */ }
+      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (4)");
+    }
   }
 
   private loadBudgets(): void {
     this.budgets.clear();
     const rows = this.ctx.storage.sql.exec<BudgetRow>(
-      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start, velocity_limit, velocity_window, velocity_cooldown, threshold_percentages FROM budgets",
+      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start, velocity_limit, velocity_window, velocity_cooldown, threshold_percentages, session_limit FROM budgets",
     );
     for (const row of rows) {
       this.budgets.set(`${row.entity_type}:${row.entity_id}`, row);
@@ -239,6 +267,7 @@ export class UserBudgetDO extends DurableObject {
     keyId: string | null,
     estimateMicrodollars: number,
     reservationTtlMs: number = 30_000,
+    sessionId: string | null = null,
   ): Promise<CheckResult> {
     const reservationId = crypto.randomUUID();
     const now = Date.now();
@@ -303,7 +332,37 @@ export class UserBudgetDO extends DurableObject {
           spend: row.spend,
           policy: row.policy,
           thresholdPercentages: parseThresholds(row.threshold_percentages),
+          sessionLimit: row.session_limit ?? null,
         });
+      }
+
+      // ── Session limit check (before velocity) ──────────────────────
+      // Session denial exits before velocity logic runs — denied requests
+      // should not affect velocity counters (same as budget denial).
+      if (sessionId) {
+        for (const row of rows) {
+          if (row.session_limit == null) continue;
+
+          const entityKey = `${row.entity_type}:${row.entity_id}`;
+          const sessionRow = this.ctx.storage.sql.exec<{ spend: number }>(
+            "SELECT spend FROM session_spend WHERE entity_key = ? AND session_id = ?",
+            entityKey, sessionId,
+          ).toArray()[0];
+
+          const currentSessionSpend = sessionRow?.spend ?? 0;
+          if (currentSessionSpend + estimateMicrodollars > row.session_limit) {
+            result = {
+              status: "denied",
+              hasBudgets: true,
+              sessionLimitDenied: true,
+              deniedEntity: entityKey,
+              sessionId,
+              sessionSpend: currentSessionSpend,
+              sessionLimit: row.session_limit,
+            };
+            return; // exit transactionSync
+          }
+        }
       }
 
       // ── Phase 0: Velocity check (before budget check) ──────────────
@@ -482,16 +541,35 @@ export class UserBudgetDO extends DurableObject {
         entityKeys.push(key);
       }
 
-      // Store reservation for crash recovery
+      // Store reservation for crash recovery (includes session_id for alarm reversal)
       this.ctx.storage.sql.exec(
-        `INSERT INTO reservations (id, amount, entity_keys, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO reservations (id, amount, entity_keys, created_at, expires_at, session_id)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         reservationId,
         estimateMicrodollars,
         JSON.stringify(entityKeys),
         now,
         now + reservationTtlMs,
+        sessionId,
       );
+
+      // Phase 3.5: Increment session spend for entities with session limits
+      if (sessionId) {
+        for (const row of rows) {
+          if (row.session_limit == null) continue;
+          const entityKey = `${row.entity_type}:${row.entity_id}`;
+          this.ctx.storage.sql.exec(
+            `INSERT INTO session_spend (entity_key, session_id, spend, request_count, last_seen)
+             VALUES (?, ?, ?, 1, ?)
+             ON CONFLICT(entity_key, session_id) DO UPDATE SET
+               spend = spend + ?,
+               request_count = request_count + 1,
+               last_seen = ?`,
+            entityKey, sessionId, estimateMicrodollars, now,
+            estimateMicrodollars, now,
+          );
+        }
+      }
 
       result = { status: "approved", hasBudgets: true, reservationId };
       reserved = true;
@@ -511,12 +589,20 @@ export class UserBudgetDO extends DurableObject {
     // Update in-memory cache
     this.loadBudgets();
 
-    // Schedule alarm for reservation expiry (only when a reservation was stored)
+    // Schedule alarm for reservation expiry + session cleanup
     if (reserved) {
       const nextExpiry = now + reservationTtlMs;
       const currentAlarm = await this.ctx.storage.getAlarm();
       if (!currentAlarm || currentAlarm > nextExpiry) {
         await this.ctx.storage.setAlarm(nextExpiry);
+      }
+    } else if (sessionId && result.status === "approved") {
+      // No reservation but session spend was tracked — ensure alarm for cleanup
+      const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+      const sessionCleanup = now + SESSION_TTL_MS;
+      const currentAlarm = await this.ctx.storage.getAlarm();
+      if (!currentAlarm || currentAlarm > sessionCleanup) {
+        await this.ctx.storage.setAlarm(sessionCleanup);
       }
     }
 
@@ -532,8 +618,8 @@ export class UserBudgetDO extends DurableObject {
     actualCostMicrodollars: number,
   ): Promise<ReconcileResult> {
     const row = this.ctx.storage.sql
-      .exec<{ amount: number; entity_keys: string }>(
-        "SELECT amount, entity_keys FROM reservations WHERE id = ?",
+      .exec<{ amount: number; entity_keys: string; session_id: string | null }>(
+        "SELECT amount, entity_keys, session_id FROM reservations WHERE id = ?",
         reservationId,
       )
       .toArray()[0];
@@ -590,6 +676,19 @@ export class UserBudgetDO extends DurableObject {
         }
       }
 
+      // Session spend correction — runs regardless of actualCost (handles zero-cost case)
+      if (row.session_id) {
+        const delta = actualCostMicrodollars - row.amount; // negative if overestimated
+        if (delta !== 0) {
+          for (const key of entityKeys) {
+            this.ctx.storage.sql.exec(
+              "UPDATE session_spend SET spend = MAX(0, spend + ?) WHERE entity_key = ? AND session_id = ?",
+              delta, key, row.session_id,
+            );
+          }
+        }
+      }
+
       this.ctx.storage.sql.exec(
         "DELETE FROM reservations WHERE id = ?",
         reservationId,
@@ -625,6 +724,7 @@ export class UserBudgetDO extends DurableObject {
     velocityWindow: number = 60_000,
     velocityCooldown: number = 60_000,
     thresholdPercentages: number[] = [...DEFAULT_THRESHOLDS],
+    sessionLimit: number | null = null,
   ): Promise<boolean> {
     const key = `${entityType}:${entityId}`;
     const existed = this.budgets.has(key);
@@ -659,6 +759,13 @@ export class UserBudgetDO extends DurableObject {
         `UPDATE budgets SET threshold_percentages = ?
          WHERE entity_type = ? AND entity_id = ?`,
         JSON.stringify(thresholdPercentages), entityType, entityId,
+      );
+
+      // Update session limit
+      this.ctx.storage.sql.exec(
+        `UPDATE budgets SET session_limit = ?
+         WHERE entity_type = ? AND entity_id = ?`,
+        sessionLimit, entityType, entityId,
       );
 
       // Create/update velocity_state row
@@ -751,6 +858,12 @@ export class UserBudgetDO extends DurableObject {
         "DELETE FROM velocity_state WHERE entity_key = ?",
         entityKey,
       );
+
+      // Delete session_spend rows for this entity
+      this.ctx.storage.sql.exec(
+        "DELETE FROM session_spend WHERE entity_key = ?",
+        entityKey,
+      );
     });
     this.loadBudgets();
   }
@@ -803,6 +916,12 @@ export class UserBudgetDO extends DurableObject {
         WHERE entity_key = ?`,
         entityKey,
       );
+
+      // 5. Clear session_spend for this entity
+      this.ctx.storage.sql.exec(
+        "DELETE FROM session_spend WHERE entity_key = ?",
+        entityKey,
+      );
     });
 
     this.loadBudgets();
@@ -815,45 +934,77 @@ export class UserBudgetDO extends DurableObject {
   async alarm(): Promise<void> {
     const now = Date.now();
     const expired = this.ctx.storage.sql
-      .exec<{ id: string; amount: number; entity_keys: string }>(
-        "SELECT id, amount, entity_keys FROM reservations WHERE expires_at <= ?",
+      .exec<{ id: string; amount: number; entity_keys: string; session_id: string | null }>(
+        "SELECT id, amount, entity_keys, session_id FROM reservations WHERE expires_at <= ?",
         now,
       )
       .toArray();
 
-    if (expired.length === 0) return;
+    if (expired.length > 0) {
+      console.log(`[UserBudgetDO] alarm: cleaning up ${expired.length} expired reservation(s)`);
 
-    console.log(`[UserBudgetDO] alarm: cleaning up ${expired.length} expired reservation(s)`);
-
-    this.ctx.storage.transactionSync(() => {
-      for (const rsv of expired) {
-        const keys: string[] = JSON.parse(rsv.entity_keys);
-        for (const key of keys) {
-          const [entityType, entityId] = parseEntityKey(key);
+      this.ctx.storage.transactionSync(() => {
+        for (const rsv of expired) {
+          const keys: string[] = JSON.parse(rsv.entity_keys);
+          for (const key of keys) {
+            const [entityType, entityId] = parseEntityKey(key);
+            this.ctx.storage.sql.exec(
+              "UPDATE budgets SET reserved = MAX(0, reserved - ?) WHERE entity_type = ? AND entity_id = ?",
+              rsv.amount,
+              entityType,
+              entityId,
+            );
+          }
+          // Reverse session spend for expired reservations
+          if (rsv.session_id) {
+            for (const key of keys) {
+              this.ctx.storage.sql.exec(
+                "UPDATE session_spend SET spend = MAX(0, spend - ?) WHERE entity_key = ? AND session_id = ?",
+                rsv.amount, key, rsv.session_id,
+              );
+            }
+          }
           this.ctx.storage.sql.exec(
-            "UPDATE budgets SET reserved = MAX(0, reserved - ?) WHERE entity_type = ? AND entity_id = ?",
-            rsv.amount,
-            entityType,
-            entityId,
+            "DELETE FROM reservations WHERE id = ?",
+            rsv.id,
           );
         }
-        this.ctx.storage.sql.exec(
-          "DELETE FROM reservations WHERE id = ?",
-          rsv.id,
-        );
-      }
-    });
+      });
 
-    this.loadBudgets();
+      this.loadBudgets();
+    }
 
-    // Reschedule for next expiring reservation
+    // Session cleanup: delete stale sessions (last_seen > 24h)
+    const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+    const cutoff = now - SESSION_TTL_MS;
+    const deleted = this.ctx.storage.sql.exec(
+      "DELETE FROM session_spend WHERE last_seen < ?",
+      cutoff,
+    );
+    if (deleted.rowsWritten > 0) {
+      console.log(`[UserBudgetDO] alarm: cleaned up ${deleted.rowsWritten} stale session(s)`);
+    }
+
+    // Reschedule: next reservation expiry OR 24h for session cleanup (if sessions exist)
     const next = this.ctx.storage.sql
       .exec<{ next_exp: number | null }>(
         "SELECT MIN(expires_at) as next_exp FROM reservations",
       )
       .toArray()[0];
-    if (next?.next_exp) {
-      await this.ctx.storage.setAlarm(next.next_exp);
+
+    const hasSessionRows = this.ctx.storage.sql
+      .exec<{ cnt: number }>("SELECT COUNT(*) as cnt FROM session_spend")
+      .toArray()[0]?.cnt ?? 0;
+
+    let nextAlarm: number | null = null;
+    if (next?.next_exp) nextAlarm = next.next_exp;
+    if (hasSessionRows > 0) {
+      const sessionCleanup = now + SESSION_TTL_MS;
+      nextAlarm = nextAlarm ? Math.min(nextAlarm, sessionCleanup) : sessionCleanup;
+    }
+
+    if (nextAlarm) {
+      await this.ctx.storage.setAlarm(nextAlarm);
     }
   }
 }

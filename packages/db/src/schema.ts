@@ -108,6 +108,7 @@ export const budgets = pgTable("budgets", {
   velocityLimitMicrodollars: bigint("velocity_limit_microdollars", { mode: "number" }),
   velocityWindowSeconds: integer("velocity_window_seconds").default(60),
   velocityCooldownSeconds: integer("velocity_cooldown_seconds").default(60),
+  sessionLimitMicrodollars: bigint("session_limit_microdollars", { mode: "number" }),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
