@@ -33,6 +33,7 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
   let capturedToolCalls: { name: string; id: string }[] | null = null;
   let lineBuffer = "";
   const decoder = new TextDecoder("utf-8", { fatal: false });
+  const MAX_LINE_LENGTH = 65_536; // 64KB — safety valve for malformed streams
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
@@ -40,6 +41,13 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
 
       const text = decoder.decode(chunk, { stream: true });
       lineBuffer += text;
+
+      // Safety valve: drop oversized incomplete lines to prevent memory exhaustion
+      if (!lineBuffer.includes("\n") && lineBuffer.length > MAX_LINE_LENGTH) {
+        console.warn("[sse-parser] Dropping oversized line buffer:", lineBuffer.length, "bytes");
+        lineBuffer = "";
+        return;
+      }
 
       const lines = lineBuffer.split("\n");
       lineBuffer = lines.pop()!;

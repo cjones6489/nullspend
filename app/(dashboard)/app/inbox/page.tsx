@@ -54,11 +54,10 @@ export default function InboxPage() {
     isFetchingNextPage,
   } = useActionsInfinite({ status: statusFilter });
 
-  const rawActions = data?.pages.flatMap((p) => p.data) ?? [];
-  const actions = useMemo(
-    () => typeFilter === ALL_TYPES ? rawActions : rawActions.filter((a) => a.actionType === typeFilter),
-    [rawActions, typeFilter],
-  );
+  const actions = useMemo(() => {
+    const rawActions = data?.pages.flatMap((p) => p.data) ?? [];
+    return typeFilter === ALL_TYPES ? rawActions : rawActions.filter((a) => a.actionType === typeFilter);
+  }, [data, typeFilter]);
 
   return (
     <div className="space-y-6">

@@ -302,6 +302,7 @@ describe("cross-builder shape compatibility", () => {
     toolCallsRequested: [{ name: "search", id: "call_1" }] as { name: string; id: string }[],
     toolDefinitionTokens: 500,
     source: "proxy",
+    tags: { project: "alpha", env: "prod" },
   };
 
   it("proxy and dashboard cost_event.created builders produce identical data.object key sets", async () => {
@@ -327,6 +328,7 @@ describe("cross-builder shape compatibility", () => {
       "request_id",
       "session_id",
       "source",
+      "tags",
       "tool_calls_requested",
       "tool_definition_tokens",
       "tool_name",

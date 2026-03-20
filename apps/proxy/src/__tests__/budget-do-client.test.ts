@@ -105,6 +105,8 @@ describe("doBudgetCheck", () => {
       status: "approved",
       hasBudgets: true,
       durationMs: expect.any(Number),
+      velocityDenied: false,
+      velocityRecovered: false,
     });
   });
 
@@ -123,6 +125,8 @@ describe("doBudgetCheck", () => {
       status: "approved",
       hasBudgets: false,
       durationMs: expect.any(Number),
+      velocityDenied: false,
+      velocityRecovered: false,
     });
   });
 });
@@ -438,6 +442,9 @@ describe("doBudgetUpsertEntities", () => {
         policy: "strict_block",
         resetInterval: "monthly",
         periodStart: 1_700_000_000_000,
+        velocityLimit: null,
+        velocityWindow: 60_000,
+        velocityCooldown: 60_000,
       },
     ]);
 
@@ -445,6 +452,7 @@ describe("doBudgetUpsertEntities", () => {
     expect(stub.populateIfEmpty).toHaveBeenCalledWith(
       "user", "user-1", 50_000_000, 10_000_000,
       "strict_block", "monthly", 1_700_000_000_000,
+      null, 60_000, 60_000,
     );
   });
 
@@ -453,8 +461,8 @@ describe("doBudgetUpsertEntities", () => {
     const env = makeEnv(stub);
 
     await doBudgetUpsertEntities(env, "user-1", [
-      { entityType: "user", entityId: "user-1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
-      { entityType: "api_key", entityId: "key-1", maxBudget: 10_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0 },
+      { entityType: "user", entityId: "user-1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000 },
+      { entityType: "api_key", entityId: "key-1", maxBudget: 10_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000 },
     ]);
 
     expect(stub.populateIfEmpty).toHaveBeenCalledTimes(2);

@@ -18,6 +18,10 @@ describe("budgets table schema", () => {
     expect(names).toContain("currentPeriodStart");
     expect(names).toContain("createdAt");
     expect(names).toContain("updatedAt");
+    expect(names).toContain("thresholdPercentages");
+    expect(names).toContain("velocityLimitMicrodollars");
+    expect(names).toContain("velocityWindowSeconds");
+    expect(names).toContain("velocityCooldownSeconds");
   });
 
   it("id is a UUID primary key", () => {
@@ -42,6 +46,26 @@ describe("budgets table schema", () => {
     expect(cols.policy.hasDefault).toBe(true);
   });
 
+  it("thresholdPercentages is NOT NULL with default", () => {
+    expect(cols.thresholdPercentages.notNull).toBe(true);
+    expect(cols.thresholdPercentages.hasDefault).toBe(true);
+  });
+
+  it("velocityLimitMicrodollars is nullable bigint (number mode)", () => {
+    expect(cols.velocityLimitMicrodollars.dataType).toBe("number");
+    expect(cols.velocityLimitMicrodollars.notNull).toBe(false);
+  });
+
+  it("velocityWindowSeconds has default 60", () => {
+    expect(cols.velocityWindowSeconds.dataType).toBe("number");
+    expect(cols.velocityWindowSeconds.hasDefault).toBe(true);
+  });
+
+  it("velocityCooldownSeconds has default 60", () => {
+    expect(cols.velocityCooldownSeconds.dataType).toBe("number");
+    expect(cols.velocityCooldownSeconds.hasDefault).toBe(true);
+  });
+
   it("resetInterval is nullable (no reset by default)", () => {
     expect(cols.resetInterval.notNull).toBe(false);
   });
@@ -59,11 +83,16 @@ describe("budgets table schema", () => {
       spendMicrodollars: 500_000,
       policy: "strict_block",
       resetInterval: "monthly",
+      thresholdPercentages: [50, 80, 90, 95],
+      velocityLimitMicrodollars: null,
+      velocityWindowSeconds: 60,
+      velocityCooldownSeconds: 60,
       currentPeriodStart: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
     expect(row.maxBudgetMicrodollars).toBe(1_000_000);
+    expect(row.thresholdPercentages).toEqual([50, 80, 90, 95]);
   });
 
   it("NewBudgetRow requires only non-default fields", () => {
@@ -96,6 +125,7 @@ describe("costEvents table schema", () => {
     expect(names).toContain("costMicrodollars");
     expect(names).toContain("durationMs");
     expect(names).toContain("source");
+    expect(names).toContain("tags");
     expect(names).toContain("createdAt");
   });
 
@@ -132,6 +162,11 @@ describe("costEvents table schema", () => {
     expect(cols.requestId.notNull).toBe(true);
   });
 
+  it("tags column is NOT NULL with default", () => {
+    expect(cols.tags.notNull).toBe(true);
+    expect(cols.tags.hasDefault).toBe(true);
+  });
+
   it("type inference produces correct CostEventRow shape", () => {
     const row: CostEventRow = {
       id: "uuid",
@@ -147,9 +182,11 @@ describe("costEvents table schema", () => {
       costMicrodollars: 31250,
       durationMs: 1500,
       source: "proxy",
+      tags: { project: "alpha" },
       createdAt: new Date(),
     };
     expect(row.costMicrodollars).toBe(31250);
+    expect(row.tags).toEqual({ project: "alpha" });
   });
 
   it("NewCostEventRow allows nullable fields to be omitted", () => {
@@ -207,6 +244,10 @@ describe("schema consistency with shared package types", () => {
       spendMicrodollars: 0,
       policy: "strict_block",
       resetInterval: null,
+      thresholdPercentages: [50, 80, 90, 95],
+      velocityLimitMicrodollars: null,
+      velocityWindowSeconds: 60,
+      velocityCooldownSeconds: 60,
       currentPeriodStart: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -230,6 +271,7 @@ describe("schema consistency with shared package types", () => {
       costMicrodollars: 1000,
       durationMs: null,
       source: "proxy",
+      tags: {},
       createdAt: new Date(),
     };
     expect(typeof row.costMicrodollars).toBe("number");

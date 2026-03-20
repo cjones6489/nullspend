@@ -26,7 +26,7 @@ export default function ToolCostsPage() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const toolCosts = data?.data ?? [];
+  const toolCosts = useMemo(() => data?.data ?? [], [data]);
 
   const servers = useMemo(() => {
     const set = new Set(toolCosts.map((tc) => tc.serverName));

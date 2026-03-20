@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
 import { getDb } from "@/lib/db/client";
@@ -12,6 +12,7 @@ interface ListCostEventsOptions {
   model?: string;
   provider?: string;
   source?: CostEventSource;
+  tags?: Record<string, string>;
 }
 
 export async function listCostEvents(options: ListCostEventsOptions) {
@@ -32,6 +33,9 @@ export async function listCostEvents(options: ListCostEventsOptions) {
   }
   if (options.source) {
     conditions.push(eq(costEvents.source, options.source));
+  }
+  if (options.tags && Object.keys(options.tags).length > 0) {
+    conditions.push(sql`${costEvents.tags} @> ${JSON.stringify(options.tags)}::jsonb`);
   }
 
   if (options.cursor) {
@@ -62,6 +66,7 @@ export async function listCostEvents(options: ListCostEventsOptions) {
       durationMs: costEvents.durationMs,
       createdAt: costEvents.createdAt,
       source: costEvents.source,
+      tags: costEvents.tags,
       keyName: apiKeys.name,
     })
     .from(costEvents)

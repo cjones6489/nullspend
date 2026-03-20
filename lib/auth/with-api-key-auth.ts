@@ -32,11 +32,14 @@ export async function authenticateApiKey(
     if (!result.allowed) {
       getLogger("rate-limit").info({ keyId, userId }, "Per-key rate limit exceeded");
       const requestId = request.headers.get("x-request-id");
+      const limit = result.limit ?? 0;
+      const remaining = result.remaining ?? 0;
+      const reset = result.reset ?? Date.now();
       const headers: Record<string, string> = {
-        "X-RateLimit-Limit": String(result.limit),
-        "X-RateLimit-Remaining": String(result.remaining),
-        "X-RateLimit-Reset": String(result.reset),
-        "Retry-After": String(Math.max(1, Math.ceil((result.reset! - Date.now()) / 1000))),
+        "X-RateLimit-Limit": String(limit),
+        "X-RateLimit-Remaining": String(remaining),
+        "X-RateLimit-Reset": String(reset),
+        "Retry-After": String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))),
         "Cache-Control": "private, no-store",
       };
       if (requestId) headers["x-request-id"] = requestId;
@@ -50,7 +53,9 @@ export async function authenticateApiKey(
     return {
       userId, keyId,
       apiVersion: identity?.apiVersion ?? CURRENT_VERSION,
-      rateLimit: { limit: result.limit!, remaining: result.remaining!, reset: result.reset! },
+      rateLimit: result.limit != null
+        ? { limit: result.limit, remaining: result.remaining ?? 0, reset: result.reset ?? 0 }
+        : undefined,
     };
   }
 

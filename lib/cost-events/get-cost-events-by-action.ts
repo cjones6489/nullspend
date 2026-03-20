@@ -25,6 +25,7 @@ export async function getCostEventsByActionId(
       durationMs: costEvents.durationMs,
       createdAt: costEvents.createdAt,
       source: costEvents.source,
+      tags: costEvents.tags,
       keyName: apiKeys.name,
     })
     .from(costEvents)

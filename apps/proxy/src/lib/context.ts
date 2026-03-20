@@ -8,6 +8,7 @@ export interface RequestContext {
   redis: Redis | null;          // null when no webhooks configured
   connectionString: string;
   sessionId: string | null;     // from x-nullspend-session
+  tags: Record<string, string>; // from x-nullspend-tags
   webhookDispatcher: WebhookDispatcher | null;
   resolvedApiVersion: string;
 }

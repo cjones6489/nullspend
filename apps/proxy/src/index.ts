@@ -8,6 +8,7 @@ import { authenticateRequest } from "./lib/auth.js";
 import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
+import { parseTags } from "./lib/tags.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 import { handleReconciliationQueue } from "./queue-handler.js";
 import { handleDlqQueue, DLQ_QUEUE_NAME } from "./dlq-handler.js";
@@ -219,6 +220,7 @@ export default {
         redis: auth.hasWebhooks ? Redis.fromEnv(env) : null,
         connectionString,
         sessionId: request.headers.get("x-nullspend-session") ?? null,
+        tags: parseTags(request.headers.get("x-nullspend-tags")),
         webhookDispatcher,
         resolvedApiVersion,
       };

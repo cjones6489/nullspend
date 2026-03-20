@@ -19,6 +19,10 @@ interface BudgetRecord {
   currentPeriodStart: string | null;
   createdAt: string;
   updatedAt: string;
+  thresholdPercentages: number[];
+  velocityLimitMicrodollars: number | null;
+  velocityWindowSeconds: number | null;
+  velocityCooldownSeconds: number | null;
 }
 
 interface ListBudgetsResponse {

@@ -80,9 +80,8 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
     isFetching,
   } = useCostEvents(filters);
 
-  const rawEvents = data?.pages.flatMap((p) => p.data) ?? [];
-
   const events = useMemo(() => {
+    const rawEvents = data?.pages.flatMap((p) => p.data) ?? [];
     if (!sortField) return rawEvents;
     const sorted = [...rawEvents].sort((a, b) => {
       let aVal: number, bVal: number;
@@ -98,7 +97,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
       return sortDir === "asc" ? aVal - bVal : bVal - aVal;
     });
     return sorted;
-  }, [rawEvents, sortField, sortDir]);
+  }, [data, sortField, sortDir]);
   const hasFilter =
     selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS;
 

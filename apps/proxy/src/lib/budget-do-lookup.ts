@@ -24,6 +24,9 @@ export interface DOBudgetEntity {
   policy: string;
   resetInterval: string | null;
   periodStart: number; // epoch ms
+  velocityLimit: number | null;
+  velocityWindow: number; // ms (default 60000)
+  velocityCooldown: number; // ms (default 60000)
 }
 
 /**
@@ -82,6 +85,9 @@ export async function lookupBudgetsForDO(
             policy: row.policy,
             resetInterval: row.resetInterval ?? null,
             periodStart: row.currentPeriodStart?.getTime() ?? 0,
+            velocityLimit: row.velocityLimitMicrodollars ?? null,
+            velocityWindow: (row.velocityWindowSeconds ?? 60) * 1000,
+            velocityCooldown: (row.velocityCooldownSeconds ?? 60) * 1000,
           });
         }
       }

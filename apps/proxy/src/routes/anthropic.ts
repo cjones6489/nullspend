@@ -20,7 +20,7 @@ import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildBudgetExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -37,6 +37,7 @@ interface EnrichmentFields {
   upstreamDurationMs: number;
   sessionId: string | null;
   toolDefinitionTokens: number;
+  tags: Record<string, string>;
 }
 
 export async function handleAnthropicMessages(
@@ -70,6 +71,49 @@ export async function handleAnthropicMessages(
 
   try {
     const outcome = await checkBudget(env, ctx, estimate);
+
+    // Velocity denial — separate from budget exhaustion
+    if (outcome.status === "denied" && outcome.velocityDenied) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+        waitUntil((async () => {
+          try {
+            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+              const event = buildVelocityExceededPayload({
+                budgetEntityType: outcome.deniedEntityType ?? "unknown",
+                budgetEntityId: outcome.deniedEntityId ?? "unknown",
+                velocityLimitMicrodollars: outcome.velocityDetails?.limitMicrodollars ?? 0,
+                velocityWindowSeconds: outcome.velocityDetails?.windowSeconds ?? 60,
+                velocityCurrentMicrodollars: outcome.velocityDetails?.currentMicrodollars ?? 0,
+                cooldownSeconds: outcome.retryAfterSeconds ?? 60,
+                model: requestModel,
+                provider: "anthropic",
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          } catch (err) {
+            console.error("[anthropic-route] Velocity webhook dispatch failed:", err);
+          }
+        })());
+      }
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "velocity_exceeded",
+            message: "Request blocked: spending rate exceeds velocity limit. Retry after cooldown.",
+            details: outcome.velocityDetails ?? null,
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+          },
+        },
+      );
+    }
 
     if (outcome.status === "denied") {
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
@@ -123,6 +167,7 @@ export async function handleAnthropicMessages(
       upstreamDurationMs,
       sessionId: ctx.sessionId,
       toolDefinitionTokens,
+      tags: ctx.tags,
     };
 
     if (!upstreamResponse.ok) {

@@ -10,6 +10,7 @@ import { ZodError } from "zod";
 import {
   createBudgetInputSchema,
   budgetResponseSchema,
+  budgetEntitySchema,
   listBudgetsResponseSchema,
 } from "./budgets";
 import { handleRouteError } from "@/lib/utils/http";
@@ -131,6 +132,154 @@ describe("createBudgetInputSchema", () => {
       createBudgetInputSchema.parse({ ...validInput, resetInterval: "yearly" }),
     ).toThrow(ZodError);
   });
+
+  describe("thresholdPercentages", () => {
+    it("accepts valid thresholdPercentages", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        thresholdPercentages: [50, 80, 90],
+      });
+      expect(result.thresholdPercentages).toEqual([50, 80, 90]);
+    });
+
+    it("accepts empty array (disables alerts)", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        thresholdPercentages: [],
+      });
+      expect(result.thresholdPercentages).toEqual([]);
+    });
+
+    it("rejects unsorted values", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          thresholdPercentages: [80, 50],
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects duplicates", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          thresholdPercentages: [50, 50],
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects out-of-range value 0", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          thresholdPercentages: [0],
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects out-of-range value 101", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          thresholdPercentages: [101],
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects non-integers", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          thresholdPercentages: [50.5],
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects more than 10 elements", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          thresholdPercentages: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("omitting is valid (optional — DB default applies)", () => {
+      const result = createBudgetInputSchema.parse(validInput);
+      expect(result.thresholdPercentages).toBeUndefined();
+    });
+  });
+
+  describe("velocity limits", () => {
+    it("accepts valid velocity config", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        velocityLimitMicrodollars: 5_000_000,
+        velocityWindowSeconds: 60,
+        velocityCooldownSeconds: 120,
+      });
+      expect(result.velocityLimitMicrodollars).toBe(5_000_000);
+      expect(result.velocityWindowSeconds).toBe(60);
+      expect(result.velocityCooldownSeconds).toBe(120);
+    });
+
+    it("omitting velocity fields is valid (opt-in)", () => {
+      const result = createBudgetInputSchema.parse(validInput);
+      expect(result.velocityLimitMicrodollars).toBeUndefined();
+      expect(result.velocityWindowSeconds).toBeUndefined();
+      expect(result.velocityCooldownSeconds).toBeUndefined();
+    });
+
+    it("rejects non-positive velocityLimitMicrodollars", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, velocityLimitMicrodollars: 0 }),
+      ).toThrow(ZodError);
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, velocityLimitMicrodollars: -100 }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects float velocityLimitMicrodollars", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, velocityLimitMicrodollars: 1.5 }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects velocityWindowSeconds below 10", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, velocityWindowSeconds: 5 }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects velocityWindowSeconds above 3600", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, velocityWindowSeconds: 7200 }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects velocityCooldownSeconds below 10", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, velocityCooldownSeconds: 1 }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects velocityCooldownSeconds above 3600", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({ ...validInput, velocityCooldownSeconds: 5000 }),
+      ).toThrow(ZodError);
+    });
+
+    it("accepts boundary values (10 and 3600)", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        velocityLimitMicrodollars: 1,
+        velocityWindowSeconds: 10,
+        velocityCooldownSeconds: 3600,
+      });
+      expect(result.velocityWindowSeconds).toBe(10);
+      expect(result.velocityCooldownSeconds).toBe(3600);
+    });
+  });
 });
 
 describe("budgetResponseSchema", () => {
@@ -145,6 +294,10 @@ describe("budgetResponseSchema", () => {
     currentPeriodStart: "2026-03-01T00:00:00.000Z",
     createdAt: "2026-02-15T12:00:00.000Z",
     updatedAt: "2026-03-01T00:00:00.000Z",
+    thresholdPercentages: [50, 80, 90, 95],
+    velocityLimitMicrodollars: null,
+    velocityWindowSeconds: 60,
+    velocityCooldownSeconds: 60,
   };
 
   it("accepts valid budget response shape", () => {
@@ -168,6 +321,69 @@ describe("budgetResponseSchema", () => {
       data: [validResponse],
     });
     expect(result.data).toHaveLength(1);
+  });
+
+  it("includes thresholdPercentages in output", () => {
+    const result = budgetResponseSchema.parse(validResponse);
+    expect(result.thresholdPercentages).toEqual([50, 80, 90, 95]);
+  });
+});
+
+describe("budgetEntitySchema", () => {
+  it("includes thresholdPercentages in output", () => {
+    const result = budgetEntitySchema.parse({
+      entityType: "user",
+      entityId: "550e8400-e29b-41d4-a716-446655440000",
+      limitMicrodollars: 10_000_000,
+      spendMicrodollars: 3_000_000,
+      remainingMicrodollars: 7_000_000,
+      policy: "strict_block",
+      resetInterval: "monthly",
+      currentPeriodStart: "2026-03-01T00:00:00.000Z",
+      thresholdPercentages: [25, 50, 75],
+      velocityLimitMicrodollars: 5_000_000,
+      velocityWindowSeconds: 60,
+      velocityCooldownSeconds: 120,
+    });
+    expect(result.thresholdPercentages).toEqual([25, 50, 75]);
+  });
+
+  it("includes velocity fields in output", () => {
+    const result = budgetEntitySchema.parse({
+      entityType: "user",
+      entityId: "550e8400-e29b-41d4-a716-446655440000",
+      limitMicrodollars: 10_000_000,
+      spendMicrodollars: 3_000_000,
+      remainingMicrodollars: 7_000_000,
+      policy: "strict_block",
+      resetInterval: null,
+      currentPeriodStart: null,
+      thresholdPercentages: [],
+      velocityLimitMicrodollars: 5_000_000,
+      velocityWindowSeconds: 30,
+      velocityCooldownSeconds: 90,
+    });
+    expect(result.velocityLimitMicrodollars).toBe(5_000_000);
+    expect(result.velocityWindowSeconds).toBe(30);
+    expect(result.velocityCooldownSeconds).toBe(90);
+  });
+
+  it("accepts null velocity fields", () => {
+    const result = budgetEntitySchema.parse({
+      entityType: "user",
+      entityId: "550e8400-e29b-41d4-a716-446655440000",
+      limitMicrodollars: 10_000_000,
+      spendMicrodollars: 0,
+      remainingMicrodollars: 10_000_000,
+      policy: "strict_block",
+      resetInterval: null,
+      currentPeriodStart: null,
+      thresholdPercentages: [],
+      velocityLimitMicrodollars: null,
+      velocityWindowSeconds: null,
+      velocityCooldownSeconds: null,
+    });
+    expect(result.velocityLimitMicrodollars).toBeNull();
   });
 });
 

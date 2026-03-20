@@ -45,7 +45,7 @@ describe("DB-backed API key auth", () => {
   });
 
   it("returns the DB-backed key identity when a managed key matches", async () => {
-    mockDb([{ id: "key-123", userId: "user-123" }]);
+    mockDb([{ id: "key-123", userId: "user-123", apiVersion: "2026-04-01" }]);
 
     await expect(
       assertApiKeyWithIdentity(
@@ -54,6 +54,7 @@ describe("DB-backed API key auth", () => {
     ).resolves.toEqual({
       keyId: "key-123",
       userId: "user-123",
+      apiVersion: "2026-04-01",
     });
   });
 

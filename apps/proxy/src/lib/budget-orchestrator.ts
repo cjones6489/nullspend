@@ -15,6 +15,14 @@ export interface BudgetCheckOutcome {
   maxBudget?: number;
   spend?: number;
   reserved?: number;
+  velocityDenied?: boolean;
+  retryAfterSeconds?: number;
+  velocityDetails?: {
+    limitMicrodollars: number;
+    windowSeconds: number;
+    currentMicrodollars: number;
+  };
+  velocityRecovered?: Array<{ entityType: string; entityId: string }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +166,20 @@ async function checkBudgetDO(
       deniedEntityId = checkResult.deniedEntity.slice(sep + 1);
     }
 
+    // Velocity denial — separate from budget exhaustion
+    if (checkResult.velocityDenied) {
+      return {
+        status: "denied",
+        reservationId: null,
+        budgetEntities,
+        deniedEntityType,
+        deniedEntityId,
+        velocityDenied: true,
+        retryAfterSeconds: checkResult.retryAfterSeconds,
+        velocityDetails: checkResult.velocityDetails,
+      };
+    }
+
     const reserved = (checkResult.maxBudget ?? 0) - (checkResult.spend ?? 0) - (checkResult.remaining ?? 0);
     return {
       status: "denied",
@@ -176,5 +198,6 @@ async function checkBudgetDO(
     status: "approved",
     reservationId: checkResult.reservationId ?? null,
     budgetEntities,
+    ...(checkResult.velocityRecovered?.length && { velocityRecovered: checkResult.velocityRecovered }),
   };
 }

@@ -118,6 +118,7 @@ function makeCtx(
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
+    tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
     ...overrides,
@@ -599,6 +600,49 @@ describe("handleChatCompletions", () => {
     const callArgs = mockLogCostEvent.mock.calls[0][1];
     expect(callArgs.toolDefinitionTokens).toBeGreaterThan(0);
     expect(callArgs.upstreamDurationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("includes tags from context in cost event", async () => {
+    mockLogCostEvent.mockClear();
+
+    const mockResponse = {
+      id: "chatcmpl-tags",
+      model: "gpt-4o-mini-2024-07-18",
+      choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(mockResponse), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": "req-tags",
+        },
+      }),
+    );
+
+    const body = {
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "hi" }],
+    };
+
+    const res = await handleChatCompletions(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body, { tags: { project: "alpha", env: "prod" } }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockLogCostEvent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        tags: { project: "alpha", env: "prod" },
+      }),
+    );
   });
 
   it("includes toolCallsRequested from streaming response", async () => {

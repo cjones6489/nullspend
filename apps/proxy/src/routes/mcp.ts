@@ -5,7 +5,7 @@ import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.j
 import { logCostEventsBatch } from "../lib/cost-logger.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildVelocityExceededPayload } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 import { UUID_RE } from "../lib/validation.js";
@@ -53,6 +53,45 @@ export async function handleMcpBudgetCheck(
 
   try {
     const outcome = await checkBudget(env, ctx, parsed.estimateMicrodollars);
+
+    if (outcome.status === "denied" && outcome.velocityDenied) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+        waitUntil((async () => {
+          try {
+            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+              const event = buildVelocityExceededPayload({
+                budgetEntityType: outcome.deniedEntityType ?? "unknown",
+                budgetEntityId: outcome.deniedEntityId ?? "unknown",
+                velocityLimitMicrodollars: outcome.velocityDetails?.limitMicrodollars ?? 0,
+                velocityWindowSeconds: outcome.velocityDetails?.windowSeconds ?? 60,
+                velocityCurrentMicrodollars: outcome.velocityDetails?.currentMicrodollars ?? 0,
+                cooldownSeconds: outcome.retryAfterSeconds ?? 60,
+                model: `${parsed.serverName}/${parsed.toolName}`,
+                provider: "mcp",
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          } catch (err) {
+            console.error("[mcp-route] Velocity webhook dispatch failed:", err);
+          }
+        })());
+      }
+      return Response.json({
+        allowed: false,
+        denied: true,
+        reason: "velocity_exceeded",
+        retryAfterSeconds: outcome.retryAfterSeconds ?? 60,
+        velocityDetails: outcome.velocityDetails ?? null,
+      }, {
+        status: 429,
+        headers: {
+          "NullSpend-Version": ctx.resolvedApiVersion,
+          "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+        },
+      });
+    }
 
     if (outcome.status === "denied") {
       return Response.json({
@@ -155,6 +194,7 @@ export async function handleMcpEvents(
         toolName: event.toolName,
         toolServer: event.serverName,
         sessionId: ctx.sessionId,
+        tags: ctx.tags,
         source: "mcp" as const,
       }));
 

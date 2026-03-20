@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -103,6 +104,10 @@ export const budgets = pgTable("budgets", {
   spendMicrodollars: bigint("spend_microdollars", { mode: "number" }).notNull().default(0),
   policy: text("policy").$type<"strict_block" | "soft_block" | "warn">().notNull().default("strict_block"),
   resetInterval: text("reset_interval").$type<"daily" | "weekly" | "monthly" | "yearly" | null>(),
+  thresholdPercentages: integer("threshold_percentages").array().notNull().default([50, 80, 90, 95]),
+  velocityLimitMicrodollars: bigint("velocity_limit_microdollars", { mode: "number" }),
+  velocityWindowSeconds: integer("velocity_window_seconds").default(60),
+  velocityCooldownSeconds: integer("velocity_cooldown_seconds").default(60),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -136,6 +141,7 @@ export const costEvents = pgTable("cost_events", {
   sessionId: text("session_id"),
   source: text("source").$type<CostEventSource>().notNull().default("proxy"),
   costBreakdown: jsonb("cost_breakdown").$type<{ input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null>(),
+  tags: jsonb("tags").$type<Record<string, string>>().notNull().default(sql`'{}'`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("cost_events_request_id_provider_idx").on(table.requestId, table.provider),

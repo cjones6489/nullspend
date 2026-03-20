@@ -24,6 +24,8 @@ export async function doBudgetCheck(
     status: result.status,
     hasBudgets: result.hasBudgets,
     durationMs: Date.now() - startMs,
+    velocityDenied: result.velocityDenied ?? false,
+    velocityRecovered: (result.velocityRecovered?.length ?? 0) > 0,
   });
   return result;
 }
@@ -156,6 +158,7 @@ export async function doBudgetUpsertEntities(
     await stub.populateIfEmpty(
       e.entityType, e.entityId, e.maxBudget, e.spend,
       e.policy, e.resetInterval, e.periodStart,
+      e.velocityLimit, e.velocityWindow, e.velocityCooldown,
     );
   }
 }

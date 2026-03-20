@@ -56,6 +56,10 @@ function makeBudgetRow(overrides: Record<string, unknown> = {}) {
     spendMicrodollars: 2_500_000,
     policy: "strict_block",
     resetInterval: "monthly",
+    thresholdPercentages: [50, 80, 90, 95],
+    velocityLimitMicrodollars: null,
+    velocityWindowSeconds: 60,
+    velocityCooldownSeconds: 60,
     currentPeriodStart: new Date("2026-03-01T00:00:00Z"),
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-03-01T00:00:00Z"),
@@ -187,6 +191,18 @@ describe("GET /api/budgets", () => {
     expect(budget).toHaveProperty("currentPeriodStart");
     expect(budget).toHaveProperty("createdAt");
     expect(budget).toHaveProperty("updatedAt");
+    expect(budget).toHaveProperty("thresholdPercentages");
+  });
+
+  it("response includes thresholdPercentages", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockWhere
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([makeBudgetRow({ thresholdPercentages: [25, 50, 75] })]);
+
+    const response = await GET(makeRequest());
+    const json = await response.json();
+    expect(json.data[0].thresholdPercentages).toEqual([25, 50, 75]);
   });
 
   it("handles multiple api keys correctly", async () => {
@@ -224,6 +240,88 @@ describe("POST /api/budgets — proxy invalidation", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("POST with custom thresholdPercentages creates budget", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 10_000_000,
+      thresholdPercentages: [25, 50, 75],
+    });
+
+    const budgetRow = makeBudgetRow({
+      entityId: TEST_USER_ID,
+      thresholdPercentages: [25, 50, 75],
+    });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json.thresholdPercentages).toEqual([25, 50, 75]);
+  });
+
+  it("upsert without thresholdPercentages preserves existing custom value", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 20_000_000,
+      // thresholdPercentages intentionally omitted
+    });
+
+    const budgetRow = makeBudgetRow({
+      entityId: TEST_USER_ID,
+      maxBudgetMicrodollars: 20_000_000,
+      thresholdPercentages: [25, 50, 75], // existing custom value preserved
+    });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    // DB returns the existing custom value since we didn't override it
+    expect(json.thresholdPercentages).toEqual([25, 50, 75]);
+
+    // Verify thresholdPercentages was NOT in the .values() or .set() calls
+    const valuesArg = (mockValues.mock.calls as any)[0][0];
+    expect(valuesArg).not.toHaveProperty("thresholdPercentages");
+    const setArg = (mockOnConflict.mock.calls as any)[0][0].set;
+    expect(setArg).not.toHaveProperty("thresholdPercentages");
   });
 
   it("calls invalidateProxyCache with sync action after budget creation", async () => {

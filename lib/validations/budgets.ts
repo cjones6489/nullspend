@@ -18,6 +18,22 @@ export const createBudgetInputSchema = z
     entityId: z.string(),
     maxBudgetMicrodollars: z.number().int().positive(),
     resetInterval: z.enum(["daily", "weekly", "monthly"]).optional(),
+    thresholdPercentages: z
+      .array(z.number().int().min(1).max(100))
+      .max(10)
+      .refine(
+        (arr) => {
+          for (let i = 1; i < arr.length; i++) {
+            if (arr[i] <= arr[i - 1]) return false;
+          }
+          return true;
+        },
+        { message: "thresholdPercentages must be sorted ascending with no duplicates" },
+      )
+      .optional(),
+    velocityLimitMicrodollars: z.number().int().positive().nullable().optional(),
+    velocityWindowSeconds: z.number().int().min(10).max(3600).optional(),
+    velocityCooldownSeconds: z.number().int().min(10).max(3600).optional(),
   })
   .superRefine((val, ctx) => {
     const prefix = entityIdPrefixForType(val.entityType);
@@ -55,6 +71,10 @@ export const budgetResponseSchema = z
     currentPeriodStart: z.string().nullable(),
     createdAt: z.string(),
     updatedAt: z.string(),
+    thresholdPercentages: z.array(z.number()),
+    velocityLimitMicrodollars: z.number().nullable(),
+    velocityWindowSeconds: z.number().nullable(),
+    velocityCooldownSeconds: z.number().nullable(),
   })
   .transform((val) => ({
     ...val,
@@ -80,6 +100,10 @@ export const budgetEntitySchema = z
     policy: z.string(),
     resetInterval: z.string().nullable(),
     currentPeriodStart: z.string().nullable(),
+    thresholdPercentages: z.array(z.number()),
+    velocityLimitMicrodollars: z.number().nullable(),
+    velocityWindowSeconds: z.number().nullable(),
+    velocityCooldownSeconds: z.number().nullable(),
   })
   .transform((val) => ({
     ...val,

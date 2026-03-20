@@ -77,6 +77,7 @@ function makeInsertedRow(overrides?: Record<string, unknown>) {
     sessionId: null,
     requestId: "sdk_abc",
     source: "api",
+    tags: {} as Record<string, string>,
     ...overrides,
   };
 }

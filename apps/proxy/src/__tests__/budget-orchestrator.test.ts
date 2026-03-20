@@ -36,6 +36,7 @@ function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
     redis: null,
     connectionString: "postgres://test",
     sessionId: null,
+    tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
     ...overrides,

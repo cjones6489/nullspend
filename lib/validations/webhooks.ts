@@ -13,6 +13,8 @@ export const WEBHOOK_EVENT_TYPES = [
   "action.approved",
   "action.rejected",
   "action.expired",
+  "velocity.exceeded",
+  "velocity.recovered",
   "test.ping",
 ] as const;
 

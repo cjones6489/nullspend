@@ -45,6 +45,7 @@ export function createAnthropicSSEParser(
   let currentEventType: string | null = null;
   let lineBuffer = "";
   const decoder = new TextDecoder("utf-8", { fatal: false });
+  const MAX_LINE_LENGTH = 65_536; // 64KB — safety valve for malformed streams
 
   function resolve(result: AnthropicSSEResult): void {
     if (resolved) return;
@@ -71,6 +72,13 @@ export function createAnthropicSSEParser(
 
       const text = decoder.decode(chunk, { stream: true });
       lineBuffer += text;
+
+      // Safety valve: drop oversized incomplete lines to prevent memory exhaustion
+      if (!lineBuffer.includes("\n") && lineBuffer.length > MAX_LINE_LENGTH) {
+        console.warn("[anthropic-sse-parser] Dropping oversized line buffer:", lineBuffer.length, "bytes");
+        lineBuffer = "";
+        return;
+      }
 
       const lines = lineBuffer.split("\n");
       lineBuffer = lines.pop()!;

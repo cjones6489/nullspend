@@ -33,6 +33,10 @@ export const GET = withRequestContext(async (request: Request) => {
     policy: row.policy,
     resetInterval: row.resetInterval ?? null,
     currentPeriodStart: row.currentPeriodStart?.toISOString() ?? null,
+    thresholdPercentages: row.thresholdPercentages,
+    velocityLimitMicrodollars: row.velocityLimitMicrodollars ?? null,
+    velocityWindowSeconds: row.velocityWindowSeconds ?? null,
+    velocityCooldownSeconds: row.velocityCooldownSeconds ?? null,
   }));
 
   const body = budgetStatusResponseSchema.parse({ entities });

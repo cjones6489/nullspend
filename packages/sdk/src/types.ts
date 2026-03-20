@@ -187,6 +187,7 @@ export interface CostEventInput {
   eventType?: "llm" | "tool" | "custom";
   toolName?: string;
   toolServer?: string;
+  tags?: Record<string, string>;
 }
 
 export interface ReportCostResponse {

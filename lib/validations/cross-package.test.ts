@@ -32,6 +32,8 @@ describe("cross-package constant consistency", () => {
       "action.approved",
       "action.rejected",
       "action.expired",
+      "velocity.exceeded",
+      "velocity.recovered",
       "test.ping",
     ];
 

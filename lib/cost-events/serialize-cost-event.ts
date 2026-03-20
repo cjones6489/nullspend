@@ -14,6 +14,7 @@ interface CostEventJoinRow {
   durationMs: number | null;
   createdAt: Date;
   source: string;
+  tags: Record<string, string>;
   keyName: string;
 }
 
@@ -32,6 +33,7 @@ export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
     durationMs: row.durationMs,
     createdAt: row.createdAt.toISOString(),
     source: row.source,
+    tags: row.tags,
     keyName: row.keyName,
   };
 }

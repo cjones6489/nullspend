@@ -16,6 +16,7 @@ export const costEventRecordSchema = z.object({
   durationMs: z.number().int().nullable(),
   createdAt: z.string(),
   source: z.string(),
+  tags: z.record(z.string(), z.string()).default({}),
   keyName: z.string(),
 });
 
@@ -40,6 +41,7 @@ export const listCostEventsQuerySchema = z.object({
   model: z.string().optional(),
   provider: z.string().optional(),
   source: z.enum(["proxy", "api", "mcp"]).optional(),
+  tags: z.record(z.string(), z.string()).optional(),
 });
 
 export const listCostEventsResponseSchema = z.object({

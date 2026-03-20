@@ -242,11 +242,11 @@ Last updated: 2026-03-20
 
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
-| **P1** | `tags` JSONB on cost_events | Not started | ~2h | Architecture Review |
-| **P1** | Loop/runaway detection (velocity limits) | Not started | ~3-4h | Architecture Review |
-| **P1** | W3C `traceparent` + `trace_id` column | Not started | ~1h | Audit Section 12 + Architecture Review |
+| **P1** | `tags` JSONB on cost_events | **Done** (2026-03-19) | ~2h | Architecture Review |
+| **P1** | Loop/runaway detection (velocity limits) | **In progress** | ~3-4h | Architecture Review |
+| **P1** | W3C `traceparent` + `trace_id` column | Researched | ~4h | [Research](../research/traceparent-trace-id-research.md) |
 | **P1** | Session-level budget aggregation | Not started | ~2-3h | Architecture Review |
-| **P1** | Configurable budget thresholds | Not started | ~1.5h | Audit Section 6 |
+| **P1** | Configurable budget thresholds | **Done** (2026-03-19) | ~1.5h | Audit Section 6 |
 | **P2** | Claude Agent SDK adapter | Not started | ~1 day | Architecture Review |
 | **P2** | Thin webhook event mode | Not started | ~3-4h | Architecture Review |
 | **P2** | Unit economics dashboard metrics | Not started | ~1 day | Architecture Review |

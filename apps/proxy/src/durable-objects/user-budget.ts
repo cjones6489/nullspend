@@ -11,6 +11,9 @@ export interface BudgetRow {
   policy: string;
   reset_interval: string | null;
   period_start: number;
+  velocity_limit: number | null;
+  velocity_window: number;
+  velocity_cooldown: number;
 }
 
 export interface CheckedEntity {
@@ -31,12 +34,31 @@ export interface CheckResult {
   spend?: number;
   periodResets?: Array<{ entityType: string; entityId: string; newPeriodStart: number }>;
   checkedEntities?: CheckedEntity[];
+  velocityDenied?: boolean;
+  retryAfterSeconds?: number;
+  velocityDetails?: {
+    limitMicrodollars: number;
+    windowSeconds: number;
+    currentMicrodollars: number;
+  };
+  velocityRecovered?: Array<{ entityType: string; entityId: string }>;
 }
 
 export interface ReconcileResult {
   status: "reconciled" | "not_found";
   spends?: Record<string, number>;
   budgetsMissing?: string[];
+}
+
+interface VelocityState {
+  entity_key: string;
+  window_size_ms: number;
+  window_start_ms: number;
+  current_count: number;
+  current_spend: number;
+  prev_count: number;
+  prev_spend: number;
+  tripped_at: number | null;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -109,6 +131,7 @@ export class UserBudgetDO extends DurableObject {
   }
 
   private initSchema(): void {
+    // v1 schema
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS _schema_version (version INTEGER PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS budgets (
@@ -131,12 +154,40 @@ export class UserBudgetDO extends DurableObject {
       );
       INSERT OR IGNORE INTO _schema_version(version) VALUES (1);
     `);
+
+    // v2 migration: velocity limits
+    const schemaVersion = this.ctx.storage.sql.exec<{ version: number }>(
+      "SELECT MAX(version) as version FROM _schema_version",
+    ).toArray()[0]?.version ?? 1;
+
+    if (schemaVersion < 2) {
+      this.ctx.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS velocity_state (
+          entity_key TEXT PRIMARY KEY,
+          window_size_ms INTEGER NOT NULL,
+          window_start_ms INTEGER NOT NULL,
+          current_count INTEGER NOT NULL DEFAULT 0,
+          current_spend INTEGER NOT NULL DEFAULT 0,
+          prev_count INTEGER NOT NULL DEFAULT 0,
+          prev_spend INTEGER NOT NULL DEFAULT 0,
+          tripped_at INTEGER
+        );
+      `);
+
+      // ALTER TABLE ADD COLUMN throws if column exists — wrap each in try/catch
+      // for safety against partial migration re-runs
+      try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN velocity_limit INTEGER"); } catch { /* already exists */ }
+      try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN velocity_window INTEGER DEFAULT 60000"); } catch { /* already exists */ }
+      try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN velocity_cooldown INTEGER DEFAULT 60000"); } catch { /* already exists */ }
+
+      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (2)");
+    }
   }
 
   private loadBudgets(): void {
     this.budgets.clear();
     const rows = this.ctx.storage.sql.exec<BudgetRow>(
-      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start FROM budgets",
+      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start, velocity_limit, velocity_window, velocity_cooldown FROM budgets",
     );
     for (const row of rows) {
       this.budgets.set(`${row.entity_type}:${row.entity_id}`, row);
@@ -162,6 +213,7 @@ export class UserBudgetDO extends DurableObject {
     let reserved = false;
     const periodResets: Array<{ entityType: string; entityId: string; newPeriodStart: number }> = [];
     const checkedEntities: CheckedEntity[] = [];
+    const velocityRecovered: Array<{ entityType: string; entityId: string }> = [];
 
     this.ctx.storage.transactionSync(() => {
       // Phase 1: Query matching budgets from SQLite
@@ -213,6 +265,126 @@ export class UserBudgetDO extends DurableObject {
         });
       }
 
+      // ── Phase 0: Velocity check (before budget check) ──────────────
+      // Velocity increments are deferred to after Phase 2 (budget check)
+      // to avoid phantom spend from budget-denied requests.
+      interface VelocityIncrement {
+        entityKey: string;
+        windowMs: number;
+        windowStart: number;
+        prevCount: number;
+        prevSpend: number;
+        currCount: number;
+        currSpend: number;
+      }
+      const pendingVelocityIncrements: VelocityIncrement[] = [];
+
+      for (const row of rows) {
+        if (row.velocity_limit == null) continue;
+
+        const entityKey = `${row.entity_type}:${row.entity_id}`;
+        const windowMs = row.velocity_window ?? 60_000;
+        const cooldownMs = row.velocity_cooldown ?? 60_000;
+
+        // Read velocity state
+        const vs = this.ctx.storage.sql.exec<VelocityState>(
+          "SELECT * FROM velocity_state WHERE entity_key = ?", entityKey,
+        ).toArray()[0];
+
+        // Circuit breaker: if tripped and still in cooldown, fast-deny
+        if (vs?.tripped_at && (now - vs.tripped_at < cooldownMs)) {
+          result = {
+            status: "denied", hasBudgets: true,
+            velocityDenied: true, deniedEntity: entityKey,
+            retryAfterSeconds: Math.ceil((vs.tripped_at + cooldownMs - now) / 1000),
+          };
+          return; // exit transactionSync
+        }
+
+        // If circuit breaker expired, clear it and reset counters so the
+        // agent gets a fresh window to prove it's no longer looping.
+        // Skip the velocity check for this entity on the recovery request
+        // (counters are zeroed — first post-recovery request always passes).
+        if (vs?.tripped_at) {
+          this.ctx.storage.sql.exec(
+            `UPDATE velocity_state SET tripped_at = NULL,
+              current_count = 0, current_spend = 0,
+              prev_count = 0, prev_spend = 0,
+              window_start_ms = ?
+            WHERE entity_key = ?`, now, entityKey,
+          );
+          velocityRecovered.push({ entityType: row.entity_type, entityId: row.entity_id });
+          // Defer increment with fresh counters
+          pendingVelocityIncrements.push({
+            entityKey, windowMs, windowStart: now,
+            prevCount: 0, prevSpend: 0, currCount: 0, currSpend: 0,
+          });
+          continue; // skip sliding window check — fresh start
+        }
+
+        if (!vs) {
+          // Auto-initialize velocity_state so enforcement starts immediately
+          this.ctx.storage.sql.exec(
+            `INSERT OR IGNORE INTO velocity_state (entity_key, window_size_ms, window_start_ms)
+             VALUES (?, ?, ?)`,
+            entityKey, windowMs, now,
+          );
+          pendingVelocityIncrements.push({
+            entityKey, windowMs, windowStart: now,
+            prevCount: 0, prevSpend: 0, currCount: 0, currSpend: 0,
+          });
+          continue;
+        }
+
+        // Sliding window counter
+        let windowStart = vs.window_start_ms;
+        let prevCount = vs.prev_count, prevSpend = vs.prev_spend;
+        let currCount = vs.current_count, currSpend = vs.current_spend;
+
+        // Window rotation
+        if (now >= windowStart + windowMs) {
+          const newWindowStart = now - (now % windowMs);
+          if (newWindowStart > windowStart + windowMs) {
+            // More than 1 window elapsed — prev window is also stale
+            prevCount = 0; prevSpend = 0;
+          } else {
+            prevCount = currCount; prevSpend = currSpend;
+          }
+          currCount = 0; currSpend = 0;
+          windowStart = newWindowStart;
+        }
+
+        // Weighted estimation
+        const elapsed = now - windowStart;
+        const weight = Math.max(0, (windowMs - elapsed) / windowMs);
+        const estimatedSpend = prevSpend * weight + currSpend;
+
+        // Check: would this request push us over?
+        if (estimatedSpend + estimateMicrodollars > row.velocity_limit) {
+          // Trip circuit breaker
+          this.ctx.storage.sql.exec(
+            "UPDATE velocity_state SET tripped_at = ? WHERE entity_key = ?", now, entityKey,
+          );
+          result = {
+            status: "denied", hasBudgets: true,
+            velocityDenied: true, deniedEntity: entityKey,
+            retryAfterSeconds: Math.ceil(cooldownMs / 1000),
+            velocityDetails: {
+              limitMicrodollars: row.velocity_limit,
+              windowSeconds: Math.round(windowMs / 1000),
+              currentMicrodollars: Math.round(estimatedSpend),
+            },
+          };
+          return;
+        }
+
+        // Queue increment (applied after budget check passes)
+        pendingVelocityIncrements.push({
+          entityKey, windowMs, windowStart,
+          prevCount, prevSpend, currCount, currSpend,
+        });
+      }
+
       // Phase 2: Check each entity's budget
       for (const row of rows) {
         const remaining = row.max_budget - row.spend - row.reserved;
@@ -234,6 +406,20 @@ export class UserBudgetDO extends DurableObject {
           );
           return; // Exit transactionSync — no reservation made
         }
+      }
+
+      // Phase 2.5: Apply deferred velocity increments (only reached if budget check passed)
+      for (const vi of pendingVelocityIncrements) {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO velocity_state (entity_key, window_size_ms, window_start_ms, current_count, current_spend, prev_count, prev_spend)
+           VALUES (?, ?, ?, 1, ?, ?, ?)
+           ON CONFLICT(entity_key) DO UPDATE SET
+             window_start_ms = ?, prev_count = ?, prev_spend = ?,
+             current_count = ?, current_spend = ?`,
+          vi.entityKey, vi.windowMs, vi.windowStart, estimateMicrodollars, vi.prevCount, vi.prevSpend,
+          vi.windowStart, vi.prevCount, vi.prevSpend,
+          vi.currCount + 1, vi.currSpend + estimateMicrodollars,
+        );
       }
 
       // Phase 3: Reserve across all entities that have budgets
@@ -270,6 +456,9 @@ export class UserBudgetDO extends DurableObject {
     }
     if (checkedEntities.length > 0) {
       result.checkedEntities = checkedEntities;
+    }
+    if (velocityRecovered.length > 0) {
+      result.velocityRecovered = velocityRecovered;
     }
 
     // Update in-memory cache
@@ -385,26 +574,65 @@ export class UserBudgetDO extends DurableObject {
     policy: string,
     resetInterval: string | null,
     periodStart: number,
+    velocityLimit: number | null = null,
+    velocityWindow: number = 60_000,
+    velocityCooldown: number = 60_000,
   ): Promise<boolean> {
     const key = `${entityType}:${entityId}`;
     const existed = this.budgets.has(key);
 
-    this.ctx.storage.sql.exec(
-      `INSERT INTO budgets
-       (entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start)
-       VALUES (?, ?, ?, ?, 0, ?, ?, ?)
-       ON CONFLICT(entity_type, entity_id) DO UPDATE SET
-         max_budget = excluded.max_budget,
-         policy = excluded.policy,
-         reset_interval = excluded.reset_interval`,
-      entityType,
-      entityId,
-      maxBudget,
-      spend,
-      policy,
-      resetInterval,
-      periodStart,
-    );
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO budgets
+         (entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start)
+         VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+         ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+           max_budget = excluded.max_budget,
+           policy = excluded.policy,
+           reset_interval = excluded.reset_interval`,
+        entityType,
+        entityId,
+        maxBudget,
+        spend,
+        policy,
+        resetInterval,
+        periodStart,
+      );
+
+      // Update velocity config on budgets table
+      this.ctx.storage.sql.exec(
+        `UPDATE budgets SET velocity_limit = ?, velocity_window = ?, velocity_cooldown = ?
+         WHERE entity_type = ? AND entity_id = ?`,
+        velocityLimit, velocityWindow, velocityCooldown, entityType, entityId,
+      );
+
+      // Create/update velocity_state row
+      if (velocityLimit !== null) {
+        const entityKey = `${entityType}:${entityId}`;
+        this.ctx.storage.sql.exec(
+          `INSERT INTO velocity_state (entity_key, window_size_ms, window_start_ms)
+           VALUES (?, ?, ?)
+           ON CONFLICT(entity_key) DO UPDATE SET
+             window_start_ms = CASE WHEN velocity_state.window_size_ms != excluded.window_size_ms
+               THEN excluded.window_start_ms ELSE velocity_state.window_start_ms END,
+             current_count = CASE WHEN velocity_state.window_size_ms != excluded.window_size_ms
+               THEN 0 ELSE velocity_state.current_count END,
+             current_spend = CASE WHEN velocity_state.window_size_ms != excluded.window_size_ms
+               THEN 0 ELSE velocity_state.current_spend END,
+             prev_count = CASE WHEN velocity_state.window_size_ms != excluded.window_size_ms
+               THEN 0 ELSE velocity_state.prev_count END,
+             prev_spend = CASE WHEN velocity_state.window_size_ms != excluded.window_size_ms
+               THEN 0 ELSE velocity_state.prev_spend END,
+             window_size_ms = excluded.window_size_ms`,
+          entityKey, velocityWindow, Date.now(),
+        );
+      } else {
+        this.ctx.storage.sql.exec(
+          "DELETE FROM velocity_state WHERE entity_key = ?",
+          `${entityType}:${entityId}`,
+        );
+      }
+    });
 
     this.loadBudgets();
     return !existed;
@@ -455,6 +683,12 @@ export class UserBudgetDO extends DurableObject {
         entityType,
         entityId,
       );
+
+      // Delete velocity_state row
+      this.ctx.storage.sql.exec(
+        "DELETE FROM velocity_state WHERE entity_key = ?",
+        entityKey,
+      );
     });
     this.loadBudgets();
   }
@@ -497,6 +731,15 @@ export class UserBudgetDO extends DurableObject {
         Date.now(),
         entityType,
         entityId,
+      );
+
+      // 4. Clear velocity state so circuit breaker resets on manual spend reset
+      this.ctx.storage.sql.exec(
+        `UPDATE velocity_state SET
+          tripped_at = NULL, current_count = 0, current_spend = 0,
+          prev_count = 0, prev_spend = 0
+        WHERE entity_key = ?`,
+        entityKey,
       );
     });
 

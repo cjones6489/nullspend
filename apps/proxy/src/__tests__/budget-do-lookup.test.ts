@@ -78,6 +78,9 @@ describe("lookupBudgetsForDO", () => {
       policy: "strict_block",
       resetInterval: "monthly",
       periodStart: periodDate.getTime(),
+      velocityLimit: null,
+      velocityWindow: 60_000,
+      velocityCooldown: 60_000,
     });
   });
 

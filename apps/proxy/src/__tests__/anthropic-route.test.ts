@@ -81,6 +81,7 @@ function makeCtx(
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
+    tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
     ...overrides,

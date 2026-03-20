@@ -86,6 +86,71 @@ describe("costEventInputSchema", () => {
     ).toThrow();
   });
 
+  it("defaults tags to empty object when omitted", () => {
+    const result = costEventInputSchema.parse(valid);
+    expect(result.tags).toEqual({});
+  });
+
+  it("accepts valid tags", () => {
+    const result = costEventInputSchema.parse({
+      ...valid,
+      tags: { project: "alpha", env: "prod" },
+    });
+    expect(result.tags).toEqual({ project: "alpha", env: "prod" });
+  });
+
+  it("accepts tags with alphanumeric, underscore, and hyphen keys", () => {
+    const result = costEventInputSchema.parse({
+      ...valid,
+      tags: { "my-key_123": "value" },
+    });
+    expect(result.tags).toEqual({ "my-key_123": "value" });
+  });
+
+  it("rejects tags with more than 10 keys", () => {
+    const tags: Record<string, string> = {};
+    for (let i = 0; i < 11; i++) tags[`key${i}`] = `val${i}`;
+    expect(() => costEventInputSchema.parse({ ...valid, tags })).toThrow(/Tags/);
+  });
+
+  it("rejects tags with invalid key format", () => {
+    expect(() =>
+      costEventInputSchema.parse({ ...valid, tags: { "invalid key": "val" } }),
+    ).toThrow(/Tags/);
+  });
+
+  it("rejects tags with key containing dots", () => {
+    expect(() =>
+      costEventInputSchema.parse({ ...valid, tags: { "a.b": "val" } }),
+    ).toThrow(/Tags/);
+  });
+
+  it("rejects tags with key exceeding 64 chars", () => {
+    expect(() =>
+      costEventInputSchema.parse({ ...valid, tags: { ["a".repeat(65)]: "val" } }),
+    ).toThrow(/Tags/);
+  });
+
+  it("rejects tags with value exceeding 256 chars", () => {
+    expect(() =>
+      costEventInputSchema.parse({ ...valid, tags: { key: "x".repeat(257) } }),
+    ).toThrow();
+  });
+
+  it("accepts tags with 256-char value", () => {
+    const result = costEventInputSchema.parse({
+      ...valid,
+      tags: { key: "x".repeat(256) },
+    });
+    expect(result.tags!.key).toHaveLength(256);
+  });
+
+  it("rejects tags with null byte in value", () => {
+    expect(() =>
+      costEventInputSchema.parse({ ...valid, tags: { key: "val\u0000ue" } }),
+    ).toThrow(/null bytes/);
+  });
+
   it("does not accept metadata field", () => {
     const result = costEventInputSchema.parse({
       ...valid,

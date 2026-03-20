@@ -2,13 +2,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { insertCostEvent } from "@/lib/cost-events/ingest";
+import { listCostEvents } from "@/lib/cost-events/list-cost-events";
 import { withIdempotency } from "@/lib/resilience/idempotency";
 import { buildCostEventWebhookPayload, dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/with-api-key-auth", () => ({
   authenticateApiKey: vi.fn(),
   applyRateLimitHeaders: vi.fn((res: Response) => res),
+}));
+
+vi.mock("@/lib/auth/session", () => ({
+  resolveSessionUserId: vi.fn(() => "user-1"),
 }));
 
 vi.mock("@/lib/cost-events/ingest", () => ({
@@ -16,6 +21,14 @@ vi.mock("@/lib/cost-events/ingest", () => ({
     parse: vi.fn((body: unknown) => body),
   },
   insertCostEvent: vi.fn(),
+}));
+
+vi.mock("@/lib/cost-events/list-cost-events", () => ({
+  listCostEvents: vi.fn(() => Promise.resolve({ data: [], cursor: null })),
+}));
+
+vi.mock("@/lib/api-version", () => ({
+  CURRENT_VERSION: "2026-04-01",
 }));
 
 vi.mock("@/lib/resilience/idempotency", () => ({
@@ -193,5 +206,43 @@ describe("POST /api/cost-events", () => {
 
     await POST(makeRequest(VALID_EVENT));
     expect(withIdempotency).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/cost-events — tag filtering
+// ---------------------------------------------------------------------------
+
+const mockedListCostEvents = vi.mocked(listCostEvents);
+
+describe("GET /api/cost-events", () => {
+  it("passes tag.* query params to listCostEvents as tags filter", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request(
+      "http://localhost:3000/api/cost-events?tag.project=alpha&tag.env=prod",
+    );
+    await GET(request);
+
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: { project: "alpha", env: "prod" },
+      }),
+    );
+  });
+
+  it("does not pass tags when no tag.* params present", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request("http://localhost:3000/api/cost-events");
+    await GET(request);
+
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+      }),
+    );
+    const callArgs = mockedListCostEvents.mock.calls[0][0];
+    expect(callArgs.tags).toBeUndefined();
   });
 });

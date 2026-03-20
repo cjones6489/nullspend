@@ -137,6 +137,12 @@ export const POST = withRequestContext(async (request: Request) => {
       maxBudgetMicrodollars: input.maxBudgetMicrodollars,
       resetInterval: input.resetInterval ?? null,
       ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
+      ...(input.thresholdPercentages != null && { thresholdPercentages: input.thresholdPercentages }),
+      ...(input.velocityLimitMicrodollars !== undefined && { velocityLimitMicrodollars: input.velocityLimitMicrodollars }),
+      ...(input.velocityWindowSeconds != null && { velocityWindowSeconds: input.velocityWindowSeconds }),
+      ...(input.velocityCooldownSeconds != null && { velocityCooldownSeconds: input.velocityCooldownSeconds }),
+      // Reset window/cooldown to defaults when velocity limit is explicitly removed
+      ...(input.velocityLimitMicrodollars === null && { velocityWindowSeconds: 60, velocityCooldownSeconds: 60 }),
     })
     .onConflictDoUpdate({
       target: [budgets.entityType, budgets.entityId],
@@ -144,6 +150,11 @@ export const POST = withRequestContext(async (request: Request) => {
         maxBudgetMicrodollars: input.maxBudgetMicrodollars,
         resetInterval: input.resetInterval ?? null,
         ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
+        ...(input.thresholdPercentages != null && { thresholdPercentages: input.thresholdPercentages }),
+        ...(input.velocityLimitMicrodollars !== undefined && { velocityLimitMicrodollars: input.velocityLimitMicrodollars }),
+        ...(input.velocityWindowSeconds != null && { velocityWindowSeconds: input.velocityWindowSeconds }),
+        ...(input.velocityCooldownSeconds != null && { velocityCooldownSeconds: input.velocityCooldownSeconds }),
+        ...(input.velocityLimitMicrodollars === null && { velocityWindowSeconds: 60, velocityCooldownSeconds: 60 }),
         updatedAt: sql`NOW()`,
       },
     })

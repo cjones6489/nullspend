@@ -23,6 +23,15 @@ const log = getLogger("cost-events");
 export const GET = withRequestContext(async (request: Request) => {
   const userId = await resolveSessionUserId();
   const url = new URL(request.url);
+
+  // Parse tag.* query params for JSONB containment filtering
+  const tags: Record<string, string> = {};
+  for (const [key, value] of url.searchParams.entries()) {
+    if (key.startsWith("tag.")) {
+      tags[key.slice(4)] = value;
+    }
+  }
+
   const query = listCostEventsQuerySchema.parse({
     limit: url.searchParams.get("limit") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
@@ -30,6 +39,7 @@ export const GET = withRequestContext(async (request: Request) => {
     model: url.searchParams.get("model") ?? undefined,
     provider: url.searchParams.get("provider") ?? undefined,
     source: url.searchParams.get("source") ?? undefined,
+    tags: Object.keys(tags).length > 0 ? tags : undefined,
   });
   const result = await listCostEvents({ ...query, userId });
   const response = NextResponse.json(listCostEventsResponseSchema.parse(result));
@@ -68,6 +78,7 @@ export const POST = withRequestContext(async (request: Request) => {
         toolServer: input.toolServer,
         sessionId: input.sessionId,
         apiKeyId: authResult.keyId,
+        tags: input.tags,
         source: "api",
       });
       dispatchWebhookEvent(authResult.userId, whEvent).catch((err) => {

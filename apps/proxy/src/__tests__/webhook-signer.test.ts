@@ -4,7 +4,6 @@ import {
   dualSignWebhookPayload,
   parseSignature,
   verifyWebhookSignature,
-  SECRET_ROTATION_WINDOW_SECONDS,
 } from "../lib/webhook-signer.js";
 
 beforeAll(() => {

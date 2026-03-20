@@ -41,6 +41,10 @@ function makeBudgetRow(overrides: Record<string, unknown> = {}) {
     spendMicrodollars: 3_000_000,
     policy: "strict_block",
     resetInterval: "monthly",
+    thresholdPercentages: [50, 80, 90, 95],
+    velocityLimitMicrodollars: null,
+    velocityWindowSeconds: 60,
+    velocityCooldownSeconds: 60,
     currentPeriodStart: new Date("2026-03-01T00:00:00Z"),
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-03-01T00:00:00Z"),
@@ -49,7 +53,6 @@ function makeBudgetRow(overrides: Record<string, unknown> = {}) {
 }
 
 /** Recursively extract string chunks from a Drizzle SQL object. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function flattenStringChunks(sql: any): string[] {
   if (!sql?.queryChunks) return [];
   const results: string[] = [];
@@ -230,6 +233,21 @@ describe("GET /api/budgets/status", () => {
 
     expect(json.entities[0].currentPeriodStart).toBe("2026-03-01T00:00:00.000Z");
     expect(json.entities[1].currentPeriodStart).toBeNull();
+  });
+
+  it("includes thresholdPercentages in status response", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockWhere.mockResolvedValue([
+      makeBudgetRow({ thresholdPercentages: [25, 75] }),
+    ]);
+
+    const res = await GET(makeRequest());
+    const json = await res.json();
+    expect(json.entities[0].thresholdPercentages).toEqual([25, 75]);
   });
 
   it("applies rate limit headers via applyRateLimitHeaders", async () => {

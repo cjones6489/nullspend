@@ -13,6 +13,8 @@ export type WebhookEventType =
   | "action.approved"
   | "action.rejected"
   | "action.expired"
+  | "velocity.exceeded"
+  | "velocity.recovered"
   | "test.ping";
 
 export interface WebhookEvent {
@@ -42,6 +44,7 @@ interface CostEventData {
   toolCallsRequested?: { name: string; id: string }[] | null;
   toolDefinitionTokens?: number;
   source?: string;
+  tags?: Record<string, string>;
 }
 
 export function buildCostEventPayload(
@@ -72,6 +75,7 @@ export function buildCostEventPayload(
         tool_definition_tokens: costEvent.toolDefinitionTokens ?? 0,
         api_key_id: costEvent.apiKeyId,
         source: costEvent.source ?? null,
+        tags: costEvent.tags ?? {},
         created_at: costEvent.createdAt ?? new Date().toISOString(),
       },
     },
@@ -204,6 +208,42 @@ export function buildRequestBlockedPayload(
         provider: data.provider,
         api_key_id: data.apiKeyId,
         details: data.details,
+      },
+    },
+  };
+}
+
+interface VelocityExceededData {
+  budgetEntityType: string;
+  budgetEntityId: string;
+  velocityLimitMicrodollars: number;
+  velocityWindowSeconds: number;
+  velocityCurrentMicrodollars: number;
+  cooldownSeconds: number;
+  model: string;
+  provider: string;
+}
+
+export function buildVelocityExceededPayload(
+  data: VelocityExceededData,
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "velocity.exceeded",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        velocity_limit_microdollars: data.velocityLimitMicrodollars,
+        velocity_window_seconds: data.velocityWindowSeconds,
+        velocity_current_microdollars: data.velocityCurrentMicrodollars,
+        cooldown_seconds: data.cooldownSeconds,
+        model: data.model,
+        provider: data.provider,
+        blocked_at: new Date().toISOString(),
       },
     },
   };
