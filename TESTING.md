@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~2,500+ tests across ~144 files organized into four tiers.
+NullSpend has ~2,500+ tests across ~145 files organized into four tiers.
 
 ## Quick Reference
 
@@ -31,7 +31,7 @@ Every test in this tier uses mocked dependencies and runs in <15 seconds total.
 
 ### Tier 3 — Smoke Tests (live deployed worker + real APIs)
 
-The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and make real API calls to OpenAI/Anthropic. They require API keys and a deployed proxy. These are NOT run in CI.
+The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and make real API calls to OpenAI/Anthropic. They require API keys and a deployed proxy. These are NOT run in CI.
 
 ### Tier 4 — CI Pipeline
 
@@ -41,7 +41,7 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-61 files, ~1,040 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+62 files, ~1,040 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
 
 ### Naming Convention
 
@@ -141,15 +141,16 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Smoke Tests (`apps/proxy/smoke*.test.ts`)
 
-23 files. Require a deployed worker and API keys. Organized by provider and concern:
+24 files. Require a deployed worker and API keys. Organized by provider and concern:
 
 | Pattern | Files |
 |---|---|
 | `smoke*.test.ts` (no prefix) | OpenAI tests |
 | `smoke-anthropic*.test.ts` | Anthropic tests |
 | `smoke-budget*.test.ts` | Budget enforcement E2E |
+| `smoke-trace.test.ts` | W3C traceparent propagation E2E |
 
-Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare.
+Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace.
 
 ---
 

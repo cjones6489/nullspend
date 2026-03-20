@@ -39,11 +39,12 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/budget-lookup.ts` — Redis fast-path + Postgres slow-path budget lookup
 - `src/lib/sse-parser.ts` — streaming response parser for usage extraction
 - `src/lib/headers.ts` — header sanitization (strip proxy headers, forward provider headers)
+- `src/lib/trace-context.ts` — W3C traceparent parsing, custom header fallback, auto-generation
 
 ## Cost Tracking Flow
 
 ```
-Request → Auth → Forward to OpenAI → Parse response/stream → Extract usage → Calculate cost → Log async via waitUntil()
+Request → Resolve trace ID → Auth → Forward to OpenAI → Parse response/stream → Extract usage → Calculate cost → Log (with trace_id) async via waitUntil()
 ```
 
 Non-streaming: parse JSON response for `usage` field.
