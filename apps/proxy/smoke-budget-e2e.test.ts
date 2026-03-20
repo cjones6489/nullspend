@@ -46,12 +46,9 @@ describe("End-to-end budget enforcement", () => {
     sql = postgres(process.env.DATABASE_URL!, { max: 3, idle_timeout: 10 });
   });
 
-  // TODO: Tests after "exhausts budget" can flake (expect 429/200, get the opposite)
-  // because rapid-fire requests leave in-flight reconciliations that race with the
-  // 5s afterEach cleanup. The reconciliation writes stale spend to Postgres after
-  // cleanup, and the next test's setupBudget syncs that stale spend into the DO.
-  // Fix: either increase the delay, reset spend in setupBudget before sync, or
-  // isolate the exhaust test into its own describe with a longer teardown.
+  // NOTE: Budget smoke tests can flake when Hyperdrive caches stale lookupBudgetsForDO
+  // query results (up to 60s TTL). Tests that change max_budget or session_limit between
+  // runs may see the cached prior value. Run these tests in isolation for reliability.
   afterEach(async () => {
     // Wait for waitUntil reconciliation from the test's requests to complete.
     // Without this, reconciliation can re-add spend to the DO after we clean it.
