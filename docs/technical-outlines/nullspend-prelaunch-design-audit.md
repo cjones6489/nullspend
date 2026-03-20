@@ -1,7 +1,9 @@
 # NullSpend Pre-Launch Design Patterns Audit
 ## Industry Best Practices vs. Current Implementation
 
-**Date:** 2026-03-18 (revised 2026-03-19 05:30 UTC)
+**Date:** 2026-03-18 (revised 2026-03-20)
+**Status:** **COMPLETE** — All 8 high/medium-priority items shipped 2026-03-18 through 2026-03-19. See Section 14 for final status.
+**Successor document:** [`docs/technical-outlines/priority-implementation-roadmap.md`](priority-implementation-roadmap.md) — forward-looking architecture and feature roadmap derived from the post-audit deep research (2026-03-20).
 **Purpose:** Detailed comparison of NullSpend's current design decisions against proven patterns from Stripe, Marqeta, PostHog, and modern API platform design. Specific recommendations for changes to make before the API surface becomes permanent.
 
 **Context:** NullSpend has zero external users. Every header, URL, response shape, schema column, and method name can be changed freely right now. After the first external API key is issued, these decisions become permanent. This audit prioritizes getting the design right over minimizing implementation effort.
@@ -927,9 +929,11 @@ Each phase is independently shippable. Total ~33 hours. See the full spec for da
 
 ---
 
-## 14. Master Status Tracker
+## 14. Final Audit Status
 
 Last updated: 2026-03-20
+
+**Pre-launch audit: COMPLETE.** 8/8 high+medium priority items shipped. Remaining items moved to the [Priority Implementation Roadmap](priority-implementation-roadmap.md).
 
 | Priority | Item | Section | Status | Shipped | Effort |
 |---|---|---|---|---|---|
@@ -941,16 +945,5 @@ Last updated: 2026-03-20
 | **High** | `source` column on cost_events | 6 | **DONE** | 2026-03-19 | ~30m |
 | **High** | `api_version` on api_keys + header resolution | 5 | **DONE** | 2026-03-19 | ~30m |
 | **Medium** | Webhook secret rotation (dual-signing + 24h expiry) | 7 | **DONE** | 2026-03-19 | ~1h |
-| **Medium** | Configurable budget thresholds (`warn_threshold_pct`) | 6 | Not started | — | ~1.5h |
-| **Low** | `trace_id` on cost_events + `traceparent` extraction | 12 | Not started | — | ~30m |
-| **Low** | `doc_url` on error responses | 3 | Not started | — | ~15m |
-| **Low** | Thin webhook events | 4 | Not started | — | TBD |
-| **Low** | GitHub Secret Scanning registration | 2 | Not started | — | External |
-| **Low** | Budget check result tracking | 6 | Not started | — | TBD |
-| **Low** | `enforcement_latency_ms` on cost_events | 6 | Not started | — | TBD |
-| **Low** | `has_policies` on api_keys | 6 | Not started | — | TBD |
-| **Low** | API version-gating logic | 5 | Not started | — | TBD |
-| **Low** | Postgres → ClickHouse migration | 13 | Not started | — | TBD |
-| **Low** | Multi-region DO replication | 13 | Not started | — | TBD |
 
-**Summary:** 7/7 high-priority items complete. 1/2 medium-priority items remaining (~1.5h). 9 low-priority items for post-launch.
+**Total effort:** ~18 hours across 2 days. ~200 files changed. ~2,200 tests passing.
