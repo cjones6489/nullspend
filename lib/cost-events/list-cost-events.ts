@@ -12,6 +12,7 @@ interface ListCostEventsOptions {
   model?: string;
   provider?: string;
   source?: CostEventSource;
+  traceId?: string;
   tags?: Record<string, string>;
 }
 
@@ -33,6 +34,9 @@ export async function listCostEvents(options: ListCostEventsOptions) {
   }
   if (options.source) {
     conditions.push(eq(costEvents.source, options.source));
+  }
+  if (options.traceId) {
+    conditions.push(eq(costEvents.traceId, options.traceId));
   }
   if (options.tags && Object.keys(options.tags).length > 0) {
     conditions.push(sql`${costEvents.tags} @> ${JSON.stringify(options.tags)}::jsonb`);
@@ -65,6 +69,7 @@ export async function listCostEvents(options: ListCostEventsOptions) {
       costMicrodollars: costEvents.costMicrodollars,
       durationMs: costEvents.durationMs,
       createdAt: costEvents.createdAt,
+      traceId: costEvents.traceId,
       source: costEvents.source,
       tags: costEvents.tags,
       keyName: apiKeys.name,

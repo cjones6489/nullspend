@@ -11,6 +11,7 @@ import {
   getSourceBreakdown,
   getToolBreakdown,
   getTotals,
+  getTraceBreakdown,
 } from "@/lib/cost-events/aggregate-cost-events";
 import { handleRouteError } from "@/lib/utils/http";
 import {
@@ -27,13 +28,14 @@ export async function GET(request: Request) {
     });
     const periodDays = parseInt(period, 10);
 
-    const [daily, models, providers, keys, tools, sources, totals, costBreakdown] = await Promise.all([
+    const [daily, models, providers, keys, tools, sources, traces, totals, costBreakdown] = await Promise.all([
       getDailySpend(userId, periodDays),
       getModelBreakdown(userId, periodDays),
       getProviderBreakdown(userId, periodDays),
       getKeyBreakdown(userId, periodDays),
       getToolBreakdown(userId, periodDays),
       getSourceBreakdown(userId, periodDays),
+      getTraceBreakdown(userId, periodDays),
       getTotals(userId, periodDays),
       getCostBreakdownTotals(userId, periodDays),
     ]);
@@ -45,6 +47,7 @@ export async function GET(request: Request) {
       keys,
       tools,
       sources,
+      traces,
       totals: { ...totals, period },
       costBreakdown,
     });

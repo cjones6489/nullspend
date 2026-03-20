@@ -10,6 +10,7 @@ import { ModelBreakdown } from "@/components/analytics/model-breakdown";
 import { ProviderBreakdown } from "@/components/analytics/provider-breakdown";
 import { SpendChart } from "@/components/analytics/spend-chart";
 import { ToolBreakdown } from "@/components/analytics/tool-breakdown";
+import { TraceBreakdown } from "@/components/analytics/trace-breakdown";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -156,6 +157,8 @@ export default function AnalyticsPage() {
           </div>
 
           {data.tools.length > 0 && <ToolBreakdown data={data.tools} />}
+
+          <TraceBreakdown data={data.traces} />
         </>
       )}
     </div>

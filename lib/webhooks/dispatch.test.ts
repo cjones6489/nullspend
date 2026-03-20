@@ -329,6 +329,7 @@ describe("cross-builder shape compatibility", () => {
       "session_id",
       "source",
       "tags",
+      "trace_id",
       "tool_calls_requested",
       "tool_definition_tokens",
       "tool_name",

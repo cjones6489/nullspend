@@ -53,6 +53,12 @@ export const sourceBreakdownSchema = z.object({
   requestCount: z.number().int(),
 });
 
+export const traceBreakdownSchema = z.object({
+  traceId: z.string(),
+  totalCostMicrodollars: z.number().nonnegative(),
+  requestCount: z.number().int(),
+});
+
 export const costBreakdownTotalsSchema = z.object({
   inputCost: z.number().nonnegative(),
   outputCost: z.number().nonnegative(),
@@ -68,6 +74,7 @@ export const costSummaryResponseSchema = z.object({
   tools: z.array(toolBreakdownSchema),
   sources: z.array(sourceBreakdownSchema),
   totals: totalsSchema.extend({ period: z.enum(["7d", "30d", "90d"]) }),
+  traces: z.array(traceBreakdownSchema),
   costBreakdown: costBreakdownTotalsSchema,
 });
 
@@ -80,3 +87,4 @@ export type KeyBreakdown = z.infer<typeof keyBreakdownSchema>;
 export type CostBreakdownTotals = z.infer<typeof costBreakdownTotalsSchema>;
 export type ToolBreakdown = z.infer<typeof toolBreakdownSchema>;
 export type SourceBreakdown = z.infer<typeof sourceBreakdownSchema>;
+export type TraceBreakdown = z.infer<typeof traceBreakdownSchema>;

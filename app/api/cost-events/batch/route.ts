@@ -50,6 +50,7 @@ export const POST = withRequestContext(async (request: Request) => {
             toolName: row.toolName,
             toolServer: row.toolServer,
             sessionId: row.sessionId,
+            traceId: row.traceId,
             apiKeyId: authResult.keyId,
             tags: row.tags,
             source: row.source,

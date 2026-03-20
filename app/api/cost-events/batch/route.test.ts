@@ -75,6 +75,7 @@ function makeInsertedRow(overrides?: Record<string, unknown>) {
     toolName: null,
     toolServer: null,
     sessionId: null,
+    traceId: null as string | null,
     requestId: "sdk_abc",
     source: "api",
     tags: {} as Record<string, string>,
@@ -181,11 +182,35 @@ describe("POST /api/cost-events/batch", () => {
     // Dispatch called for each actually-inserted row
     expect(mockedDispatchToEndpoints).toHaveBeenCalledTimes(2);
 
-    // Source is forwarded to webhook builder
+    // Source and traceId are forwarded to webhook builder
     expect(mockedBuildCostEventWebhookPayload).toHaveBeenCalledTimes(2);
     for (const call of mockedBuildCostEventWebhookPayload.mock.calls) {
       expect(call[0]).toHaveProperty("source", "api");
+      expect(call[0]).toHaveProperty("traceId", null);
     }
+  });
+
+  it("forwards traceId from inserted rows to webhook builder", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedInsertCostEventsBatch.mockResolvedValue({
+      ids: ["ce-1"],
+      inserted: 1,
+      rows: [makeInsertedRow({ id: "ce-1", traceId: "aabbccdd11223344aabbccdd11223344" })],
+    });
+
+    const events = [makeEvent()];
+    await POST(makeRequest({ events }));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedBuildCostEventWebhookPayload).toHaveBeenCalledTimes(1);
+    expect(mockedBuildCostEventWebhookPayload.mock.calls[0][0]).toHaveProperty(
+      "traceId",
+      "aabbccdd11223344aabbccdd11223344",
+    );
   });
 
   it("does not dispatch webhooks when no events inserted", async () => {

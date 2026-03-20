@@ -75,6 +75,7 @@ describe("GET /api/actions/[id]/costs", () => {
         costMicrodollars: 7250,
         durationMs: 1500,
         createdAt: "2026-03-07T12:02:00.000Z",
+        traceId: null,
         source: "proxy",
         keyName: "My Key",
       },

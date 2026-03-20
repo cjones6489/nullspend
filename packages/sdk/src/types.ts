@@ -184,6 +184,7 @@ export interface CostEventInput {
   costMicrodollars: number;
   durationMs?: number;
   sessionId?: string;
+  traceId?: string;
   eventType?: "llm" | "tool" | "custom";
   toolName?: string;
   toolServer?: string;

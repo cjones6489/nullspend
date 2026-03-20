@@ -81,6 +81,7 @@ function makeCtx(
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
+    traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
     tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
@@ -135,6 +136,35 @@ describe("handleAnthropicMessages", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error.code).toBe("invalid_model");
+  });
+
+  it("includes X-NullSpend-Trace-Id on error responses", async () => {
+    mockIsKnownModel.mockReturnValueOnce(false);
+    const body = { model: "claude-unknown", max_tokens: 100, messages: [] };
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
+    expect(res.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+  });
+
+  it("includes X-NullSpend-Trace-Id on successful non-streaming response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(ANTHROPIC_NON_STREAMING_RESPONSE), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "request-id": "req_trace_test",
+        },
+      }),
+    );
+
+    const body = {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+    };
+    const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+    await res.text();
   });
 
   it("handles valid non-streaming request", async () => {

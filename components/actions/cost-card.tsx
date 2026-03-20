@@ -40,6 +40,9 @@ function SingleCostView({ event }: { event: CostEventRecord }) {
         </div>
         <TokenBreakdown event={event} />
         <DetailRow label="Duration" value={formatDuration(event.durationMs)} />
+        {event.traceId && (
+          <DetailRow label="Trace" value={event.traceId.slice(0, 12) + "…"} sub={event.traceId} />
+        )}
       </CardContent>
     </Card>
   );
@@ -79,6 +82,11 @@ function MultiCostView({ events }: { events: CostEventRecord[] }) {
                 </p>
               </div>
               <TokenBreakdown event={event} />
+              {event.traceId && (
+                <p className="font-mono text-[11px] text-muted-foreground" title={event.traceId}>
+                  trace: {event.traceId.slice(0, 12)}…
+                </p>
+              )}
             </div>
           ))}
         </div>

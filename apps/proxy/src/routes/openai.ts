@@ -41,17 +41,21 @@ export async function handleChatCompletions(
 
   if (upstreamHeader) {
     if (!isAllowedUpstream(upstreamHeader)) {
-      return errorResponse(
+      const resp = errorResponse(
         "invalid_upstream",
         "The specified upstream URL is not supported",
         400,
       );
+      resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+      return resp;
     }
     resolvedUpstream = upstreamHeader.replace(/\/+$/, "");
   }
 
   if (!upstreamHeader && !isKnownModel("openai", requestModel)) {
-    return errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
+    const resp = errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
+    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return resp;
   }
 
   const toolDefinitionTokens = Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0
@@ -111,6 +115,7 @@ export async function handleChatCompletions(
           headers: {
             "Content-Type": "application/json",
             "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+            "X-NullSpend-Trace-Id": ctx.traceId,
           },
         },
       );
@@ -139,7 +144,9 @@ export async function handleChatCompletions(
           }
         })());
       }
-      return errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
+      const budgetDeniedResp = errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
+      budgetDeniedResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+      return budgetDeniedResp;
     }
 
     reservationId = outcome.reservationId;
@@ -169,7 +176,9 @@ export async function handleChatCompletions(
       })());
     }
   } catch {
-    return errorResponse("budget_unavailable", "Budget service unavailable", 503);
+    const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
+    budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return budgetUnavailResp;
   }
 
   // --- Forward to upstream ---
@@ -190,6 +199,7 @@ export async function handleChatCompletions(
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,
       sessionId: ctx.sessionId,
+      traceId: ctx.traceId,
       toolDefinitionTokens,
       tags: ctx.tags,
     };
@@ -202,6 +212,7 @@ export async function handleChatCompletions(
         );
       }
       const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
+      clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
       const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs);
       emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "openai");
@@ -215,6 +226,7 @@ export async function handleChatCompletions(
     const requestId =
       upstreamResponse.headers.get("x-request-id") ?? crypto.randomUUID();
     const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
+    clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
 
     if (isStreaming) {
       return handleStreaming(
@@ -266,6 +278,7 @@ type Attribution = { userId: string | null; apiKeyId: string | null; actionId: s
 interface EnrichmentFields {
   upstreamDurationMs: number;
   sessionId: string | null;
+  traceId: string;
   toolDefinitionTokens: number;
   tags: Record<string, string>;
 }
@@ -293,7 +306,9 @@ function handleStreaming(
         reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
       );
     }
-    return errorResponse("upstream_error", "No response body from upstream", 502);
+    const noBodyResp = errorResponse("upstream_error", "No response body from upstream", 502);
+    noBodyResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return noBodyResp;
   }
 
   const { readable, resultPromise } = createSSEParser(upstreamBody);

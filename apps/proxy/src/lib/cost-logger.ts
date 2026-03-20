@@ -47,6 +47,7 @@ export async function logCostEvent(
       eventType: event.eventType,
       toolName: event.toolName,
       sessionId: event.sessionId,
+      traceId: event.traceId,
     });
     return;
   }
@@ -113,6 +114,7 @@ export async function logCostEventsBatch(
         model: event.model,
         costMicrodollars: event.costMicrodollars,
         durationMs: event.durationMs,
+        traceId: event.traceId,
       });
     }
     return;

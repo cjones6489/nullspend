@@ -18,6 +18,7 @@ export const costEventInputSchema = z.object({
   costMicrodollars: z.number().int().min(0),
   durationMs: z.number().int().min(0).optional(),
   sessionId: z.string().max(200).optional(),
+  traceId: z.string().regex(/^[0-9a-f]{32}$/).max(32).optional(),
   eventType: z.enum(["llm", "tool", "custom"]).optional(),
   toolName: z.string().max(200).optional(),
   toolServer: z.string().max(200).optional(),
@@ -73,6 +74,7 @@ function buildInsertValues(input: CostEventInput, requestId: string, ctx: Insert
     toolName: input.toolName ?? null,
     toolServer: input.toolServer ?? null,
     sessionId: input.sessionId ?? null,
+    traceId: input.traceId ?? null,
     tags: input.tags ?? {},
     source: "api" as const,
   };
@@ -141,6 +143,7 @@ export interface InsertedCostEventRow {
   toolName: string | null;
   toolServer: string | null;
   sessionId: string | null;
+  traceId: string | null;
   requestId: string;
   source: string;
   tags: Record<string, string>;
@@ -178,6 +181,7 @@ export async function insertCostEventsBatch(
       toolName: costEvents.toolName,
       toolServer: costEvents.toolServer,
       sessionId: costEvents.sessionId,
+      traceId: costEvents.traceId,
       requestId: costEvents.requestId,
       source: costEvents.source,
       tags: costEvents.tags,

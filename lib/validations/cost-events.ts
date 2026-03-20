@@ -16,6 +16,7 @@ export const costEventRecordSchema = z.object({
   durationMs: z.number().int().nullable(),
   createdAt: z.string(),
   source: z.string(),
+  traceId: z.string().nullable(),
   tags: z.record(z.string(), z.string()).default({}),
   keyName: z.string(),
 });
@@ -41,6 +42,7 @@ export const listCostEventsQuerySchema = z.object({
   model: z.string().optional(),
   provider: z.string().optional(),
   source: z.enum(["proxy", "api", "mcp"]).optional(),
+  traceId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
   tags: z.record(z.string(), z.string()).optional(),
 });
 

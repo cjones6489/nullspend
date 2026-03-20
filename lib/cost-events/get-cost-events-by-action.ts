@@ -24,6 +24,7 @@ export async function getCostEventsByActionId(
       costMicrodollars: costEvents.costMicrodollars,
       durationMs: costEvents.durationMs,
       createdAt: costEvents.createdAt,
+      traceId: costEvents.traceId,
       source: costEvents.source,
       tags: costEvents.tags,
       keyName: apiKeys.name,

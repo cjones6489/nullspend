@@ -139,6 +139,7 @@ export const costEvents = pgTable("cost_events", {
   toolDefinitionTokens: integer("tool_definition_tokens").default(0),
   upstreamDurationMs: integer("upstream_duration_ms"),
   sessionId: text("session_id"),
+  traceId: text("trace_id"),
   source: text("source").$type<CostEventSource>().notNull().default("proxy"),
   costBreakdown: jsonb("cost_breakdown").$type<{ input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null>(),
   tags: jsonb("tags").$type<Record<string, string>>().notNull().default(sql`'{}'`),
@@ -151,6 +152,7 @@ export const costEvents = pgTable("cost_events", {
   index("cost_events_action_id_idx").on(table.actionId),
   index("cost_events_event_type_idx").on(table.eventType),
   index("cost_events_session_id_idx").on(table.sessionId),
+  index("cost_events_trace_id_idx").on(table.traceId).where(sql`trace_id IS NOT NULL`),
 ]);
 
 export type CostEventRow = typeof costEvents.$inferSelect;

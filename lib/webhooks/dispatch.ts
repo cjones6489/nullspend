@@ -172,6 +172,7 @@ export function buildCostEventWebhookPayload(
     toolName?: string | null;
     toolServer?: string | null;
     sessionId?: string | null;
+    traceId?: string | null;
     apiKeyId: string | null;
     upstreamDurationMs?: number | null;
     toolCallsRequested?: { name: string; id: string }[] | null;
@@ -199,6 +200,7 @@ export function buildCostEventWebhookPayload(
         duration_ms: costEvent.durationMs,
         upstream_duration_ms: costEvent.upstreamDurationMs ?? null,
         session_id: costEvent.sessionId ?? null,
+        trace_id: costEvent.traceId ?? null,
         tool_name: costEvent.toolName ?? null,
         tool_server: costEvent.toolServer ?? null,
         tool_calls_requested: costEvent.toolCallsRequested ?? null,

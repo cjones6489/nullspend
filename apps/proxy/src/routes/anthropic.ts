@@ -37,6 +37,7 @@ type Attribution = {
 interface EnrichmentFields {
   upstreamDurationMs: number;
   sessionId: string | null;
+  traceId: string;
   toolDefinitionTokens: number;
   tags: Record<string, string>;
 }
@@ -55,7 +56,9 @@ export async function handleAnthropicMessages(
   };
 
   if (!isKnownModel("anthropic", requestModel)) {
-    return errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
+    const resp = errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
+    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return resp;
   }
 
   const toolDefinitionTokens = Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0
@@ -111,6 +114,7 @@ export async function handleAnthropicMessages(
           headers: {
             "Content-Type": "application/json",
             "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+            "X-NullSpend-Trace-Id": ctx.traceId,
           },
         },
       );
@@ -139,7 +143,9 @@ export async function handleAnthropicMessages(
           }
         })());
       }
-      return errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
+      const budgetDeniedResp = errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
+      budgetDeniedResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+      return budgetDeniedResp;
     }
 
     reservationId = outcome.reservationId;
@@ -169,7 +175,9 @@ export async function handleAnthropicMessages(
       })());
     }
   } catch {
-    return errorResponse("budget_unavailable", "Budget service unavailable", 503);
+    const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
+    budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return budgetUnavailResp;
   }
 
   // --- Forward to upstream ---
@@ -191,6 +199,7 @@ export async function handleAnthropicMessages(
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,
       sessionId: ctx.sessionId,
+      traceId: ctx.traceId,
       toolDefinitionTokens,
       tags: ctx.tags,
     };
@@ -202,6 +211,7 @@ export async function handleAnthropicMessages(
         );
       }
       const clientHeaders = buildAnthropicClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
+      clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
       const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs);
       emitMetric("proxy_latency", { provider: "anthropic", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "anthropic");
@@ -215,6 +225,7 @@ export async function handleAnthropicMessages(
     const requestId =
       upstreamResponse.headers.get("request-id") ?? crypto.randomUUID();
     const clientHeaders = buildAnthropicClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
+    clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
 
     if (isStreaming) {
       return handleStreaming(
@@ -283,7 +294,9 @@ function handleStreaming(
         reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
       );
     }
-    return errorResponse("upstream_error", "No response body from upstream", 502);
+    const noBodyResp = errorResponse("upstream_error", "No response body from upstream", 502);
+    noBodyResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return noBodyResp;
   }
 
   const { readable, resultPromise } = createAnthropicSSEParser(upstreamBody);

@@ -60,7 +60,7 @@ The #1 FinOps request universally. LiteLLM, FOCUS spec, and CloudZero all emphas
 
 Includes: sliding window counter in DO, circuit breaker with configurable cooldown, `velocity.exceeded` + `velocity.recovered` webhooks, dashboard create/edit velocity config, live cooldown badge via 10s polling, `Zap` icon indicator.
 
-### 1.3 W3C `traceparent` Propagation + `trace_id` Column
+### 1.3 W3C `traceparent` Propagation + `trace_id` Column — **Done** (2026-03-19)
 **Effort:** ~1h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 2; [Agent Tracing Architecture](agent-tracing-architecture.md) — Phase 1
 
 Low effort, high enterprise value. Agent frameworks (AG2, LangChain) are starting to emit `traceparent` headers natively. This enables cost-per-task queries across multiple LLM calls.
@@ -235,8 +235,8 @@ Last updated: 2026-03-20
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
 | **P1** | `tags` JSONB on cost_events | **Done** (2026-03-19) | ~2h | Architecture Review |
-| **P1** | Loop/runaway detection (velocity limits) | **In progress** | ~3-4h | Architecture Review |
-| **P1** | W3C `traceparent` + `trace_id` column | Researched | ~4h | [Research](../research/traceparent-trace-id-research.md) |
+| **P1** | Loop/runaway detection (velocity limits) | **Done** (2026-03-19) | ~3-4h | Architecture Review |
+| **P1** | W3C `traceparent` + `trace_id` column | **Done** (2026-03-19) | ~4h | [Research](../research/traceparent-trace-id-research.md) |
 | **P1** | Session-level budget aggregation | Not started | ~2-3h | Architecture Review |
 | **P1** | Configurable budget thresholds | **Done** (2026-03-19) | ~1.5h | Audit Section 6 |
 | **P2** | Claude Agent SDK adapter | Not started | ~1 day | Architecture Review |

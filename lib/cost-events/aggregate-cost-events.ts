@@ -155,6 +155,25 @@ export async function getCostBreakdownTotals(userId: string, periodDays: number)
   return row ?? { inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 };
 }
 
+export async function getTraceBreakdown(userId: string, periodDays: number) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+
+  return db
+    .select({
+      traceId: costEvents.traceId,
+      totalCostMicrodollars:
+        sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
+    })
+    .from(costEvents)
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .where(and(baseConditions(userId, cutoff), sql`${costEvents.traceId} IS NOT NULL`))
+    .groupBy(costEvents.traceId)
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(25);
+}
+
 export async function getTotals(userId: string, periodDays: number) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);

@@ -323,6 +323,7 @@ describe("Worker entry point routing", () => {
       expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.error.code).toBe("internal_error");
+      expect(res.headers.get("X-NullSpend-Trace-Id")).toMatch(/^[0-9a-f]{32}$/);
     });
 
     it("does not call passThroughOnException", async () => {

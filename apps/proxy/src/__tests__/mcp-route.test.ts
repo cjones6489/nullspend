@@ -90,6 +90,7 @@ function makeCtx(
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
+    traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
     tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
@@ -133,6 +134,35 @@ describe("handleMcpBudgetCheck", () => {
     expect(response.status).toBe(400);
     const json = await response.json();
     expect(json.error.code).toBe("bad_request");
+  });
+
+  it("includes X-NullSpend-Trace-Id on error responses", async () => {
+    const request = makeRequest("/v1/mcp/budget/check", {});
+    const env = makeEnv();
+
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
+      serverName: "supabase",
+      estimateMicrodollars: 10000,
+    }));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+  });
+
+  it("includes X-NullSpend-Trace-Id on allowed responses", async () => {
+    mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: false });
+
+    const request = makeRequest("/v1/mcp/budget/check", {});
+    const env = makeEnv();
+
+    const response = await handleMcpBudgetCheck(request, env, makeCtx({
+      toolName: "run_query",
+      serverName: "supabase",
+      estimateMicrodollars: 10000,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
   });
 
   it("returns 400 when toolName is empty string", async () => {
@@ -331,6 +361,32 @@ describe("handleMcpEvents", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("includes X-NullSpend-Trace-Id on error responses", async () => {
+    const request = makeRequest("/v1/mcp/events", {});
+    const env = makeEnv();
+
+    const response = await handleMcpEvents(request, env, makeCtx({}));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+  });
+
+  it("includes X-NullSpend-Trace-Id on accepted responses", async () => {
+    mockLogCostEventsBatch.mockResolvedValue(undefined);
+
+    const request = makeRequest("/v1/mcp/events", {});
+    const env = makeEnv();
+
+    const events = [
+      { toolName: "run_query", serverName: "supabase", durationMs: 150, costMicrodollars: 10000, status: "success" },
+    ];
+
+    const response = await handleMcpEvents(request, env, makeCtx({ events }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
   });
 
   it("returns 400 when events array is missing", async () => {

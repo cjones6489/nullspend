@@ -118,6 +118,7 @@ function makeCtx(
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
+    traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
     tags: {},
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
@@ -149,6 +150,39 @@ describe("handleChatCompletions", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("invalid_model");
+  });
+
+  it("includes X-NullSpend-Trace-Id on error responses", async () => {
+    mockIsKnownModel.mockReturnValueOnce(false);
+    const request = makeRequest({ model: "unknown-model", messages: [] });
+    const res = await handleChatCompletions(request, makeEnv(), makeCtx({
+      model: "unknown-model",
+      messages: [],
+    }));
+    expect(res.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+  });
+
+  it("includes X-NullSpend-Trace-Id on successful non-streaming response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        id: "chatcmpl-test",
+        model: "gpt-4o-mini",
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+        choices: [{ message: { role: "assistant", content: "hi" } }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-request-id": "req-trace" },
+      }),
+    );
+
+    const res = await handleChatCompletions(
+      makeRequest({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      makeEnv(),
+      makeCtx({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+    await res.text();
   });
 
   it("forwards upstream error responses with correct status", async () => {

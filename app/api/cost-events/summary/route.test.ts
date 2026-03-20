@@ -9,6 +9,7 @@ import {
   getProviderBreakdown,
   getSourceBreakdown,
   getToolBreakdown,
+  getTraceBreakdown,
   getTotals,
 } from "@/lib/cost-events/aggregate-cost-events";
 import { GET } from "./route";
@@ -25,6 +26,7 @@ vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
   getSourceBreakdown: vi.fn(),
   getKeyBreakdown: vi.fn(),
   getToolBreakdown: vi.fn(),
+  getTraceBreakdown: vi.fn(),
   getTotals: vi.fn(),
 }));
 
@@ -36,6 +38,7 @@ const mockedGetProviderBreakdown = vi.mocked(getProviderBreakdown);
 const mockedGetKeyBreakdown = vi.mocked(getKeyBreakdown);
 const mockedGetToolBreakdown = vi.mocked(getToolBreakdown);
 const mockedGetSourceBreakdown = vi.mocked(getSourceBreakdown);
+const mockedGetTraceBreakdown = vi.mocked(getTraceBreakdown);
 const mockedGetTotals = vi.mocked(getTotals);
 
 const MOCK_USER_ID = "user-abc-123";
@@ -105,6 +108,7 @@ function setupMocks() {
   mockedGetKeyBreakdown.mockResolvedValue(mockKeyData);
   mockedGetToolBreakdown.mockResolvedValue([]);
   mockedGetSourceBreakdown.mockResolvedValue(mockSourceData);
+  mockedGetTraceBreakdown.mockResolvedValue([]);
   mockedGetTotals.mockResolvedValue(mockTotals);
   mockedGetCostBreakdownTotals.mockResolvedValue(mockCostBreakdown);
 }
@@ -197,7 +201,7 @@ describe("GET /api/cost-events/summary", () => {
     expect(res.status).toBe(401);
   });
 
-  it("calls all eight aggregation functions in parallel", async () => {
+  it("calls all nine aggregation functions in parallel", async () => {
     setupMocks();
 
     const req = new Request("http://localhost/api/cost-events/summary?period=7d");
@@ -209,6 +213,7 @@ describe("GET /api/cost-events/summary", () => {
     expect(mockedGetKeyBreakdown).toHaveBeenCalledTimes(1);
     expect(mockedGetToolBreakdown).toHaveBeenCalledTimes(1);
     expect(mockedGetSourceBreakdown).toHaveBeenCalledTimes(1);
+    expect(mockedGetTraceBreakdown).toHaveBeenCalledTimes(1);
     expect(mockedGetTotals).toHaveBeenCalledTimes(1);
     expect(mockedGetCostBreakdownTotals).toHaveBeenCalledTimes(1);
   });
@@ -221,6 +226,7 @@ describe("GET /api/cost-events/summary", () => {
     mockedGetKeyBreakdown.mockResolvedValue([]);
     mockedGetToolBreakdown.mockResolvedValue([]);
     mockedGetSourceBreakdown.mockResolvedValue([]);
+    mockedGetTraceBreakdown.mockResolvedValue([]);
     mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
     mockedGetCostBreakdownTotals.mockResolvedValue({ inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 });
 
@@ -235,6 +241,7 @@ describe("GET /api/cost-events/summary", () => {
     expect(body.keys).toEqual([]);
     expect(body.tools).toEqual([]);
     expect(body.sources).toEqual([]);
+    expect(body.traces).toEqual([]);
     expect(body.costBreakdown).toEqual({ inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 });
     expect(body.totals.totalCostMicrodollars).toBe(0);
     expect(body.totals.totalRequests).toBe(0);
@@ -248,6 +255,7 @@ describe("GET /api/cost-events/summary", () => {
     mockedGetKeyBreakdown.mockResolvedValue([]);
     mockedGetToolBreakdown.mockResolvedValue([]);
     mockedGetSourceBreakdown.mockResolvedValue([]);
+    mockedGetTraceBreakdown.mockResolvedValue([]);
     mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
     mockedGetCostBreakdownTotals.mockResolvedValue({ inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 });
 
@@ -271,6 +279,7 @@ describe("GET /api/cost-events/summary", () => {
     mockedGetKeyBreakdown.mockResolvedValue([]);
     mockedGetToolBreakdown.mockResolvedValue([]);
     mockedGetSourceBreakdown.mockResolvedValue([]);
+    mockedGetTraceBreakdown.mockResolvedValue([]);
     mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
     mockedGetCostBreakdownTotals.mockResolvedValue({ inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 });
 
@@ -283,6 +292,7 @@ describe("GET /api/cost-events/summary", () => {
     expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(customUserId, 7);
     expect(mockedGetToolBreakdown).toHaveBeenCalledWith(customUserId, 7);
     expect(mockedGetSourceBreakdown).toHaveBeenCalledWith(customUserId, 7);
+    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith(customUserId, 7);
     expect(mockedGetTotals).toHaveBeenCalledWith(customUserId, 7);
     expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith(customUserId, 7);
   });

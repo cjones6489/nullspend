@@ -208,6 +208,9 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                 >
                   Latency <SortIcon field="latency" active={sortField} dir={sortDir} />
                 </TableHead>
+                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Trace
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -265,6 +268,12 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-[13px] text-muted-foreground">
                     {formatDuration(event.durationMs)}
+                  </TableCell>
+                  <TableCell
+                    className="cursor-default font-mono text-[11px] text-muted-foreground"
+                    title={event.traceId ?? undefined}
+                  >
+                    {event.traceId ? event.traceId.slice(0, 8) : "—"}
                   </TableCell>
                 </TableRow>
               ))}

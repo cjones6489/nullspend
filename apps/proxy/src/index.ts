@@ -9,6 +9,7 @@ import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import { parseTags } from "./lib/tags.js";
+import { resolveTraceId } from "./lib/trace-context.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 import { handleReconciliationQueue } from "./queue-handler.js";
 import { handleDlqQueue, DLQ_QUEUE_NAME } from "./dlq-handler.js";
@@ -151,6 +152,9 @@ export default {
     globals.__SKIP_DB_PERSIST =
       (env as Record<string, unknown>).SKIP_DB_PERSIST === "true";
 
+    // Resolve trace ID early so it's available in the catch block for 500 responses
+    const traceId = resolveTraceId(request);
+
     try {
       const url = new URL(request.url);
 
@@ -224,6 +228,7 @@ export default {
         redis: auth.hasWebhooks ? Redis.fromEnv(env) : null,
         connectionString,
         sessionId: request.headers.get("x-nullspend-session") ?? null,
+        traceId,
         tags: parseTags(request.headers.get("x-nullspend-tags")),
         webhookDispatcher,
         resolvedApiVersion,
@@ -232,8 +237,10 @@ export default {
 
       return await handler(request, env, ctx);
     } catch (err) {
-      console.error("[proxy] Unhandled error:", err);
-      return errorResponse("internal_error", "Internal server error", 500);
+      console.error("[proxy] Unhandled error:", { traceId, err });
+      const resp = errorResponse("internal_error", "Internal server error", 500);
+      resp.headers.set("X-NullSpend-Trace-Id", traceId);
+      return resp;
     }
   },
 };
