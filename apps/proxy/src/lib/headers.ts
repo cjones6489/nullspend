@@ -2,6 +2,8 @@ const UPSTREAM_FORWARD_HEADERS = [
   "authorization",
   "openai-organization",
   "openai-project",
+  "traceparent",
+  "tracestate",
 ] as const;
 
 /**
