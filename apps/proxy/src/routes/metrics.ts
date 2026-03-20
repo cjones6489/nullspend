@@ -95,24 +95,26 @@ export async function handleMetrics(
 
     const data = await res.json() as { data: Record<string, number>[] };
     const row = data.data?.[0];
+    const safe = (v: unknown): number =>
+      typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 0;
 
     const metrics: LatencyMetrics = {
       overhead_ms: {
-        p50: Math.round(row?.p50_overhead ?? 0),
-        p95: Math.round(row?.p95_overhead ?? 0),
-        p99: Math.round(row?.p99_overhead ?? 0),
+        p50: safe(row?.p50_overhead),
+        p95: safe(row?.p95_overhead),
+        p99: safe(row?.p99_overhead),
       },
       upstream_ms: {
-        p50: Math.round(row?.p50_upstream ?? 0),
-        p95: Math.round(row?.p95_upstream ?? 0),
-        p99: Math.round(row?.p99_upstream ?? 0),
+        p50: safe(row?.p50_upstream),
+        p95: safe(row?.p95_upstream),
+        p99: safe(row?.p99_upstream),
       },
       total_ms: {
-        p50: Math.round(row?.p50_total ?? 0),
-        p95: Math.round(row?.p95_total ?? 0),
-        p99: Math.round(row?.p99_total ?? 0),
+        p50: safe(row?.p50_total),
+        p95: safe(row?.p95_total),
+        p99: safe(row?.p99_total),
       },
-      request_count: Math.round(row?.request_count ?? 0),
+      request_count: safe(row?.request_count),
       window_seconds: QUERY_WINDOW_MINUTES * 60,
       measured_at: new Date().toISOString(),
     };

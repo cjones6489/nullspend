@@ -311,6 +311,12 @@ export async function handleChatCompletions(
       ctx,
     );
   } catch (err) {
+    // Record failed request in latency metrics so timeout spikes are visible
+    const failTotalMs = Math.round(performance.now() - ctx.requestStartMs);
+    const failUpstreamMs = Math.round(performance.now() - startTime);
+    const failOverheadMs = Math.max(0, failTotalMs - failUpstreamMs);
+    writeLatencyDataPoint(env, "openai", requestModel, isStreaming, 502, failOverheadMs, failUpstreamMs, failTotalMs);
+
     // Fix 11: clean up reservation on fetch timeout or unexpected error
     if (reservationId) {
       waitUntil(
@@ -395,6 +401,11 @@ function handleStreaming(
           attribution,
         );
 
+        // Write AE data point at stream completion with full duration
+        const streamTotalMs = Math.round(performance.now() - ctx.requestStartMs);
+        const streamOverheadMs = Math.max(0, streamTotalMs - durationMs);
+        writeLatencyDataPoint(env, "openai", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs);
+
         await logCostEvent(connectionString, {
           ...costEvent,
           ...enrichment,
@@ -460,7 +471,9 @@ function handleStreaming(
   clientHeaders.set("connection", "keep-alive");
   const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs);
   emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: true });
-  writeLatencyDataPoint(env, "openai", requestModel, true, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs);
+  // AE data point is written at stream completion inside the waitUntil callback
+  // (see resultPromise.then) — NOT here, because overhead/total at this point
+  // only reflects TTFB, not the full stream duration.
 
   return new Response(readable, {
     status: upstreamResponse.status,

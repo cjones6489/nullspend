@@ -240,6 +240,45 @@ describe("handleMetrics", () => {
     });
   });
 
+  describe("NaN and empty result handling", () => {
+    it("returns zeros when AE returns NaN values (zero-row query)", async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        new Response(JSON.stringify({
+          data: [{
+            p50_overhead: NaN, p95_overhead: NaN, p99_overhead: NaN,
+            p50_upstream: NaN, p95_upstream: NaN, p99_upstream: NaN,
+            p50_total: NaN, p95_total: NaN, p99_total: NaN,
+            request_count: 0,
+          }],
+        }), { status: 200 }),
+      );
+
+      const env = makeEnv({ CF_ACCOUNT_ID: "acct", CF_API_TOKEN: "token" });
+      const res = await handleMetrics(makeRequest(), env);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.overhead_ms).toEqual({ p50: 0, p95: 0, p99: 0 });
+      expect(body.upstream_ms).toEqual({ p50: 0, p95: 0, p99: 0 });
+      expect(body.total_ms).toEqual({ p50: 0, p95: 0, p99: 0 });
+      expect(body.request_count).toBe(0);
+    });
+
+    it("returns zeros when AE returns empty data array", async () => {
+      vi.mocked(globalThis.fetch).mockResolvedValue(
+        new Response(JSON.stringify({ data: [] }), { status: 200 }),
+      );
+
+      const env = makeEnv({ CF_ACCOUNT_ID: "acct", CF_API_TOKEN: "token" });
+      const res = await handleMetrics(makeRequest(), env);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.overhead_ms).toEqual({ p50: 0, p95: 0, p99: 0 });
+      expect(body.request_count).toBe(0);
+    });
+  });
+
   describe("content negotiation", () => {
     it("returns JSON by default", async () => {
       const cached = {
