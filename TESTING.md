@@ -53,10 +53,12 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ### By Domain
 
-**Auth**
+**Auth & API Versioning**
 | File | What it tests |
 |---|---|
 | `auth.test.ts` | Platform key validation, timing-safe comparison |
+| `api-key-auth.test.ts` | SHA-256 hash lookup, positive/negative caching, timing-safe comparison |
+| `api-version.test.ts` | API version resolution: header → key → default |
 
 **Trace Context**
 | File | What it tests |
@@ -98,15 +100,25 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `velocity-webhook-recovery.test.ts` | `velocity.recovered` webhook builder + route dispatch (OpenAI, MCP, multi-entity) |
 | `velocity-state-internal.test.ts` | `GET /internal/budget/velocity-state` — auth, validation, happy path, DO error |
 | `parse-thresholds.test.ts` | `parseThresholds` — JSON safety, malformed input, default fallback, reference isolation |
+| `budget-do-client.test.ts` | DO RPC client: check, reconcile, upsert, remove, reset, velocity state |
+| `budget-do-lookup.test.ts` | Postgres → DOBudgetEntity lookup, field mapping, velocity conversion, error handling |
+| `budget-orchestrator.test.ts` | Budget check orchestration: DO path, period reset write-back, entity construction |
+| `user-budget-do.do.test.ts` | **Cloudflare runtime** — DO SQLite integration: populate, check, reconcile, alarm |
 
 **Route Handlers**
 | File | What it tests |
 |---|---|
 | `openai-route.test.ts` | `handleChatCompletions` — full request lifecycle |
+| `openai-budget-route.test.ts` | OpenAI route with budget enforcement |
 | `anthropic-route.test.ts` | `handleAnthropicMessages` — full request lifecycle |
 | `anthropic-budget-route.test.ts` | Anthropic route with budget enforcement |
+| `mcp-route.test.ts` | MCP budget check + cost event ingestion routes |
 | `index-entry.test.ts` | Top-level router: routing, body parsing, health endpoints |
+| `internal.test.ts` | Internal budget invalidation/sync endpoint |
+| `internal-route.test.ts` | Internal route handler: auth, body parsing, action dispatch |
+| `internal-route-stress.test.ts` | Internal route under concurrent load |
 | `upstream-timeout.test.ts` | Fetch timeout/error — reservation cleanup verification |
+| `stream-cancellation-cost.test.ts` | Partial stream cancellation — cost tracking accuracy |
 
 **Request/Response Processing**
 | File | What it tests |
@@ -126,11 +138,38 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 |---|---|
 | `webhook-events.test.ts` | Payload builders: cost_event, budget.exceeded, threshold, reset, request.blocked, test.ping, isCritical override |
 | `webhook-thresholds.test.ts` | `detectThresholdCrossings` — default thresholds, custom thresholds, empty/single, mixed entities, backward compat |
+| `webhook-dispatch.test.ts` | Endpoint dispatch with HMAC signing, retry, error handling |
+| `webhook-signer.test.ts` | HMAC-SHA256 signature generation and verification |
+| `webhook-cache.test.ts` | Redis-cached endpoint lookup, invalidation |
+| `webhook-expiry.test.ts` | Rotated secret expiry logic |
+
+**Tags & Attribution**
+| File | What it tests |
+|---|---|
+| `tags.test.ts` | `X-NullSpend-Tags` header parsing, validation, size limits |
+| `validation.test.ts` | Shared validation helpers (UUID regex, etc.) |
 
 **Rate Limiting**
 | File | What it tests |
 |---|---|
 | `rate-limit-edge-cases.test.ts` | Per-key limits, header length, empty key, fail-open behavior |
+
+**Infrastructure**
+| File | What it tests |
+|---|---|
+| `db-semaphore.test.ts` | Postgres connection concurrency limiter |
+| `cache-kv.test.ts` | KV-backed caching helpers |
+| `metrics.test.ts` | Structured metric emission |
+| `upstream-allowlist.test.ts` | Allowed upstream host validation |
+
+**Reconciliation Queue**
+| File | What it tests |
+|---|---|
+| `reconciliation-queue.test.ts` | Queue message serialization, enqueue/dequeue |
+| `reconciliation-fallback.test.ts` | Direct reconciliation fallback when queue unavailable |
+| `queue-handler.test.ts` | Queue consumer: message processing, retries, DLQ |
+| `queue-retry-e2e.test.ts` | Queue retry lifecycle end-to-end |
+| `dlq-handler.test.ts` | Dead letter queue processing and alerting |
 
 **Regression**
 | File | What it tests |
