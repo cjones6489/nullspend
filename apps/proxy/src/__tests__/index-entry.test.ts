@@ -115,6 +115,17 @@ describe("Worker entry point routing", () => {
       expect(body.service).toBe("nullspend-proxy");
     });
 
+    it("GET /health/metrics returns 200 with metrics shape", async () => {
+      const req = new Request("http://localhost/health/metrics");
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toHaveProperty("overhead_ms");
+      expect(body).toHaveProperty("request_count");
+      expect(body).toHaveProperty("window_seconds");
+      expect(body).toHaveProperty("measured_at");
+    });
+
     it("GET /health/ready returns 200 when Redis is up", async () => {
       const req = new Request("http://localhost/health/ready");
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());

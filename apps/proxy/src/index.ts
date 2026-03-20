@@ -4,6 +4,7 @@ import { handleChatCompletions } from "./routes/openai.js";
 import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
 import { handleBudgetInvalidation, handleVelocityState } from "./routes/internal.js";
+import { handleMetrics } from "./routes/metrics.js";
 import { authenticateRequest } from "./lib/auth.js";
 import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
@@ -168,6 +169,10 @@ export default {
       // Health routes stay outside the pipeline (no auth needed)
       if (url.pathname === "/health") {
         return Response.json({ status: "ok", service: "nullspend-proxy" });
+      }
+
+      if (url.pathname === "/health/metrics") {
+        return handleMetrics(request, env);
       }
 
       if (url.pathname === "/health/ready") {

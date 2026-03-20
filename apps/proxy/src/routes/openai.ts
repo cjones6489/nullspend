@@ -16,6 +16,7 @@ import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 import { isAllowedUpstream } from "../lib/upstream-allowlist.js";
 import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
+import { writeLatencyDataPoint } from "../lib/write-metric.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
@@ -261,6 +262,7 @@ export async function handleChatCompletions(
       clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
       const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs);
       emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
+      writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs);
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "openai");
       clientHeaders.set("content-type", "application/json");
       return new Response(sanitizedBody, {
@@ -458,6 +460,7 @@ function handleStreaming(
   clientHeaders.set("connection", "keep-alive");
   const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs);
   emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: true });
+  writeLatencyDataPoint(env, "openai", requestModel, true, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs);
 
   return new Response(readable, {
     status: upstreamResponse.status,
@@ -481,7 +484,10 @@ async function handleNonStreaming(
   ctx: RequestContext,
 ): Promise<Response> {
   const responseText = await upstreamResponse.text();
-  const durationMs = Math.round(performance.now() - startTime);
+  // Capture upstream duration after .text() completes so response body
+  // transfer time is attributed to the upstream, not to proxy overhead.
+  const upstreamDurationWithBody = Math.round(performance.now() - startTime);
+  enrichment = { ...enrichment, upstreamDurationMs: upstreamDurationWithBody };
 
   try {
     const parsed = JSON.parse(responseText);
@@ -504,7 +510,7 @@ async function handleNonStreaming(
         responseModel,
         usage,
         requestId,
-        durationMs,
+        upstreamDurationWithBody,
         attribution,
       );
 
@@ -569,6 +575,7 @@ async function handleNonStreaming(
 
   const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs);
   emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: false });
+  writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs);
 
   return new Response(responseText, {
     status: upstreamResponse.status,

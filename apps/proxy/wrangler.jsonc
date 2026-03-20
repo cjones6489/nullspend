@@ -13,6 +13,9 @@
       "id": "ae987aca79704f1fa94bf2c4bb761f14"
     }
   ],
+  "analytics_engine_datasets": [
+    { "binding": "METRICS", "dataset": "proxy_latency" }
+  ],
   "kv_namespaces": [
     { "binding": "CACHE_KV", "id": "a1c41950606849ccbfc4c044d80bbca4" }
   ],
