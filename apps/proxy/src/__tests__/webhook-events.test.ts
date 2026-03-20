@@ -201,6 +201,56 @@ describe("buildThresholdPayload", () => {
 
     expect(event.type).toBe("budget.threshold.warning");
   });
+
+  it("isCritical: true overrides threshold < 90 to critical", () => {
+    const event = buildThresholdPayload({
+      budgetEntityType: "user",
+      budgetEntityId: "user_abc",
+      budgetLimitMicrodollars: 100_000_000,
+      budgetSpendMicrodollars: 75_000_000,
+      thresholdPercent: 75,
+      triggeredByRequestId: "req_1",
+      isCritical: true,
+    });
+
+    expect(event.type).toBe("budget.threshold.critical");
+  });
+
+  it("isCritical: false overrides threshold >= 90 to warning", () => {
+    const event = buildThresholdPayload({
+      budgetEntityType: "user",
+      budgetEntityId: "user_abc",
+      budgetLimitMicrodollars: 100_000_000,
+      budgetSpendMicrodollars: 95_000_000,
+      thresholdPercent: 95,
+      triggeredByRequestId: "req_1",
+      isCritical: false,
+    });
+
+    expect(event.type).toBe("budget.threshold.warning");
+  });
+
+  it("omitted isCritical falls back to >= 90 logic (backward compat)", () => {
+    const warning = buildThresholdPayload({
+      budgetEntityType: "user",
+      budgetEntityId: "user_abc",
+      budgetLimitMicrodollars: 100_000_000,
+      budgetSpendMicrodollars: 80_000_000,
+      thresholdPercent: 80,
+      triggeredByRequestId: "req_1",
+    });
+    expect(warning.type).toBe("budget.threshold.warning");
+
+    const critical = buildThresholdPayload({
+      budgetEntityType: "user",
+      budgetEntityId: "user_abc",
+      budgetLimitMicrodollars: 100_000_000,
+      budgetSpendMicrodollars: 90_000_000,
+      thresholdPercent: 90,
+      triggeredByRequestId: "req_1",
+    });
+    expect(critical.type).toBe("budget.threshold.critical");
+  });
 });
 
 describe("buildBudgetResetPayload", () => {

@@ -14,6 +14,7 @@ export interface BudgetRow {
   velocity_limit: number | null;
   velocity_window: number;
   velocity_cooldown: number;
+  threshold_percentages: string | null;
 }
 
 export interface CheckedEntity {
@@ -22,6 +23,7 @@ export interface CheckedEntity {
   maxBudget: number;
   spend: number;
   policy: string;
+  thresholdPercentages: number[];
 }
 
 export interface CheckResult {
@@ -120,6 +122,22 @@ function parseEntityKey(key: string): [string, string] {
   return [key.slice(0, sep), key.slice(sep + 1)];
 }
 
+const DEFAULT_THRESHOLDS: readonly number[] = Object.freeze([50, 80, 90, 95]);
+
+/** Safely parse threshold_percentages JSON TEXT from SQLite. */
+export function parseThresholds(raw: string | null): number[] {
+  if (!raw) return [...DEFAULT_THRESHOLDS];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((v: unknown) => typeof v === "number")) {
+      return parsed;
+    }
+    return [...DEFAULT_THRESHOLDS];
+  } catch {
+    return [...DEFAULT_THRESHOLDS];
+  }
+}
+
 // ── Durable Object ──────────────────────────────────────────────────
 
 export class UserBudgetDO extends DurableObject {
@@ -188,12 +206,22 @@ export class UserBudgetDO extends DurableObject {
 
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (2)");
     }
+
+    // v3 migration: configurable budget thresholds
+    const v3Version = this.ctx.storage.sql.exec<{ version: number }>(
+      "SELECT MAX(version) as version FROM _schema_version",
+    ).toArray()[0]?.version ?? 1;
+
+    if (v3Version < 3) {
+      try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN threshold_percentages TEXT DEFAULT '[50,80,90,95]'"); } catch { /* already exists */ }
+      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (3)");
+    }
   }
 
   private loadBudgets(): void {
     this.budgets.clear();
     const rows = this.ctx.storage.sql.exec<BudgetRow>(
-      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start, velocity_limit, velocity_window, velocity_cooldown FROM budgets",
+      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start, velocity_limit, velocity_window, velocity_cooldown, threshold_percentages FROM budgets",
     );
     for (const row of rows) {
       this.budgets.set(`${row.entity_type}:${row.entity_id}`, row);
@@ -274,6 +302,7 @@ export class UserBudgetDO extends DurableObject {
           maxBudget: row.max_budget,
           spend: row.spend,
           policy: row.policy,
+          thresholdPercentages: parseThresholds(row.threshold_percentages),
         });
       }
 
@@ -595,6 +624,7 @@ export class UserBudgetDO extends DurableObject {
     velocityLimit: number | null = null,
     velocityWindow: number = 60_000,
     velocityCooldown: number = 60_000,
+    thresholdPercentages: number[] = [...DEFAULT_THRESHOLDS],
   ): Promise<boolean> {
     const key = `${entityType}:${entityId}`;
     const existed = this.budgets.has(key);
@@ -622,6 +652,13 @@ export class UserBudgetDO extends DurableObject {
         `UPDATE budgets SET velocity_limit = ?, velocity_window = ?, velocity_cooldown = ?
          WHERE entity_type = ? AND entity_id = ?`,
         velocityLimit, velocityWindow, velocityCooldown, entityType, entityId,
+      );
+
+      // Update threshold percentages
+      this.ctx.storage.sql.exec(
+        `UPDATE budgets SET threshold_percentages = ?
+         WHERE entity_type = ? AND entity_id = ?`,
+        JSON.stringify(thresholdPercentages), entityType, entityId,
       );
 
       // Create/update velocity_state row

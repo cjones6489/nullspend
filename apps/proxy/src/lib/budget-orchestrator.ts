@@ -160,6 +160,7 @@ async function checkBudgetDO(
     spend: e.spend,
     reserved: 0,
     policy: e.policy,
+    thresholdPercentages: e.thresholdPercentages ?? [50, 80, 90, 95],
   }));
 
   if (checkResult.status === "denied") {

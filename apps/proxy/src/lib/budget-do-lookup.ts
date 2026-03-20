@@ -14,6 +14,7 @@ export interface BudgetEntity {
   spend: number;
   reserved: number;
   policy: string;
+  thresholdPercentages?: number[];
 }
 
 export interface DOBudgetEntity {
@@ -27,6 +28,7 @@ export interface DOBudgetEntity {
   velocityLimit: number | null;
   velocityWindow: number; // ms (default 60000)
   velocityCooldown: number; // ms (default 60000)
+  thresholdPercentages: number[];
 }
 
 /**
@@ -88,6 +90,7 @@ export async function lookupBudgetsForDO(
             velocityLimit: row.velocityLimitMicrodollars ?? null,
             velocityWindow: (row.velocityWindowSeconds ?? 60) * 1000,
             velocityCooldown: (row.velocityCooldownSeconds ?? 60) * 1000,
+            thresholdPercentages: row.thresholdPercentages ?? [50, 80, 90, 95],
           });
         }
       }

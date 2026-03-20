@@ -6,6 +6,7 @@ import { logCostEventsBatch } from "../lib/cost-logger.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload } from "../lib/webhook-events.js";
+import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 import { UUID_RE } from "../lib/validation.js";
@@ -44,11 +45,13 @@ export async function handleMcpBudgetCheck(
 ): Promise<Response> {
   const parsed = validateBudgetCheckBody(ctx.body);
   if (!parsed) {
-    return errorResponse(
+    const resp = errorResponse(
       "bad_request",
       "Body must include toolName (string), serverName (string), estimateMicrodollars (non-negative number)",
       400,
     );
+    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return resp;
   }
 
   try {
@@ -84,11 +87,13 @@ export async function handleMcpBudgetCheck(
         reason: "velocity_exceeded",
         retryAfterSeconds: outcome.retryAfterSeconds ?? 60,
         velocityDetails: outcome.velocityDetails ?? null,
+        traceId: ctx.traceId,
       }, {
         status: 429,
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+          "X-NullSpend-Trace-Id": ctx.traceId,
         },
       });
     }
@@ -98,8 +103,12 @@ export async function handleMcpBudgetCheck(
         allowed: false,
         denied: true,
         remaining: outcome.remaining,
+        traceId: ctx.traceId,
       }, {
-        headers: { "NullSpend-Version": ctx.resolvedApiVersion },
+        headers: {
+          "NullSpend-Version": ctx.resolvedApiVersion,
+          "X-NullSpend-Trace-Id": ctx.traceId,
+        },
       });
     }
 
@@ -130,11 +139,17 @@ export async function handleMcpBudgetCheck(
     return Response.json({
       allowed: true,
       reservationId: outcome.reservationId,
+      traceId: ctx.traceId,
     }, {
-      headers: { "NullSpend-Version": ctx.resolvedApiVersion },
+      headers: {
+        "NullSpend-Version": ctx.resolvedApiVersion,
+        "X-NullSpend-Trace-Id": ctx.traceId,
+      },
     });
   } catch {
-    return errorResponse("budget_unavailable", "Budget service unavailable", 503);
+    const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
+    budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return budgetUnavailResp;
   }
 }
 
@@ -186,11 +201,13 @@ export async function handleMcpEvents(
 ): Promise<Response> {
   const events = validateEvents(ctx.body);
   if (!events) {
-    return errorResponse(
+    const resp = errorResponse(
       "bad_request",
       "Body must include events array (1-50 items) with toolName, serverName, durationMs, costMicrodollars, status",
       400,
     );
+    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return resp;
   }
 
   const userId = ctx.auth.userId;
@@ -218,6 +235,7 @@ export async function handleMcpEvents(
         toolName: event.toolName,
         toolServer: event.serverName,
         sessionId: ctx.sessionId,
+        traceId: ctx.traceId,
         tags: ctx.tags,
         source: "mcp" as const,
       }));
@@ -229,10 +247,12 @@ export async function handleMcpEvents(
         console.error("[mcp-events] Failed to batch-insert cost events:", err);
       }
 
-      // Phase 3: Reconcile reservations (one budget lookup via DO)
+      // Phase 3: Budget lookup + reconcile reservations
+      // Hoisted so budgetEntities are available for both reconciliation and threshold detection.
+      let budgetEntities: BudgetEntity[] = [];
       const eventsWithReservations = events.filter((e) => e.reservationId);
-      if (eventsWithReservations.length > 0) {
-        let budgetEntities: BudgetEntity[] = [];
+      const needsBudgetLookup = eventsWithReservations.length > 0 || (ctx.webhookDispatcher && ctx.auth.hasWebhooks);
+      if (needsBudgetLookup) {
         try {
           const doEntities = await lookupBudgetsForDO(ctx.connectionString, { keyId: apiKeyId, userId });
           budgetEntities = doEntities.map((e) => ({
@@ -243,18 +263,19 @@ export async function handleMcpEvents(
             spend: e.spend,
             reserved: 0,
             policy: e.policy,
+            thresholdPercentages: e.thresholdPercentages ?? [50, 80, 90, 95],
           }));
         } catch {
           // best-effort
         }
+      }
 
-        if (budgetEntities.length > 0) {
-          for (const event of eventsWithReservations) {
-            try {
-              await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
-            } catch (err) {
-              console.error("[mcp-events] Failed to reconcile reservation:", err);
-            }
+      if (budgetEntities.length > 0 && eventsWithReservations.length > 0) {
+        for (const event of eventsWithReservations) {
+          try {
+            await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
+          } catch (err) {
+            console.error("[mcp-events] Failed to reconcile reservation:", err);
           }
         }
       }
@@ -276,6 +297,19 @@ export async function handleMcpEvents(
                   await ctx.webhookDispatcher!.dispatch(ep, whEvent);
                 }
               }
+
+              // Threshold detection (aligned with OpenAI/Anthropic routes)
+              if (budgetEntities.length > 0) {
+                const epVersion = endpoints[0]?.apiVersion ?? ctx.auth.apiVersion;
+                const totalCost = costEventRows.reduce((sum, r) => sum + r.costMicrodollars, 0);
+                if (totalCost > 0) {
+                  const thresholdEvents = detectThresholdCrossings(budgetEntities, totalCost, costEventRows[0].requestId, epVersion);
+                  for (const te of thresholdEvents) {
+                    await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, te);
+                  }
+                }
+              }
+
               expireRotatedSecrets(ctx.connectionString, endpoints).catch(() => {});
             }
           }
@@ -287,6 +321,9 @@ export async function handleMcpEvents(
   );
 
   return Response.json({ accepted }, {
-    headers: { "NullSpend-Version": ctx.resolvedApiVersion },
+    headers: {
+      "NullSpend-Version": ctx.resolvedApiVersion,
+      "X-NullSpend-Trace-Id": ctx.traceId,
+    },
   });
 }

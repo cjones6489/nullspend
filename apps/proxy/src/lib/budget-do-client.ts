@@ -182,6 +182,7 @@ export async function doBudgetUpsertEntities(
       e.entityType, e.entityId, e.maxBudget, e.spend,
       e.policy, e.resetInterval, e.periodStart,
       e.velocityLimit, e.velocityWindow, e.velocityCooldown,
+      e.thresholdPercentages,
     );
   }
 }

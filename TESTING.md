@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~2,200+ tests across ~140 files organized into four tiers.
+NullSpend has ~2,500+ tests across ~144 files organized into four tiers.
 
 ## Quick Reference
 
@@ -41,7 +41,7 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-55 files, ~980 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+61 files, ~1,040 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
 
 ### Naming Convention
 
@@ -57,6 +57,11 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | File | What it tests |
 |---|---|
 | `auth.test.ts` | Platform key validation, timing-safe comparison |
+
+**Trace Context**
+| File | What it tests |
+|---|---|
+| `trace-context.test.ts` | `resolveTraceId` — W3C traceparent parsing, custom header, auto-generation |
 
 **Cost Calculation — OpenAI**
 | File | What it tests |
@@ -92,6 +97,7 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `velocity-limits.test.ts` | Velocity limit enforcement: sliding window, circuit breaker, recovery, edge cases |
 | `velocity-webhook-recovery.test.ts` | `velocity.recovered` webhook builder + route dispatch (OpenAI, MCP, multi-entity) |
 | `velocity-state-internal.test.ts` | `GET /internal/budget/velocity-state` — auth, validation, happy path, DO error |
+| `parse-thresholds.test.ts` | `parseThresholds` — JSON safety, malformed input, default fallback, reference isolation |
 
 **Route Handlers**
 | File | What it tests |
@@ -114,6 +120,12 @@ The 23 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `anthropic-sse-parser.test.ts` | Anthropic SSE stream parser |
 | `headers-edge-cases.test.ts` | Header sanitization edge cases |
 | `anthropic-headers.test.ts` | Anthropic-specific header forwarding |
+
+**Webhooks**
+| File | What it tests |
+|---|---|
+| `webhook-events.test.ts` | Payload builders: cost_event, budget.exceeded, threshold, reset, request.blocked, test.ping, isCritical override |
+| `webhook-thresholds.test.ts` | `detectThresholdCrossings` — default thresholds, custom thresholds, empty/single, mixed entities, backward compat |
 
 **Rate Limiting**
 | File | What it tests |

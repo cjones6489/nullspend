@@ -11,6 +11,7 @@ function makeBudgetEntity(overrides: Partial<BudgetEntity> = {}): BudgetEntity {
     spend: 0,
     reserved: 0,
     policy: "strict_block",
+    thresholdPercentages: [50, 80, 90, 95],
     ...overrides,
   };
 }
@@ -126,5 +127,126 @@ describe("detectThresholdCrossings", () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].data.object.threshold_percent).toBe(50);
+  });
+
+  // ── Custom threshold tests ────────────────────────────────────────
+
+  it("uses custom thresholds [25, 50, 75] — only those values trigger", () => {
+    const entity = makeBudgetEntity({
+      spend: 0,
+      thresholdPercentages: [25, 50, 75],
+    });
+    // 0% → 80% — crosses 25, 50, 75
+    const events = detectThresholdCrossings([entity], 80_000_000, "req_1");
+
+    expect(events).toHaveLength(3);
+    const thresholds = events.map((e) => e.data.object.threshold_percent);
+    expect(thresholds).toEqual([25, 50, 75]);
+  });
+
+  it("last custom threshold is classified as critical", () => {
+    const entity = makeBudgetEntity({
+      spend: 74_000_000,
+      thresholdPercentages: [25, 50, 75],
+    });
+    // 74% → 76% — crosses 75 (last = critical)
+    const events = detectThresholdCrossings([entity], 2_000_000, "req_1");
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("budget.threshold.critical");
+    expect(events[0].data.object.threshold_percent).toBe(75);
+  });
+
+  it("non-last custom threshold is classified as warning", () => {
+    const entity = makeBudgetEntity({
+      spend: 24_000_000,
+      thresholdPercentages: [25, 50, 75],
+    });
+    // 24% → 26% — crosses 25 (not last, not >= 90 = warning)
+    const events = detectThresholdCrossings([entity], 2_000_000, "req_1");
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("budget.threshold.warning");
+  });
+
+  it("empty thresholds [] produces zero events", () => {
+    const entity = makeBudgetEntity({
+      spend: 0,
+      thresholdPercentages: [],
+    });
+    const events = detectThresholdCrossings([entity], 99_000_000, "req_1");
+    expect(events).toHaveLength(0);
+  });
+
+  it("single threshold [90] is classified as critical", () => {
+    const entity = makeBudgetEntity({
+      spend: 89_000_000,
+      thresholdPercentages: [90],
+    });
+    const events = detectThresholdCrossings([entity], 2_000_000, "req_1");
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("budget.threshold.critical");
+    expect(events[0].data.object.threshold_percent).toBe(90);
+  });
+
+  it("single threshold [60] below 90 is critical (last in array)", () => {
+    const entity = makeBudgetEntity({
+      spend: 59_000_000,
+      thresholdPercentages: [60],
+    });
+    const events = detectThresholdCrossings([entity], 2_000_000, "req_1");
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("budget.threshold.critical");
+  });
+
+  it("mixed entities: one custom, one default — independent thresholds", () => {
+    const entities = [
+      makeBudgetEntity({
+        entityKey: "{budget}:user:u1",
+        entityId: "u1",
+        spend: 24_000_000,
+        thresholdPercentages: [25, 50, 75],
+      }),
+      makeBudgetEntity({
+        entityKey: "{budget}:api_key:k1",
+        entityId: "k1",
+        spend: 49_000_000,
+        thresholdPercentages: [50, 80, 90, 95],
+      }),
+    ];
+    const events = detectThresholdCrossings(entities, 2_000_000, "req_1");
+
+    expect(events).toHaveLength(2);
+    // u1 crosses 25% (custom)
+    expect(events[0].data.object.budget_entity_id).toBe("u1");
+    expect(events[0].data.object.threshold_percent).toBe(25);
+    expect(events[0].type).toBe("budget.threshold.warning");
+    // k1 crosses 50% (default)
+    expect(events[1].data.object.budget_entity_id).toBe("k1");
+    expect(events[1].data.object.threshold_percent).toBe(50);
+    expect(events[1].type).toBe("budget.threshold.warning");
+  });
+
+  it("falls back to default thresholds when thresholdPercentages is undefined", () => {
+    const entity = makeBudgetEntity({
+      spend: 49_000_000,
+      thresholdPercentages: undefined,
+    });
+    const events = detectThresholdCrossings([entity], 2_000_000, "req_1");
+
+    expect(events).toHaveLength(1);
+    expect(events[0].data.object.threshold_percent).toBe(50);
+  });
+
+  it("backward compat: default thresholds — 90% is still critical (not just last)", () => {
+    // Regression test: with defaults [50,80,90,95], 90 is critical because >= 90
+    const entity = makeBudgetEntity({ spend: 89_000_000 });
+    const events = detectThresholdCrossings([entity], 2_000_000, "req_1");
+
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe("budget.threshold.critical");
+    expect(events[0].data.object.threshold_percent).toBe(90);
   });
 });

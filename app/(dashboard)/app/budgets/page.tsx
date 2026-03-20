@@ -66,6 +66,7 @@ interface BudgetData {
   velocityLimitMicrodollars: number | null;
   velocityWindowSeconds: number | null;
   velocityCooldownSeconds: number | null;
+  thresholdPercentages: number[];
 }
 
 export default function BudgetsPage() {
@@ -83,6 +84,12 @@ export default function BudgetsPage() {
   );
 
   function handleEditClick(budget: BudgetData) {
+    const isDefaultThresholds =
+      budget.thresholdPercentages.length === 4 &&
+      budget.thresholdPercentages[0] === 50 &&
+      budget.thresholdPercentages[1] === 80 &&
+      budget.thresholdPercentages[2] === 90 &&
+      budget.thresholdPercentages[3] === 95;
     setEditBudget({
       entityType: budget.entityType as "user" | "api_key",
       entityId: budget.entityId,
@@ -97,6 +104,8 @@ export default function BudgetsPage() {
       velocityCooldownSeconds: budget.velocityCooldownSeconds != null
         ? String(budget.velocityCooldownSeconds)
         : "60",
+      thresholdPercentages: isDefaultThresholds ? "" : budget.thresholdPercentages.join(", "),
+      _thresholdsCustomized: !isDefaultThresholds,
     });
   }
 
@@ -443,6 +452,8 @@ interface EditBudgetData {
   velocityLimitDollars: string;
   velocityWindowSeconds: string;
   velocityCooldownSeconds: string;
+  thresholdPercentages: string;
+  _thresholdsCustomized?: boolean;
 }
 
 function BudgetDialog({
@@ -474,6 +485,8 @@ function BudgetDialog({
   const [velocityLimitDollars, setVelocityLimitDollars] = useState(editBudget?.velocityLimitDollars ?? "");
   const [velocityWindowSeconds, setVelocityWindowSeconds] = useState(editBudget?.velocityWindowSeconds ?? "60");
   const [velocityCooldownSeconds, setVelocityCooldownSeconds] = useState(editBudget?.velocityCooldownSeconds ?? "60");
+  const [thresholdsCustomized, setThresholdsCustomized] = useState(editBudget?._thresholdsCustomized ?? !!editBudget?.thresholdPercentages);
+  const [thresholdPercentages, setThresholdPercentages] = useState(editBudget?.thresholdPercentages ?? "");
 
   function resetForm() {
     setEntityType("user");
@@ -484,6 +497,8 @@ function BudgetDialog({
     setVelocityLimitDollars("");
     setVelocityWindowSeconds("60");
     setVelocityCooldownSeconds("60");
+    setThresholdsCustomized(false);
+    setThresholdPercentages("");
   }
 
   function handleSubmit() {
@@ -520,6 +535,30 @@ function BudgetDialog({
       ? Math.round(parseFloat(velocityLimitDollars) * 1_000_000)
       : null;
 
+    // Parse custom thresholds: split on comma/space, strip %, filter empties, sort, dedupe
+    let parsedThresholds: number[] | undefined;
+    if (thresholdsCustomized && thresholdPercentages.trim()) {
+      const raw = thresholdPercentages
+        .replace(/%/g, "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map((s) => parseInt(s, 10))
+        .filter((n) => !isNaN(n));
+      parsedThresholds = [...new Set(raw)].sort((a, b) => a - b);
+      if (parsedThresholds.some((n) => n < 1 || n > 100)) {
+        toast.error("Threshold values must be between 1 and 100");
+        return;
+      }
+      if (parsedThresholds.length > 10) {
+        toast.error("Maximum 10 threshold values allowed");
+        return;
+      }
+    } else if (thresholdsCustomized) {
+      // Explicitly customized but empty = no thresholds
+      parsedThresholds = [];
+    }
+
     createBudget.mutate(
       {
         entityType,
@@ -534,6 +573,7 @@ function BudgetDialog({
           velocityWindowSeconds: parseInt(velocityWindowSeconds, 10) || 60,
           velocityCooldownSeconds: parseInt(velocityCooldownSeconds, 10) || 60,
         }),
+        ...(parsedThresholds !== undefined && { thresholdPercentages: parsedThresholds }),
       },
       {
         onSuccess: () => {
@@ -741,6 +781,37 @@ function BudgetDialog({
                     />
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Threshold alerts section */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setThresholdsCustomized(!thresholdsCustomized)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight className={cn(
+                "h-3 w-3 transition-transform",
+                thresholdsCustomized && "rotate-90",
+              )} />
+              {thresholdsCustomized ? "Alert thresholds (custom)" : "Alert thresholds (optional)"}
+            </button>
+
+            {thresholdsCustomized && (
+              <div className="space-y-1.5 rounded-md border border-border/30 bg-secondary/20 p-3">
+                <Label className="text-xs text-muted-foreground">Threshold percentages</Label>
+                <Input
+                  type="text"
+                  placeholder="50, 80, 90, 95"
+                  value={thresholdPercentages}
+                  onChange={(e) => setThresholdPercentages(e.target.value)}
+                  className="h-9 border-border/50 bg-background text-[13px] tabular-nums placeholder:text-muted-foreground/50"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Comma-separated percentages (1-100). Webhook alerts fire when spend crosses each threshold. Leave empty to disable alerts.
+                </p>
               </div>
             )}
           </div>

@@ -41,6 +41,7 @@ interface CostEventData {
   toolServer?: string | null;
   upstreamDurationMs?: number;
   sessionId?: string | null;
+  traceId?: string | null;
   toolCallsRequested?: { name: string; id: string }[] | null;
   toolDefinitionTokens?: number;
   source?: string;
@@ -69,6 +70,7 @@ export function buildCostEventPayload(
         duration_ms: costEvent.durationMs,
         upstream_duration_ms: costEvent.upstreamDurationMs ?? null,
         session_id: costEvent.sessionId ?? null,
+        trace_id: costEvent.traceId ?? null,
         tool_name: costEvent.toolName ?? null,
         tool_server: costEvent.toolServer ?? null,
         tool_calls_requested: costEvent.toolCallsRequested ?? null,
@@ -123,13 +125,16 @@ interface ThresholdData {
   budgetSpendMicrodollars: number;
   thresholdPercent: number;
   triggeredByRequestId: string;
+  isCritical?: boolean;
 }
 
 export function buildThresholdPayload(
   data: ThresholdData,
   apiVersion: string = CURRENT_API_VERSION,
 ): WebhookEvent {
-  const type: WebhookEventType = data.thresholdPercent >= 90
+  // isCritical can be explicitly set by the caller (per-entity thresholds).
+  // Fallback: >= 90 is critical (preserves backward compat for default thresholds).
+  const type: WebhookEventType = (data.isCritical ?? data.thresholdPercent >= 90)
     ? "budget.threshold.critical"
     : "budget.threshold.warning";
 

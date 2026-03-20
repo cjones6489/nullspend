@@ -1,13 +1,18 @@
 import type { BudgetEntity } from "./budget-do-lookup.js";
 import { buildThresholdPayload, type WebhookEvent } from "./webhook-events.js";
 
-const THRESHOLDS = [50, 80, 90, 95];
+const DEFAULT_THRESHOLDS: readonly number[] = Object.freeze([50, 80, 90, 95]);
 
 /**
  * Detect budget threshold crossings after a cost event.
  *
  * Compares the pre-request spend against the post-request spend to find
  * thresholds that were crossed by this specific request.
+ *
+ * Uses per-entity threshold percentages when available, falling back to
+ * the default [50, 80, 90, 95]. The last threshold in the array is
+ * classified as critical; all others are warning. Thresholds >= 90 are
+ * also classified as critical (backward compat for default thresholds).
  *
  * // TODO: Redis dedup for threshold alerts (v1.1)
  * Currently, concurrent requests may both detect the same crossing.
@@ -30,9 +35,14 @@ export function detectThresholdCrossings(
     const previousPercent = Math.floor((previousSpend / entity.maxBudget) * 100);
     const newPercent = Math.floor((newSpend / entity.maxBudget) * 100);
 
+    const thresholds = entity.thresholdPercentages ?? DEFAULT_THRESHOLDS;
+    const lastThreshold = thresholds.length > 0 ? thresholds[thresholds.length - 1] : undefined;
+
     // Find thresholds crossed by this request (were below before, at or above now)
-    for (const threshold of THRESHOLDS) {
+    for (const threshold of thresholds) {
       if (previousPercent < threshold && newPercent >= threshold) {
+        // Critical if: last in the array OR >= 90 (backward compat)
+        const isCritical = threshold === lastThreshold || threshold >= 90;
         events.push(
           buildThresholdPayload({
             budgetEntityType: entity.entityType,
@@ -41,6 +51,7 @@ export function detectThresholdCrossings(
             budgetSpendMicrodollars: newSpend,
             thresholdPercent: threshold,
             triggeredByRequestId: requestId,
+            isCritical,
           }, apiVersion),
         );
       }
