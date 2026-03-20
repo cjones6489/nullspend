@@ -351,6 +351,9 @@ export class UserBudgetDO extends DurableObject {
 
           const currentSessionSpend = sessionRow?.spend ?? 0;
           if (currentSessionSpend + estimateMicrodollars > row.session_limit) {
+            console.log(
+              `[UserBudgetDO] session denied: entity=${entityKey} session=${sessionId} spend=${currentSessionSpend} limit=${row.session_limit} estimate=${estimateMicrodollars}`,
+            );
             result = {
               status: "denied",
               hasBudgets: true,
@@ -589,20 +592,12 @@ export class UserBudgetDO extends DurableObject {
     // Update in-memory cache
     this.loadBudgets();
 
-    // Schedule alarm for reservation expiry + session cleanup
+    // Schedule alarm for reservation expiry (session cleanup piggybacks on the same alarm)
     if (reserved) {
       const nextExpiry = now + reservationTtlMs;
       const currentAlarm = await this.ctx.storage.getAlarm();
       if (!currentAlarm || currentAlarm > nextExpiry) {
         await this.ctx.storage.setAlarm(nextExpiry);
-      }
-    } else if (sessionId && result.status === "approved") {
-      // No reservation but session spend was tracked — ensure alarm for cleanup
-      const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-      const sessionCleanup = now + SESSION_TTL_MS;
-      const currentAlarm = await this.ctx.storage.getAlarm();
-      if (!currentAlarm || currentAlarm > sessionCleanup) {
-        await this.ctx.storage.setAlarm(sessionCleanup);
       }
     }
 
@@ -945,24 +940,28 @@ export class UserBudgetDO extends DurableObject {
 
       this.ctx.storage.transactionSync(() => {
         for (const rsv of expired) {
-          const keys: string[] = JSON.parse(rsv.entity_keys);
-          for (const key of keys) {
-            const [entityType, entityId] = parseEntityKey(key);
-            this.ctx.storage.sql.exec(
-              "UPDATE budgets SET reserved = MAX(0, reserved - ?) WHERE entity_type = ? AND entity_id = ?",
-              rsv.amount,
-              entityType,
-              entityId,
-            );
-          }
-          // Reverse session spend for expired reservations
-          if (rsv.session_id) {
+          try {
+            const keys: string[] = JSON.parse(rsv.entity_keys);
             for (const key of keys) {
+              const [entityType, entityId] = parseEntityKey(key);
               this.ctx.storage.sql.exec(
-                "UPDATE session_spend SET spend = MAX(0, spend - ?) WHERE entity_key = ? AND session_id = ?",
-                rsv.amount, key, rsv.session_id,
+                "UPDATE budgets SET reserved = MAX(0, reserved - ?) WHERE entity_type = ? AND entity_id = ?",
+                rsv.amount,
+                entityType,
+                entityId,
               );
             }
+            // Reverse session spend for expired reservations
+            if (rsv.session_id) {
+              for (const key of keys) {
+                this.ctx.storage.sql.exec(
+                  "UPDATE session_spend SET spend = MAX(0, spend - ?) WHERE entity_key = ? AND session_id = ?",
+                  rsv.amount, key, rsv.session_id,
+                );
+              }
+            }
+          } catch (err) {
+            console.error(`[UserBudgetDO] alarm: failed to clean reservation ${rsv.id}, skipping:`, err);
           }
           this.ctx.storage.sql.exec(
             "DELETE FROM reservations WHERE id = ?",
@@ -993,12 +992,12 @@ export class UserBudgetDO extends DurableObject {
       .toArray()[0];
 
     const hasSessionRows = this.ctx.storage.sql
-      .exec<{ cnt: number }>("SELECT COUNT(*) as cnt FROM session_spend")
-      .toArray()[0]?.cnt ?? 0;
+      .exec("SELECT 1 FROM session_spend LIMIT 1")
+      .toArray().length > 0;
 
     let nextAlarm: number | null = null;
     if (next?.next_exp) nextAlarm = next.next_exp;
-    if (hasSessionRows > 0) {
+    if (hasSessionRows) {
       const sessionCleanup = now + SESSION_TTL_MS;
       nextAlarm = nextAlarm ? Math.min(nextAlarm, sessionCleanup) : sessionCleanup;
     }
