@@ -42,7 +42,7 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-67 files, ~1,117 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+68 files, ~1,149 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
 
 ### Naming Convention
 
@@ -170,6 +170,8 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `db-semaphore.test.ts` | Postgres connection concurrency limiter |
 | `cache-kv.test.ts` | KV-backed caching helpers |
 | `metrics.test.ts` | Structured metric emission |
+| `write-metric.test.ts` | AE `writeLatencyDataPoint` — fire-and-forget, missing binding, error resilience |
+| `health-metrics.test.ts` | `handleMetrics` — KV cache, AE query, content negotiation, negative caching, value coercion, metric emission |
 | `upstream-allowlist.test.ts` | Allowed upstream host validation |
 
 **Reconciliation Queue**
@@ -190,7 +192,7 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Smoke Tests (`apps/proxy/smoke*.test.ts`)
 
-24 files. Require a deployed worker and API keys. Organized by provider and concern:
+25 files. Require a deployed worker and API keys. Organized by provider and concern:
 
 | Pattern | Files |
 |---|---|
@@ -199,8 +201,9 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `smoke-budget*.test.ts` | Budget enforcement E2E |
 | `smoke-session-limits.test.ts` | Session limit enforcement E2E |
 | `smoke-trace.test.ts` | W3C traceparent propagation E2E |
+| `smoke-metrics.test.ts` | AE metrics endpoint + latency headers E2E |
 
-Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace, session-limits.
+Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace, session-limits, metrics.
 
 ---
 

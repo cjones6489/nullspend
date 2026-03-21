@@ -128,4 +128,4 @@ Pending actions support a configurable server-side TTL via `expiresInSeconds` (d
 
 ## Source of Truth
 
-Use `docs/roadmap.md` for current project status and planned features. The original v1 build contract is preserved in `docs/v1-build-contract.md` (completed). The fuller product brief lives in `nullspend-project-outline.txt`.
+Use `docs/finops-pivot-roadmap.md` for current project status and planned features.

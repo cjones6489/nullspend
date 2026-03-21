@@ -1,7 +1,7 @@
 # NullSpend Priority Implementation Roadmap
 
 **Created:** 2026-03-20
-**Last updated:** 2026-03-21
+**Last updated:** 2026-03-21 (multi-entity budget strategy from competitive research)
 **Purpose:** Forward-looking architecture, infrastructure, and feature roadmap for NullSpend. Derived from the post-audit deep research and competitive analysis. Prioritized by impact on platform positioning as the best financial infrastructure for AI agents.
 
 **Predecessor:** [`nullspend-prelaunch-design-audit.md`](nullspend-prelaunch-design-audit.md) — completed 2026-03-19 (8/8 items shipped). Contains detailed implementation notes, design decisions, and three-pass audit findings for all completed items.
@@ -11,6 +11,7 @@
 - [`docs/research/cost-events-source-column.md`](../research/cost-events-source-column.md) — source column deep research (completed)
 - [`docs/research/api-versioning.md`](../research/api-versioning.md) — API versioning deep research (completed)
 - [`docs/technical-outlines/agent-tracing-architecture.md`](agent-tracing-architecture.md) — agent tracing five-phase spec
+- Multi-entity budget research (2026-03-21) — competitive analysis of LiteLLM, Portkey, OpenRouter, Bifrost, Brex, Ramp, FOCUS v1.3, AgentBudget, SatGate
 
 **Strategic context:** NullSpend has zero external users. The API surface, schema, and architecture can still change freely. Every decision should be evaluated against the platform vision: **best financial infrastructure for AI agents — the Stripe of AI FinOps.**
 
@@ -139,20 +140,89 @@ When a client aborts a streaming response mid-flight, the SSE parser resolves wi
 Items that improve DX, expand platform capabilities, or strengthen competitive positioning.
 
 ### 2.0a Budget Sync First-Populate Root Cause
-**Effort:** ~2-3h | **Source:** Stress testing (2026-03-20) — probe verification fails ~20% of the time
+**Effort:** ~3-4h | **Source:** Stress testing (2026-03-20) — probe verification fails ~20% of the time
 
-The verification+retry fix (1.7) masks the issue, but `populateIfEmpty` silently fails to persist on the first call in ~20% of stress test runs. The `getBudgetState()` read-back finds the entity missing, triggering the retry. Possible causes: Hyperdrive returning stale reads for `lookupBudgetsForDO`, db-semaphore blocking the Postgres query in the sync path, or a DO timing edge case with `transactionSync`.
+Deep research (2026-03-21) revealed **two separate issues**, not one:
 
-**What to investigate:**
-- Add logging to `lookupBudgetsForDO` to confirm entities are returned from Postgres
-- Add logging to `populateIfEmpty` to confirm the INSERT executes
-- Check if `budget_sync_retry` metric fires in production (would confirm the retry is needed)
-- Check Worker logs for semaphore-related errors during sync requests
+#### Issue 1: Hyperdrive Query Caching — Silent Sync Failure (higher severity)
 
-### 2.0b Analytics Engine Metrics Ingestion
-**Effort:** ~1-2h | **Source:** Stress testing (2026-03-20) — `/health/metrics` returns all zeros
+Hyperdrive caches SELECT queries for **60 seconds** by default (+15s stale-while-revalidate). The sync path reads via `env.HYPERDRIVE.connectionString`, but the dashboard writes to Postgres directly (not through Hyperdrive). If a cached empty result exists from a prior lookup, `lookupBudgetsForDO` returns `[]`, and `doBudgetUpsertEntities` exits at `if (entities.length === 0) return;` — **no retry fires, no metric emitted, silent failure.** The budget is never populated in the DO.
 
-The proxy writes latency data points to Analytics Engine on every request, but `/health/metrics` queries return zeros during and after stress sessions. The 5-minute query window and AE ingestion delay may mean data points aren't available for real-time monitoring. The KV cache (90s TTL) compounds the lag.
+This is **worse than Issue 2** because the verification+retry defense (1.7) does not protect against it — empty entities means nothing to verify.
+
+**Deep research (2026-03-22) — HYPERDRIVE usage audit:**
+
+All 6 `env.HYPERDRIVE.connectionString` call sites were audited. Only 2 perform SELECTs (cacheable by Hyperdrive); the other 4 are writes (never cached):
+
+| Location | Operation | Cached? | Needs fresh? |
+|---|---|---|---|
+| `index.ts:224` | Auth `lookupKeyInDb()` SELECT | Yes | Has own in-memory positive/negative cache |
+| `internal.ts:90` | Budget sync `lookupBudgetsForDO()` SELECT | **Yes — THE BUG** | **Yes** |
+| `queue-handler.ts:14` | Reconcile `updateBudgetSpend()` UPDATE | No | N/A |
+| `dlq-handler.ts:24` | Reconcile DLQ UPDATE | No | N/A |
+| `cost-event-queue-handler.ts:19` | Cost event INSERT | No | N/A |
+| `cost-event-dlq-handler.ts:20` | Cost event DLQ INSERT | No | N/A |
+
+**Options evaluated:**
+
+| Option | Pros | Cons |
+|---|---|---|
+| **A: Disable caching on existing Hyperdrive** | Zero code changes, one CLI command, no pool doubling | Loses edge cache for auth cold starts (~50-100ms, mitigated by in-memory cache) |
+| B: Second uncached Hyperdrive binding | Surgical, other paths keep caching | Doubles DB connection pool, code changes in internal.ts + worker-configuration.d.ts + wrangler.jsonc + 30+ test mocks |
+| C: Per-query cache bypass | No infra changes | Not reliably supported by `pg` driver, CF docs recommend multiple bindings instead |
+
+**Decision: Option A** — disable caching on the existing Hyperdrive config.
+
+```bash
+wrangler hyperdrive update ae987aca79704f1fa94bf2c4bb761f14 --caching-disabled true
+```
+
+Rationale: Only 2 SELECT paths exist, both are better off uncached (auth has its own cache, sync needs fresh data). Zero code changes. No connection pool doubling. Reversible with `--caching-disabled false` if needed post-launch. If edge caching becomes valuable later (many cold starts), revisit with dual-binding approach.
+
+**Effort:** ~15min (CLI command + verify + stress test confirmation)
+
+#### Issue 2: DO Write Visibility — ~20% Retry Rate — ✅ Fixed (2026-03-21)
+
+Root cause confirmed via deep research: `getBudgetState()` read from the in-memory `this.budgets` Map, not SQLite. Under concurrent RPC interleaving at `await` points, another `checkAndReserve` could call `loadBudgets()` which does `this.budgets.clear()` then rebuilds — causing a momentary stale read window. CF docs confirm SQLite reads are microsecond-fast (page cache), making the Map redundant.
+
+**What was fixed:**
+1. `getBudgetState()` now reads directly from SQLite (same query as `loadBudgets()`), matching the `getVelocityState()` pattern already in production. The in-memory Map is retained only for `populateIfEmpty` return value and constructor logging.
+2. Verification comment updated + retry log upgraded from `console.warn` to `console.error` with "UNEXPECTED" prefix, since post-fix this path should never fire.
+3. `removeBudget()` no longer deletes in-flight reservations. Previously, it aggressively deleted all reservations referencing the removed entity, which broke `reconcile()` for co-covered entities (multi-entity reservations). `reconcile()` already handles missing budgets gracefully (reports `budgetsMissing`, skips spend). Alarm handles expired reservation cleanup.
+
+**Verified:** 1130/1130 proxy unit tests, 57/57 DO integration tests (previously 55/57 — the 2 `removeBudget` + reconcile tests now pass), typecheck clean, stress tests 28/28 at medium intensity.
+
+### 2.0b Analytics Engine Metrics + Proxy Latency Publication — ✅ Done
+**Shipped:** 2026-03-21 | **Source:** Stress testing (2026-03-20) — `/health/metrics` returns all zeros; Architecture Review — Bifrost benchmark
+
+**Merged with former 2.4 (Proxy Latency Metrics).** Deep research (2026-03-21) found the proxy latency pipeline was already fully built but the AE SQL API query endpoint had multiple bugs preventing live data.
+
+**Bugs found and fixed:**
+1. **UInt64 string coercion** — AE returns `request_count` as a string (e.g., `"402"`). The `safe()` function checked `typeof === "number"`, silently returning 0. Fixed to coerce strings.
+2. **`FORMAT JSON` missing** — Added explicitly to the SQL query to guarantee JSON response format.
+3. **Response key ambiguity** — CF docs conflict on `data` vs `result`. Made parsing handle both defensively (live testing confirmed `data` is correct).
+4. **Negative caching** — On AE failure, caches empty metrics for 30s to prevent thundering herd. Auth errors (401/403) bypass negative cache so expired tokens stay loud.
+5. **`Vary: Accept`** — Added to both JSON and Prometheus responses for correct HTTP caching semantics.
+6. **Observability** — Added `emitMetric` calls for cache hit/miss, AE query success/failure (with duration), cache write errors. Timeout vs network error differentiation in logs.
+
+**What was built/fixed:**
+- `CF_ACCOUNT_ID` + `CF_API_TOKEN` worker secrets set
+- `metrics.ts` — `safe()` string coercion, `FORMAT JSON`, defensive `data`/`result` parsing, negative caching, `Vary: Accept`, structured metric emission, timeout differentiation
+- `health-metrics.test.ts` — 30 tests (up from 16): mock fidelity (string UInt64), null/empty-string values, negative caching, auth-error bypass, timeout, malformed JSON, both response keys, metric emission, Vary header
+- `smoke-metrics.test.ts` — 5 E2E tests: endpoint shape, Prometheus format, AE population after traffic (with polling), `Server-Timing` header, `x-nullspend-overhead-ms` header
+- `.dev.vars.example` — added `CF_ACCOUNT_ID` + `CF_API_TOKEN` placeholders
+
+**Live-verified:** `curl https://nullspend.cjones6489.workers.dev/health/metrics` returns real p50/p95/p99 latency data.
+
+**Important context (from deep research):**
+- CF Workers `performance.now()` only advances on I/O (Spectre mitigation) — CPU-bound overhead (~0.5-1ms) is invisible. All CF Workers proxies face this.
+- `overhead_ms` = total - upstream (wall clock). Includes I/O from auth, budget check, Redis — not just CPU time.
+- Bifrost's 11us excludes JSON marshalling + HTTP calls — not comparable to NullSpend's overhead which includes auth, budget check, DO RPC.
+- Streaming: AE data point uses full stream duration; `Server-Timing` header uses TTFB. Both correct for their context.
+
+**Optional future enhancements:**
+- Add `?provider=` filter to `/health/metrics`, add `colo` blob for region breakdown
+- Document overhead numbers in README once real production data volume is available
 
 ### 2.1 Claude Agent SDK Adapter — ✅ Done
 **Shipped:** 2026-03-20 | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 4; [Deep Research](../research/claude-agent-sdk-adapter.md)
@@ -189,15 +259,26 @@ Surface "cost per session," "cost per tool invocation," "cost per API key" as fi
   - `costPerTool` (tool cost / tool invocation count)
   - `topSessions` (most expensive sessions with cost + request count)
 
-### 2.4 Proxy Latency Metrics
-**Effort:** ~1h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive section (Bifrost benchmark)
+### 2.4 Tag-Based Budgets
+**Effort:** ~4-6h | **Source:** Multi-entity budget research (2026-03-21)
 
-Competitive benchmark: Bifrost at 11us (Go), Helicone at 50-80ms (Cloudflare Workers). NullSpend should measure and publish its overhead.
+Let users set a budget on a tag value (e.g., `project=openclaw` gets $50/month). Solves multi-agent cost tracking without requiring one API key per agent — one key, different tags per agent/project/environment.
+
+**Competitive context:** LiteLLM has tag budgets (max_budget + budget_duration per tag). Portkey uses metadata-driven `group_by` policies. Both validate this as the highest-demand pattern for multi-entity cost control. NullSpend already has tag parsing, cost event filtering, and the DO budget enforcement pipeline — this is a natural extension.
 
 **What to build:**
-- Emit `proxy_overhead_ms` metric on every request (total request time minus upstream duration)
-- Add `GET /health/metrics` endpoint returning p50/p95/p99 proxy overhead
-- Document in README/docs
+- `tag_budgets` table: `(user_id, tag_key, tag_value, max_budget_microdollars, spend_microdollars, period, period_start, policy)`
+- Budget check in DO: after entity-level checks, check tag budgets for any matching tags on the request
+- Tag budget CRUD API: `POST/GET/PATCH/DELETE /api/tag-budgets`
+- Dashboard UI: tag budget management page (create budget for `project=openclaw`, `env=prod`, etc.)
+- `tag_budget.exceeded` webhook event type
+- 429 `tag_budget_exceeded` denial response
+
+**Design decisions:**
+- Tag budgets are per-user, not global (user A's `project=foo` budget is independent of user B's)
+- A request can match multiple tag budgets; all must pass (strictest wins, same as entity budgets)
+- Tag budgets are checked alongside entity budgets, not instead of — both layers must approve
+- Period reset reuses the same mechanism as entity budgets
 
 ### 2.5 GitHub Secret Scanning Registration
 **Effort:** External action | **Source:** [Prelaunch Audit Section 2](nullspend-prelaunch-design-audit.md)
@@ -254,12 +335,33 @@ NullSpend as the budget/approval gate before MPP-enabled agent payments. Agent c
 
 **Wait for:** MPP adoption signal and production readiness.
 
-### 3.8 Provider-Level Budgets
+### 3.8 First-Class Agent Entities
+**Effort:** ~1-2 days | **Source:** Multi-entity budget research (2026-03-21)
+
+Wire up the `agent` entity type that already exists in the budgets schema. Gives users an OpenRouter-style experience: create named agents in the dashboard, assign budgets, and see per-agent cost breakdowns.
+
+**Competitive context:** OpenRouter uses Org > Member > Key with guardrails. Bifrost has a 5-level hierarchy (Customer > Team > User > VK > Provider). NullSpend's flat entity types (`user | agent | api_key | team`) are simpler but need UI exposure. The `agent` entity bridges the gap between per-account and per-key budgets without requiring a key per agent.
+
+**What to build:**
+- `agents` table: `(id, user_id, name, description, created_at)` — lightweight named entity
+- Associate requests with an agent via `X-NullSpend-Agent` header or tag
+- Agent CRUD API: `POST/GET/PATCH/DELETE /api/agents`
+- Dashboard: agent management page, per-agent cost breakdown, budget assignment
+- Budget entity creation: `entityType: "agent", entityId: agent.id`
+- SDK: `client.chat({ ..., agentId: "ns_agent_..." })`
+
+**Design decisions:**
+- Agents are per-user (like API keys). No cross-user agent sharing until teams ship.
+- An agent can have its own budget independently of the API key used to call it
+- Tag-based budgets (2.4) solve 90% of the use case. This adds named entities for better DX/dashboard UX.
+- Team/org hierarchy is explicitly deferred — that's enterprise multi-tenancy (see "Explicitly Not Building")
+
+### 3.9 Provider-Level Budgets
 **Effort:** ~3-4h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive section (LiteLLM pattern)
 
 "$500/month on Anthropic, $300/month on OpenAI." Allow budgets scoped to a specific provider for multi-provider cost control.
 
-### 3.9 Hierarchical Budget Delegation
+### 3.10 Hierarchical Budget Delegation
 **Effort:** ~1 day | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Frontier section 5.2b
 
 Agent-to-sub-agent budget allocation for multi-agent systems. Manager agents allocate sub-budgets to worker agents. Maps to NullSpend's DO entity model.
@@ -275,7 +377,7 @@ Items evaluated and rejected based on the architecture review. See [Architecture
 | Semantic caching | Low hit rates for agent workloads (agents rarely send identical prompts). Adds latency and complexity for minimal savings. |
 | Content guardrails in the proxy | Scope creep. Content filtering/PII belongs in a separate layer (Galileo, Guardrails AI). |
 | Dynamic model routing | Orthogonal to FinOps. Users who want routing should use Martian/OpenRouter upstream. |
-| 5-level budget hierarchy | LiteLLM's org>team>user>key>enduser creates confusing edge cases. Flat entity types with simple enforcement is better DX. |
+| 5-level budget hierarchy | LiteLLM's org>team>user>key>enduser creates confusing edge cases (e.g., user budget bypassed for team keys). Flat entity types + tag budgets + optional named agents is better DX. Revisit team/org hierarchy only when multi-tenant customers arrive. |
 | WASM policy rule engine | Enterprise overkill at current stage. Three policies (strict_block, soft_block, warn) cover 95% of use cases. |
 | Embeddable webhook debug portal | Significant effort for a feature most users won't need until multi-tenant webhook management. |
 
@@ -283,7 +385,7 @@ Items evaluated and rejected based on the architecture review. See [Architecture
 
 ## Roadmap Summary
 
-Last updated: 2026-03-21
+Last updated: 2026-03-22
 
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
@@ -295,13 +397,15 @@ Last updated: 2026-03-21
 | **P1** | Queue-based cost event logging | **Done** (2026-03-20) | ~3-4h | Stress testing |
 | **P1** | Budget sync verification round-trip | **Done** (2026-03-20) | ~1h | Stress testing |
 | **P1** | Aborted stream cost tracking gap | **Done** (2026-03-20) | ~2h | Stress testing |
-| **P2** | Budget sync first-populate root cause | Not started | ~2-3h | Stress testing |
-| **P2** | Analytics Engine metrics ingestion gap | Not started | ~1-2h | Stress testing |
+| **P2** | Budget sync: Hyperdrive caching fix | **Done** (2026-03-22) | ~15min | Deep research (2026-03-22) |
+| **P2** | Budget sync: DO write visibility fix + removeBudget reconcile fix | **Done** (2026-03-21) | ~1h | Deep research (2026-03-21) |
+| **P2** | AE metrics + proxy latency publication (merged 2.0b + 2.4) | Not started | ~1-2h | Stress testing + Architecture Review |
 | **P2** | Claude Agent SDK adapter | **Done** (2026-03-20) | ~1 day | [Deep Research](../research/claude-agent-sdk-adapter.md) |
 | **P2** | Thin webhook event mode | Not started | ~3-4h | Architecture Review |
 | **P2** | Unit economics dashboard metrics | Not started | ~1 day | Architecture Review |
-| **P2** | Proxy latency metrics | Not started | ~1h | Architecture Review |
+| **P2** | Tag-based budgets | Not started | ~4-6h | Multi-entity research (2026-03-21) |
 | **P2** | GitHub Secret Scanning registration | Not started | External | Audit Section 2 |
+| **P3** | First-class agent entities | Not started | ~1-2 days | Multi-entity research (2026-03-21) |
 | **P3** | AI SDK middleware adapter | Not started | ~2-3 days | Architecture Review |
 | **P3** | ClickHouse analytics path (design) | Not started | ~1 week | Architecture Review |
 | **P3** | OTel GenAI span emission | Not started | ~2-3h | Architecture Review |
@@ -319,4 +423,4 @@ Last updated: 2026-03-21
 | **—** | Postgres → ClickHouse migration | Not started | TBD | Audit Section 13 |
 | **—** | Multi-region DO replication | Not started | TBD | Audit Section 13 |
 
-**P1 total:** ~10h | **P2 total:** ~2.5 days | **P3 total:** ~2-3 weeks
+**P1 total:** ~10h | **P2 total:** ~2.5 days (includes 2.0a split: ~30min + ~2-3h) | **P3 total:** ~2-3 weeks

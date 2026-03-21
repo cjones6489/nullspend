@@ -18,4 +18,3 @@ paths:
 - API key auth returns 401 (not 403) for invalid/missing keys
 - Never log full database connection strings or credentials in error handlers
 - Never commit `.env.local` or files containing secrets
-- Refer to `docs/audit-findings.md` for known issues and `docs/audit-research.md` for implementation patterns

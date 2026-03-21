@@ -79,6 +79,8 @@ pnpm deploy           # Deploy to Cloudflare
 **Infrastructure**
 - `src/lib/db-semaphore.ts` — Postgres connection concurrency limiter (MAX_CONCURRENT=5)
 - `src/lib/cache-kv.ts` — KV-backed caching helpers
+- `src/routes/metrics.ts` — `GET /health/metrics` — AE SQL API query, KV caching (90s), negative caching (30s), JSON + Prometheus content negotiation
+- `src/lib/write-metric.ts` — `writeLatencyDataPoint` — fire-and-forget AE data point write per request
 - `src/lib/metrics.ts` — structured metric emission
 - `src/lib/reconciliation-queue.ts` — Cloudflare Queue-based async reconciliation
 - `src/lib/cost-event-queue.ts` — Cloudflare Queue-based async cost event logging (queue-first with direct fallback)

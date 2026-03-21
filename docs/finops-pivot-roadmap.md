@@ -12,7 +12,7 @@
 > - `docs/claude-research/compass_artifact_wf-4db73083-*` — Original competitive landscape
 > - `docs/claude-research/compass_artifact_wf-40b71591-*` — Technical build spec
 > - `docs/frontend-gap-analysis.md` — Dashboard feature status
-> - `docs/finops-pivot-tech-audit.md` — Technology sanity check
+> - `docs/archive/finops-pivot-tech-audit.md` — Technology sanity check (archived)
 
 ---
 

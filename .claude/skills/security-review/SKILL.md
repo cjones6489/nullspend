@@ -68,4 +68,3 @@ After all passes, output a summary:
 - **PASS_WITH_NOTES**: Minor items noted but not blocking
 - **FAIL**: Security issues that must be fixed before merging
 
-Reference: `docs/audit-findings.md` for the full 91-point audit checklist.

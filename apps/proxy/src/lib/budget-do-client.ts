@@ -172,12 +172,19 @@ export async function doBudgetGetVelocityState(
  * Upsert individual budget entities into the DO via `populateIfEmpty`.
  * Does NOT purge other entities — safe for single-entity mutations
  * (budget create/update from dashboard POST).
+ *
+ * After upserting, verifies the DO has the entities by reading back its
+ * budget state. If any entities are missing, retries once. This defends
+ * against a race window where the sync response returns before the DO
+ * has durably committed all entities (observed under concurrent stress).
  */
 export async function doBudgetUpsertEntities(
   env: Env,
   userId: string,
   entities: DOBudgetEntity[],
 ): Promise<void> {
+  if (entities.length === 0) return;
+
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
   for (const e of entities) {
     await stub.populateIfEmpty(
@@ -186,6 +193,29 @@ export async function doBudgetUpsertEntities(
       e.velocityLimit, e.velocityWindow, e.velocityCooldown,
       e.thresholdPercentages, e.sessionLimit,
     );
+  }
+
+  // Verification: confirm entities are in the DO's SQLite state.
+  // getBudgetState() reads directly from SQLite, so this should
+  // always reflect committed upserts. Retry is a safety net only.
+  const state = await stub.getBudgetState();
+  const stateKeys = new Set(state.map((s) => `${s.entity_type}:${s.entity_id}`));
+  const missing = entities.filter((e) => !stateKeys.has(`${e.entityType}:${e.entityId}`));
+
+  if (missing.length > 0) {
+    console.error(
+      `[budget-do-client] UNEXPECTED: ${missing.length}/${entities.length} entities missing from SQLite after upsert, retrying`,
+      missing.map((e) => `${e.entityType}:${e.entityId}`),
+    );
+    for (const e of missing) {
+      await stub.populateIfEmpty(
+        e.entityType, e.entityId, e.maxBudget, e.spend,
+        e.policy, e.resetInterval, e.periodStart,
+        e.velocityLimit, e.velocityWindow, e.velocityCooldown,
+        e.thresholdPercentages, e.sessionLimit,
+      );
+    }
+    emitMetric("budget_sync_retry", { userId, missingCount: missing.length });
   }
 }
 

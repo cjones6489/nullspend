@@ -18,14 +18,25 @@ vi.mock("../durable-objects/user-budget.js", () => ({}));
 import { doBudgetCheck, doBudgetReconcile, doBudgetUpsertEntities, doBudgetRemove, doBudgetResetSpend } from "../lib/budget-do-client.js";
 
 function makeStub(overrides: Record<string, unknown> = {}) {
-  return {
+  const stub: Record<string, unknown> = {
     checkAndReserve: vi.fn().mockResolvedValue({ status: "approved", reservationId: "rsv-1" }),
     reconcile: vi.fn().mockResolvedValue({ status: "reconciled" }),
     populateIfEmpty: vi.fn().mockResolvedValue(true),
     removeBudget: vi.fn().mockResolvedValue(undefined),
     resetSpend: vi.fn().mockResolvedValue(undefined),
+    getBudgetState: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
+  // Track upserted entities so getBudgetState returns them for verification
+  const upserted: Array<{ entity_type: string; entity_id: string }> = [];
+  (stub.populateIfEmpty as ReturnType<typeof vi.fn>).mockImplementation(
+    (entityType: string, entityId: string) => {
+      upserted.push({ entity_type: entityType, entity_id: entityId });
+      (stub.getBudgetState as ReturnType<typeof vi.fn>).mockResolvedValue([...upserted]);
+      return Promise.resolve(true);
+    },
+  );
+  return stub;
 }
 
 function makeEnv(stub: ReturnType<typeof makeStub>): Env {
@@ -505,5 +516,51 @@ describe("doBudgetUpsertEntities", () => {
     await doBudgetUpsertEntities(env, "user-1", []);
 
     expect(stub.populateIfEmpty).not.toHaveBeenCalled();
+    expect(stub.getBudgetState).not.toHaveBeenCalled();
+  });
+
+  it("verifies entities after upsert and calls getBudgetState", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetUpsertEntities(env, "user-1", [
+      { entityType: "user", entityId: "user-1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000, thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+    ]);
+
+    expect(stub.getBudgetState).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries populateIfEmpty if entity is missing after upsert", async () => {
+    const stub = makeStub();
+    // Override: first upsert "succeeds" but getBudgetState returns empty,
+    // simulating the race condition where DO hasn't committed yet
+    let callCount = 0;
+    (stub.populateIfEmpty as ReturnType<typeof vi.fn>).mockImplementation(
+      (entityType: string, entityId: string) => {
+        callCount++;
+        // First call: don't update getBudgetState (simulate race)
+        // Second call (retry): update it
+        if (callCount >= 2) {
+          (stub.getBudgetState as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { entity_type: entityType, entity_id: entityId },
+          ]);
+        }
+        return Promise.resolve(true);
+      },
+    );
+    (stub.getBudgetState as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const env = makeEnv(stub);
+
+    await doBudgetUpsertEntities(env, "user-1", [
+      { entityType: "user", entityId: "user-1", maxBudget: 50_000_000, spend: 0, policy: "strict_block", resetInterval: null, periodStart: 0, velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000, thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+    ]);
+
+    // Called twice: once for initial upsert, once for retry
+    expect(stub.populateIfEmpty).toHaveBeenCalledTimes(2);
+    expect(mockEmitMetric).toHaveBeenCalledWith("budget_sync_retry", {
+      userId: "user-1",
+      missingCount: 1,
+    });
   });
 });

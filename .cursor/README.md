@@ -22,7 +22,7 @@ This project intentionally keeps Cursor guidance lean.
 
 Skills live in `.claude/skills/` and are auto-discovered by both Cursor and Claude Code. No duplication needed.
 
-- `audit-status`: summarize security audit progress from `docs/audit-findings.md`
+- `audit-status`: summarize security audit progress
 - `test-all`: run all monorepo test suites and report results
 
 ## Maintenance Guidelines

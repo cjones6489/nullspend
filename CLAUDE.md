@@ -69,10 +69,6 @@ See @TESTING.md for the full test map (~160 files, ~2,800+ tests across 4 tiers)
 - Dashboard tests: co-located with source files
 - When adding a new model to pricing-data.json, update the `-all-models.test.ts` files too
 
-## Audit
-
-91-point security audit completed (91/91 resolved). Reference: `docs/audit-findings.md` and `docs/audit-research.md`.
-
 ## Compact instructions
 
 When compacting, preserve: recent code changes, test results, architectural decisions made during this session, and any user preferences expressed. Discard: verbose file reads, exploration output, debugging traces, and old search results.

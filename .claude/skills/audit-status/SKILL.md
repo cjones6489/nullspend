@@ -5,7 +5,7 @@ allowed-tools: Read, Grep
 user-invocable: true
 ---
 
-Read `docs/audit-findings.md` and produce a summary:
+Read `docs/archive/audit-findings.md` and produce a summary:
 
 1. Parse the summary table for current counts (Done, Partial, Todo by severity)
 2. List all items marked [DONE] with their ID and title

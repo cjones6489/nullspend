@@ -797,7 +797,9 @@ export class UserBudgetDO extends DurableObject {
 
   /** Read-only budget state (for dashboard queries or debugging). */
   async getBudgetState(): Promise<BudgetRow[]> {
-    return Array.from(this.budgets.values());
+    return this.ctx.storage.sql.exec<BudgetRow>(
+      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start, velocity_limit, velocity_window, velocity_cooldown, threshold_percentages, session_limit FROM budgets",
+    ).toArray();
   }
 
   /** Read-only velocity state (for dashboard live status). */
@@ -807,40 +809,15 @@ export class UserBudgetDO extends DurableObject {
     ).toArray();
   }
 
-  /** Remove a budget entity and all associated reservations.
+  /** Remove a budget entity.
    *  Called via internal invalidation endpoint.
-   *  Deleting reservations prevents reconciliation from adding spend
-   *  to a subsequently re-created budget row (race condition fix). */
+   *  Reservations are NOT deleted — reconcile() handles missing budgets
+   *  gracefully (reports budgetsMissing, skips spend), and the alarm
+   *  cleans up expired reservations. This preserves spend tracking
+   *  for co-covered entities in multi-entity reservations. */
   async removeBudget(entityType: string, entityId: string): Promise<void> {
     const entityKey = `${entityType}:${entityId}`;
     this.ctx.storage.transactionSync(() => {
-      // Delete reservations that reference this entity
-      const matching = this.ctx.storage.sql
-        .exec<{ id: string; amount: number; entity_keys: string }>(
-          `SELECT r.id, r.amount, r.entity_keys
-           FROM reservations r, json_each(r.entity_keys) j
-           WHERE j.value = ?`,
-          entityKey,
-        )
-        .toArray();
-
-      for (const rsv of matching) {
-        // Decrement reserved on co-covered entities before deleting
-        const keys: string[] = JSON.parse(rsv.entity_keys);
-        for (const key of keys) {
-          const parts = key.split(":");
-          if (parts.length >= 2) {
-            this.ctx.storage.sql.exec(
-              "UPDATE budgets SET reserved = MAX(0, reserved - ?) WHERE entity_type = ? AND entity_id = ?",
-              rsv.amount,
-              parts[0],
-              parts.slice(1).join(":"),
-            );
-          }
-        }
-        this.ctx.storage.sql.exec("DELETE FROM reservations WHERE id = ?", rsv.id);
-      }
-
       // Delete the budget row
       this.ctx.storage.sql.exec(
         "DELETE FROM budgets WHERE entity_type = ? AND entity_id = ?",

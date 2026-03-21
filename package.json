@@ -28,7 +28,10 @@
     "proxy:smoke": "pnpm --filter @nullspend/proxy test:smoke",
     "proxy:test:integration": "pnpm --filter @nullspend/proxy test:integration",
     "proxy:test:do": "pnpm --filter @nullspend/proxy test:do",
+    "proxy:stress": "pnpm --filter @nullspend/proxy test:stress",
     "proxy:typecheck": "pnpm --filter @nullspend/proxy typecheck",
+    "claude-agent:build": "pnpm --filter @nullspend/claude-agent build",
+    "claude-agent:test": "pnpm --filter @nullspend/claude-agent test",
     "cost-engine:build": "pnpm --filter @nullspend/cost-engine build",
     "cost-engine:test": "pnpm --filter @nullspend/cost-engine test",
     "db:build": "pnpm --filter @nullspend/db build",
@@ -74,6 +77,7 @@
     }
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.80",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.14",
