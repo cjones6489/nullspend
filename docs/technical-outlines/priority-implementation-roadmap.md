@@ -236,16 +236,28 @@ Config-transformer adapter (`withNullSpend()`) that routes Claude Agent SDK LLM 
 - Always merges `process.env` as base so child process retains `PATH`, `ANTHROPIC_API_KEY`, etc.
 - 34 unit tests, CI build + test steps, peerDep on SDK `>=0.2.0 <1.0.0`
 
-### 2.2 Thin Webhook Event Mode
-**Effort:** ~3-4h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive section (Stripe v2 pattern)
+### 2.2 Thin Webhook Event Mode — ✅ Done
+**Shipped:** 2026-03-21 | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive section (Stripe v2 pattern); [Deep Research](../research/thin-webhook-events-research.md)
 
-Stripe's API v2 moved to thin events (payload contains only event ID + type, consumer fetches current state via API). Thin events are version-stable and cheaper to deliver.
+Stripe's API v2 moved to thin events (payload contains only event type + resource reference, consumer fetches current state via API). Thin events are version-stable and cheaper to deliver. No AI proxy competitor (LiteLLM, Helicone, Portkey) offers thin events.
 
-**What to build:**
-- Add `payload_mode text DEFAULT 'full' CHECK (payload_mode IN ('full', 'thin'))` to `webhook_endpoints`
-- Thin payload: `{ id, type, api_version, created_at, data: { id: "ns_evt_..." } }`
-- Consumer calls `GET /api/cost-events/{id}` to get full data
-- Expose in webhook endpoint create/update API
+**What was built:**
+- `payload_mode text DEFAULT 'full' CHECK (payload_mode IN ('full', 'thin'))` column on `webhook_endpoints` (migration 0030)
+- Per-endpoint config: `payloadMode: "full" | "thin"` — only `cost_event.created` goes thin; budget/velocity/session/action/threshold events always deliver full payloads regardless of mode
+- `ThinWebhookEvent` interface: `{ id, type, api_version, created_at, related_object: { id, type, url } }`
+- `buildThinCostEventPayload()` builder in both proxy and dashboard (SYNC'd)
+- Thin/full branching at all 5 proxy dispatch sites (OpenAI streaming + non-streaming, Anthropic streaming + non-streaming, MCP)
+- Dashboard `dispatchCostEventToEndpoints()` helper with per-endpoint thin/full decision, event type filtering, HMAC signing, and lazy secret expiry cleanup
+- `requestId` filter added to `GET /api/cost-events` list endpoint (enables thin event fetch-back URL)
+- `GET /api/cost-events/{id}` fetch-back endpoint (session-auth, ownership-scoped via API key join)
+- Webhook CRUD: `payloadMode` in create/update/get API + Zod validation
+- HMAC signing unchanged — thin events signed identically to full events
+- Proxy cache (`WebhookEndpointWithSecret`) includes `payloadMode` from DB; `CachedWebhookEndpoint` (KV/Redis metadata cache) unchanged
+- Deploy-order safe: migration adds column with DEFAULT 'full', `?? "full"` fallback in all dispatch code
+
+**Tests added:** 37 new tests across 12 files — thin payload builders, mixed endpoint dispatch, non-cost-event to thin endpoint, payloadMode validation schemas, fetch-back endpoint, non-streaming thin dispatch, URL query param validation, requestId list filter, apiKeyId=null edge case
+
+**Competitive edge:** No AI proxy competitor offers per-endpoint payload mode configuration
 
 ### 2.3 Unit Economics Dashboard Metrics
 **Effort:** ~1 day | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive section (CloudZero pattern)
@@ -264,21 +276,62 @@ Surface "cost per session," "cost per tool invocation," "cost per API key" as fi
 
 Let users set a budget on a tag value (e.g., `project=openclaw` gets $50/month). Solves multi-agent cost tracking without requiring one API key per agent — one key, different tags per agent/project/environment.
 
-**Competitive context:** LiteLLM has tag budgets (max_budget + budget_duration per tag). Portkey uses metadata-driven `group_by` policies. Both validate this as the highest-demand pattern for multi-entity cost control. NullSpend already has tag parsing, cost event filtering, and the DO budget enforcement pipeline — this is a natural extension.
+**Competitive context:** LiteLLM has tag budgets but with critical bugs: spend inflation on multi-tag requests (#21894), TOCTOU race with no reservation pattern (#18730), budget bypass via pass-through routes (#12977, #10750), and broken period resets (#14266). Portkey's metadata `group_by` policies are flexible but enterprise-gated ($5K+) and budget limits are immutable after creation. Helicone conflates budgets with rate limits (rolling windows only, no calendar resets). No competitor does tag-based budget enforcement well — this is a core differentiator opportunity.
+
+**Data model:** Add `entity_type = 'tag'` with `entity_id = 'project=openclaw'` to the existing `budgets` table. Tag budgets are just another entity in the DO's SQLite — same check-and-reserve, same reservation tracking, same reconciliation. No new enforcement layer (Bifrost lesson: initially separating provider budgets created architectural problems).
 
 **What to build:**
-- `tag_budgets` table: `(user_id, tag_key, tag_value, max_budget_microdollars, spend_microdollars, period, period_start, policy)`
-- Budget check in DO: after entity-level checks, check tag budgets for any matching tags on the request
+- Tag budget rows in existing `budgets` table: `entity_type = 'tag'`, `entity_id = '{key}={value}'`
+- `lookupBudgetsForDO` extended to also query tag budgets for the user
+- DO `checkAndReserve`: tag budgets checked in same `transactionSync()` alongside entity budgets — atomic, no TOCTOU race (unlike LiteLLM's async batch approach)
 - Tag budget CRUD API: `POST/GET/PATCH/DELETE /api/tag-budgets`
-- Dashboard UI: tag budget management page (create budget for `project=openclaw`, `env=prod`, etc.)
+- Default tags on API keys: `defaultTags` JSONB column on `api_keys` table — auto-applied to all requests using that key (Bedrock inference profile pattern). Per-request `X-NullSpend-Tags` merge with and override key defaults.
+- `?groupBy=tag:project` parameter on existing `GET /api/cost-events/summary` for tag-spend analytics (AWS Cost Explorer / Kubecost pattern)
+- Dashboard UI: tag budget management page, `__untagged__` visible category in cost breakdowns
 - `tag_budget.exceeded` webhook event type
 - 429 `tag_budget_exceeded` denial response
+- Cap: 50 tag budgets per user (bounds DO SQLite, Postgres queries, dashboard)
 
-**Design decisions:**
+**Design decisions (resolved via competitive research 2026-03-21):**
+
+*Core enforcement:*
 - Tag budgets are per-user, not global (user A's `project=foo` budget is independent of user B's)
 - A request can match multiple tag budgets; all must pass (strictest wins, same as entity budgets)
-- Tag budgets are checked alongside entity budgets, not instead of — both layers must approve
-- Period reset reuses the same mechanism as entity budgets
+- Tag budgets are checked alongside entity budgets in same `transactionSync()` — both layers must approve
+- Each matching tag budget gets the full request cost (correct semantics — a $5 request matching both project and env budgets deducts $5 from each). Dashboard must NOT sum tag budgets for a "total" to avoid double-counting (LiteLLM #21894 lesson)
+- Period reset reuses the same inline mechanism as entity budgets (no separate reset job — avoids LiteLLM #14266 race)
+
+*Untagged requests (industry consensus: no catch-all):*
+- Untagged requests skip tag budgets entirely — entity budgets (user/key) are the catch-all
+- `__untagged__` shown as a visible category in dashboards (Kubecost `__unallocated__` pattern)
+- Track "% of spend allocated" as a KPI (FinOps Foundation maturity model)
+- Optional future: let users create a budget for untagged spend (`tagKey: "*"`) — opt-in, not automatic
+
+*Default tags on API keys (merge semantics — 7/9 platforms use most-specific-wins):*
+- Request tags override key defaults for the same key; non-conflicting keys are merged (union)
+- Example: key defaults `{project: "openclaw", team: "backend"}` + request tags `{project: "other", env: "prod"}` → effective `{project: "other", team: "backend", env: "prod"}`
+- Store effective merged tags on the cost event (not raw request tags)
+- Return `X-NullSpend-Effective-Tags` response header so callers see resolved tags
+- Sources: OpenTelemetry spec (MUST override), AWS tag policies, Azure Cost Management, Stripe metadata, Portkey, CSS cascade — all use most-specific-wins
+- Future escape hatch: `locked: true` on key-level tags if admins need to prevent override
+
+*HTTP status code (keep 429 now, design for 402 later):*
+- Current: 429 + `error.code: "tag_budget_exceeded"` (consistent with existing budget enforcement)
+- Anthropic uses 402 for billing errors (separate from 429 rate limits). OpenRouter uses 402 for insufficient credits. Stripe uses 402 for payment failures. The x402 protocol and HAP IETF draft are standardizing 402 for agent budget contexts.
+- Medium-term: add API-version-gated opt-in to 402 for all budget exhaustion responses
+- Long-term: default to 402 once x402/HAP standards mature and SDKs add 402-aware handling
+
+*Analytics (hybrid approach — AWS/Kubecost pattern):*
+- Tag spend analytics: `?groupBy=tag:project` parameter on existing `GET /api/cost-events/summary` (unified endpoint, tag is just another GROUP BY dimension)
+- Tag budget CRUD: separate `/api/tag-budgets` endpoints (lifecycle management is a distinct concern)
+- Postgres indexing: GIN with `jsonb_path_ops` on `cost_events.tags` for dashboard queries. Expression B-tree indexes on common tag keys for planner accuracy (Postgres hardcodes `@>` selectivity at 0.1% regardless of actual data — expression indexes have proper statistics)
+
+**Explicitly deferred:**
+- Boolean filter expressions (And/Or/Not) on tag budgets — AWS FilterExpression pattern, valuable but not needed at launch
+- Cedar-inspired policy DSL for budget rules — design later when rule complexity justifies it
+- Macaroon-style budget delegation on API keys — SatGate/DeepMind pattern, design for agentic workflows later
+- HTTP 402 as default status — wait for x402/HAP maturity
+- ClickHouse for tag-spend analytics — wait for Postgres to show strain
 
 ### 2.5 GitHub Secret Scanning Registration
 **Effort:** External action | **Source:** [Prelaunch Audit Section 2](nullspend-prelaunch-design-audit.md)
@@ -385,7 +438,7 @@ Items evaluated and rejected based on the architecture review. See [Architecture
 
 ## Roadmap Summary
 
-Last updated: 2026-03-22
+Last updated: 2026-03-21 (tag-based budget design decisions resolved)
 
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
@@ -399,11 +452,11 @@ Last updated: 2026-03-22
 | **P1** | Aborted stream cost tracking gap | **Done** (2026-03-20) | ~2h | Stress testing |
 | **P2** | Budget sync: Hyperdrive caching fix | **Done** (2026-03-22) | ~15min | Deep research (2026-03-22) |
 | **P2** | Budget sync: DO write visibility fix + removeBudget reconcile fix | **Done** (2026-03-21) | ~1h | Deep research (2026-03-21) |
-| **P2** | AE metrics + proxy latency publication (merged 2.0b + 2.4) | Not started | ~1-2h | Stress testing + Architecture Review |
+| **P2** | AE metrics + proxy latency publication (merged 2.0b + 2.4) | **Done** (2026-03-21) | ~1-2h | Stress testing + Architecture Review |
 | **P2** | Claude Agent SDK adapter | **Done** (2026-03-20) | ~1 day | [Deep Research](../research/claude-agent-sdk-adapter.md) |
 | **P2** | Thin webhook event mode | Not started | ~3-4h | Architecture Review |
 | **P2** | Unit economics dashboard metrics | Not started | ~1 day | Architecture Review |
-| **P2** | Tag-based budgets | Not started | ~4-6h | Multi-entity research (2026-03-21) |
+| **P2** | Tag-based budgets (+ default tags on keys, `groupBy` analytics) | Not started | ~1-2 days | Multi-entity research (2026-03-21) |
 | **P2** | GitHub Secret Scanning registration | Not started | External | Audit Section 2 |
 | **P3** | First-class agent entities | Not started | ~1-2 days | Multi-entity research (2026-03-21) |
 | **P3** | AI SDK middleware adapter | Not started | ~2-3 days | Architecture Review |

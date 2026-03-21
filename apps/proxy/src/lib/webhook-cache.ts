@@ -23,6 +23,7 @@ export interface WebhookEndpointWithSecret extends CachedWebhookEndpoint {
   previousSigningSecret: string | null;
   secretRotatedAt: string | null;
   apiVersion: string;
+  payloadMode: "full" | "thin";
 }
 
 /**
@@ -162,8 +163,9 @@ async function queryActiveEndpoints(
     });
     await client.connect();
 
+    // payload_mode added in migration 0030 — rollback requires code revert first
     const result = await client.query(
-      `SELECT id, url, signing_secret, previous_signing_secret, secret_rotated_at, event_types, api_version
+      `SELECT id, url, signing_secret, previous_signing_secret, secret_rotated_at, event_types, api_version, payload_mode
        FROM webhook_endpoints
        WHERE user_id = $1 AND enabled = true`,
       [userId],
@@ -177,6 +179,7 @@ async function queryActiveEndpoints(
       secretRotatedAt: row.secret_rotated_at ? (row.secret_rotated_at as Date).toISOString() : null,
       eventTypes: (row.event_types as string[]) ?? [],
       apiVersion: (row.api_version as string) ?? "2026-04-01",
+      payloadMode: ((row.payload_mode as string) ?? "full") as "full" | "thin",
     }));
   } finally {
     if (client) {

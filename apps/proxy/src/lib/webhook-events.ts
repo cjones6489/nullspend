@@ -26,27 +26,50 @@ export interface WebhookEvent {
   data: { object: Record<string, unknown> };
 }
 
+export interface ThinWebhookEvent {
+  id: string;
+  type: WebhookEventType;
+  api_version: string;
+  created_at: number;
+  related_object: { id: string; type: string; url: string };
+}
+
+export type AnyWebhookEvent = WebhookEvent | ThinWebhookEvent;
+
+/**
+ * Webhook payload input. Aligned with Omit<NewCostEventRow, "id" | "createdAt">
+ * (the cost calculator return type). Fields with Drizzle defaults or nullable
+ * columns are optional to match the insert type callers spread.
+ */
 interface CostEventData {
+  // Required (notNull, no default)
   requestId: string;
-  createdAt?: string;
   provider: string;
   model: string;
   inputTokens: number;
   outputTokens: number;
-  cachedInputTokens: number;
   costMicrodollars: number;
-  durationMs: number | null;
-  apiKeyId: string | null;
-  eventType: string;
+  // Nullable (notNull: false, no default) — optional in insert type
+  durationMs?: number | null;
+  apiKeyId?: string | null;
+  userId?: string | null;
+  actionId?: string | null;
   toolName?: string | null;
   toolServer?: string | null;
-  upstreamDurationMs?: number;
+  toolCallsRequested?: { name: string; id: string }[] | null;
+  upstreamDurationMs?: number | null;
   sessionId?: string | null;
   traceId?: string | null;
-  toolCallsRequested?: { name: string; id: string }[] | null;
+  costBreakdown?: { input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null;
+  // Has default (optional in insert type)
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  eventType?: string;
   toolDefinitionTokens?: number;
   source?: string;
   tags?: Record<string, string>;
+  // Extra field added by callers (not in DB schema)
+  createdAt?: string;
 }
 
 export function buildCostEventPayload(
@@ -61,12 +84,12 @@ export function buildCostEventPayload(
     data: {
       object: {
         request_id: costEvent.requestId,
-        event_type: costEvent.eventType,
+        event_type: costEvent.eventType ?? "llm",
         provider: costEvent.provider,
         model: costEvent.model,
         input_tokens: costEvent.inputTokens,
         output_tokens: costEvent.outputTokens,
-        cached_input_tokens: costEvent.cachedInputTokens,
+        cached_input_tokens: costEvent.cachedInputTokens ?? 0,
         cost_microdollars: costEvent.costMicrodollars,
         duration_ms: costEvent.durationMs,
         upstream_duration_ms: costEvent.upstreamDurationMs ?? null,
@@ -331,6 +354,24 @@ export function buildTestPingPayload(
       object: {
         message: "Test webhook event",
       },
+    },
+  };
+}
+
+export function buildThinCostEventPayload(
+  requestId: string,
+  provider: string,
+  apiVersion: string = CURRENT_API_VERSION,
+): ThinWebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "cost_event.created",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    related_object: {
+      id: requestId,
+      type: "cost_event",
+      url: `/api/cost-events?requestId=${encodeURIComponent(requestId)}&provider=${encodeURIComponent(provider)}`,
     },
   };
 }

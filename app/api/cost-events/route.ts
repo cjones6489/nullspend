@@ -14,8 +14,8 @@ import {
   listCostEventsResponseSchema,
 } from "@/lib/validations/cost-events";
 import {
-  buildCostEventWebhookPayload,
-  dispatchWebhookEvent,
+  dispatchCostEventToEndpoints,
+  fetchWebhookEndpoints,
 } from "@/lib/webhooks/dispatch";
 
 const log = getLogger("cost-events");
@@ -35,6 +35,8 @@ export const GET = withRequestContext(async (request: Request) => {
   const query = listCostEventsQuerySchema.parse({
     limit: url.searchParams.get("limit") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
+    // Unique index is (requestId, provider) — include both for unambiguous results
+    requestId: url.searchParams.get("requestId") || undefined,
     apiKeyId: url.searchParams.get("apiKeyId") || undefined,
     model: url.searchParams.get("model") ?? undefined,
     provider: url.searchParams.get("provider") ?? undefined,
@@ -65,7 +67,7 @@ export const POST = withRequestContext(async (request: Request) => {
 
     // Fire-and-forget webhook dispatch
     if (!result.deduplicated) {
-      const whEvent = buildCostEventWebhookPayload({
+      const costEventData = {
         requestId: idempotencyHeader ?? `sdk_${result.id}`,
         provider: input.provider,
         model: input.model,
@@ -82,8 +84,11 @@ export const POST = withRequestContext(async (request: Request) => {
         apiKeyId: authResult.keyId,
         tags: input.tags,
         source: "api",
-      });
-      dispatchWebhookEvent(authResult.userId, whEvent).catch((err) => {
+      };
+      (async () => {
+        const endpoints = await fetchWebhookEndpoints(authResult.userId);
+        await dispatchCostEventToEndpoints(endpoints, costEventData);
+      })().catch((err) => {
         log.error({ err }, "Webhook dispatch failed for cost event");
       });
     }

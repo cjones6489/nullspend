@@ -18,6 +18,8 @@ export const WEBHOOK_EVENT_TYPES = [
   "test.ping",
 ] as const;
 
+export const PAYLOAD_MODES = ["full", "thin"] as const;
+
 export const MAX_WEBHOOK_ENDPOINTS_PER_USER = 10;
 
 function isValidWebhookUrl(raw: string): boolean {
@@ -58,6 +60,7 @@ export const createWebhookInputSchema = z.object({
   }),
   description: z.string().trim().max(200).optional(),
   eventTypes: z.array(z.enum(WEBHOOK_EVENT_TYPES)).default([]),
+  payloadMode: z.enum(PAYLOAD_MODES).default("full"),
 });
 
 export type CreateWebhookInput = z.infer<typeof createWebhookInputSchema>;
@@ -69,6 +72,7 @@ export const updateWebhookInputSchema = z.object({
   description: z.string().trim().max(200).nullable().optional(),
   eventTypes: z.array(z.enum(WEBHOOK_EVENT_TYPES)).optional(),
   enabled: z.boolean().optional(),
+  payloadMode: z.enum(PAYLOAD_MODES).optional(),
 });
 
 export type UpdateWebhookInput = z.infer<typeof updateWebhookInputSchema>;
@@ -80,6 +84,7 @@ export const webhookRecordSchema = z.object({
   eventTypes: z.array(z.string()),
   enabled: z.boolean(),
   apiVersion: z.string(),
+  payloadMode: z.enum(PAYLOAD_MODES),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -180,6 +180,57 @@ describe("getWebhookEndpointsWithSecrets", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
+  it("maps payload_mode from DB row to payloadMode", async () => {
+    mockDbClient([
+      {
+        id: "ep-1",
+        url: "https://hooks.example.com/1",
+        signing_secret: "whsec_secret1",
+        previous_signing_secret: null,
+        secret_rotated_at: null,
+        event_types: [],
+        api_version: "2026-04-01",
+        payload_mode: "thin",
+      },
+    ]);
+
+    const result = await getWebhookEndpointsWithSecrets("postgresql://test", "user-1");
+
+    expect(result).toHaveLength(1);
+    expect(result[0].payloadMode).toBe("thin");
+  });
+
+  it("falls back to 'full' when payload_mode is null/missing", async () => {
+    mockDbClient([
+      {
+        id: "ep-1",
+        url: "https://hooks.example.com/1",
+        signing_secret: "whsec_secret1",
+        previous_signing_secret: null,
+        secret_rotated_at: null,
+        event_types: [],
+        api_version: "2026-04-01",
+        payload_mode: null,
+      },
+      {
+        id: "ep-2",
+        url: "https://hooks.example.com/2",
+        signing_secret: "whsec_secret2",
+        previous_signing_secret: null,
+        secret_rotated_at: null,
+        event_types: [],
+        api_version: "2026-04-01",
+        // payload_mode intentionally omitted
+      },
+    ]);
+
+    const result = await getWebhookEndpointsWithSecrets("postgresql://test", "user-1");
+
+    expect(result).toHaveLength(2);
+    expect(result[0].payloadMode).toBe("full");
+    expect(result[1].payloadMode).toBe("full");
+  });
+
   it("returns endpoints with signing secrets from DB", async () => {
     mockDbClient();
 

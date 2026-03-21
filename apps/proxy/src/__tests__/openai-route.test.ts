@@ -999,6 +999,81 @@ describe("handleChatCompletions", () => {
       expect(ep2Arg.id).toBe("ep-2");
       expect(event2Arg.api_version).toBe("2099-01-01");
     });
+
+    it("dispatches ThinWebhookEvent (related_object, no data) for thin endpoint on non-streaming response", async () => {
+      const mockResponse = {
+        id: "chatcmpl-thin",
+        model: "gpt-4o-mini-2024-07-18",
+        choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(mockResponse), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "x-request-id": "req-thin-test",
+          },
+        }),
+      );
+
+      // Thin endpoint
+      const thinEndpoint = {
+        id: "ep-thin",
+        url: "https://hooks.example.com/thin",
+        signingSecret: "sec-thin",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+        payloadMode: "thin" as const,
+      };
+
+      mockGetWebhookEndpoints.mockResolvedValue([
+        { id: "ep-thin", url: "https://hooks.example.com/thin", eventTypes: [] },
+      ]);
+      mockGetWebhookEndpointsWithSecrets.mockResolvedValue([thinEndpoint]);
+
+      const dispatchSpy = vi.fn().mockResolvedValue(undefined);
+
+      const body = {
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "hi" }],
+        stream: false,
+      };
+
+      const res = await handleChatCompletions(
+        makeRequest(body),
+        makeEnv(),
+        makeCtx(body, {
+          auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+          redis: {} as any,
+          webhookDispatcher: { dispatch: dispatchSpy },
+        }),
+      );
+
+      expect(res.status).toBe(200);
+      await res.text();
+
+      // Allow the waitUntil microtask to complete
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(dispatchSpy).toHaveBeenCalledTimes(1);
+
+      const [epArg, eventArg] = dispatchSpy.mock.calls[0];
+      expect(epArg.id).toBe("ep-thin");
+
+      // ThinWebhookEvent shape: has related_object, no data
+      expect(eventArg.type).toBe("cost_event.created");
+      expect(eventArg).toHaveProperty("related_object");
+      expect(eventArg.related_object.id).toBe("req-thin-test");
+      expect(eventArg.related_object.type).toBe("cost_event");
+      expect(eventArg.related_object.url).toContain("requestId=req-thin-test");
+      expect(eventArg.related_object.url).toContain("provider=openai");
+      expect(eventArg).not.toHaveProperty("data");
+      expect(eventArg.api_version).toBe("2026-04-01");
+    });
   });
 
   describe("latency timing headers", () => {

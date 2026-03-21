@@ -28,6 +28,7 @@ export async function PATCH(
     if (input.description !== undefined) updates.description = input.description;
     if (input.eventTypes !== undefined) updates.eventTypes = input.eventTypes;
     if (input.enabled !== undefined) updates.enabled = input.enabled;
+    if (input.payloadMode !== undefined) updates.payloadMode = input.payloadMode;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
@@ -54,6 +55,7 @@ export async function PATCH(
         eventTypes: webhookEndpoints.eventTypes,
         enabled: webhookEndpoints.enabled,
         apiVersion: webhookEndpoints.apiVersion,
+        payloadMode: webhookEndpoints.payloadMode,
         createdAt: webhookEndpoints.createdAt,
         updatedAt: webhookEndpoints.updatedAt,
       });

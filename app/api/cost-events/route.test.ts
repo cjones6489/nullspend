@@ -4,7 +4,7 @@ import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { insertCostEvent } from "@/lib/cost-events/ingest";
 import { listCostEvents } from "@/lib/cost-events/list-cost-events";
 import { withIdempotency } from "@/lib/resilience/idempotency";
-import { buildCostEventWebhookPayload, dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { dispatchCostEventToEndpoints, fetchWebhookEndpoints } from "@/lib/webhooks/dispatch";
 import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/with-api-key-auth", () => ({
@@ -36,13 +36,10 @@ vi.mock("@/lib/resilience/idempotency", () => ({
 }));
 
 vi.mock("@/lib/webhooks/dispatch", () => ({
-  buildCostEventWebhookPayload: vi.fn(() => ({
-    id: "evt_test",
-    type: "cost_event.created",
-    created_at: "2026-03-18T00:00:00Z",
-    data: {},
-  })),
-  dispatchWebhookEvent: vi.fn(() => Promise.resolve()),
+  fetchWebhookEndpoints: vi.fn(() => Promise.resolve([
+    { id: "ep-1", url: "https://example.com/hook", signingSecret: "sec", eventTypes: [] },
+  ])),
+  dispatchCostEventToEndpoints: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/lib/observability", () => ({
@@ -52,8 +49,8 @@ vi.mock("@/lib/observability", () => ({
 
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedInsertCostEvent = vi.mocked(insertCostEvent);
-const mockedBuildCostEventWebhookPayload = vi.mocked(buildCostEventWebhookPayload);
-const mockedDispatchWebhookEvent = vi.mocked(dispatchWebhookEvent);
+const mockedFetchWebhookEndpoints = vi.mocked(fetchWebhookEndpoints);
+const mockedDispatchCostEventToEndpoints = vi.mocked(dispatchCostEventToEndpoints);
 
 const VALID_EVENT = {
   provider: "openai",
@@ -166,12 +163,10 @@ describe("POST /api/cost-events", () => {
 
     // Allow fire-and-forget promise to resolve
     await new Promise((r) => setTimeout(r, 10));
-    expect(mockedBuildCostEventWebhookPayload).toHaveBeenCalledWith(
+    expect(mockedFetchWebhookEndpoints).toHaveBeenCalledWith("user-1");
+    expect(mockedDispatchCostEventToEndpoints).toHaveBeenCalledWith(
+      expect.any(Array),
       expect.objectContaining({ source: "api" }),
-    );
-    expect(mockedDispatchWebhookEvent).toHaveBeenCalledWith(
-      "user-1",
-      expect.objectContaining({ type: "cost_event.created" }),
     );
   });
 
@@ -189,7 +184,7 @@ describe("POST /api/cost-events", () => {
 
     await POST(makeRequest(VALID_EVENT));
     await new Promise((r) => setTimeout(r, 10));
-    expect(mockedDispatchWebhookEvent).not.toHaveBeenCalled();
+    expect(mockedDispatchCostEventToEndpoints).not.toHaveBeenCalled();
   });
 
   it("wraps handler with idempotency middleware", async () => {
@@ -244,5 +239,21 @@ describe("GET /api/cost-events", () => {
     );
     const callArgs = mockedListCostEvents.mock.calls[0][0];
     expect(callArgs.tags).toBeUndefined();
+  });
+
+  it("filters by requestId when provided", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request(
+      "http://localhost:3000/api/cost-events?requestId=req-123",
+    );
+    await GET(request);
+
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        requestId: "req-123",
+      }),
+    );
   });
 });

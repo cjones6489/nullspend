@@ -13,6 +13,7 @@ vi.mock("@/lib/db/client", () => ({
 
 import {
   buildCostEventWebhookPayload,
+  buildThinCostEventPayload,
   buildActionCreatedPayload,
   buildActionApprovedPayload,
   buildActionRejectedPayload,
@@ -20,7 +21,10 @@ import {
   buildTestPingPayload,
   buildBudgetResetPayload,
   dispatchToEndpoints,
+  dispatchCostEventToEndpoints,
   type WebhookEvent,
+  type ThinWebhookEvent,
+  type AnyWebhookEvent,
 } from "./dispatch";
 
 afterEach(() => {
@@ -370,8 +374,8 @@ describe("dispatchToEndpoints", () => {
 
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
-        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01", payloadMode: "full" as const },
+        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01", payloadMode: "full" as const },
       ],
       mockEvent,
     );
@@ -386,8 +390,8 @@ describe("dispatchToEndpoints", () => {
 
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: ["budget.exceeded"], apiVersion: "2026-04-01" },
-        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" }, // all events
+        { id: "ep-1", url: "https://a.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: ["budget.exceeded"], apiVersion: "2026-04-01", payloadMode: "full" as const },
+        { id: "ep-2", url: "https://b.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01", payloadMode: "full" as const }, // all events
       ],
       mockEvent,
     );
@@ -400,7 +404,7 @@ describe("dispatchToEndpoints", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
 
     await dispatchToEndpoints(
-      [{ id: "ep-1", url: "https://a.com/hook", signingSecret: "secret", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" }],
+      [{ id: "ep-1", url: "https://a.com/hook", signingSecret: "secret", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01", payloadMode: "full" as const }],
       mockEvent,
     );
 
@@ -418,8 +422,8 @@ describe("dispatchToEndpoints", () => {
     // Should not throw
     await dispatchToEndpoints(
       [
-        { id: "ep-1", url: "https://down.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
-        { id: "ep-2", url: "https://up.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-1", url: "https://down.com/hook", signingSecret: "s1", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01", payloadMode: "full" as const },
+        { id: "ep-2", url: "https://up.com/hook", signingSecret: "s2", previousSigningSecret: null, secretRotatedAt: null, eventTypes: [], apiVersion: "2026-04-01", payloadMode: "full" as const },
       ],
       mockEvent,
     );
@@ -440,6 +444,7 @@ describe("dispatchToEndpoints", () => {
         secretRotatedAt: new Date(), // just rotated
         eventTypes: [],
         apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
       }],
       mockEvent,
     );
@@ -461,6 +466,7 @@ describe("dispatchToEndpoints", () => {
         secretRotatedAt: null,
         eventTypes: [],
         apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
       }],
       mockEvent,
     );
@@ -483,6 +489,7 @@ describe("dispatchToEndpoints", () => {
         secretRotatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // 25 hours ago
         eventTypes: [],
         apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
       }],
       mockEvent,
     );
@@ -514,6 +521,7 @@ describe("dispatchToEndpoints", () => {
         secretRotatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // 25h ago
         eventTypes: [],
         apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
       }],
       mockEvent,
     );
@@ -542,6 +550,7 @@ describe("dispatchToEndpoints", () => {
         secretRotatedAt: new Date(), // just rotated
         eventTypes: [],
         apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
       }],
       mockEvent,
     );
@@ -549,5 +558,279 @@ describe("dispatchToEndpoints", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("budget.exceeded to thin endpoint arrives as full payload", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    const budgetEvent: WebhookEvent = {
+      id: "evt_budget",
+      type: "budget.exceeded",
+      api_version: "2026-04-01",
+      created_at: 1710547200,
+      data: { object: { budget_entity_type: "user", budget_entity_id: "u-1" } },
+    };
+
+    await dispatchToEndpoints(
+      [{
+        id: "ep-thin",
+        url: "https://thin.example.com/hook",
+        signingSecret: "s1",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+        payloadMode: "thin" as const,
+      }],
+      budgetEvent,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string) as AnyWebhookEvent;
+    // dispatchToEndpoints does not transform — it sends whatever event it receives.
+    // Non-cost-events are always constructed as full WebhookEvent objects by callers,
+    // so the body must contain data.object (full format).
+    expect(body).toHaveProperty("data.object");
+    expect(body).not.toHaveProperty("related_object");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildThinCostEventPayload
+// ---------------------------------------------------------------------------
+
+describe("buildThinCostEventPayload", () => {
+  it("produces correct thin shape: has related_object, no data field", () => {
+    const result = buildThinCostEventPayload("req-123", "openai");
+
+    expect(result).toHaveProperty("related_object");
+    expect(result).not.toHaveProperty("data");
+    expect(result.related_object.id).toBe("req-123");
+    expect(result.related_object.type).toBe("cost_event");
+  });
+
+  it("type is cost_event.created", () => {
+    const result = buildThinCostEventPayload("req-1", "anthropic");
+    expect(result.type).toBe("cost_event.created");
+  });
+
+  it("related_object.url includes encoded requestId and provider", () => {
+    const result = buildThinCostEventPayload("req/special&chars", "open ai");
+    expect(result.related_object.url).toContain(encodeURIComponent("req/special&chars"));
+    expect(result.related_object.url).toContain(encodeURIComponent("open ai"));
+    expect(result.related_object.url).toMatch(/^\/api\/cost-events\?requestId=.+&provider=.+$/);
+  });
+
+  it("each call produces a unique id", () => {
+    const a = buildThinCostEventPayload("req-1", "openai");
+    const b = buildThinCostEventPayload("req-1", "openai");
+    expect(a.id).toMatch(/^evt_/);
+    expect(b.id).toMatch(/^evt_/);
+    expect(a.id).not.toBe(b.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchCostEventToEndpoints
+// ---------------------------------------------------------------------------
+
+describe("dispatchCostEventToEndpoints", () => {
+  const baseCostEvent = {
+    requestId: "req-1",
+    provider: "openai",
+    model: "gpt-4o",
+    inputTokens: 100,
+    outputTokens: 50,
+    cachedInputTokens: 10,
+    costMicrodollars: 1500,
+    durationMs: 200,
+    eventType: "llm",
+    toolName: null,
+    toolServer: null,
+    sessionId: "sess-1",
+    apiKeyId: "key-1",
+  };
+
+  it("thin endpoint gets thin payload", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchCostEventToEndpoints(
+      [{
+        id: "ep-thin",
+        url: "https://thin.example.com/hook",
+        signingSecret: "s1",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+        payloadMode: "thin" as const,
+      }],
+      baseCostEvent,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string) as AnyWebhookEvent;
+    expect(body).toHaveProperty("related_object");
+    expect(body).not.toHaveProperty("data");
+    expect((body as ThinWebhookEvent).related_object.id).toBe("req-1");
+    expect(body.type).toBe("cost_event.created");
+  });
+
+  it("full endpoint gets full payload", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchCostEventToEndpoints(
+      [{
+        id: "ep-full",
+        url: "https://full.example.com/hook",
+        signingSecret: "s1",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
+      }],
+      baseCostEvent,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string) as AnyWebhookEvent;
+    expect(body).toHaveProperty("data.object");
+    expect(body).not.toHaveProperty("related_object");
+    expect((body as WebhookEvent).data.object.request_id).toBe("req-1");
+    expect(body.type).toBe("cost_event.created");
+  });
+
+  it("mixed endpoints: thin and full get different payload shapes", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchCostEventToEndpoints(
+      [
+        {
+          id: "ep-thin",
+          url: "https://thin.example.com/hook",
+          signingSecret: "s1",
+          previousSigningSecret: null,
+          secretRotatedAt: null,
+          eventTypes: [],
+          apiVersion: "2026-04-01",
+          payloadMode: "thin" as const,
+        },
+        {
+          id: "ep-full",
+          url: "https://full.example.com/hook",
+          signingSecret: "s2",
+          previousSigningSecret: null,
+          secretRotatedAt: null,
+          eventTypes: [],
+          apiVersion: "2026-04-01",
+          payloadMode: "full" as const,
+        },
+      ],
+      baseCostEvent,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const thinBody = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string) as AnyWebhookEvent;
+    expect(thinBody).toHaveProperty("related_object");
+    expect(thinBody).not.toHaveProperty("data");
+
+    const fullBody = JSON.parse(fetchSpy.mock.calls[1][1]!.body as string) as AnyWebhookEvent;
+    expect(fullBody).toHaveProperty("data.object");
+    expect(fullBody).not.toHaveProperty("related_object");
+  });
+
+  it("payloadMode undefined falls back to full", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchCostEventToEndpoints(
+      [{
+        id: "ep-default",
+        url: "https://default.example.com/hook",
+        signingSecret: "s1",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+        payloadMode: undefined as any,
+      }],
+      baseCostEvent,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string) as AnyWebhookEvent;
+    expect(body).toHaveProperty("data.object");
+    expect(body).not.toHaveProperty("related_object");
+  });
+
+  it("event type filtering: endpoint subscribed to budget.exceeded is skipped", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchCostEventToEndpoints(
+      [{
+        id: "ep-budget-only",
+        url: "https://budget.example.com/hook",
+        signingSecret: "s1",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: ["budget.exceeded"],
+        apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
+      }],
+      baseCostEvent,
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("empty eventTypes matches all — dispatch happens", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+
+    await dispatchCostEventToEndpoints(
+      [{
+        id: "ep-all",
+        url: "https://all.example.com/hook",
+        signingSecret: "s1",
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
+      }],
+      baseCostEvent,
+    );
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("lazy expiry fires for expired rotation", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok"));
+    mockSet.mockClear();
+    mockWhere.mockClear();
+
+    await dispatchCostEventToEndpoints(
+      [{
+        id: "ep-expired-cost",
+        url: "https://expired.example.com/hook",
+        signingSecret: "current",
+        previousSigningSecret: "old",
+        secretRotatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000), // 25h ago
+        eventTypes: [],
+        apiVersion: "2026-04-01",
+        payloadMode: "full" as const,
+      }],
+      baseCostEvent,
+    );
+
+    // Give fire-and-forget microtask a chance to run
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        previousSigningSecret: null,
+        secretRotatedAt: null,
+      }),
+    );
   });
 });

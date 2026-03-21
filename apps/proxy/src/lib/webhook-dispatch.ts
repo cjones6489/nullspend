@@ -1,7 +1,7 @@
 import { Client as QStashClient } from "@upstash/qstash";
 import { dualSignWebhookPayload, SECRET_ROTATION_WINDOW_SECONDS } from "./webhook-signer.js";
 import type { WebhookEndpointWithSecret } from "./webhook-cache.js";
-import type { WebhookEvent } from "./webhook-events.js";
+import type { AnyWebhookEvent } from "./webhook-events.js";
 
 function isWithinRotationWindow(rotatedAt: string | null): boolean {
   if (!rotatedAt) return false;
@@ -10,7 +10,7 @@ function isWithinRotationWindow(rotatedAt: string | null): boolean {
 }
 
 export interface WebhookDispatcher {
-  dispatch(endpoint: WebhookEndpointWithSecret, event: WebhookEvent): Promise<void>;
+  dispatch(endpoint: WebhookEndpointWithSecret, event: AnyWebhookEvent): Promise<void>;
 }
 
 /**
@@ -27,7 +27,7 @@ export function createWebhookDispatcher(
   return {
     async dispatch(
       endpoint: WebhookEndpointWithSecret,
-      event: WebhookEvent,
+      event: AnyWebhookEvent,
     ): Promise<void> {
       // Event type filter: empty array = all events
       if (
@@ -68,7 +68,7 @@ export function createWebhookDispatcher(
 export async function dispatchToEndpoints(
   dispatcher: WebhookDispatcher,
   endpoints: WebhookEndpointWithSecret[],
-  event: WebhookEvent,
+  event: AnyWebhookEvent,
 ): Promise<void> {
   for (const endpoint of endpoints) {
     try {

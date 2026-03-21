@@ -29,6 +29,7 @@ function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): Webho
     secretRotatedAt: null,
     eventTypes: [],
     apiVersion: "2026-04-01",
+    payloadMode: "full" as const,
     ...overrides,
   };
 }

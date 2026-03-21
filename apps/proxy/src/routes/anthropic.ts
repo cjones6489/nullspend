@@ -22,7 +22,7 @@ import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { writeLatencyDataPoint } from "../lib/write-metric.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildThinCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -447,8 +447,11 @@ function handleStreaming(
                 source: "proxy" as const,
               };
               for (const ep of endpoints) {
-                const whEvent = buildCostEventPayload(webhookData, ep.apiVersion);
-                await ctx.webhookDispatcher.dispatch(ep, whEvent);
+                if ((ep.payloadMode ?? "full") === "thin") {
+                  await ctx.webhookDispatcher.dispatch(ep, buildThinCostEventPayload(webhookData.requestId, webhookData.provider, ep.apiVersion));
+                } else {
+                  await ctx.webhookDispatcher.dispatch(ep, buildCostEventPayload(webhookData, ep.apiVersion));
+                }
               }
 
               if (budgetEntities.length > 0) {
@@ -575,8 +578,11 @@ async function handleNonStreaming(
               const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
               const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString(), source: "proxy" as const };
               for (const ep of endpoints) {
-                const whEvent = buildCostEventPayload(webhookData, ep.apiVersion);
-                await ctx.webhookDispatcher!.dispatch(ep, whEvent);
+                if ((ep.payloadMode ?? "full") === "thin") {
+                  await ctx.webhookDispatcher!.dispatch(ep, buildThinCostEventPayload(webhookData.requestId, webhookData.provider, ep.apiVersion));
+                } else {
+                  await ctx.webhookDispatcher!.dispatch(ep, buildCostEventPayload(webhookData, ep.apiVersion));
+                }
               }
 
               if (budgetEntities.length > 0) {

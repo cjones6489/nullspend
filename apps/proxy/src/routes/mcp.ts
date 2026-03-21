@@ -5,7 +5,7 @@ import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.j
 import { logCostEventsBatchQueued, getCostEventQueue } from "../lib/cost-event-queue.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildThinCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload } from "../lib/webhook-events.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -332,11 +332,11 @@ export async function handleMcpEvents(
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               for (const row of costEventRows) {
                 for (const ep of endpoints) {
-                  const whEvent = buildCostEventPayload({
-                    ...row,
-                    createdAt: new Date().toISOString(),
-                  }, ep.apiVersion);
-                  await ctx.webhookDispatcher!.dispatch(ep, whEvent);
+                  if ((ep.payloadMode ?? "full") === "thin") {
+                    await ctx.webhookDispatcher!.dispatch(ep, buildThinCostEventPayload(row.requestId, row.provider, ep.apiVersion));
+                  } else {
+                    await ctx.webhookDispatcher!.dispatch(ep, buildCostEventPayload({ ...row, createdAt: new Date().toISOString() }, ep.apiVersion));
+                  }
                 }
               }
 

@@ -279,6 +279,7 @@ function CreateEndpointDialog({
         url,
         description: description || undefined,
         eventTypes: selectedEventTypes as typeof WEBHOOK_EVENT_TYPES[number][],
+        payloadMode: "full" as const,
       },
       {
         onSuccess: (data) => {

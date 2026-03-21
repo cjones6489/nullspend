@@ -51,6 +51,7 @@ describe("PATCH /api/webhooks/:id", () => {
         eventTypes: [],
         enabled: true,
         apiVersion: "2026-04-01",
+        payloadMode: "full",
         createdAt: new Date("2026-01-01"),
         updatedAt: new Date("2026-01-02"),
       },

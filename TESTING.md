@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~2,800+ tests across ~160 files organized into four tiers.
+NullSpend has ~2,900+ tests across ~160 files organized into four tiers.
 
 ## Quick Reference
 
@@ -42,7 +42,7 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-68 files, ~1,149 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+68 files, ~1,161 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
 
 ### Naming Convention
 
@@ -141,11 +141,11 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 **Webhooks**
 | File | What it tests |
 |---|---|
-| `webhook-events.test.ts` | Payload builders: cost_event, budget.exceeded, threshold, reset, request.blocked, test.ping, isCritical override |
+| `webhook-events.test.ts` | Payload builders: cost_event, budget.exceeded, threshold, reset, request.blocked, test.ping, isCritical override, `buildThinCostEventPayload` shape/URL/uniqueness |
 | `webhook-thresholds.test.ts` | `detectThresholdCrossings` — default thresholds, custom thresholds, empty/single, mixed entities, backward compat |
-| `webhook-dispatch.test.ts` | Endpoint dispatch with HMAC signing, retry, error handling |
+| `webhook-dispatch.test.ts` | Endpoint dispatch with HMAC signing, retry, error handling, thin event dispatch + headers |
 | `webhook-signer.test.ts` | HMAC-SHA256 signature generation and verification |
-| `webhook-cache.test.ts` | Redis-cached endpoint lookup, invalidation |
+| `webhook-cache.test.ts` | Redis-cached endpoint lookup, invalidation, `payloadMode` DB mapping + null fallback |
 | `webhook-expiry.test.ts` | Rotated secret expiry logic |
 
 **Tags & Attribution**
@@ -232,7 +232,7 @@ Intensity levels control concurrency (light: 10-15, medium: 25-40, heavy: 50-80)
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. 846 tests across 77 files.
+Co-located with source files. 890 tests across 80 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback
@@ -248,15 +248,19 @@ Co-located with source files. 846 tests across 77 files.
 
 **Validations** (`lib/validations/`)
 - `actions.test.ts`, `api-keys.test.ts`, `budgets.test.ts`, `slack.test.ts` — Zod schemas
+- `cost-events.test.ts` — `listCostEventsQuerySchema` requestId filter validation
 - `cost-event-summary.test.ts` — Analytics query validation
+- `webhooks.test.ts` — `payloadMode` in create/update/record schemas
 - `cross-package.test.ts` — SDK/DB enum sync verification
 
 **API Routes** (`app/api/`)
-- One test file per route: actions CRUD, keys CRUD, budgets, cost-events, slack config/callback/test
+- One test file per route: actions CRUD, keys CRUD, budgets, cost-events, cost-events/{id}, slack config/callback/test
+- `cost-events/[id]/route.test.ts` — Fetch-back endpoint: owned event, missing, other user's, auth, invalid ID, prefixed ID
 - `velocity-status/route.test.ts` — Live velocity state polling: auth, proxy fetch, graceful degradation
 
 **Other**
 - `lib/queries/actions.test.ts`, `lib/utils/format.test.ts`, `lib/slack/*.test.ts`
+- `lib/webhooks/dispatch.test.ts` — Cost event webhook builders (proxy/dashboard shape parity), `dispatchToEndpoints` signing/filtering/expiry, `buildThinCostEventPayload`, `dispatchCostEventToEndpoints` (thin/full/mixed/undefined fallback/event filter/expiry), non-cost-event to thin endpoint
 - `components/actions/action-timeline.test.ts`
 
 ---

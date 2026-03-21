@@ -10,8 +10,7 @@ import { getLogger, withRequestContext } from "@/lib/observability";
 import { withIdempotency } from "@/lib/resilience/idempotency";
 import { readJsonBody } from "@/lib/utils/http";
 import {
-  buildCostEventWebhookPayload,
-  dispatchToEndpoints,
+  dispatchCostEventToEndpoints,
   fetchWebhookEndpoints,
 } from "@/lib/webhooks/dispatch";
 
@@ -37,7 +36,7 @@ export const POST = withRequestContext(async (request: Request) => {
         if (endpoints.length === 0) return;
 
         for (const row of result.rows) {
-          const whEvent = buildCostEventWebhookPayload({
+          await dispatchCostEventToEndpoints(endpoints, {
             requestId: row.requestId,
             provider: row.provider,
             model: row.model,
@@ -55,7 +54,6 @@ export const POST = withRequestContext(async (request: Request) => {
             tags: row.tags,
             source: row.source,
           });
-          await dispatchToEndpoints(endpoints, whEvent);
         }
       };
       dispatchAll().catch((err) => {

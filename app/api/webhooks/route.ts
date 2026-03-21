@@ -26,6 +26,7 @@ export async function GET() {
         eventTypes: webhookEndpoints.eventTypes,
         enabled: webhookEndpoints.enabled,
         apiVersion: webhookEndpoints.apiVersion,
+        payloadMode: webhookEndpoints.payloadMode,
         createdAt: webhookEndpoints.createdAt,
         updatedAt: webhookEndpoints.updatedAt,
       })
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
         description: input.description ?? null,
         signingSecret,
         eventTypes: input.eventTypes,
+        payloadMode: input.payloadMode,
       })
       .returning({
         id: webhookEndpoints.id,
@@ -85,6 +87,7 @@ export async function POST(request: Request) {
         eventTypes: webhookEndpoints.eventTypes,
         enabled: webhookEndpoints.enabled,
         apiVersion: webhookEndpoints.apiVersion,
+        payloadMode: webhookEndpoints.payloadMode,
         createdAt: webhookEndpoints.createdAt,
         updatedAt: webhookEndpoints.updatedAt,
       });

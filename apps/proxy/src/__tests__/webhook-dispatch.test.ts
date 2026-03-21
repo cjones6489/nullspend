@@ -20,7 +20,7 @@ vi.mock("../lib/webhook-signer.js", () => ({
 
 import { createWebhookDispatcher, dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import type { WebhookEndpointWithSecret } from "../lib/webhook-cache.js";
-import type { WebhookEvent } from "../lib/webhook-events.js";
+import type { WebhookEvent, ThinWebhookEvent, AnyWebhookEvent } from "../lib/webhook-events.js";
 
 function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): WebhookEndpointWithSecret {
   return {
@@ -31,6 +31,7 @@ function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): Webho
     secretRotatedAt: null,
     eventTypes: [],
     apiVersion: "2026-04-01",
+    payloadMode: "full" as const,
     ...overrides,
   };
 }
@@ -216,6 +217,72 @@ describe("dual-signing in dispatch", () => {
       expect.any(String),
       "whsec_secret",
       null, // expired, so null
+      expect.any(Number),
+    );
+  });
+});
+
+describe("thin event dispatch (AnyWebhookEvent)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPublishJSON.mockResolvedValue({ messageId: "msg_1" });
+  });
+
+  function makeThinEvent(): ThinWebhookEvent {
+    return {
+      id: "evt_thin_123",
+      type: "cost_event.created",
+      api_version: "2026-04-01",
+      created_at: 1710547200,
+      related_object: {
+        id: "req_abc",
+        type: "cost_event",
+        url: "/api/cost-events?requestId=req_abc&provider=openai",
+      },
+    };
+  }
+
+  it("serializes thin event correctly (no data field)", async () => {
+    const dispatcher = createWebhookDispatcher("qstash_token")!;
+    const endpoint = makeEndpoint();
+    const thinEvent = makeThinEvent();
+
+    await dispatcher.dispatch(endpoint, thinEvent);
+
+    expect(mockPublishJSON).toHaveBeenCalledTimes(1);
+    const call = mockPublishJSON.mock.calls[0][0];
+    expect(call.body).toEqual(thinEvent);
+    expect(call.body).not.toHaveProperty("data");
+    expect(call.body.related_object).toEqual({
+      id: "req_abc",
+      type: "cost_event",
+      url: "/api/cost-events?requestId=req_abc&provider=openai",
+    });
+  });
+
+  it("thin event gets proper headers (signature, webhook-id, timestamp)", async () => {
+    const dispatcher = createWebhookDispatcher("qstash_token")!;
+    const endpoint = makeEndpoint();
+    const thinEvent = makeThinEvent();
+
+    await dispatcher.dispatch(endpoint, thinEvent);
+
+    expect(mockPublishJSON).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-NullSpend-Signature": "t=1000,v1=abc123",
+          "X-NullSpend-Webhook-Id": "evt_thin_123",
+          "X-NullSpend-Webhook-Timestamp": expect.any(String),
+          "User-Agent": "NullSpend-Webhooks/1.0",
+        }),
+      }),
+    );
+
+    // Verify signing was called with the serialized thin payload
+    expect(mockDualSign).toHaveBeenCalledWith(
+      JSON.stringify(thinEvent),
+      "whsec_secret",
+      null,
       expect.any(Number),
     );
   });

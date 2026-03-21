@@ -8,6 +8,7 @@ interface ListCostEventsOptions {
   userId: string;
   limit: number;
   cursor?: { createdAt: string; id: string };
+  requestId?: string;
   apiKeyId?: string;
   model?: string;
   provider?: string;
@@ -23,6 +24,9 @@ export async function listCostEvents(options: ListCostEventsOptions) {
     isNull(apiKeys.revokedAt),
   ];
 
+  if (options.requestId) {
+    conditions.push(eq(costEvents.requestId, options.requestId));
+  }
   if (options.apiKeyId) {
     conditions.push(eq(costEvents.apiKeyId, options.apiKeyId));
   }

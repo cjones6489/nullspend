@@ -38,6 +38,7 @@ export const listCostEventsQuerySchema = z.object({
     .transform((s) => JSON.parse(s))
     .pipe(cursorInputSchema)
     .optional(),
+  requestId: z.string().min(1).max(200).optional(),
   apiKeyId: nsIdInput("key").optional(),
   model: z.string().optional(),
   provider: z.string().optional(),

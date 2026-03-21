@@ -6,6 +6,7 @@ import {
   buildBudgetResetPayload,
   buildRequestBlockedPayload,
   buildTestPingPayload,
+  buildThinCostEventPayload,
   CURRENT_API_VERSION,
 } from "../lib/webhook-events.js";
 
@@ -339,6 +340,64 @@ describe("buildTestPingPayload", () => {
   it("accepts custom apiVersion", () => {
     const event = buildTestPingPayload("2027-01-01");
     expect(event.api_version).toBe("2027-01-01");
+  });
+});
+
+describe("buildThinCostEventPayload", () => {
+  it("returns correct shape with related_object (id, type, url)", () => {
+    const event = buildThinCostEventPayload("req_123", "openai");
+
+    expect(event.related_object).toBeDefined();
+    expect(event.related_object.id).toBe("req_123");
+    expect(event.related_object.type).toBe("cost_event");
+    expect(event.related_object.url).toBe(
+      "/api/cost-events?requestId=req_123&provider=openai",
+    );
+  });
+
+  it("has no data field present", () => {
+    const event = buildThinCostEventPayload("req_123", "openai");
+    expect(event).not.toHaveProperty("data");
+  });
+
+  it("type is 'cost_event.created'", () => {
+    const event = buildThinCostEventPayload("req_123", "openai");
+    expect(event.type).toBe("cost_event.created");
+  });
+
+  it("related_object.url is correctly encoded", () => {
+    const event = buildThinCostEventPayload("req_123", "openai");
+    expect(event.related_object.url).toBe(
+      "/api/cost-events?requestId=req_123&provider=openai",
+    );
+    expect(event.api_version).toBe(CURRENT_API_VERSION);
+    expect(typeof event.created_at).toBe("number");
+  });
+
+  it("each call produces a unique id", () => {
+    const event1 = buildThinCostEventPayload("req_1", "openai");
+    const event2 = buildThinCostEventPayload("req_1", "openai");
+    expect(event1.id).toMatch(/^evt_/);
+    expect(event2.id).toMatch(/^evt_/);
+    expect(event1.id).not.toBe(event2.id);
+  });
+
+  it("special characters in requestId/provider are URL-encoded", () => {
+    const event = buildThinCostEventPayload("req/foo bar", "open&ai");
+    expect(event.related_object.url).toBe(
+      "/api/cost-events?requestId=req%2Ffoo%20bar&provider=open%26ai",
+    );
+  });
+
+  it("related_object.url parses as a valid URL with correct query params", () => {
+    const event = buildThinCostEventPayload("req_abc123", "anthropic");
+    const parsed = new URL(event.related_object.url, "https://placeholder.invalid");
+
+    expect(parsed.pathname).toBe("/api/cost-events");
+    expect(parsed.searchParams.get("requestId")).toBe("req_abc123");
+    expect(parsed.searchParams.get("provider")).toBe("anthropic");
+    // No extra query params beyond requestId and provider
+    expect([...parsed.searchParams.keys()]).toEqual(["requestId", "provider"]);
   });
 });
 

@@ -4,9 +4,8 @@ import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { insertCostEventsBatch } from "@/lib/cost-events/ingest";
 import { withIdempotency } from "@/lib/resilience/idempotency";
 import {
-  buildCostEventWebhookPayload,
+  dispatchCostEventToEndpoints,
   fetchWebhookEndpoints,
-  dispatchToEndpoints,
 } from "@/lib/webhooks/dispatch";
 import { POST } from "./route";
 
@@ -27,16 +26,10 @@ vi.mock("@/lib/resilience/idempotency", () => ({
 }));
 
 vi.mock("@/lib/webhooks/dispatch", () => ({
-  buildCostEventWebhookPayload: vi.fn(() => ({
-    id: "evt_test",
-    type: "cost_event.created",
-    created_at: "2026-03-18T00:00:00Z",
-    data: {},
-  })),
   fetchWebhookEndpoints: vi.fn(() => Promise.resolve([
     { id: "ep-1", url: "https://example.com/hook", signingSecret: "sec", eventTypes: [] },
   ])),
-  dispatchToEndpoints: vi.fn(() => Promise.resolve()),
+  dispatchCostEventToEndpoints: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/lib/observability", () => ({
@@ -46,9 +39,8 @@ vi.mock("@/lib/observability", () => ({
 
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedInsertCostEventsBatch = vi.mocked(insertCostEventsBatch);
-const mockedBuildCostEventWebhookPayload = vi.mocked(buildCostEventWebhookPayload);
 const mockedFetchWebhookEndpoints = vi.mocked(fetchWebhookEndpoints);
-const mockedDispatchToEndpoints = vi.mocked(dispatchToEndpoints);
+const mockedDispatchCostEventToEndpoints = vi.mocked(dispatchCostEventToEndpoints);
 
 function makeEvent(overrides?: Record<string, unknown>) {
   return {
@@ -180,13 +172,12 @@ describe("POST /api/cost-events/batch", () => {
     expect(mockedFetchWebhookEndpoints).toHaveBeenCalledWith("user-1");
 
     // Dispatch called for each actually-inserted row
-    expect(mockedDispatchToEndpoints).toHaveBeenCalledTimes(2);
+    expect(mockedDispatchCostEventToEndpoints).toHaveBeenCalledTimes(2);
 
-    // Source and traceId are forwarded to webhook builder
-    expect(mockedBuildCostEventWebhookPayload).toHaveBeenCalledTimes(2);
-    for (const call of mockedBuildCostEventWebhookPayload.mock.calls) {
-      expect(call[0]).toHaveProperty("source", "api");
-      expect(call[0]).toHaveProperty("traceId", null);
+    // Source and traceId are forwarded to dispatch
+    for (const call of mockedDispatchCostEventToEndpoints.mock.calls) {
+      expect(call[1]).toHaveProperty("source", "api");
+      expect(call[1]).toHaveProperty("traceId", null);
     }
   });
 
@@ -206,8 +197,8 @@ describe("POST /api/cost-events/batch", () => {
     await POST(makeRequest({ events }));
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(mockedBuildCostEventWebhookPayload).toHaveBeenCalledTimes(1);
-    expect(mockedBuildCostEventWebhookPayload.mock.calls[0][0]).toHaveProperty(
+    expect(mockedDispatchCostEventToEndpoints).toHaveBeenCalledTimes(1);
+    expect(mockedDispatchCostEventToEndpoints.mock.calls[0][1]).toHaveProperty(
       "traceId",
       "aabbccdd11223344aabbccdd11223344",
     );
@@ -228,7 +219,7 @@ describe("POST /api/cost-events/batch", () => {
     await POST(makeRequest({ events: [makeEvent()] }));
     await new Promise((r) => setTimeout(r, 10));
     expect(mockedFetchWebhookEndpoints).not.toHaveBeenCalled();
-    expect(mockedDispatchToEndpoints).not.toHaveBeenCalled();
+    expect(mockedDispatchCostEventToEndpoints).not.toHaveBeenCalled();
   });
 
   it("skips dispatch when no webhook endpoints configured", async () => {
@@ -248,7 +239,7 @@ describe("POST /api/cost-events/batch", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockedFetchWebhookEndpoints).toHaveBeenCalledTimes(1);
-    expect(mockedDispatchToEndpoints).not.toHaveBeenCalled();
+    expect(mockedDispatchCostEventToEndpoints).not.toHaveBeenCalled();
   });
 
   it("wraps handler with idempotency middleware", async () => {

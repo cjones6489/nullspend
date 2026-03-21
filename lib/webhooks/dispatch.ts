@@ -17,6 +17,16 @@ export interface WebhookEvent {
   data: { object: Record<string, unknown> };
 }
 
+export interface ThinWebhookEvent {
+  id: string;
+  type: string;
+  api_version: string;
+  created_at: number;
+  related_object: { id: string; type: string; url: string };
+}
+
+export type AnyWebhookEvent = WebhookEvent | ThinWebhookEvent;
+
 interface WebhookEndpoint {
   id: string;
   url: string;
@@ -25,6 +35,7 @@ interface WebhookEndpoint {
   secretRotatedAt: Date | null;
   eventTypes: string[];
   apiVersion: string;
+  payloadMode: "full" | "thin";
 }
 
 const DISPATCH_TIMEOUT_MS = 5_000;
@@ -47,6 +58,7 @@ export async function fetchWebhookEndpoints(
       secretRotatedAt: webhookEndpoints.secretRotatedAt,
       eventTypes: webhookEndpoints.eventTypes,
       apiVersion: webhookEndpoints.apiVersion,
+      payloadMode: webhookEndpoints.payloadMode,
     })
     .from(webhookEndpoints)
     .where(
@@ -68,7 +80,7 @@ function isSecretActive(ep: WebhookEndpoint): boolean {
  */
 export async function dispatchToEndpoints(
   endpoints: WebhookEndpoint[],
-  event: WebhookEvent,
+  event: AnyWebhookEvent,
 ): Promise<void> {
   if (endpoints.length === 0) return;
 
@@ -379,4 +391,121 @@ export function buildBudgetResetPayload(
       },
     },
   };
+}
+
+export function buildThinCostEventPayload(
+  requestId: string,
+  provider: string,
+  apiVersion: string = CURRENT_API_VERSION,
+): ThinWebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "cost_event.created",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    related_object: {
+      id: requestId,
+      type: "cost_event",
+      url: `/api/cost-events?requestId=${encodeURIComponent(requestId)}&provider=${encodeURIComponent(provider)}`,
+    },
+  };
+}
+
+/**
+ * Dispatch a cost_event.created webhook to pre-fetched endpoints,
+ * respecting each endpoint's payloadMode (thin vs full).
+ * Fire-and-forget: logs errors but never throws.
+ */
+export async function dispatchCostEventToEndpoints(
+  endpoints: WebhookEndpoint[],
+  costEventData: {
+    requestId: string;
+    provider: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    costMicrodollars: number;
+    durationMs: number | null;
+    eventType: string;
+    toolName?: string | null;
+    toolServer?: string | null;
+    sessionId?: string | null;
+    traceId?: string | null;
+    apiKeyId: string | null;
+    upstreamDurationMs?: number | null;
+    toolCallsRequested?: { name: string; id: string }[] | null;
+    toolDefinitionTokens?: number;
+    source?: string;
+    tags?: Record<string, string>;
+  },
+): Promise<void> {
+  if (endpoints.length === 0) return;
+
+  const payload_timestamp = Math.floor(Date.now() / 1000);
+
+  for (const ep of endpoints) {
+    // Event type filter: empty array = all events
+    if (ep.eventTypes.length > 0 && !ep.eventTypes.includes("cost_event.created")) continue;
+
+    const effectiveMode = ep.payloadMode ?? "full";
+    const event: AnyWebhookEvent = effectiveMode === "thin"
+      ? buildThinCostEventPayload(costEventData.requestId, costEventData.provider, ep.apiVersion)
+      : buildCostEventWebhookPayload(costEventData, ep.apiVersion);
+
+    if (effectiveMode === "thin") {
+      log.debug({ endpointId: ep.id, requestId: costEventData.requestId }, "Dispatching thin cost event");
+    }
+
+    const payload = JSON.stringify(event);
+
+    try {
+      const previousSecret = isSecretActive(ep) ? ep.previousSigningSecret : null;
+      const signature = dualSignPayload(payload, ep.signingSecret, previousSecret, payload_timestamp);
+
+      await fetch(ep.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-NullSpend-Signature": signature,
+          "X-NullSpend-Webhook-Id": event.id,
+          "X-NullSpend-Webhook-Timestamp": String(payload_timestamp),
+          "User-Agent": "NullSpend-Webhooks/1.0",
+        },
+        body: payload,
+        signal: AbortSignal.timeout(DISPATCH_TIMEOUT_MS),
+      });
+    } catch (err) {
+      log.error(
+        { err, endpointId: ep.id, eventType: event.type },
+        `Failed to dispatch cost_event.created to endpoint ${ep.id}`,
+      );
+    }
+  }
+
+  // Lazy expiry: clean up expired rotation secrets (fire-and-forget, never awaited)
+  const cutoff = new Date(Date.now() - SECRET_ROTATION_WINDOW_SECONDS * 1000);
+  const expiredEndpoints = endpoints.filter(
+    (ep) => ep.secretRotatedAt && ep.secretRotatedAt < cutoff,
+  );
+  if (expiredEndpoints.length > 0) {
+    const db = getDb();
+    void (async () => {
+      for (const ep of expiredEndpoints) {
+        try {
+          await db
+            .update(webhookEndpoints)
+            .set({ previousSigningSecret: null, secretRotatedAt: null })
+            .where(
+              and(
+                eq(webhookEndpoints.id, ep.id),
+                lt(webhookEndpoints.secretRotatedAt, cutoff),
+              ),
+            );
+        } catch {
+          // fire-and-forget
+        }
+      }
+    })();
+  }
 }
