@@ -1,7 +1,7 @@
 # NullSpend Priority Implementation Roadmap
 
 **Created:** 2026-03-20
-**Last updated:** 2026-03-20
+**Last updated:** 2026-03-21
 **Purpose:** Forward-looking architecture, infrastructure, and feature roadmap for NullSpend. Derived from the post-audit deep research and competitive analysis. Prioritized by impact on platform positioning as the best financial infrastructure for AI agents.
 
 **Predecessor:** [`nullspend-prelaunch-design-audit.md`](nullspend-prelaunch-design-audit.md) — completed 2026-03-19 (8/8 items shipped). Contains detailed implementation notes, design decisions, and three-pass audit findings for all completed items.
@@ -39,20 +39,18 @@ All items below are shipped, tested, and documented in [`nullspend-prelaunch-des
 
 Items that address critical gaps identified in the architecture review. Each has clear enterprise demand, competitive differentiation, or architectural improvement.
 
-### 1.1 `tags` JSONB on cost_events
-**Effort:** ~2h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive Landscape section
+### 1.1 `tags` JSONB on cost_events — ✅ Done
+**Shipped:** 2026-03-19 | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive Landscape section
 
 The #1 FinOps request universally. LiteLLM, FOCUS spec, and CloudZero all emphasize arbitrary key-value attribution as the primary mechanism for cost allocation (by project, environment, customer, feature, team, department).
 
-**What to build:**
-- Add `tags jsonb DEFAULT '{}'` column to `cost_events`
-- Accept tags via `X-NullSpend-Tags` request header (JSON object, max 10 keys, max 64 char keys, max 256 char values)
-- Store on all ingestion paths (proxy, API, MCP)
-- Enable `?tag.key=value` filtering on `GET /api/cost-events`
-- Enable `GROUP BY tag` dimension in summary endpoint
+**What was built:**
+- `tags jsonb DEFAULT '{}'` column on `cost_events`
+- Tags accepted via `X-NullSpend-Tags` request header (JSON object, max 10 keys, max 64 char keys, max 256 char values)
+- Stored on all ingestion paths (proxy, API, MCP)
+- `?tags=` JSONB containment filtering on `GET /api/cost-events`
+- `_ns_` prefix reserved for system tags (user-supplied keys starting with `_ns_` are silently dropped)
 - SDK: `client.reportCost({ ..., tags: { project: "search", env: "prod" } })`
-
-**Why now:** Highest-impact schema addition for enterprise adoption. Zero users means zero migration cost. Enables cost attribution without structural schema changes for every new dimension.
 
 ### 1.2 Loop/Runaway Detection — ✅ Done
 **Shipped:** v1.0 (2026-03-19) — sliding window cost-rate detection with circuit breaker.
@@ -65,14 +63,12 @@ Includes: sliding window counter in DO, circuit breaker with configurable cooldo
 
 Low effort, high enterprise value. Agent frameworks (AG2, LangChain) are starting to emit `traceparent` headers natively. This enables cost-per-task queries across multiple LLM calls.
 
-**What to build:**
-- Add `trace_id text` nullable column to `cost_events`
-- Extract `traceId` from `traceparent` header in proxy (32-char hex from positions 3-35)
-- Forward `traceparent` header to upstream provider
-- Add `?traceId=` filter on `GET /api/cost-events`
-- Add cost rollup: `GET /api/cost-events/summary?traceId=...`
-
-**Why now:** Already in the prelaunch audit as low-priority. Research upgraded it — every platform that supports enterprise observability requires trace correlation.
+**What was built:**
+- `trace_id text` nullable column on `cost_events` (indexed where not null)
+- `traceId` extracted from `traceparent` header or `X-NullSpend-Trace-Id` custom header, with auto-generation fallback
+- `traceparent` header forwarded to upstream provider
+- `?traceId=` filter on `GET /api/cost-events`
+- Trace breakdown in `GET /api/cost-events/summary` (top 25 traces by cost)
 
 ### 1.4 Session-Level Budget Aggregation — ✅ Done
 **Shipped:** 2026-03-20 | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 3; [Deep Research](../research/session-level-budget-aggregation.md)
@@ -98,10 +94,11 @@ Per-session spend caps enforced in the DO. When enabled on a budget entity, the 
 
 Thresholds currently hardcoded at `[50, 80, 90, 95]` in the proxy. Users cannot configure or discover them.
 
-**What to build:**
-- Add `warn_threshold_pct` + `critical_threshold_pct` columns to budgets (nullable, defaults to 80/95)
-- Expose in create/update budget API (`createBudgetInputSchema`)
-- Read in proxy's `detectThresholdCrossings()` from budget entity instead of hardcoded array
+**What was built:**
+- `threshold_percentages jsonb` column on budgets (array of integers, defaults to `[50, 80, 90, 95]`)
+- Configurable via create/update budget API and dashboard UI
+- `detectThresholdCrossings()` reads per-entity thresholds from budget entity, with default fallback
+- `parseThresholds()` validates JSON safety, malformed input, reference isolation
 
 ### 1.6 Queue-Based Cost Event Logging — ✅ Done
 **Shipped:** 2026-03-20 | **Source:** Stress testing — 0/25 cost events logged under concurrent load
@@ -156,8 +153,6 @@ The verification+retry fix (1.7) masks the issue, but `populateIfEmpty` silently
 **Effort:** ~1-2h | **Source:** Stress testing (2026-03-20) — `/health/metrics` returns all zeros
 
 The proxy writes latency data points to Analytics Engine on every request, but `/health/metrics` queries return zeros during and after stress sessions. The 5-minute query window and AE ingestion delay may mean data points aren't available for real-time monitoring. The KV cache (90s TTL) compounds the lag.
-
-Items that improve DX, expand platform capabilities, or strengthen competitive positioning.
 
 ### 2.1 Claude Agent SDK Adapter — ✅ Done
 **Shipped:** 2026-03-20 | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 4; [Deep Research](../research/claude-agent-sdk-adapter.md)
