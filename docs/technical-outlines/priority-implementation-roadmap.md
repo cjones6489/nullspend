@@ -28,7 +28,7 @@ All items below are shipped, tested, and documented in [`nullspend-prelaunch-des
 | Prefixed object IDs (`ns_{type}_{uuid}`) | 2026-03-18 | Audit Section 1 |
 | API key format (`ns_live_sk_` + 32 hex) | 2026-03-18 | Audit Section 2 |
 | Error response contract (`{ error: { code, message, details } }`) | 2026-03-18 | Audit Section 3 |
-| Webhook event taxonomy (11 types + `api_version`) | 2026-03-19 | Audit Section 4 |
+| Webhook event taxonomy (14 types + `api_version`) | 2026-03-20 | Audit Section 4 |
 | `source` column on cost_events (`proxy`/`api`/`mcp`) | 2026-03-19 | Audit Section 6 |
 | API versioning (`NullSpend-Version` header + three-tier resolution) | 2026-03-19 | Audit Section 5 |
 | Webhook secret rotation (dual-signing + 24h expiry) | 2026-03-19 | Audit Section 7 |
@@ -74,17 +74,24 @@ Low effort, high enterprise value. Agent frameworks (AG2, LangChain) are startin
 
 **Why now:** Already in the prelaunch audit as low-priority. Research upgraded it — every platform that supports enterprise observability requires trace correlation.
 
-### 1.4 Session-Level Budget Aggregation
-**Effort:** ~2-3h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 3, Frontier section 5.2b
+### 1.4 Session-Level Budget Aggregation — ✅ Done
+**Shipped:** 2026-03-20 | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 3; [Deep Research](../research/session-level-budget-aggregation.md)
 
-Current budget enforcement is per-request. An agent making 1000 cheap requests ($0.01 each) bypasses a $5 budget because no single request exceeds it.
+Per-session spend caps enforced in the DO. When enabled on a budget entity, the DO tracks cumulative spend per `sessionId` (from `X-NullSpend-Session` header) and denies requests that would push a session over its limit.
 
-**What to build:**
-- Track per-session cumulative spend in DO SQLite (new `session_spend` table: session_id, total_spend, first_seen, last_seen)
-- When `sessionId` is present in the request context, check cumulative session spend against the budget
-- Session entries auto-expire after configurable TTL (default: 1 hour of inactivity)
-
-**Why now:** NullSpend already tracks `sessionId` on cost events and MCP events. The DO has the primitives. Without session aggregation, budget enforcement has a fundamental gap.
+**What was built:**
+- `session_spend` table in DO SQLite (v4 migration): `(entity_key, session_id)` PK, `spend`, `request_count`, `last_seen`
+- `session_id` column on `reservations` table (for alarm reversal)
+- `sessionLimitMicrodollars` column on Postgres `budgets` table
+- Session check in `checkAndReserve` (before velocity, before budget check)
+- Session spend correction in `reconcile` (handles overestimate + zero-cost)
+- Session spend reversal in `alarm` (expired reservation cleanup)
+- 24h TTL session cleanup in alarm handler
+- `session.limit_exceeded` webhook event type
+- 429 `session_limit_exceeded` responses on OpenAI, Anthropic, MCP routes (no Retry-After)
+- Dashboard: session limit config in budget dialog, Clock icon indicator in table
+- Session ID length validation (256 char cap)
+- 17 DO runtime tests, 10 route/orchestrator tests, 6 validation tests, 4 E2E smoke tests
 
 ### 1.5 Configurable Budget Thresholds — ✅ Done
 **Effort:** ~1.5h | **Source:** [Prelaunch Audit Section 6](nullspend-prelaunch-design-audit.md) — last remaining medium-priority item
@@ -149,16 +156,17 @@ The proxy writes latency data points to Analytics Engine on every request, but `
 
 Items that improve DX, expand platform capabilities, or strengthen competitive positioning.
 
-### 2.1 Claude Agent SDK Adapter
-**Effort:** ~1 day | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 4, Frontier section 1.1
+### 2.1 Claude Agent SDK Adapter — ✅ Done
+**Shipped:** 2026-03-20 | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 4; [Deep Research](../research/claude-agent-sdk-adapter.md)
 
-Claude Agent SDK exposes `total_cost_usd` in `SDKResultMessage`. No agent framework has built-in budget enforcement — NullSpend fills this gap.
+Config-transformer adapter (`withNullSpend()`) that routes Claude Agent SDK LLM calls through NullSpend's proxy via `ANTHROPIC_BASE_URL` + `ANTHROPIC_CUSTOM_HEADERS` env vars. ~100 lines, zero runtime deps, one function, one interface.
 
-**What to build:**
-- Lightweight npm package `@nullspend/claude-agent`
-- Wraps NullSpend SDK, consumes `total_cost_usd` from result messages
-- Reports cost to `POST /api/cost-events` after each agent run
-- Optional: pre-run budget check via `GET /api/budgets/status`
+**What was built:**
+- `packages/claude-agent/` — `@nullspend/claude-agent` workspace package (ESM + CJS + dts)
+- `withNullSpend()` merges NullSpend options into SDK `Options`: apiKey, budgetSessionId, tags, traceId, actionId, proxyUrl
+- Client-side validation matching proxy expectations: `actionId` format (`ns_act_<UUID>`), `traceId` format (32-char lowercase hex), tag key pattern (`[a-zA-Z0-9_-]+`), newline injection prevention
+- Always merges `process.env` as base so child process retains `PATH`, `ANTHROPIC_API_KEY`, etc.
+- 34 unit tests, CI build + test steps, peerDep on SDK `>=0.2.0 <1.0.0`
 
 ### 2.2 Thin Webhook Event Mode
 **Effort:** ~3-4h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Competitive section (Stripe v2 pattern)
@@ -277,21 +285,21 @@ Items evaluated and rejected based on the architecture review. See [Architecture
 
 ## Roadmap Summary
 
-Last updated: 2026-03-20
+Last updated: 2026-03-21
 
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
 | **P1** | `tags` JSONB on cost_events | **Done** (2026-03-19) | ~2h | Architecture Review |
 | **P1** | Loop/runaway detection (velocity limits) | **Done** (2026-03-19) | ~3-4h | Architecture Review |
 | **P1** | W3C `traceparent` + `trace_id` column | **Done** (2026-03-19) | ~4h | [Research](../research/traceparent-trace-id-research.md) |
-| **P1** | Session-level budget aggregation | Researched | ~2-3h | [Research](../research/session-level-budget-aggregation.md) |
+| **P1** | Session-level budget aggregation | **Done** (2026-03-20) | ~4h | [Research](../research/session-level-budget-aggregation.md) |
 | **P1** | Configurable budget thresholds | **Done** (2026-03-19) | ~1.5h | Audit Section 6 |
 | **P1** | Queue-based cost event logging | **Done** (2026-03-20) | ~3-4h | Stress testing |
 | **P1** | Budget sync verification round-trip | **Done** (2026-03-20) | ~1h | Stress testing |
 | **P1** | Aborted stream cost tracking gap | Not started | ~2h | Stress testing |
 | **P2** | Budget sync first-populate root cause | Not started | ~2-3h | Stress testing |
 | **P2** | Analytics Engine metrics ingestion gap | Not started | ~1-2h | Stress testing |
-| **P2** | Claude Agent SDK adapter | Not started | ~1 day | Architecture Review |
+| **P2** | Claude Agent SDK adapter | **Done** (2026-03-20) | ~1 day | [Deep Research](../research/claude-agent-sdk-adapter.md) |
 | **P2** | Thin webhook event mode | Not started | ~3-4h | Architecture Review |
 | **P2** | Unit economics dashboard metrics | Not started | ~1 day | Architecture Review |
 | **P2** | Proxy latency metrics | Not started | ~1h | Architecture Review |
