@@ -265,3 +265,126 @@ describe("logCostEventsBatch", () => {
     errorSpy.mockRestore();
   }, 15_000);
 });
+
+describe("throwOnError option", () => {
+  const globals = globalThis as Record<string, unknown>;
+
+  afterEach(() => {
+    delete globals.__FORCE_DB_PERSIST;
+    delete globals.__SKIP_DB_PERSIST;
+  });
+
+  describe("logCostEvent", () => {
+    let logCostEvent: typeof import("../lib/cost-logger.js").logCostEvent;
+
+    beforeEach(async () => {
+      vi.resetModules();
+      delete globals.__SKIP_DB_PERSIST;
+      const mod = await import("../lib/cost-logger.js");
+      logCostEvent = mod.logCostEvent;
+    });
+
+    it("does not throw on pg error by default", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await expect(
+        logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent()),
+      ).resolves.toBeUndefined();
+
+      errorSpy.mockRestore();
+    }, 15_000);
+
+    it("throws on pg error when throwOnError is true", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await expect(
+        logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent(), { throwOnError: true }),
+      ).rejects.toThrow();
+
+      errorSpy.mockRestore();
+    }, 15_000);
+
+    it("emits pg_error metric but not semaphore_full when throwOnError re-throws a pg error", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const metricCalls: unknown[][] = [];
+      // We need to intercept emitMetric calls — they go to console.log as JSON
+      logSpy.mockImplementation((...args: unknown[]) => {
+        const first = args[0];
+        if (typeof first === "string" && first.includes('"_metric"')) {
+          metricCalls.push(args);
+        }
+      });
+
+      try {
+        await logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent(), { throwOnError: true });
+      } catch {
+        // expected
+      }
+
+      // Check that pg_error was emitted but semaphore_full was NOT
+      const metricStrings = metricCalls.map((c) => String(c[0]));
+      expect(metricStrings.some((s) => s.includes("pg_error"))).toBe(true);
+      expect(metricStrings.some((s) => s.includes("semaphore_full"))).toBe(false);
+
+      errorSpy.mockRestore();
+      logSpy.mockRestore();
+    }, 15_000);
+  });
+
+  describe("logCostEventsBatch", () => {
+    let logCostEventsBatch: typeof import("../lib/cost-logger.js").logCostEventsBatch;
+
+    beforeEach(async () => {
+      vi.resetModules();
+      delete globals.__SKIP_DB_PERSIST;
+      const mod = await import("../lib/cost-logger.js");
+      logCostEventsBatch = mod.logCostEventsBatch;
+    });
+
+    it("does not throw on pg error by default", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await expect(
+        logCostEventsBatch("postgresql://user:pass@192.0.2.1:5432/db", [makeCostEvent()]),
+      ).resolves.toBeUndefined();
+
+      errorSpy.mockRestore();
+    }, 15_000);
+
+    it("throws on pg error when throwOnError is true", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await expect(
+        logCostEventsBatch("postgresql://user:pass@192.0.2.1:5432/db", [makeCostEvent()], { throwOnError: true }),
+      ).rejects.toThrow();
+
+      errorSpy.mockRestore();
+    }, 15_000);
+
+    it("emits batch_pg_error metric but not batch_semaphore_full when throwOnError re-throws", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const metricCalls: unknown[][] = [];
+      logSpy.mockImplementation((...args: unknown[]) => {
+        const first = args[0];
+        if (typeof first === "string" && first.includes('"_metric"')) {
+          metricCalls.push(args);
+        }
+      });
+
+      try {
+        await logCostEventsBatch("postgresql://user:pass@192.0.2.1:5432/db", [makeCostEvent()], { throwOnError: true });
+      } catch {
+        // expected
+      }
+
+      const metricStrings = metricCalls.map((c) => String(c[0]));
+      expect(metricStrings.some((s) => s.includes("batch_pg_error"))).toBe(true);
+      expect(metricStrings.some((s) => s.includes("batch_semaphore_full"))).toBe(false);
+
+      errorSpy.mockRestore();
+      logSpy.mockRestore();
+    }, 15_000);
+  });
+});

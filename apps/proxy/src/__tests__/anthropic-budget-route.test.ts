@@ -56,10 +56,9 @@ vi.mock("../lib/budget-orchestrator.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../lib/cost-logger.js", () => ({
-  logCostEvent: vi.fn().mockResolvedValue(undefined),
-  logCostEventsBatch: vi.fn().mockResolvedValue(undefined),
-  isLocalConnection: vi.fn().mockReturnValue(false),
+vi.mock("../lib/cost-event-queue.js", () => ({
+  logCostEventQueued: vi.fn().mockResolvedValue(undefined),
+  getCostEventQueue: vi.fn().mockReturnValue(undefined),
 }));
 
 vi.mock("@upstash/redis/cloudflare", () => ({

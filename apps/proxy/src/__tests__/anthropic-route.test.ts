@@ -32,9 +32,9 @@ vi.mock("@nullspend/cost-engine", () => ({
   getModelPricing: vi.fn().mockReturnValue(null),
   costComponent: vi.fn().mockReturnValue(0),
 }));
-vi.mock("../lib/cost-logger.js", () => ({
-  logCostEvent: (...args: unknown[]) => mockLogCostEvent(...args),
-  isLocalConnection: () => false,
+vi.mock("../lib/cost-event-queue.js", () => ({
+  logCostEventQueued: (...args: unknown[]) => mockLogCostEvent(...args),
+  getCostEventQueue: vi.fn().mockReturnValue(undefined),
 }));
 vi.mock("../lib/budget-orchestrator.js", () => ({
   checkBudget: vi.fn().mockResolvedValue({ status: "skipped", reservationId: null, budgetEntities: [] }),
@@ -410,6 +410,7 @@ describe("handleAnthropicMessages", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEvent).toHaveBeenCalledWith(
+      undefined,
       expect.anything(),
       expect.objectContaining({
         sessionId: "sess-ant-1",
@@ -419,7 +420,7 @@ describe("handleAnthropicMessages", () => {
         toolCallsRequested: [{ name: "get_weather", id: "toolu_01X" }],
       }),
     );
-    const callArgs = mockLogCostEvent.mock.calls[0][1];
+    const callArgs = mockLogCostEvent.mock.calls[0][2];
     expect(callArgs.toolDefinitionTokens).toBeGreaterThan(0);
   });
 

@@ -2,7 +2,7 @@ import { waitUntil } from "cloudflare:workers";
 import type { RequestContext } from "../lib/context.js";
 import { errorResponse } from "../lib/errors.js";
 import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.js";
-import { logCostEventsBatch } from "../lib/cost-logger.js";
+import { logCostEventsBatchQueued, getCostEventQueue } from "../lib/cost-event-queue.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import { buildCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload } from "../lib/webhook-events.js";
@@ -283,7 +283,7 @@ export async function handleMcpEvents(
 
       // Phase 2: Single batch INSERT (never throws — errors logged internally)
       try {
-        await logCostEventsBatch(ctx.connectionString, costEventRows);
+        await logCostEventsBatchQueued(getCostEventQueue(env), ctx.connectionString, costEventRows);
       } catch (err) {
         console.error("[mcp-events] Failed to batch-insert cost events:", err);
       }

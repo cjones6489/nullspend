@@ -14,7 +14,10 @@ import { resolveTraceId } from "./lib/trace-context.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 import { handleReconciliationQueue } from "./queue-handler.js";
 import { handleDlqQueue, DLQ_QUEUE_NAME } from "./dlq-handler.js";
+import { handleCostEventQueue, COST_EVENT_QUEUE_NAME } from "./cost-event-queue-handler.js";
+import { handleCostEventDlq, COST_EVENT_DLQ_NAME } from "./cost-event-dlq-handler.js";
 import type { ReconciliationMessage } from "./lib/reconciliation-queue.js";
+import type { CostEventMessage } from "./lib/cost-event-queue.js";
 
 export { UserBudgetDO } from "./durable-objects/user-budget.js";
 
@@ -138,13 +141,17 @@ function truncateSessionId(raw: string | null): string | null {
 
 export default {
   async queue(
-    batch: MessageBatch<ReconciliationMessage>,
+    batch: MessageBatch<ReconciliationMessage | CostEventMessage>,
     env: Env,
   ): Promise<void> {
-    if (batch.queue === DLQ_QUEUE_NAME) {
-      await handleDlqQueue(batch, env);
+    if (batch.queue === COST_EVENT_DLQ_NAME) {
+      await handleCostEventDlq(batch as MessageBatch<CostEventMessage>, env);
+    } else if (batch.queue === COST_EVENT_QUEUE_NAME) {
+      await handleCostEventQueue(batch as MessageBatch<CostEventMessage>, env);
+    } else if (batch.queue === DLQ_QUEUE_NAME) {
+      await handleDlqQueue(batch as MessageBatch<ReconciliationMessage>, env);
     } else {
-      await handleReconciliationQueue(batch, env);
+      await handleReconciliationQueue(batch as MessageBatch<ReconciliationMessage>, env);
     }
   },
 

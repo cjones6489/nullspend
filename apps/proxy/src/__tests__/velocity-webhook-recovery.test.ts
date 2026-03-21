@@ -81,8 +81,10 @@ vi.mock("../lib/budget-spend.js", () => ({
   resetBudgetPeriod: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../lib/cost-logger.js", () => ({
-  logCostEvent: vi.fn().mockResolvedValue(undefined),
+vi.mock("../lib/cost-event-queue.js", () => ({
+  logCostEventQueued: vi.fn().mockResolvedValue(undefined),
+  logCostEventsBatchQueued: vi.fn().mockResolvedValue(undefined),
+  getCostEventQueue: vi.fn().mockReturnValue(undefined),
 }));
 
 vi.mock("../lib/cost-calculator.js", () => ({

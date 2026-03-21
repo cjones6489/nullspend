@@ -7,7 +7,7 @@ import { ensureStreamOptions, extractModelFromBody } from "../lib/request-utils.
 import { createSSEParser } from "../lib/sse-parser.js";
 import { calculateOpenAICost } from "../lib/cost-calculator.js";
 import { isKnownModel } from "@nullspend/cost-engine";
-import { logCostEvent } from "../lib/cost-logger.js";
+import { logCostEventQueued, getCostEventQueue } from "../lib/cost-event-queue.js";
 import { OPENAI_BASE_URL } from "../lib/constants.js";
 import type { BudgetEntity } from "../lib/budget-do-lookup.js";
 import { estimateMaxCost } from "../lib/cost-estimator.js";
@@ -406,7 +406,7 @@ function handleStreaming(
         const streamOverheadMs = Math.max(0, streamTotalMs - durationMs);
         writeLatencyDataPoint(env, "openai", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs);
 
-        await logCostEvent(connectionString, {
+        await logCostEventQueued(getCostEventQueue(env), connectionString, {
           ...costEvent,
           ...enrichment,
           toolCallsRequested: result.toolCalls,
@@ -527,7 +527,7 @@ async function handleNonStreaming(
         attribution,
       );
 
-      waitUntil(logCostEvent(connectionString, {
+      waitUntil(logCostEventQueued(getCostEventQueue(env), connectionString, {
         ...costEvent,
         ...enrichment,
         toolCallsRequested,

@@ -67,6 +67,27 @@ vi.mock("../lib/budget-orchestrator.js", () => ({
   getReconcileQueue: vi.fn().mockReturnValue(undefined),
 }));
 
+const mockHandleReconciliationQueue = vi.fn().mockResolvedValue(undefined);
+const mockHandleDlqQueue = vi.fn().mockResolvedValue(undefined);
+const mockHandleCostEventQueue = vi.fn().mockResolvedValue(undefined);
+const mockHandleCostEventDlq = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("../queue-handler.js", () => ({
+  handleReconciliationQueue: (...args: unknown[]) => mockHandleReconciliationQueue(...args),
+}));
+vi.mock("../dlq-handler.js", () => ({
+  handleDlqQueue: (...args: unknown[]) => mockHandleDlqQueue(...args),
+  DLQ_QUEUE_NAME: "nullspend-reconcile-dlq",
+}));
+vi.mock("../cost-event-queue-handler.js", () => ({
+  handleCostEventQueue: (...args: unknown[]) => mockHandleCostEventQueue(...args),
+  COST_EVENT_QUEUE_NAME: "nullspend-cost-events",
+}));
+vi.mock("../cost-event-dlq-handler.js", () => ({
+  handleCostEventDlq: (...args: unknown[]) => mockHandleCostEventDlq(...args),
+  COST_EVENT_DLQ_NAME: "nullspend-cost-events-dlq",
+}));
+
 import entrypoint from "../index.js";
 
 function makeEnv(): Env {
@@ -461,5 +482,65 @@ describe("Worker entry point routing", () => {
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).toBe(200);
     });
+  });
+});
+
+describe("Queue routing", () => {
+  function makeBatch(queueName: string): MessageBatch<any> {
+    return {
+      queue: queueName,
+      messages: [],
+      ackAll: vi.fn(),
+      retryAll: vi.fn(),
+    };
+  }
+
+  beforeEach(() => {
+    mockHandleReconciliationQueue.mockClear();
+    mockHandleDlqQueue.mockClear();
+    mockHandleCostEventQueue.mockClear();
+    mockHandleCostEventDlq.mockClear();
+  });
+
+  it("routes cost event queue to handleCostEventQueue", async () => {
+    const batch = makeBatch("nullspend-cost-events");
+    await entrypoint.queue(batch, makeEnv());
+
+    expect(mockHandleCostEventQueue).toHaveBeenCalledTimes(1);
+    expect(mockHandleCostEventQueue).toHaveBeenCalledWith(batch, expect.anything());
+    expect(mockHandleReconciliationQueue).not.toHaveBeenCalled();
+    expect(mockHandleDlqQueue).not.toHaveBeenCalled();
+    expect(mockHandleCostEventDlq).not.toHaveBeenCalled();
+  });
+
+  it("routes cost event DLQ to handleCostEventDlq", async () => {
+    const batch = makeBatch("nullspend-cost-events-dlq");
+    await entrypoint.queue(batch, makeEnv());
+
+    expect(mockHandleCostEventDlq).toHaveBeenCalledTimes(1);
+    expect(mockHandleCostEventDlq).toHaveBeenCalledWith(batch, expect.anything());
+    expect(mockHandleCostEventQueue).not.toHaveBeenCalled();
+    expect(mockHandleReconciliationQueue).not.toHaveBeenCalled();
+    expect(mockHandleDlqQueue).not.toHaveBeenCalled();
+  });
+
+  it("routes reconciliation DLQ to handleDlqQueue", async () => {
+    const batch = makeBatch("nullspend-reconcile-dlq");
+    await entrypoint.queue(batch, makeEnv());
+
+    expect(mockHandleDlqQueue).toHaveBeenCalledTimes(1);
+    expect(mockHandleReconciliationQueue).not.toHaveBeenCalled();
+    expect(mockHandleCostEventQueue).not.toHaveBeenCalled();
+    expect(mockHandleCostEventDlq).not.toHaveBeenCalled();
+  });
+
+  it("routes reconciliation queue to handleReconciliationQueue", async () => {
+    const batch = makeBatch("nullspend-reconcile");
+    await entrypoint.queue(batch, makeEnv());
+
+    expect(mockHandleReconciliationQueue).toHaveBeenCalledTimes(1);
+    expect(mockHandleDlqQueue).not.toHaveBeenCalled();
+    expect(mockHandleCostEventQueue).not.toHaveBeenCalled();
+    expect(mockHandleCostEventDlq).not.toHaveBeenCalled();
   });
 });

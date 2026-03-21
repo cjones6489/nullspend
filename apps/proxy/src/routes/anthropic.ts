@@ -12,7 +12,7 @@ import { createAnthropicSSEParser } from "../lib/anthropic-sse-parser.js";
 import { calculateAnthropicCost } from "../lib/anthropic-cost-calculator.js";
 import type { AnthropicCacheCreationDetail } from "../lib/anthropic-types.js";
 import { isKnownModel } from "@nullspend/cost-engine";
-import { logCostEvent } from "../lib/cost-logger.js";
+import { logCostEventQueued, getCostEventQueue } from "../lib/cost-event-queue.js";
 import { ANTHROPIC_BASE_URL } from "../lib/constants.js";
 import type { BudgetEntity } from "../lib/budget-do-lookup.js";
 import { estimateAnthropicMaxCost } from "../lib/anthropic-cost-estimator.js";
@@ -395,7 +395,7 @@ function handleStreaming(
         const streamOverheadMs = Math.max(0, streamTotalMs - durationMs);
         writeLatencyDataPoint(env, "anthropic", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs);
 
-        await logCostEvent(connectionString, {
+        await logCostEventQueued(getCostEventQueue(env), connectionString, {
           ...costEvent,
           ...enrichment,
           toolCallsRequested: result.toolCalls,
@@ -527,7 +527,7 @@ async function handleNonStreaming(
         attribution,
       );
 
-      waitUntil(logCostEvent(connectionString, {
+      waitUntil(logCostEventQueued(getCostEventQueue(env), connectionString, {
         ...costEvent,
         ...enrichment,
         toolCallsRequested,

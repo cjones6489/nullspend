@@ -34,6 +34,7 @@ export function isLocalConnection(_connectionString: string): boolean {
 export async function logCostEvent(
   connectionString: string,
   event: Omit<NewCostEventRow, "id" | "createdAt">,
+  options?: { throwOnError?: boolean },
 ): Promise<void> {
   if (isLocalConnection(connectionString)) {
     console.log("[cost-logger] Local dev — cost event (not persisted):", {
@@ -52,8 +53,10 @@ export async function logCostEvent(
     return;
   }
 
+  let semaphoreAcquired = false;
   try {
     await withDbConnection(async () => {
+      semaphoreAcquired = true;
       let client: Client | null = null;
 
       try {
@@ -69,13 +72,14 @@ export async function logCostEvent(
         await client.connect();
 
         const db = drizzle({ client });
-        await db.insert(costEvents).values(event);
+        await db.insert(costEvents).values(event).onConflictDoNothing({ target: [costEvents.requestId, costEvents.provider] });
       } catch (err) {
         emitMetric("cost_event_drop", { reason: "pg_error" });
         console.error(
           "[cost-logger] Failed to write cost event:",
           err instanceof Error ? err.message : "Unknown error",
         );
+        if (options?.throwOnError) throw err;
       } finally {
         if (client) {
           try {
@@ -87,11 +91,14 @@ export async function logCostEvent(
       }
     });
   } catch (err) {
-    emitMetric("cost_event_drop", { reason: "semaphore_full" });
-    console.error(
-      "[cost-logger] Semaphore rejected cost event:",
-      err instanceof Error ? err.message : "Unknown error",
-    );
+    if (!semaphoreAcquired) {
+      emitMetric("cost_event_drop", { reason: "semaphore_full" });
+      console.error(
+        "[cost-logger] Semaphore rejected cost event:",
+        err instanceof Error ? err.message : "Unknown error",
+      );
+    }
+    if (options?.throwOnError) throw err;
   }
 }
 
@@ -103,6 +110,7 @@ export async function logCostEvent(
 export async function logCostEventsBatch(
   connectionString: string,
   events: Omit<NewCostEventRow, "id" | "createdAt">[],
+  options?: { throwOnError?: boolean },
 ): Promise<void> {
   if (events.length === 0) return;
 
@@ -120,8 +128,10 @@ export async function logCostEventsBatch(
     return;
   }
 
+  let semaphoreAcquired = false;
   try {
     await withDbConnection(async () => {
+      semaphoreAcquired = true;
       let client: Client | null = null;
       try {
         client = new Client({
@@ -133,13 +143,15 @@ export async function logCostEventsBatch(
         });
         await client.connect();
         const db = drizzle({ client });
-        await db.insert(costEvents).values(events);
+        await db.insert(costEvents).values(events).onConflictDoNothing({ target: [costEvents.requestId, costEvents.provider] });
       } catch (err) {
+        emitMetric("cost_event_drop", { reason: "batch_pg_error", count: events.length });
         console.error(
           "[cost-logger] Failed to write cost event batch:",
           err instanceof Error ? err.message : "Unknown error",
           `(${events.length} events)`,
         );
+        if (options?.throwOnError) throw err;
       } finally {
         if (client) {
           try {
@@ -151,10 +163,14 @@ export async function logCostEventsBatch(
       }
     });
   } catch (err) {
-    console.error(
-      "[cost-logger] Semaphore rejected cost event batch:",
-      err instanceof Error ? err.message : "Unknown error",
-      `(${events.length} events)`,
-    );
+    if (!semaphoreAcquired) {
+      emitMetric("cost_event_drop", { reason: "batch_semaphore_full", count: events.length });
+      console.error(
+        "[cost-logger] Semaphore rejected cost event batch:",
+        err instanceof Error ? err.message : "Unknown error",
+        `(${events.length} events)`,
+      );
+    }
+    if (options?.throwOnError) throw err;
   }
 }

@@ -39,8 +39,9 @@ vi.mock("../lib/budget-spend.js", () => ({
 }));
 
 const mockLogCostEventsBatch = vi.fn();
-vi.mock("../lib/cost-logger.js", () => ({
-  logCostEventsBatch: (...args: unknown[]) => mockLogCostEventsBatch(...args),
+vi.mock("../lib/cost-event-queue.js", () => ({
+  logCostEventsBatchQueued: (...args: unknown[]) => mockLogCostEventsBatch(...args),
+  getCostEventQueue: vi.fn().mockReturnValue(undefined),
 }));
 
 vi.mock("@upstash/redis/cloudflare", () => ({
@@ -512,7 +513,7 @@ describe("handleMcpEvents", () => {
 
     await new Promise((r) => setTimeout(r, 10));
     expect(mockLogCostEventsBatch).toHaveBeenCalledTimes(1);
-    expect(mockLogCostEventsBatch.mock.calls[0][1]).toHaveLength(2);
+    expect(mockLogCostEventsBatch.mock.calls[0][2]).toHaveLength(2);
   });
 
   it("maps events to cost_events with provider=mcp and model=server/tool", async () => {
@@ -534,6 +535,7 @@ describe("handleMcpEvents", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
+      undefined,
       expect.any(String),
       expect.arrayContaining([
         expect.objectContaining({
@@ -554,7 +556,7 @@ describe("handleMcpEvents", () => {
         }),
       ]),
     );
-    expect(mockLogCostEventsBatch.mock.calls[0][1]).toHaveLength(1);
+    expect(mockLogCostEventsBatch.mock.calls[0][2]).toHaveLength(1);
   });
 
   it("includes sessionId when set in context", async () => {
@@ -575,6 +577,7 @@ describe("handleMcpEvents", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
+      undefined,
       expect.anything(),
       expect.arrayContaining([
         expect.objectContaining({
@@ -600,6 +603,7 @@ describe("handleMcpEvents", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
+      undefined,
       expect.anything(),
       expect.arrayContaining([
         expect.objectContaining({ apiKeyId: "key-1" }),
@@ -628,6 +632,7 @@ describe("handleMcpEvents", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
+      undefined,
       expect.anything(),
       expect.arrayContaining([
         expect.objectContaining({ actionId: null }),
@@ -656,6 +661,7 @@ describe("handleMcpEvents", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
+      undefined,
       expect.anything(),
       expect.arrayContaining([
         expect.objectContaining({ actionId: "550e8400-e29b-41d4-a716-446655440000" }),
@@ -752,6 +758,7 @@ describe("handleMcpEvents", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(mockLogCostEventsBatch).toHaveBeenCalledWith(
+      undefined,
       expect.anything(),
       expect.arrayContaining([
         expect.objectContaining({ actionId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
@@ -777,7 +784,7 @@ describe("handleMcpEvents", () => {
 
     // One batch insert for all 3 events
     expect(mockLogCostEventsBatch).toHaveBeenCalledTimes(1);
-    expect(mockLogCostEventsBatch.mock.calls[0][1]).toHaveLength(3);
+    expect(mockLogCostEventsBatch.mock.calls[0][2]).toHaveLength(3);
 
     // lookupBudgetsForDO called exactly once (not per-event)
     expect(mockLookupBudgetsForDO).toHaveBeenCalledTimes(1);
