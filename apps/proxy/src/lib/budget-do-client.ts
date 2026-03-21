@@ -16,11 +16,12 @@ export async function doBudgetCheck(
   userId: string,
   keyId: string | null,
   estimateMicrodollars: number,
-  sessionId: string | null = null,
+  sessionId: string | null,
+  tagEntityIds: string[],
 ): Promise<CheckResult> {
   const startMs = Date.now();
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
-  const result = await stub.checkAndReserve(keyId, estimateMicrodollars, 30_000, sessionId);
+  const result = await stub.checkAndReserve(keyId, estimateMicrodollars, 30_000, sessionId, tagEntityIds);
   emitMetric("do_budget_check", {
     status: result.status,
     hasBudgets: result.hasBudgets,
@@ -28,6 +29,7 @@ export async function doBudgetCheck(
     velocityDenied: result.velocityDenied ?? false,
     velocityRecovered: (result.velocityRecovered?.length ?? 0) > 0,
     sessionLimitDenied: result.sessionLimitDenied ?? false,
+    tagBudgetDenied: result.status === "denied" && (result.deniedEntity?.startsWith("tag:") ?? false),
   });
   return result;
 }

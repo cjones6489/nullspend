@@ -98,7 +98,7 @@ export type SlackConfigRow = typeof slackConfigs.$inferSelect;
 
 export const budgets = pgTable("budgets", {
   id: uuid("id").defaultRandom().primaryKey(),
-  entityType: text("entity_type").$type<"user" | "agent" | "api_key" | "team">().notNull(),
+  entityType: text("entity_type").$type<"user" | "agent" | "api_key" | "team" | "tag">().notNull(),
   entityId: text("entity_id").notNull(),
   maxBudgetMicrodollars: bigint("max_budget_microdollars", { mode: "number" }).notNull(),
   spendMicrodollars: bigint("spend_microdollars", { mode: "number" }).notNull().default(0),
@@ -109,11 +109,13 @@ export const budgets = pgTable("budgets", {
   velocityWindowSeconds: integer("velocity_window_seconds").default(60),
   velocityCooldownSeconds: integer("velocity_cooldown_seconds").default(60),
   sessionLimitMicrodollars: bigint("session_limit_microdollars", { mode: "number" }),
+  userId: text("user_id"),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("budgets_entity_type_entity_id_idx").on(table.entityType, table.entityId),
+  index("budgets_user_id_idx").on(table.userId),
 ]);
 
 export type BudgetRow = typeof budgets.$inferSelect;

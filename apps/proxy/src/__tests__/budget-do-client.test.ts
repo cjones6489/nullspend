@@ -55,9 +55,9 @@ describe("doBudgetCheck", () => {
     const stub = makeStub();
     const env = makeEnv(stub);
 
-    const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000);
+    const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, []);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, null);
+    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, null, []);
     expect(result).toEqual({ status: "approved", reservationId: "rsv-1" });
   });
 
@@ -65,9 +65,9 @@ describe("doBudgetCheck", () => {
     const stub = makeStub();
     const env = makeEnv(stub);
 
-    await doBudgetCheck(env, "user-1", null, 5_000_000);
+    await doBudgetCheck(env, "user-1", null, 5_000_000, null, []);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith(null, 5_000_000, 30_000, null);
+    expect(stub.checkAndReserve).toHaveBeenCalledWith(null, 5_000_000, 30_000, null, []);
   });
 
   it("returns denied result from DO", async () => {
@@ -83,7 +83,7 @@ describe("doBudgetCheck", () => {
     });
     const env = makeEnv(stub);
 
-    const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000);
+    const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, []);
 
     expect(result.status).toBe("denied");
     expect(result.deniedEntity).toBe("user:user-1");
@@ -96,7 +96,7 @@ describe("doBudgetCheck", () => {
     const env = makeEnv(stub);
 
     await expect(
-      doBudgetCheck(env, "user-1", "key-1", 5_000_000),
+      doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, []),
     ).rejects.toThrow("DO unavailable");
   });
 
@@ -110,7 +110,7 @@ describe("doBudgetCheck", () => {
     });
     const env = makeEnv(stub);
 
-    await doBudgetCheck(env, "user-1", "key-1", 5_000_000);
+    await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, []);
 
     expect(mockEmitMetric).toHaveBeenCalledWith("do_budget_check", {
       status: "approved",
@@ -119,6 +119,7 @@ describe("doBudgetCheck", () => {
       velocityDenied: false,
       velocityRecovered: false,
       sessionLimitDenied: false,
+      tagBudgetDenied: false,
     });
   });
 
@@ -131,7 +132,7 @@ describe("doBudgetCheck", () => {
     });
     const env = makeEnv(stub);
 
-    await doBudgetCheck(env, "user-1", null, 5_000_000);
+    await doBudgetCheck(env, "user-1", null, 5_000_000, null, []);
 
     expect(mockEmitMetric).toHaveBeenCalledWith("do_budget_check", {
       status: "approved",
@@ -140,7 +141,68 @@ describe("doBudgetCheck", () => {
       velocityDenied: false,
       velocityRecovered: false,
       sessionLimitDenied: false,
+      tagBudgetDenied: false,
     });
+  });
+
+  it("passes tagEntityIds to stub.checkAndReserve", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, ["project=openclaw", "env=prod"]);
+
+    expect(stub.checkAndReserve).toHaveBeenCalledWith(
+      "key-1", 5_000_000, 30_000, null, ["project=openclaw", "env=prod"],
+    );
+  });
+
+  it("passes empty tagEntityIds with session", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetCheck(env, "user-1", "key-1", 5_000_000, "sess-1", []);
+
+    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, "sess-1", []);
+  });
+
+  it("emits tagBudgetDenied=true when deniedEntity starts with tag:", async () => {
+    const stub = makeStub({
+      checkAndReserve: vi.fn().mockResolvedValue({
+        status: "denied",
+        hasBudgets: true,
+        deniedEntity: "tag:project=openclaw",
+        remaining: 0,
+        maxBudget: 50_000_000,
+        spend: 50_000_000,
+      }),
+    });
+    const env = makeEnv(stub);
+
+    await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, ["project=openclaw"]);
+
+    expect(mockEmitMetric).toHaveBeenCalledWith("do_budget_check", expect.objectContaining({
+      tagBudgetDenied: true,
+    }));
+  });
+
+  it("emits tagBudgetDenied=false for non-tag denials", async () => {
+    const stub = makeStub({
+      checkAndReserve: vi.fn().mockResolvedValue({
+        status: "denied",
+        hasBudgets: true,
+        deniedEntity: "user:user-1",
+        remaining: 0,
+        maxBudget: 50_000_000,
+        spend: 50_000_000,
+      }),
+    });
+    const env = makeEnv(stub);
+
+    await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, []);
+
+    expect(mockEmitMetric).toHaveBeenCalledWith("do_budget_check", expect.objectContaining({
+      tagBudgetDenied: false,
+    }));
   });
 });
 

@@ -932,3 +932,126 @@ describe("currentPeriodStart", () => {
     expect(currentPeriodStart("unknown", start, now)).toBe(start);
   });
 });
+
+// ── Tag Budget Enforcement ─────────────────────────────────────────
+
+describe("Tag Budget Enforcement (DO)", () => {
+  it("tag budget included in check when tagEntityIds match", async () => {
+    const stub = getStub("user-tag-1");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "project=openclaw", 50_000_000, 0, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 1_000_000, 30_000, null, ["project=openclaw"]);
+    expect(result.status).toBe("approved");
+    expect(result.hasBudgets).toBe(true);
+    expect(result.checkedEntities).toHaveLength(2);
+    const tagEntity = result.checkedEntities!.find(e => e.entityType === "tag");
+    expect(tagEntity).toBeDefined();
+    expect(tagEntity!.entityId).toBe("project=openclaw");
+  });
+
+  it("tag budget denied when exhausted (strict_block)", async () => {
+    const stub = getStub("user-tag-denied");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "project=openclaw", 1_000_000, 999_000, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 500_000, 30_000, null, ["project=openclaw"]);
+    expect(result.status).toBe("denied");
+    expect(result.deniedEntity).toBe("tag:project=openclaw");
+  });
+
+  it("tag budget ignored when tagEntityIds is null", async () => {
+    const stub = getStub("user-tag-null");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "project=openclaw", 1_000, 999, "strict_block", null, 0);
+
+    // Without tagEntityIds, tag budget should NOT be checked
+    const result = await stub.checkAndReserve(null, 500_000, 30_000, null, []);
+    expect(result.status).toBe("approved");
+    expect(result.checkedEntities).toHaveLength(1);
+    expect(result.checkedEntities![0].entityType).toBe("user");
+  });
+
+  it("tag budget ignored when tagEntityIds is empty", async () => {
+    const stub = getStub("user-tag-empty");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "project=openclaw", 1_000, 999, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 500_000, 30_000, null, []);
+    expect(result.status).toBe("approved");
+    expect(result.checkedEntities).toHaveLength(1);
+  });
+
+  it("unmatched tag budgets not checked", async () => {
+    const stub = getStub("user-tag-unmatched");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "project=openclaw", 1_000, 999, "strict_block", null, 0);
+
+    // Request has env=prod but only project=openclaw exists
+    const result = await stub.checkAndReserve(null, 500_000, 30_000, null, ["env=prod"]);
+    expect(result.status).toBe("approved");
+    // Only user budget checked, env=prod doesn't exist in DO
+    expect(result.checkedEntities).toHaveLength(1);
+  });
+
+  it("reservation entity_keys includes tag budget", async () => {
+    const stub = getStub("user-tag-reservation");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "project=openclaw", 50_000_000, 0, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 1_000_000, 30_000, null, ["project=openclaw"]);
+    expect(result.status).toBe("approved");
+
+    // Verify reservation has both entities by reconciling
+    const reconcileResult = await stub.reconcile(result.reservationId!, 500_000);
+    expect(reconcileResult.status).toBe("reconciled");
+
+    // Both budgets should have updated spend
+    const state = await stub.getBudgetState();
+    const userBudget = state.find(b => b.entity_type === "user");
+    const tagBudget = state.find(b => b.entity_type === "tag");
+    expect(userBudget!.spend).toBe(500_000);
+    expect(tagBudget!.spend).toBe(500_000);
+  });
+
+  it("multi-tag: request matches 2 of 3 tag budgets", async () => {
+    const stub = getStub("user-tag-multi");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "project=openclaw", 50_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "env=prod", 80_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "team=backend", 30_000_000, 0, "strict_block", null, 0);
+
+    // Request only has project=openclaw and env=prod
+    const result = await stub.checkAndReserve(null, 1_000_000, 30_000, null, [
+      "project=openclaw", "env=prod",
+    ]);
+    expect(result.status).toBe("approved");
+    // user + 2 matched tags
+    expect(result.checkedEntities).toHaveLength(3);
+    const types = result.checkedEntities!.map(e => `${e.entityType}:${e.entityId}`);
+    expect(types).toContain("tag:project=openclaw");
+    expect(types).toContain("tag:env=prod");
+    expect(types).not.toContain("tag:team=backend");
+  });
+
+  it("tag budget with period reset (daily) resets correctly", async () => {
+    const stub = getStub("user-tag-period-reset");
+    const twoDaysAgo = Date.now() - 2 * 86_400_000;
+    await stub.populateIfEmpty("tag", "project=openclaw", 50_000_000, 49_000_000, "strict_block", "daily", twoDaysAgo);
+
+    // Should reset spend to 0 because period has passed
+    const result = await stub.checkAndReserve(null, 1_000_000, 30_000, null, ["project=openclaw"]);
+    expect(result.status).toBe("approved");
+    expect(result.periodResets).toBeDefined();
+    expect(result.periodResets!.some(r => r.entityType === "tag" && r.entityId === "project=openclaw")).toBe(true);
+  });
+
+  it("tag budget with soft_block policy does not deny", async () => {
+    const stub = getStub("user-tag-soft");
+    await stub.populateIfEmpty("tag", "project=openclaw", 1_000_000, 999_000, "soft_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 500_000, 30_000, null, ["project=openclaw"]);
+    // soft_block should NOT deny
+    expect(result.status).toBe("approved");
+  });
+});

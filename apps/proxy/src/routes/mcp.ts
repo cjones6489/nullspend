@@ -5,7 +5,7 @@ import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.j
 import { logCostEventsBatchQueued, getCostEventQueue } from "../lib/cost-event-queue.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildThinCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildThinCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, buildTagBudgetExceededPayload } from "../lib/webhook-events.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -129,6 +129,49 @@ export async function handleMcpBudgetCheck(
         sessionId: outcome.sessionId ?? null,
         sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
         sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
+        traceId: ctx.traceId,
+      }, {
+        status: 429,
+        headers: {
+          "NullSpend-Version": ctx.resolvedApiVersion,
+          "X-NullSpend-Trace-Id": ctx.traceId,
+        },
+      });
+    }
+
+    // Tag budget denial
+    if (outcome.status === "denied" && outcome.tagBudgetDenied) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+        waitUntil((async () => {
+          try {
+            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+              const event = buildTagBudgetExceededPayload({
+                tagKey: outcome.tagKey ?? "unknown",
+                tagValue: outcome.tagValue ?? "unknown",
+                budgetEntityId: outcome.deniedEntityId ?? "unknown",
+                budgetLimitMicrodollars: outcome.maxBudget ?? 0,
+                budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+                estimatedRequestCostMicrodollars: parsed.estimateMicrodollars,
+                model: `${parsed.serverName}/${parsed.toolName}`,
+                provider: "mcp",
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          } catch (err) {
+            console.error("[mcp-route] Tag budget webhook dispatch failed:", err);
+          }
+        })());
+      }
+      return Response.json({
+        allowed: false,
+        denied: true,
+        reason: "tag_budget_exceeded",
+        tagKey: outcome.tagKey ?? null,
+        tagValue: outcome.tagValue ?? null,
+        budgetLimitMicrodollars: outcome.maxBudget ?? 0,
+        budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
         traceId: ctx.traceId,
       }, {
         status: 429,
@@ -295,7 +338,7 @@ export async function handleMcpEvents(
       const needsBudgetLookup = eventsWithReservations.length > 0 || (ctx.webhookDispatcher && ctx.auth.hasWebhooks);
       if (needsBudgetLookup) {
         try {
-          const doEntities = await lookupBudgetsForDO(ctx.connectionString, { keyId: apiKeyId, userId });
+          const doEntities = await lookupBudgetsForDO(ctx.connectionString, { keyId: apiKeyId, userId, tags: ctx.tags });
           budgetEntities = doEntities.map((e) => ({
             entityKey: `{budget}:${e.entityType}:${e.entityId}`,
             entityType: e.entityType,

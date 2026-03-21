@@ -268,6 +268,7 @@ export class UserBudgetDO extends DurableObject {
     estimateMicrodollars: number,
     reservationTtlMs: number = 30_000,
     sessionId: string | null = null,
+    tagEntityIds: string[] = [],
   ): Promise<CheckResult> {
     const reservationId = crypto.randomUUID();
     const now = Date.now();
@@ -286,16 +287,23 @@ export class UserBudgetDO extends DurableObject {
 
     this.ctx.storage.transactionSync(() => {
       // Phase 1: Query matching budgets from SQLite
-      const rows: BudgetRow[] = keyId
-        ? this.ctx.storage.sql
-            .exec<BudgetRow>(
-              "SELECT * FROM budgets WHERE entity_type = 'user' OR (entity_type = 'api_key' AND entity_id = ?)",
-              keyId,
-            )
-            .toArray()
-        : this.ctx.storage.sql
-            .exec<BudgetRow>("SELECT * FROM budgets WHERE entity_type = 'user'")
-            .toArray();
+      let query = "SELECT * FROM budgets WHERE entity_type = 'user'";
+      const params: unknown[] = [];
+
+      if (keyId) {
+        query += " OR (entity_type = 'api_key' AND entity_id = ?)";
+        params.push(keyId);
+      }
+
+      if (tagEntityIds.length > 0) {
+        const placeholders = tagEntityIds.map(() => "?").join(",");
+        query += ` OR (entity_type = 'tag' AND entity_id IN (${placeholders}))`;
+        params.push(...tagEntityIds);
+      }
+
+      const rows: BudgetRow[] = this.ctx.storage.sql
+        .exec<BudgetRow>(query, ...params)
+        .toArray();
 
       if (rows.length === 0) {
         result = { status: "approved", hasBudgets: false };

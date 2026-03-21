@@ -33,6 +33,9 @@ export interface BudgetCheckOutcome {
   sessionId?: string;
   sessionSpend?: number;
   sessionLimit?: number;
+  tagBudgetDenied?: boolean;
+  tagKey?: string;
+  tagValue?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,7 +47,7 @@ export async function checkBudget(
   ctx: RequestContext,
   estimateMicrodollars: number,
 ): Promise<BudgetCheckOutcome> {
-  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.auth.userId, estimateMicrodollars, ctx.sessionId);
+  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.auth.userId, estimateMicrodollars, ctx.sessionId, ctx.tags);
 }
 
 // ---------------------------------------------------------------------------
@@ -135,13 +138,17 @@ async function checkBudgetDO(
   userId: string | null,
   estimateMicrodollars: number,
   sessionId: string | null = null,
+  tags: Record<string, string>,
 ): Promise<BudgetCheckOutcome> {
   if (!userId) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
 
+  // Convert tags to entity IDs for DO lookup
+  const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
+
   // Single DO RPC — no Postgres lookup, no cache
-  const checkResult = await doBudgetCheck(env, userId, keyId, estimateMicrodollars, sessionId);
+  const checkResult = await doBudgetCheck(env, userId, keyId, estimateMicrodollars, sessionId, tagEntityIds);
 
   if (!checkResult.hasBudgets) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
@@ -207,7 +214,26 @@ async function checkBudgetDO(
       };
     }
 
-    const reserved = (checkResult.maxBudget ?? 0) - (checkResult.spend ?? 0) - (checkResult.remaining ?? 0);
+    // Tag budget denial — separate from generic budget_exceeded
+    if (deniedEntityType === "tag" && deniedEntityId) {
+      const eqIdx = deniedEntityId.indexOf("=");
+      return {
+        status: "denied",
+        reservationId: null,
+        budgetEntities,
+        deniedEntityType,
+        deniedEntityId,
+        tagBudgetDenied: true,
+        tagKey: eqIdx > 0 ? deniedEntityId.slice(0, eqIdx) : deniedEntityId,
+        tagValue: eqIdx > 0 ? deniedEntityId.slice(eqIdx + 1) : "",
+        remaining: checkResult.remaining,
+        maxBudget: checkResult.maxBudget,
+        spend: checkResult.spend,
+        reserved: Math.max(0, (checkResult.maxBudget ?? 0) - (checkResult.spend ?? 0) - (checkResult.remaining ?? 0)),
+      };
+    }
+
+    const reserved = Math.max(0, (checkResult.maxBudget ?? 0) - (checkResult.spend ?? 0) - (checkResult.remaining ?? 0));
     return {
       status: "denied",
       reservationId: null,

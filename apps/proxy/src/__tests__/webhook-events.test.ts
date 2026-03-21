@@ -7,6 +7,7 @@ import {
   buildRequestBlockedPayload,
   buildTestPingPayload,
   buildThinCostEventPayload,
+  buildTagBudgetExceededPayload,
   CURRENT_API_VERSION,
 } from "../lib/webhook-events.js";
 
@@ -398,6 +399,69 @@ describe("buildThinCostEventPayload", () => {
     expect(parsed.searchParams.get("provider")).toBe("anthropic");
     // No extra query params beyond requestId and provider
     expect([...parsed.searchParams.keys()]).toEqual(["requestId", "provider"]);
+  });
+});
+
+describe("buildTagBudgetExceededPayload", () => {
+  it("builds valid tag_budget.exceeded event", () => {
+    const event = buildTagBudgetExceededPayload({
+      tagKey: "project",
+      tagValue: "openclaw",
+      budgetEntityId: "project=openclaw",
+      budgetLimitMicrodollars: 50_000_000,
+      budgetSpendMicrodollars: 49_500_000,
+      estimatedRequestCostMicrodollars: 1_000_000,
+      model: "gpt-4o",
+      provider: "openai",
+    });
+
+    expect(event.type).toBe("tag_budget.exceeded");
+    expect(event.id).toMatch(/^evt_/);
+    expect(event.api_version).toBe(CURRENT_API_VERSION);
+    expect(typeof event.created_at).toBe("number");
+  });
+
+  it("includes tag_key and tag_value in data.object", () => {
+    const event = buildTagBudgetExceededPayload({
+      tagKey: "env",
+      tagValue: "prod",
+      budgetEntityId: "env=prod",
+      budgetLimitMicrodollars: 100_000_000,
+      budgetSpendMicrodollars: 90_000_000,
+      estimatedRequestCostMicrodollars: 5_000_000,
+      model: "claude-sonnet-4-20250514",
+      provider: "anthropic",
+    });
+
+    const obj = event.data.object;
+    expect(obj.tag_key).toBe("env");
+    expect(obj.tag_value).toBe("prod");
+    expect(obj.budget_entity_type).toBe("tag");
+    expect(obj.budget_entity_id).toBe("env=prod");
+    expect(obj.budget_limit_microdollars).toBe(100_000_000);
+    expect(obj.budget_spend_microdollars).toBe(90_000_000);
+    expect(obj.estimated_request_cost_microdollars).toBe(5_000_000);
+    expect(obj.model).toBe("claude-sonnet-4-20250514");
+    expect(obj.provider).toBe("anthropic");
+    expect(obj.blocked_at).toBeDefined();
+  });
+
+  it("standard fields: id, type, api_version, created_at", () => {
+    const event = buildTagBudgetExceededPayload({
+      tagKey: "project",
+      tagValue: "openclaw",
+      budgetEntityId: "project=openclaw",
+      budgetLimitMicrodollars: 50_000_000,
+      budgetSpendMicrodollars: 50_000_000,
+      estimatedRequestCostMicrodollars: 500_000,
+      model: "gpt-4o-mini",
+      provider: "openai",
+    }, "2025-01-01");
+
+    expect(event.id).toMatch(/^evt_[0-9a-f-]+$/);
+    expect(event.type).toBe("tag_budget.exceeded");
+    expect(event.api_version).toBe("2025-01-01");
+    expect(event.created_at).toBeGreaterThan(0);
   });
 });
 

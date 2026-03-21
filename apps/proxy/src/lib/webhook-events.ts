@@ -16,6 +16,7 @@ export type WebhookEventType =
   | "velocity.exceeded"
   | "velocity.recovered"
   | "session.limit_exceeded"
+  | "tag_budget.exceeded"
   | "test.ping";
 
 export interface WebhookEvent {
@@ -334,6 +335,43 @@ export function buildSessionLimitExceededPayload(
         session_id: data.sessionId,
         session_spend_microdollars: data.sessionSpendMicrodollars,
         session_limit_microdollars: data.sessionLimitMicrodollars,
+        model: data.model,
+        provider: data.provider,
+        blocked_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
+interface TagBudgetExceededData {
+  tagKey: string;
+  tagValue: string;
+  budgetEntityId: string;
+  budgetLimitMicrodollars: number;
+  budgetSpendMicrodollars: number;
+  estimatedRequestCostMicrodollars: number;
+  model: string;
+  provider: string;
+}
+
+export function buildTagBudgetExceededPayload(
+  data: TagBudgetExceededData,
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "tag_budget.exceeded",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: "tag",
+        budget_entity_id: data.budgetEntityId,
+        tag_key: data.tagKey,
+        tag_value: data.tagValue,
+        budget_limit_microdollars: data.budgetLimitMicrodollars,
+        budget_spend_microdollars: data.budgetSpendMicrodollars,
+        estimated_request_cost_microdollars: data.estimatedRequestCostMicrodollars,
         model: data.model,
         provider: data.provider,
         blocked_at: new Date().toISOString(),

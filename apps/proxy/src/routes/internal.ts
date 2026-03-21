@@ -88,7 +88,21 @@ export async function handleBudgetInvalidation(
       // action === "sync": look up specific entity from Postgres and upsert into DO
       // Uses populateIfEmpty (single-entity upsert) — does NOT purge sibling budgets
       const connectionString = env.HYPERDRIVE.connectionString;
-      const identity = { keyId: body.entityId, userId: body.userId };
+      let identity: { keyId: string | null; userId: string | null; tags: Record<string, string> };
+      if (body.entityType === "tag") {
+        // Tag entities: reconstruct tags from entity_id (e.g., "project=openclaw")
+        const eqIdx = body.entityId.indexOf("=");
+        const tagObj = eqIdx > 0
+          ? { [body.entityId.slice(0, eqIdx)]: body.entityId.slice(eqIdx + 1) }
+          : { [body.entityId]: "" };
+        identity = { keyId: null, userId: body.userId, tags: tagObj };
+      } else if (body.entityType === "user") {
+        // User entities: no keyId needed, userId is both the lookup key and the owner
+        identity = { keyId: null, userId: body.userId, tags: {} };
+      } else {
+        // api_key / agent / team entities: entityId is the key ID
+        identity = { keyId: body.entityId, userId: body.userId, tags: {} };
+      }
       const entities = await lookupBudgetsForDO(connectionString, identity);
       // Empty on sync is unexpected (removes use action: "remove") — may indicate
       // Postgres commit timing or stale reads.

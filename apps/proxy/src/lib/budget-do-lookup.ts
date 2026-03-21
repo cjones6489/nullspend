@@ -1,6 +1,6 @@
 import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, getTableColumns } from "drizzle-orm";
+import { eq, and, inArray, getTableColumns } from "drizzle-orm";
 import { budgets } from "@nullspend/db";
 import { withDbConnection } from "./db-semaphore.js";
 
@@ -38,7 +38,7 @@ export interface DOBudgetEntity {
  */
 export async function lookupBudgetsForDO(
   connectionString: string,
-  identity: { keyId: string | null; userId: string | null },
+  identity: { keyId: string | null; userId: string | null; tags: Record<string, string> },
 ): Promise<DOBudgetEntity[]> {
   const { keyId, userId } = identity;
   const entities: { type: string; id: string }[] = [];
@@ -83,6 +83,39 @@ export async function lookupBudgetsForDO(
           result.push({
             entityType: entity.type,
             entityId: entity.id,
+            maxBudget: row.maxBudgetMicrodollars,
+            spend: row.spendMicrodollars,
+            policy: row.policy,
+            resetInterval: row.resetInterval ?? null,
+            periodStart: row.currentPeriodStart?.getTime() ?? 0,
+            velocityLimit: row.velocityLimitMicrodollars ?? null,
+            velocityWindow: (row.velocityWindowSeconds ?? 60) * 1000,
+            velocityCooldown: (row.velocityCooldownSeconds ?? 60) * 1000,
+            thresholdPercentages: row.thresholdPercentages ?? [50, 80, 90, 95],
+            sessionLimit: row.sessionLimitMicrodollars ?? null,
+          });
+        }
+      }
+
+      // Tag budget lookup: query by user_id + entity_type='tag' + entity_id IN (tag keys)
+      const tags = identity.tags;
+      if (Object.keys(tags).length > 0 && userId) {
+        const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
+        const tagRows = await db
+          .select(getTableColumns(budgets))
+          .from(budgets)
+          .where(
+            and(
+              eq(budgets.userId, userId),
+              eq(budgets.entityType, "tag"),
+              inArray(budgets.entityId, tagEntityIds),
+            ),
+          );
+
+        for (const row of tagRows) {
+          result.push({
+            entityType: "tag",
+            entityId: row.entityId,
             maxBudget: row.maxBudgetMicrodollars,
             spend: row.spendMicrodollars,
             policy: row.policy,

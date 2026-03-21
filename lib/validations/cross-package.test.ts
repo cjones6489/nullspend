@@ -34,6 +34,8 @@ describe("cross-package constant consistency", () => {
       "action.expired",
       "velocity.exceeded",
       "velocity.recovered",
+      "session.limit_exceeded",
+      "tag_budget.exceeded",
       "test.ping",
     ];
 

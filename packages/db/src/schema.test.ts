@@ -22,6 +22,7 @@ describe("budgets table schema", () => {
     expect(names).toContain("velocityLimitMicrodollars");
     expect(names).toContain("velocityWindowSeconds");
     expect(names).toContain("velocityCooldownSeconds");
+    expect(names).toContain("userId");
   });
 
   it("id is a UUID primary key", () => {
@@ -74,6 +75,10 @@ describe("budgets table schema", () => {
     expect(cols.currentPeriodStart.notNull).toBe(false);
   });
 
+  it("userId is nullable", () => {
+    expect(cols.userId.notNull).toBe(false);
+  });
+
   it("type inference produces correct BudgetRow shape", () => {
     const row: BudgetRow = {
       id: "uuid",
@@ -87,6 +92,7 @@ describe("budgets table schema", () => {
       velocityLimitMicrodollars: null,
       velocityWindowSeconds: 60,
       velocityCooldownSeconds: 60,
+      userId: null,
       currentPeriodStart: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -248,6 +254,7 @@ describe("schema consistency with shared package types", () => {
       velocityLimitMicrodollars: null,
       velocityWindowSeconds: 60,
       velocityCooldownSeconds: 60,
+      userId: null,
       currentPeriodStart: null,
       createdAt: new Date(),
       updatedAt: new Date(),

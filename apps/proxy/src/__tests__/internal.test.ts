@@ -224,7 +224,7 @@ describe("handleBudgetInvalidation — sync", () => {
     const res = await handleBudgetInvalidation(req, env);
     expect(res.status).toBe(200);
 
-    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", { keyId: "u1", userId: "u1" });
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", { keyId: null, userId: "u1", tags: {} });
     expect(mockDoBudgetUpsertEntities).toHaveBeenCalledWith(env, "u1", entities);
     expect(mockEmitMetric).not.toHaveBeenCalledWith("budget_sync_empty", expect.anything());
   });
@@ -314,5 +314,62 @@ describe("handleBudgetInvalidation — error handling", () => {
       action: "sync",
       status: "error",
     }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tag budget sync
+// ---------------------------------------------------------------------------
+
+describe("handleBudgetInvalidation — tag sync", () => {
+  it("sync with entityType=tag passes tags to lookupBudgetsForDO", async () => {
+    const tagEntity = {
+      entityType: "tag",
+      entityId: "project=openclaw",
+      maxBudget: 50_000_000,
+      spend: 5_000_000,
+      policy: "strict_block",
+      resetInterval: null,
+      periodStart: 0,
+      velocityLimit: null,
+      velocityWindow: 60_000,
+      velocityCooldown: 60_000,
+    };
+    mockLookupBudgetsForDO.mockResolvedValue([tagEntity]);
+
+    const req = makeRequest({
+      action: "sync",
+      userId: "u1",
+      entityType: "tag",
+      entityId: "project=openclaw",
+    });
+    const env = makeEnv();
+    const res = await handleBudgetInvalidation(req, env);
+
+    expect(res.status).toBe(200);
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", {
+      keyId: null,
+      userId: "u1",
+      tags: { project: "openclaw" },
+    });
+    expect(mockDoBudgetUpsertEntities).toHaveBeenCalledWith(env, "u1", [tagEntity]);
+  });
+
+  it("sync with entityType=api_key unchanged (backward compat)", async () => {
+    mockLookupBudgetsForDO.mockResolvedValue([]);
+
+    const req = makeRequest({
+      action: "sync",
+      userId: "u1",
+      entityType: "api_key",
+      entityId: "key-1",
+    });
+    await handleBudgetInvalidation(req, makeEnv());
+
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", {
+      keyId: "key-1",
+      userId: "u1",
+      tags: {},
+    });
   });
 });

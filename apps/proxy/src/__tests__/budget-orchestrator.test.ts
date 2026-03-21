@@ -92,7 +92,7 @@ describe("checkBudget — DO-first mode", () => {
     expect(result.status).toBe("approved");
     expect(result.reservationId).toBe("rsv-do-1");
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-      expect.anything(), "user-1", "key-1", 5_000_000, null,
+      expect.anything(), "user-1", "key-1", 5_000_000, null, [],
     );
   });
 
@@ -238,7 +238,7 @@ describe("checkBudget — DO-first mode", () => {
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-      expect.anything(), "user-1", null, 5_000_000, null,
+      expect.anything(), "user-1", null, 5_000_000, null, [],
     );
   });
 
@@ -327,5 +327,106 @@ describe("reconcileBudget — durable-objects mode", () => {
     await expect(
       reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
     ).rejects.toThrow("DO exploded");
+  });
+});
+
+// ── Tag budget orchestrator tests ─────────────────────────────────
+
+describe("checkBudget — tag budget", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResetBudgetPeriod.mockResolvedValue(undefined);
+  });
+
+  it("converts ctx.tags to tagEntityIds", async () => {
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "approved",
+      hasBudgets: true,
+      reservationId: "rsv-1",
+      checkedEntities: [checkedEntity],
+    });
+
+    const ctx = makeCtx({ tags: { project: "openclaw", env: "prod" } });
+    await checkBudget(makeEnv(), ctx, 5_000_000);
+
+    expect(mockDoBudgetCheck).toHaveBeenCalledWith(
+      expect.anything(), "user-1", "key-1", 5_000_000, null,
+      ["project=openclaw", "env=prod"],
+    );
+  });
+
+  it("empty tags → null tagEntityIds", async () => {
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "approved",
+      hasBudgets: true,
+      reservationId: "rsv-1",
+      checkedEntities: [checkedEntity],
+    });
+
+    const ctx = makeCtx({ tags: {} });
+    await checkBudget(makeEnv(), ctx, 5_000_000);
+
+    expect(mockDoBudgetCheck).toHaveBeenCalledWith(
+      expect.anything(), "user-1", "key-1", 5_000_000, null, [],
+    );
+  });
+
+  it("tag denial returns tagBudgetDenied=true with tagKey/tagValue", async () => {
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "denied",
+      hasBudgets: true,
+      deniedEntity: "tag:project=openclaw",
+      remaining: 0,
+      maxBudget: 50_000_000,
+      spend: 50_000_000,
+      checkedEntities: [],
+    });
+
+    const ctx = makeCtx({ tags: { project: "openclaw" } });
+    const result = await checkBudget(makeEnv(), ctx, 5_000_000);
+
+    expect(result.status).toBe("denied");
+    expect(result.tagBudgetDenied).toBe(true);
+    expect(result.tagKey).toBe("project");
+    expect(result.tagValue).toBe("openclaw");
+    expect(result.deniedEntityType).toBe("tag");
+    expect(result.deniedEntityId).toBe("project=openclaw");
+  });
+
+  it("edge case: tag value with = (e.g., env=a=b) → tagKey=env, tagValue=a=b", async () => {
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "denied",
+      hasBudgets: true,
+      deniedEntity: "tag:env=a=b",
+      remaining: 0,
+      maxBudget: 50_000_000,
+      spend: 50_000_000,
+      checkedEntities: [],
+    });
+
+    const ctx = makeCtx({ tags: { env: "a=b" } });
+    const result = await checkBudget(makeEnv(), ctx, 5_000_000);
+
+    expect(result.tagKey).toBe("env");
+    expect(result.tagValue).toBe("a=b");
+  });
+
+  it("non-tag denial still returns generic budget_exceeded outcome", async () => {
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "denied",
+      hasBudgets: true,
+      deniedEntity: "user:user-1",
+      remaining: 0,
+      maxBudget: 100_000_000,
+      spend: 100_000_000,
+      checkedEntities: [],
+    });
+
+    const ctx = makeCtx({ tags: { project: "openclaw" } });
+    const result = await checkBudget(makeEnv(), ctx, 5_000_000);
+
+    expect(result.status).toBe("denied");
+    expect(result.tagBudgetDenied).toBeUndefined();
+    expect(result.deniedEntityType).toBe("user");
   });
 });

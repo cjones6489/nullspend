@@ -18,7 +18,7 @@ import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { writeLatencyDataPoint } from "../lib/write-metric.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildThinCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildThinCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, buildTagBudgetExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
@@ -155,6 +155,54 @@ export async function handleChatCompletions(
               session_id: outcome.sessionId ?? null,
               session_spend_microdollars: outcome.sessionSpend ?? 0,
               session_limit_microdollars: outcome.sessionLimit ?? 0,
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "X-NullSpend-Trace-Id": ctx.traceId,
+          },
+        },
+      );
+    }
+
+    // Tag budget denial
+    if (outcome.status === "denied" && outcome.tagBudgetDenied) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+        waitUntil((async () => {
+          try {
+            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            if (cached.length > 0) {
+              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+              const event = buildTagBudgetExceededPayload({
+                tagKey: outcome.tagKey ?? "unknown",
+                tagValue: outcome.tagValue ?? "unknown",
+                budgetEntityId: outcome.deniedEntityId ?? "unknown",
+                budgetLimitMicrodollars: outcome.maxBudget ?? 0,
+                budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+                estimatedRequestCostMicrodollars: estimate,
+                model: requestModel,
+                provider: "openai",
+              }, ctx.auth.apiVersion);
+              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
+            }
+          } catch (err) {
+            console.error("[openai-route] Tag budget webhook dispatch failed:", err);
+          }
+        })());
+      }
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "tag_budget_exceeded",
+            message: "Request blocked: estimated cost exceeds tag budget limit.",
+            details: {
+              tag_key: outcome.tagKey ?? null,
+              tag_value: outcome.tagValue ?? null,
+              budget_limit_microdollars: outcome.maxBudget ?? 0,
+              budget_spend_microdollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
             },
           },
         }),

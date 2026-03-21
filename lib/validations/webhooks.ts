@@ -15,6 +15,8 @@ export const WEBHOOK_EVENT_TYPES = [
   "action.expired",
   "velocity.exceeded",
   "velocity.recovered",
+  "session.limit_exceeded",
+  "tag_budget.exceeded",
   "test.ping",
 ] as const;
 
