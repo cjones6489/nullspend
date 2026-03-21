@@ -86,7 +86,7 @@ Current budget enforcement is per-request. An agent making 1000 cheap requests (
 
 **Why now:** NullSpend already tracks `sessionId` on cost events and MCP events. The DO has the primitives. Without session aggregation, budget enforcement has a fundamental gap.
 
-### 1.5 Configurable Budget Thresholds
+### 1.5 Configurable Budget Thresholds — ✅ Done
 **Effort:** ~1.5h | **Source:** [Prelaunch Audit Section 6](nullspend-prelaunch-design-audit.md) — last remaining medium-priority item
 
 Thresholds currently hardcoded at `[50, 80, 90, 95]` in the proxy. Users cannot configure or discover them.
@@ -96,9 +96,56 @@ Thresholds currently hardcoded at `[50, 80, 90, 95]` in the proxy. Users cannot 
 - Expose in create/update budget API (`createBudgetInputSchema`)
 - Read in proxy's `detectThresholdCrossings()` from budget entity instead of hardcoded array
 
+### 1.6 Queue-Based Cost Event Logging — ✅ Done
+**Shipped:** 2026-03-20 | **Source:** Stress testing — 0/25 cost events logged under concurrent load
+
+Routes now enqueue cost events to Cloudflare Queues (`nullspend-cost-events`) instead of writing directly to Postgres via `waitUntil`. Queue consumer batch-INSERTs with per-message fallback for poison message isolation. DLQ consumer provides last-resort writes. Falls back to direct write when queue binding absent (local dev).
+
+Key design decisions: `queue.sendBatch()` for MCP batch path, `max_batch_size=100` / `max_batch_timeout=5s`, `onConflictDoNothing` for idempotent re-delivery, 5s timeout on `queue.send()`, sentinel-based metric separation (pg_error vs semaphore_full), DLQ handler guards against HYPERDRIVE binding unavailability, `cost_event_queue_fallback` metric on fallback.
+
+**Stress test verified:** 25/25 at medium, 50/50 at heavy. Spend drift: 0.0% at medium.
+
+**New files:** `cost-event-queue.ts`, `cost-event-queue-handler.ts`, `cost-event-dlq-handler.ts`, 3 test files. Updated: 10 test files, 3 route files, `index.ts`, `wrangler.jsonc`.
+
+### 1.7 Budget Sync Verification Round-Trip — ✅ Done
+**Shipped:** 2026-03-20 | **Source:** Stress testing — $0 budget race condition
+
+Stress tests found 3-6 requests leaking past a $0 budget under 25 concurrent requests. The DO hadn't finished populating the budget entity before requests arrived. Fix: `doBudgetUpsertEntities` now reads back `getBudgetState()` after upserting and retries any missing entities. Emits `budget_sync_retry` metric when retry fires. Deployed and verified: 25/25 denied at $0 budget.
+
+### 1.8 Aborted Stream Cost Tracking
+**Effort:** ~2h | **Source:** Stress testing (2026-03-20) — 0/5 aborted streams logged cost events
+
+When a client aborts a streaming response mid-flight, the proxy's `waitUntil(logCostEvent())` often doesn't fire because the response lifecycle is interrupted. This means aborted streams have zero cost attribution — spend is tracked in the DO (via reservation + reconciliation) but the detailed cost event record is lost.
+
+**What to build:**
+- Log cost event at reservation time (pre-upstream) with `status: 'reserved'`, estimated cost
+- On successful completion, update to `status: 'completed'` with actual cost
+- On abort/timeout, reconciliation already adjusts the DO; ensure cost event is written with partial usage
+- Alternative: move cost event logging to the reconciliation queue (would be solved by 1.6)
+
+**Why now:** Combined with 1.6 (queue-based logging), aborted streams would naturally be covered since reconciliation already fires for aborted requests. May not need a separate fix if 1.6 is implemented first.
+
 ---
 
 ## Priority 2 — Medium Impact / Ship This Month
+
+Items that improve DX, expand platform capabilities, or strengthen competitive positioning.
+
+### 2.0a Budget Sync First-Populate Root Cause
+**Effort:** ~2-3h | **Source:** Stress testing (2026-03-20) — probe verification fails ~20% of the time
+
+The verification+retry fix (1.7) masks the issue, but `populateIfEmpty` silently fails to persist on the first call in ~20% of stress test runs. The `getBudgetState()` read-back finds the entity missing, triggering the retry. Possible causes: Hyperdrive returning stale reads for `lookupBudgetsForDO`, db-semaphore blocking the Postgres query in the sync path, or a DO timing edge case with `transactionSync`.
+
+**What to investigate:**
+- Add logging to `lookupBudgetsForDO` to confirm entities are returned from Postgres
+- Add logging to `populateIfEmpty` to confirm the INSERT executes
+- Check if `budget_sync_retry` metric fires in production (would confirm the retry is needed)
+- Check Worker logs for semaphore-related errors during sync requests
+
+### 2.0b Analytics Engine Metrics Ingestion
+**Effort:** ~1-2h | **Source:** Stress testing (2026-03-20) — `/health/metrics` returns all zeros
+
+The proxy writes latency data points to Analytics Engine on every request, but `/health/metrics` queries return zeros during and after stress sessions. The 5-minute query window and AE ingestion delay may mean data points aren't available for real-time monitoring. The KV cache (90s TTL) compounds the lag.
 
 Items that improve DX, expand platform capabilities, or strengthen competitive positioning.
 
@@ -239,6 +286,11 @@ Last updated: 2026-03-20
 | **P1** | W3C `traceparent` + `trace_id` column | **Done** (2026-03-19) | ~4h | [Research](../research/traceparent-trace-id-research.md) |
 | **P1** | Session-level budget aggregation | Researched | ~2-3h | [Research](../research/session-level-budget-aggregation.md) |
 | **P1** | Configurable budget thresholds | **Done** (2026-03-19) | ~1.5h | Audit Section 6 |
+| **P1** | Queue-based cost event logging | **Done** (2026-03-20) | ~3-4h | Stress testing |
+| **P1** | Budget sync verification round-trip | **Done** (2026-03-20) | ~1h | Stress testing |
+| **P1** | Aborted stream cost tracking gap | Not started | ~2h | Stress testing |
+| **P2** | Budget sync first-populate root cause | Not started | ~2-3h | Stress testing |
+| **P2** | Analytics Engine metrics ingestion gap | Not started | ~1-2h | Stress testing |
 | **P2** | Claude Agent SDK adapter | Not started | ~1 day | Architecture Review |
 | **P2** | Thin webhook event mode | Not started | ~3-4h | Architecture Review |
 | **P2** | Unit economics dashboard metrics | Not started | ~1 day | Architecture Review |

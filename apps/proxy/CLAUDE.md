@@ -81,13 +81,18 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/cache-kv.ts` — KV-backed caching helpers
 - `src/lib/metrics.ts` — structured metric emission
 - `src/lib/reconciliation-queue.ts` — Cloudflare Queue-based async reconciliation
+- `src/lib/cost-event-queue.ts` — Cloudflare Queue-based async cost event logging (queue-first with direct fallback)
+- `src/cost-event-queue-handler.ts` — Cost event queue consumer (batch INSERT + per-message fallback)
+- `src/cost-event-dlq-handler.ts` — Cost event DLQ consumer (always-ack + best-effort write)
 - `src/lib/constants.ts` — shared constants
 
 ## Cost Tracking Flow
 
 ```
-Request → Resolve trace ID → Auth → Forward to provider → Parse response/stream → Extract usage → Calculate cost → Log (with trace_id, session_id, tags) async via waitUntil()
+Request → Resolve trace ID → Auth → Forward to provider → Parse response/stream → Extract usage → Calculate cost → Enqueue to COST_EVENT_QUEUE (fallback: direct DB write)
 ```
+
+Cost events are enqueued to Cloudflare Queues via `logCostEventQueued()` / `logCostEventsBatchQueued()`. The queue consumer batch-INSERTs with `onConflictDoNothing` for idempotent re-delivery. Falls back to direct `logCostEvent()` when queue binding is absent (local dev).
 
 Non-streaming: parse JSON response for `usage` field.
 Streaming: SSE parser accumulates chunks, extracts final `usage` from `[DONE]`-adjacent message.

@@ -1,12 +1,13 @@
 # Testing
 
-NullSpend has ~2,500+ tests across ~145 files organized into four tiers.
+NullSpend has ~2,700+ tests across ~155 files organized into four tiers.
 
 ## Quick Reference
 
 ```bash
 pnpm test             # Root tests (dashboard: lib/, app/api/, components/)
 pnpm proxy:test       # Proxy worker unit tests (apps/proxy/src/__tests__/)
+pnpm claude-agent:test # Claude Agent SDK adapter tests
 pnpm db:build && npx vitest run --config packages/cost-engine/vitest.config.ts --dir packages/cost-engine
                       # Cost-engine tests
 ```
@@ -41,7 +42,7 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-62 files, ~1,040 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+67 files, ~1,117 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
 
 ### Naming Convention
 
@@ -81,10 +82,13 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `anthropic-cost-calculator-all-models.test.ts` | All 22 Anthropic models: basic, cached, cache write, dated model parity |
 | `anthropic-cost-estimator.test.ts` | `estimateAnthropicMaxCost` — pre-request estimation |
 
-**Cost Logging**
+**Cost Logging & Queue**
 | File | What it tests |
 |---|---|
-| `cost-logger.test.ts` | `logCostEvent` — Postgres write, local dev bypass, error handling |
+| `cost-logger.test.ts` | `logCostEvent` — Postgres write, local dev bypass, error handling, `throwOnError` option, metric separation (pg_error vs semaphore_full) |
+| `cost-event-queue.test.ts` | `enqueueCostEvent`, `enqueueCostEventsBatch`, `getCostEventQueue`, queue-first fallback helpers, timeout behavior, fallback metric emission |
+| `cost-event-queue-handler.test.ts` | Queue consumer: batch INSERT + ack, per-message fallback on failure, poison message isolation, empty batch, connectionString from env |
+| `cost-event-dlq-handler.test.ts` | DLQ consumer: always-ack, metric emission, best-effort write, null userId, HYPERDRIVE unavailable guard |
 
 **Budget System**
 | File | What it tests |
@@ -198,6 +202,29 @@ Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accura
 
 ---
 
+## Proxy Stress Tests (`apps/proxy/stress-*.test.ts`)
+
+4 files, 28 tests. More aggressive than smoke tests — designed to find race conditions, degradation thresholds, and state inconsistency. Require a deployed worker, API keys, and `DATABASE_URL`.
+
+```bash
+pnpm proxy:stress                          # Default (medium intensity)
+STRESS_INTENSITY=heavy pnpm proxy:stress   # Heavy intensity
+STRESS_INTENSITY=light pnpm proxy:stress   # Light intensity
+```
+
+| File | What it tests |
+|---|---|
+| `stress-concurrency.test.ts` | Concurrency ramp (10-80), cross-provider interleave, sustained load, latency tracking |
+| `stress-budget-races.test.ts` | Budget race conditions: tight budget + concurrent requests, $0 budget enforcement, sequential exhaust, post-reconciliation consistency |
+| `stress-streaming.test.ts` | Rapid abort storms, concurrent stream management, mixed abort+complete, cost events for aborted streams |
+| `stress-recovery.test.ts` | Post-stress health, normal request flow, error handling, DB consistency, negative spend detection |
+
+Config: `vitest.stress.config.ts` — 300s timeout, sequential files, `.env.smoke` env vars.
+
+Intensity levels control concurrency (light: 10-15, medium: 25-40, heavy: 50-80).
+
+---
+
 ## Dashboard Tests (root `pnpm test`)
 
 Co-located with source files. 846 tests across 77 files.
@@ -238,6 +265,9 @@ Co-located with source files. 846 tests across 77 files.
 - `all-models.test.ts` — All 38 models: catalog completeness, exact rates, tier consistency
 - `catalog.test.ts` — Pricing data structural validation
 - `exports.test.ts` — Public API surface verification
+
+**claude-agent** (`packages/claude-agent/src/`) — 34 tests
+- `with-nullspend.test.ts` — `withNullSpend` config transformer: URL, headers, passthrough, tag/traceId/actionId validation, newline injection, env merging, edge cases
 
 **Other packages** — co-located `*.test.ts` files:
 - `packages/db/src/schema.test.ts` — Schema structure validation
