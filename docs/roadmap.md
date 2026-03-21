@@ -87,9 +87,17 @@
 - Provider badge in Activity, ProviderBreakdown in Analytics
 - Seed script with ~30% Anthropic event mix
 
+### FinOps Phase 5 — Advanced Budget Guardrails
+
+- Velocity limits: per-entity sliding window spend cap with circuit breaker + cooldown
+- Session limits: per-session spend cap via `X-NullSpend-Session` header, DO-enforced
+- Configurable alert thresholds: per-budget webhook percentages (replaces hardcoded 50/80/90/95)
+- W3C traceparent propagation: `trace_id` column on cost_events, forwarded to upstream providers
+- Webhook event system: 13 event types including `session.limit_exceeded`, HMAC-signed delivery via QStash
+
 ---
 
-## Current: Phase 5 — Launch Prep
+## Current: Phase 6 — Launch Prep
 
 See `docs/finops-pivot-roadmap.md` for full details and forward roadmap
-(Phases 5-22).
+(Phases 6-22).

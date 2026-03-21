@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~2,700+ tests across ~155 files organized into four tiers.
+NullSpend has ~2,800+ tests across ~160 files organized into four tiers.
 
 ## Quick Reference
 
@@ -196,9 +196,10 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `smoke*.test.ts` (no prefix) | OpenAI tests |
 | `smoke-anthropic*.test.ts` | Anthropic tests |
 | `smoke-budget*.test.ts` | Budget enforcement E2E |
+| `smoke-session-limits.test.ts` | Session limit enforcement E2E |
 | `smoke-trace.test.ts` | W3C traceparent propagation E2E |
 
-Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace.
+Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace, session-limits.
 
 ---
 

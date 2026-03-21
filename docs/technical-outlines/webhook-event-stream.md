@@ -142,6 +142,9 @@ type WebhookEventType =
   | "budget.exceeded"             // request blocked by budget
 
   // Enforcement events
+  | "velocity.exceeded"           // velocity limit tripped, cooldown started
+  | "velocity.recovered"          // velocity cooldown expired, requests resumed
+  | "session.limit_exceeded"      // session spend exceeded per-session limit
   | "request.blocked"             // enforcement check denied request (reason in data.object.reason)
   | "budget.reset"                // budget period reset
   | "action.created"              // HITL action created

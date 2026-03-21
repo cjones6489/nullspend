@@ -16,6 +16,7 @@ nullspend/                  # Next.js 16 dashboard (root)
 ├── packages/db/            # Drizzle ORM schema (@nullspend/db)
 ├── packages/sdk/           # Client SDK (@nullspend/sdk)
 ├── packages/cost-engine/   # Cost calculation (@nullspend/cost-engine)
+├── packages/claude-agent/  # Claude Agent SDK adapter (@nullspend/claude-agent)
 ├── packages/mcp-server/    # MCP server (@nullspend/mcp-server)
 ├── packages/mcp-proxy/     # MCP proxy (@nullspend/mcp-proxy)
 ├── proxy.ts                # Next.js 16 proxy (replaces middleware.ts)
@@ -62,7 +63,7 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 
 ## Testing
 
-See @TESTING.md for the full test map (~144 files, ~2,500+ tests across 4 tiers). Key points:
+See @TESTING.md for the full test map (~160 files, ~2,800+ tests across 4 tiers). Key points:
 
 - Proxy tests: `apps/proxy/src/__tests__/` — naming convention: `{module}.test.ts`, `-edge-cases.test.ts`, `-all-models.test.ts`
 - Dashboard tests: co-located with source files
