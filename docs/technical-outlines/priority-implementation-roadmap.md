@@ -119,18 +119,21 @@ Key design decisions: `queue.sendBatch()` for MCP batch path, `max_batch_size=10
 
 Stress tests found 3-6 requests leaking past a $0 budget under 25 concurrent requests. The DO hadn't finished populating the budget entity before requests arrived. Fix: `doBudgetUpsertEntities` now reads back `getBudgetState()` after upserting and retries any missing entities. Emits `budget_sync_retry` metric when retry fires. Deployed and verified: 25/25 denied at $0 budget.
 
-### 1.8 Aborted Stream Cost Tracking
-**Effort:** ~2h | **Source:** Stress testing (2026-03-20) — 0/5 aborted streams logged cost events
+### 1.8 Aborted Stream Cost Tracking — ✅ Done
+**Shipped:** 2026-03-20 | **Source:** Stress testing — 0/5 aborted streams logged cost events
 
-When a client aborts a streaming response mid-flight, the proxy's `waitUntil(logCostEvent())` often doesn't fire because the response lifecycle is interrupted. This means aborted streams have zero cost attribution — spend is tracked in the DO (via reservation + reconciliation) but the detailed cost event record is lost.
+When a client aborts a streaming response mid-flight, the SSE parser resolves with `cancelled: true` and null usage. Previously no cost event was written, creating an analytics/billing gap.
 
-**What to build:**
-- Log cost event at reservation time (pre-upstream) with `status: 'reserved'`, estimated cost
-- On successful completion, update to `status: 'completed'` with actual cost
-- On abort/timeout, reconciliation already adjusts the DO; ensure cost event is written with partial usage
-- Alternative: move cost event logging to the reconciliation queue (would be solved by 1.6)
+**What was built:**
+- In the `!result.usage && result.cancelled` branch of both `openai.ts` and `anthropic.ts`, an estimated cost event is written via `logCostEventQueued` with `inputTokens: 0`, `outputTokens: 0`, `costMicrodollars: estimate`
+- Tagged with `_ns_estimated: "true"` and `_ns_cancelled: "true"` in the JSONB `tags` column (queryable via `@>` containment)
+- Cost event write is try/catch-wrapped so failures cannot block budget reconciliation
+- `parseTags` reserves the `_ns_` prefix — user-supplied tags starting with `_ns_` are silently dropped
+- Dashboard aggregation queries accept `excludeEstimated` option; summary API accepts `?excludeEstimated=true`
+- `emitMetric("cost_event_estimated")` fires on successful write for observability
+- Stress test tightened: ≥80% of aborted streams must have cost events in DB
 
-**Why now:** Combined with 1.6 (queue-based logging), aborted streams would naturally be covered since reconciliation already fires for aborted requests. May not need a separate fix if 1.6 is implemented first.
+**Verified:** Stress tests pass 28/28. Live DB confirmed correct shape, tags, and zero tokens.
 
 ---
 
@@ -296,7 +299,7 @@ Last updated: 2026-03-21
 | **P1** | Configurable budget thresholds | **Done** (2026-03-19) | ~1.5h | Audit Section 6 |
 | **P1** | Queue-based cost event logging | **Done** (2026-03-20) | ~3-4h | Stress testing |
 | **P1** | Budget sync verification round-trip | **Done** (2026-03-20) | ~1h | Stress testing |
-| **P1** | Aborted stream cost tracking gap | Not started | ~2h | Stress testing |
+| **P1** | Aborted stream cost tracking gap | **Done** (2026-03-20) | ~2h | Stress testing |
 | **P2** | Budget sync first-populate root cause | Not started | ~2-3h | Stress testing |
 | **P2** | Analytics Engine metrics ingestion gap | Not started | ~1-2h | Stress testing |
 | **P2** | Claude Agent SDK adapter | **Done** (2026-03-20) | ~1 day | [Deep Research](../research/claude-agent-sdk-adapter.md) |

@@ -23,21 +23,23 @@ export async function GET(request: Request) {
   try {
     const userId = await resolveSessionUserId();
     const url = new URL(request.url);
-    const { period } = costSummaryQuerySchema.parse({
+    const { period, excludeEstimated: excludeEstimatedRaw } = costSummaryQuerySchema.parse({
       period: url.searchParams.get("period") ?? undefined,
+      excludeEstimated: url.searchParams.get("excludeEstimated") ?? undefined,
     });
     const periodDays = parseInt(period, 10);
+    const opts = excludeEstimatedRaw === "true" ? { excludeEstimated: true } : undefined;
 
     const [daily, models, providers, keys, tools, sources, traces, totals, costBreakdown] = await Promise.all([
-      getDailySpend(userId, periodDays),
-      getModelBreakdown(userId, periodDays),
-      getProviderBreakdown(userId, periodDays),
-      getKeyBreakdown(userId, periodDays),
-      getToolBreakdown(userId, periodDays),
-      getSourceBreakdown(userId, periodDays),
-      getTraceBreakdown(userId, periodDays),
-      getTotals(userId, periodDays),
-      getCostBreakdownTotals(userId, periodDays),
+      getDailySpend(userId, periodDays, opts),
+      getModelBreakdown(userId, periodDays, opts),
+      getProviderBreakdown(userId, periodDays, opts),
+      getKeyBreakdown(userId, periodDays, opts),
+      getToolBreakdown(userId, periodDays, opts),
+      getSourceBreakdown(userId, periodDays, opts),
+      getTraceBreakdown(userId, periodDays, opts),
+      getTotals(userId, periodDays, opts),
+      getCostBreakdownTotals(userId, periodDays, opts),
     ]);
 
     const response = costSummaryResponseSchema.parse({

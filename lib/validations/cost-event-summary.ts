@@ -4,6 +4,7 @@ import { nsIdOutput } from "@/lib/ids/prefixed-id";
 
 export const costSummaryQuerySchema = z.object({
   period: z.enum(["7d", "30d", "90d"]).default("30d"),
+  excludeEstimated: z.enum(["true", "false"]).default("false"),
 });
 
 export const dailySpendSchema = z.object({

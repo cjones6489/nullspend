@@ -96,3 +96,4 @@ Cost events are enqueued to Cloudflare Queues via `logCostEventQueued()` / `logC
 
 Non-streaming: parse JSON response for `usage` field.
 Streaming: SSE parser accumulates chunks, extracts final `usage` from `[DONE]`-adjacent message.
+Cancelled streams: when the client aborts mid-stream, the SSE parser resolves with `cancelled: true` and no usage. The route writes an estimated cost event (tokens=0, cost=pre-request estimate) tagged with `_ns_estimated: "true"` and `_ns_cancelled: "true"` in the JSONB `tags` column, then reconciles the budget reservation with the estimate. The cost event write is try/catch-wrapped so failures cannot block budget reconciliation.

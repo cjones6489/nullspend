@@ -123,6 +123,7 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `internal-route-stress.test.ts` | Internal route under concurrent load |
 | `upstream-timeout.test.ts` | Fetch timeout/error — reservation cleanup verification |
 | `stream-cancellation-cost.test.ts` | Partial stream cancellation — cost tracking accuracy |
+| `stream-cancellation-cost-event.test.ts` | Cancelled stream estimated cost event write, error isolation, tag preservation, model fallback |
 
 **Request/Response Processing**
 | File | What it tests |

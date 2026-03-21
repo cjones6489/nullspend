@@ -2,6 +2,7 @@ const MAX_KEYS = 10;
 const MAX_KEY_LENGTH = 64;
 const MAX_VALUE_LENGTH = 256;
 const KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const RESERVED_PREFIX = "_ns_";
 
 /**
  * Parse and validate tags from the X-NullSpend-Tags header.
@@ -39,7 +40,8 @@ export function parseTags(header: string | null): Record<string, string> {
       typeof key !== "string" ||
       key.length < 1 ||
       key.length > MAX_KEY_LENGTH ||
-      !KEY_PATTERN.test(key)
+      !KEY_PATTERN.test(key) ||
+      key.startsWith(RESERVED_PREFIX)
     ) {
       dropped++;
       continue;

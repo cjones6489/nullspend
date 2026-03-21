@@ -149,10 +149,10 @@ describe("GET /api/cost-events/summary", () => {
     const req = new Request("http://localhost/api/cost-events/summary");
     await GET(req);
 
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 30);
-    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30);
-    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30);
-    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
+    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
   });
 
   it("parses 7d period correctly", async () => {
@@ -162,7 +162,7 @@ describe("GET /api/cost-events/summary", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 7);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 7, undefined);
     const body = await res.json();
     expect(body.totals.period).toBe("7d");
   });
@@ -174,7 +174,7 @@ describe("GET /api/cost-events/summary", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 90);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 90, undefined);
     const body = await res.json();
     expect(body.totals.period).toBe("90d");
   });
@@ -286,14 +286,32 @@ describe("GET /api/cost-events/summary", () => {
     const req = new Request("http://localhost/api/cost-events/summary?period=7d");
     await GET(req);
 
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetToolBreakdown).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetSourceBreakdown).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetTotals).toHaveBeenCalledWith(customUserId, 7);
-    expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith(customUserId, 7);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetToolBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetSourceBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetTotals).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith(customUserId, 7, undefined);
+  });
+
+  it("passes excludeEstimated option when query param is true", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/summary?period=30d&excludeEstimated=true");
+    await GET(req);
+
+    const expectedOpts = { excludeEstimated: true };
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetToolBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetSourceBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
   });
 });

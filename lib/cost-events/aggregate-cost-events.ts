@@ -3,11 +3,22 @@ import { and, desc, eq, gte, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, costEvents } from "@nullspend/db";
 
-function baseConditions(userId: string, cutoffDate: Date) {
-  return and(
+export interface AggregateOptions {
+  excludeEstimated?: boolean;
+}
+
+/** Exclude cost events tagged as estimated (cancelled stream estimates). */
+const NOT_ESTIMATED = sql`NOT (${costEvents.tags} @> '{"_ns_estimated":"true"}'::jsonb)`;
+
+function baseConditions(userId: string, cutoffDate: Date, options?: AggregateOptions) {
+  const conditions = [
     or(eq(costEvents.userId, userId), eq(apiKeys.userId, userId)),
     gte(costEvents.createdAt, cutoffDate),
-  );
+  ];
+  if (options?.excludeEstimated) {
+    conditions.push(NOT_ESTIMATED);
+  }
+  return and(...conditions);
 }
 
 function makeCutoff(periodDays: number): Date {
@@ -18,7 +29,7 @@ function makeCutoff(periodDays: number): Date {
 
 const dateExpr = sql<string>`(${costEvents.createdAt} AT TIME ZONE 'UTC')::date::text`;
 
-export async function getDailySpend(userId: string, periodDays: number) {
+export async function getDailySpend(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -30,12 +41,12 @@ export async function getDailySpend(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff))
+    .where(baseConditions(userId, cutoff, options))
     .groupBy(dateExpr)
     .orderBy(dateExpr);
 }
 
-export async function getModelBreakdown(userId: string, periodDays: number) {
+export async function getModelBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -57,12 +68,12 @@ export async function getModelBreakdown(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff))
+    .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.provider, costEvents.model)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 
-export async function getProviderBreakdown(userId: string, periodDays: number) {
+export async function getProviderBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -75,12 +86,12 @@ export async function getProviderBreakdown(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff))
+    .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.provider)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 
-export async function getKeyBreakdown(userId: string, periodDays: number) {
+export async function getKeyBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -94,12 +105,12 @@ export async function getKeyBreakdown(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff))
+    .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.apiKeyId, apiKeys.name)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 
-export async function getSourceBreakdown(userId: string, periodDays: number) {
+export async function getSourceBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -112,12 +123,12 @@ export async function getSourceBreakdown(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff))
+    .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.source)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 
-export async function getToolBreakdown(userId: string, periodDays: number) {
+export async function getToolBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -132,12 +143,12 @@ export async function getToolBreakdown(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(and(baseConditions(userId, cutoff), or(eq(costEvents.eventType, "tool"), eq(costEvents.provider, "mcp"))))
+    .where(and(baseConditions(userId, cutoff, options), or(eq(costEvents.eventType, "tool"), eq(costEvents.provider, "mcp"))))
     .groupBy(costEvents.model)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
 }
 
-export async function getCostBreakdownTotals(userId: string, periodDays: number) {
+export async function getCostBreakdownTotals(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -150,12 +161,12 @@ export async function getCostBreakdownTotals(userId: string, periodDays: number)
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff));
+    .where(baseConditions(userId, cutoff, options));
 
   return row ?? { inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 };
 }
 
-export async function getTraceBreakdown(userId: string, periodDays: number) {
+export async function getTraceBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -168,13 +179,13 @@ export async function getTraceBreakdown(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(and(baseConditions(userId, cutoff), sql`${costEvents.traceId} IS NOT NULL`))
+    .where(and(baseConditions(userId, cutoff, options), sql`${costEvents.traceId} IS NOT NULL`))
     .groupBy(costEvents.traceId)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
     .limit(25);
 }
 
-export async function getTotals(userId: string, periodDays: number) {
+export async function getTotals(userId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
@@ -186,7 +197,7 @@ export async function getTotals(userId: string, periodDays: number) {
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff));
+    .where(baseConditions(userId, cutoff, options));
 
   return row ?? { totalCostMicrodollars: 0, totalRequests: 0 };
 }

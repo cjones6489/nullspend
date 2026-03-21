@@ -101,4 +101,15 @@ describe("parseTags", () => {
     expect(result["__proto__"]).toBe("team-alpha");
     expect(result.other).toBe("val");
   });
+
+  it("drops keys with reserved _ns_ prefix", () => {
+    const result = parseTags('{"_ns_estimated":"true","_ns_cancelled":"true","env":"prod"}');
+    expect(result).toEqual({ env: "prod" });
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Dropped 2"));
+  });
+
+  it("allows keys starting with _n or _ns but not _ns_", () => {
+    const result = parseTags('{"_n":"ok","_ns":"ok","_ns_bad":"no","ns_ok":"ok"}');
+    expect(result).toEqual({ _n: "ok", _ns: "ok", ns_ok: "ok" });
+  });
 });

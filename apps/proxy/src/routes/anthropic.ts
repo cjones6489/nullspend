@@ -366,10 +366,34 @@ function handleStreaming(
           const reconcileCost = result?.cancelled ? estimate : 0;
           if (result?.cancelled) {
             emitMetric("stream_cancelled", { model: requestModel, estimate });
+
+            // Best-effort cost event — failure must NOT prevent budget reconciliation
+            try {
+              await logCostEventQueued(getCostEventQueue(env), connectionString, {
+                requestId,
+                provider: "anthropic",
+                model: result.model ?? requestModel,
+                inputTokens: 0,
+                outputTokens: 0,
+                cachedInputTokens: 0,
+                reasoningTokens: 0,
+                costMicrodollars: reconcileCost,
+                costBreakdown: null,
+                durationMs,
+                ...attribution,
+                ...enrichment,
+                tags: { ...enrichment.tags, _ns_estimated: "true", _ns_cancelled: "true" },
+                toolCallsRequested: result.toolCalls,
+                source: "proxy" as const,
+                eventType: "llm" as const,
+              });
+              emitMetric("cost_event_estimated", { model: requestModel, estimate: reconcileCost });
+            } catch (costErr) {
+              console.error("[anthropic-route] Failed to log cancelled stream cost event:", { requestId, error: costErr });
+            }
           }
           console.warn(
-            "[anthropic-route] Streaming response completed without usage" +
-              " data — cost event not recorded.",
+            "[anthropic-route] Streaming response completed without usage data.",
             { requestId, model: requestModel, durationMs, cancelled: result?.cancelled ?? false },
           );
           if (reservationId) {
