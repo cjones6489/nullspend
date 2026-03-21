@@ -72,7 +72,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
    * Insert a budget in Postgres, invalidate proxy caches, and send a warm-up
    * request to force DO sync.
    */
-  async function setupBudget(
+  async function insertBudget(
     entityType: string,
     entityId: string,
     maxBudgetMicrodollars: number,
@@ -86,10 +86,28 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
                     spend_microdollars = ${spendMicrodollars},
                     updated_at = NOW()
     `;
+  }
 
-    // Force Postgres→DO sync via internal endpoint.
-    // Under DO-first architecture, no Worker-level cache to invalidate.
+  /**
+   * Insert budget(s) into Postgres, wait for Hyperdrive cache to expire,
+   * then sync to DO. Call this AFTER all insertBudget() calls are done.
+   */
+  async function syncAfterInsert() {
+    // Wait for Hyperdrive query cache to expire (max_age=5s)
+    // so the sync reads fresh Postgres data including all inserted rows.
+    await new Promise((r) => setTimeout(r, 5_500));
     await syncBudget(NULLSPEND_SMOKE_USER_ID!, NULLSPEND_SMOKE_KEY_ID!);
+  }
+
+  /** Insert a single budget and sync. Convenience wrapper for single-entity tests. */
+  async function setupBudget(
+    entityType: string,
+    entityId: string,
+    maxBudgetMicrodollars: number,
+    spendMicrodollars = 0,
+  ) {
+    await insertBudget(entityType, entityId, maxBudgetMicrodollars, spendMicrodollars);
+    await syncAfterInsert();
   }
 
   /** Remove any existing budgets so the user/key is non-budgeted */
@@ -144,9 +162,11 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
   }, 30_000);
 
   it("both user and key budgets checked — tightest one blocks", async () => {
-    // User budget generous, key budget exhausted
-    await setupBudget("user", NULLSPEND_SMOKE_USER_ID!, 10_000_000);
-    await setupBudget("api_key", NULLSPEND_SMOKE_KEY_ID!, 1);
+    // User budget generous, key budget exhausted.
+    // Insert both BEFORE syncing so the single sync picks up both rows.
+    await insertBudget("user", NULLSPEND_SMOKE_USER_ID!, 10_000_000);
+    await insertBudget("api_key", NULLSPEND_SMOKE_KEY_ID!, 1);
+    await syncAfterInsert();
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
