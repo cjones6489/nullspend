@@ -1,7 +1,7 @@
 # NullSpend Priority Implementation Roadmap
 
 **Created:** 2026-03-20
-**Last updated:** 2026-03-21 (multi-entity budget strategy from competitive research)
+**Last updated:** 2026-03-21 (tag budget enforcement Plan 1 shipped)
 **Purpose:** Forward-looking architecture, infrastructure, and feature roadmap for NullSpend. Derived from the post-audit deep research and competitive analysis. Prioritized by impact on platform positioning as the best financial infrastructure for AI agents.
 
 **Predecessor:** [`nullspend-prelaunch-design-audit.md`](nullspend-prelaunch-design-audit.md) — completed 2026-03-19 (8/8 items shipped). Contains detailed implementation notes, design decisions, and three-pass audit findings for all completed items.
@@ -272,7 +272,7 @@ Surface "cost per session," "cost per tool invocation," "cost per API key" as fi
   - `topSessions` (most expensive sessions with cost + request count)
 
 ### 2.4 Tag-Based Budgets
-**Effort:** ~4-6h | **Source:** Multi-entity budget research (2026-03-21)
+**Effort:** ~1-2 days (3 increments) | **Source:** Multi-entity budget research (2026-03-21)
 
 Let users set a budget on a tag value (e.g., `project=openclaw` gets $50/month). Solves multi-agent cost tracking without requiring one API key per agent — one key, different tags per agent/project/environment.
 
@@ -332,6 +332,123 @@ Let users set a budget on a tag value (e.g., `project=openclaw` gets $50/month).
 - Macaroon-style budget delegation on API keys — SatGate/DeepMind pattern, design for agentic workflows later
 - HTTP 402 as default status — wait for x402/HAP maturity
 - ClickHouse for tag-spend analytics — wait for Postgres to show strain
+
+**Implementation plan (3 sequential increments):**
+
+Each increment is self-contained and shippable independently. Each builds on the prior but delivers value alone.
+
+**Architecture decisions (resolved via arch review 2026-03-21):**
+
+| # | Decision | Rationale |
+|---|----------|-----------|
+| 1 | 3 sequential increments (enforcement → default tags → analytics) | Each shippable independently, reduces blast radius |
+| 2 | Pass tags to DO, build SQL IN-list for filtering | Most efficient — PK index seek per tag, bounded at 10, no wasted reads vs loading all 50 tag budgets |
+| 3 | Add `user_id` column to `budgets` table | Enables tag budget lookup by owner, simplifies all budget queries. Backfill: user budgets → `entity_id`, api_key budgets → join through `api_keys.user_id` |
+| 4 | `entity_id = "key=value"` format (opaque, never parsed back) | Both sides construct identically — budget creation and request matching. Tag key validation (`^[a-zA-Z0-9_-]+$`) prevents `=` in keys |
+| 5 | `tagKey` + `tagValue` fields on `tag_budget.exceeded` webhook | Explicit fields save every consumer from parsing conventions. `entityId` still carries canonical format |
+| 6 | No new I/O on hot path | Same SQLite transactionSync, IN-list is the only addition. ~10μs for Object.entries on 10 tags |
+| 7 | Reconciliation works unchanged | `updateBudgetSpend` is entity-type agnostic — `WHERE entity_type = ? AND entity_id = ?` works for `"tag"` |
+| 8 | Add `tagBudgetDenied` to `do_budget_check` metric | Distinguishes tag denials from entity denials in observability (same pattern as `velocityDenied`, `sessionLimitDenied`) |
+
+**Risk register:**
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|------------|
+| `user_id` backfill fails for orphaned api_key budgets | Low | Medium | WHERE clause handles missing api_keys gracefully (LEFT JOIN, skip nulls) |
+| Tag budget IN-list with 0 tags produces `IN ()` SQL error | Medium | High | Guard: if no tags, skip the `OR entity_type = 'tag'` clause entirely |
+| Existing tests break from `checkAndReserve` signature change | Certain | Low | Add `tags` as last param with default `null` — all existing calls unchanged |
+
+#### Plan 1 — Tag Budget Enforcement (core value) — ✅ Done (2026-03-21)
+
+Tag budgets work end-to-end: create a tag budget in Postgres, proxy enforces it via DO, denied requests get 429.
+
+**Schema changes (one-way door):**
+- Postgres migration: add `'tag'` to `entityType` union type on `budgets` table
+- Postgres migration: add `user_id text` column to `budgets` table with backfill:
+  - `UPDATE budgets SET user_id = entity_id WHERE entity_type = 'user'`
+  - `UPDATE budgets SET user_id = (SELECT user_id FROM api_keys WHERE id::text = budgets.entity_id) WHERE entity_type = 'api_key'`
+  - `CREATE INDEX budgets_user_id_idx ON budgets (user_id)`
+- DO SQLite: no change needed — `entity_type` is `TEXT`, already accepts any string
+
+**Proxy changes:**
+- `budget-do-lookup.ts` → `lookupBudgetsForDO()`: replace per-entity queries with single `WHERE user_id = ?` query. Returns all entity types (user, api_key, tag) for the user in one round-trip.
+- `budget-orchestrator.ts` → `checkBudget()`: pass `ctx.tags` through to `doBudgetCheck()` so the DO knows which tag budgets apply
+- `budget-do-client.ts` → `doBudgetCheck()`: add `tags: Record<string, string> | null` parameter, pass to DO RPC
+- `user-budget.ts` → `checkAndReserve()`: add `tags: Record<string, string> | null` parameter (default `null`). SQL query adds `OR (entity_type = 'tag' AND entity_id IN (?, ?, ...))` clause — IN-list built from `Object.entries(tags).map(([k, v]) => '${k}=${v}')`. Guard: if tags is null/empty, omit the OR clause entirely (avoids `IN ()` SQL error). All matching budgets (entity + tag) checked atomically in same `transactionSync()`.
+- Route handlers (`openai.ts`, `anthropic.ts`, `mcp-route.ts`): pass `ctx.tags` through to orchestrator's `checkBudget()` call (currently not passed)
+- `internal.ts`: support `entity_type: 'tag'` in invalidation/sync endpoint. `lookupBudgetsForDO` now returns tag budgets via the `user_id` query.
+- `webhook-events.ts`: add `tag_budget.exceeded` event type with `tagKey` and `tagValue` convenience fields alongside standard `entityType`/`entityId`
+- Route denial handlers: 429 with `error.code: "tag_budget_exceeded"` response (same shape as `budget_exceeded` but distinct code)
+- `metrics.ts`: add `tagBudgetDenied: boolean` to `do_budget_check` metric emission
+
+**Key architectural detail — DO tag filtering:**
+The DO stores ALL budgets for a user (entity + tag) in its SQLite. On `checkAndReserve`, the SQL IN-list filters to only tag budgets matching the request's tags. A tag budget `entity_id = 'project=openclaw'` is included only if the request's tags contain `{project: "openclaw"}`. Entity budgets (`user`, `api_key`) are matched by identity as before. Both sets are checked atomically in the same `transactionSync()`.
+
+**Reservation `entity_keys`:** Tag budget entity keys stored as `"tag:project=openclaw"` in the JSON array — same format as `"user:usr123"` and `"api_key:key456"`. Reconciliation works unchanged — `updateBudgetSpend` is entity-type agnostic.
+
+**Cardinality:** Max 50 tag budgets per user (enforced at CRUD layer in Plan 3, not in DO).
+
+**Test plan (TDD — write tests first):**
+- `budget-do-lookup.test.ts`: lookupBudgetsForDO returns tag budget entities via `user_id` query; returns empty when user has no tag budgets
+- `user-budget-do.do.test.ts`: checkAndReserve with tag budgets — approved when under limit, denied when over, unmatched tag budgets ignored, multi-tag request matches multiple tag budgets, reservation entity_keys includes tag entities, reconcile releases tag entities correctly
+- `budget-orchestrator.test.ts`: tag budget denial flows through orchestrator with correct error shape; `tagBudgetDenied` flag set
+- Route-level tests (following `session-limits.test.ts` pattern): 429 `tag_budget_exceeded` response shape for OpenAI/Anthropic/MCP routes
+- `webhook-events.test.ts`: `tag_budget.exceeded` payload builder with `tagKey`/`tagValue` fields
+- Edge cases: request with no tags skips tag budgets entirely (no IN clause), request with tags but no tag budgets configured passes, tag budget denied but entity budget would have approved → denied (strictest wins), `entity_id` with `=` in value (e.g., `env=a=b` matches tag `{env: "a=b"}`)
+
+**Files touched (~12):**
+`packages/db/src/schema.ts`, migration file, `budget-do-lookup.ts`, `budget-do-client.ts`, `budget-orchestrator.ts`, `user-budget.ts`, `openai.ts`, `anthropic.ts`, `mcp-route.ts`, `internal.ts`, `webhook-events.ts`, `metrics.ts`, + test files
+
+#### Plan 2 — Default Tags on API Keys
+
+API keys carry default tags that auto-apply to requests, merged with per-request `X-NullSpend-Tags`.
+
+**Schema changes:**
+- Postgres migration: add `default_tags jsonb DEFAULT '{}'` to `api_keys` table
+- Dashboard API key CRUD: accept/return `defaultTags` field
+
+**Proxy changes:**
+- `index.ts` (tag resolution): after auth, if API key has `defaultTags`, merge with request tags (request wins on conflict, shallow merge)
+- `tags.ts`: add `mergeTags(keyDefaults, requestTags)` helper — validates merged result against same 10-key / length limits
+- Response header: add `X-NullSpend-Effective-Tags` with JSON of effective merged tags
+- Cost event: store effective merged tags (not raw request tags) — already the case since `ctx.tags` feeds into enrichment
+
+**Test plan:**
+- `tags.test.ts`: `mergeTags` — request overrides key defaults, non-conflicting keys unioned, 10-key cap on merged result, null/empty defaults
+- `index-entry.test.ts`: verify effective tags used in context after merge
+- Integration: key with `defaultTags: {project: "openclaw"}` + request with no tags → cost event has `{project: "openclaw"}`
+- Integration: key with `defaultTags: {project: "openclaw"}` + request with `{project: "other"}` → cost event has `{project: "other"}`
+
+**Files touched (~8):**
+`packages/db/src/schema.ts`, migration file, `api-key-auth.ts` or `index.ts`, `tags.ts`, `app/api/keys/route.ts`, `lib/validations/api-keys.ts`, + test files
+
+#### Plan 3 — Analytics, CRUD API & Dashboard
+
+Tag budget management UI, tag-spend analytics, and `__untagged__` visibility.
+
+**Dashboard API:**
+- `POST/GET/PATCH/DELETE /api/tag-budgets` — CRUD for tag budget entities (reuses existing budget validation patterns with `entityType: 'tag'`)
+- Tag budget list shows tag key, value, limit, current spend, period, policy
+- Validation: max 50 tag budgets per user, tag key/value format matches `parseTags` rules
+
+**Analytics:**
+- `GET /api/cost-events/summary?groupBy=tag:project` — adds a `tagBreakdown` field to summary response
+- Query: `SELECT tags->>'project' AS tag_value, SUM(cost_microdollars), COUNT(*) FROM cost_events WHERE tags->>'project' IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 25`
+- Include `__untagged__` row: `WHERE tags->>'project' IS NULL` count
+- Postgres index: `CREATE INDEX cost_events_tags_gin_idx ON cost_events USING GIN (tags jsonb_path_ops)` — migration
+
+**Dashboard UI:**
+- Tag budget management page (create/edit/delete tag budgets)
+- Tag spend breakdown chart on cost overview (when `groupBy` selected)
+- `__untagged__` category visible in cost breakdowns
+
+**Test plan:**
+- `app/api/tag-budgets/route.test.ts`: CRUD operations, 50-cap enforcement, validation
+- `aggregate-cost-events.test.ts`: groupBy=tag:project query shape, __untagged__ row
+- Smoke test: create tag budget via API, send tagged request, verify spend appears in summary
+
+**Files touched (~10):**
+`app/api/tag-budgets/route.ts` (new), `lib/validations/tag-budgets.ts` (new), `lib/cost-events/aggregate-cost-events.ts`, `app/api/cost-events/summary/route.ts`, migration file, dashboard components, + test files
 
 ### 2.5 GitHub Secret Scanning Registration
 **Effort:** External action | **Source:** [Prelaunch Audit Section 2](nullspend-prelaunch-design-audit.md)
@@ -438,7 +555,7 @@ Items evaluated and rejected based on the architecture review. See [Architecture
 
 ## Roadmap Summary
 
-Last updated: 2026-03-21 (tag-based budget design decisions resolved)
+Last updated: 2026-03-21 (tag budget enforcement Plan 1 shipped)
 
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
@@ -454,9 +571,11 @@ Last updated: 2026-03-21 (tag-based budget design decisions resolved)
 | **P2** | Budget sync: DO write visibility fix + removeBudget reconcile fix | **Done** (2026-03-21) | ~1h | Deep research (2026-03-21) |
 | **P2** | AE metrics + proxy latency publication (merged 2.0b + 2.4) | **Done** (2026-03-21) | ~1-2h | Stress testing + Architecture Review |
 | **P2** | Claude Agent SDK adapter | **Done** (2026-03-20) | ~1 day | [Deep Research](../research/claude-agent-sdk-adapter.md) |
-| **P2** | Thin webhook event mode | Not started | ~3-4h | Architecture Review |
+| **P2** | Thin webhook event mode | **Done** (2026-03-21) | ~3-4h | [Research](../research/thin-webhook-events-research.md) |
 | **P2** | Unit economics dashboard metrics | Not started | ~1 day | Architecture Review |
-| **P2** | Tag-based budgets (+ default tags on keys, `groupBy` analytics) | Not started | ~1-2 days | Multi-entity research (2026-03-21) |
+| **P2** | Tag-based budgets — Plan 1: enforcement (DO + proxy + webhook) | **Done** (2026-03-21) | ~4-6h | Multi-entity research (2026-03-21) |
+| **P2** | Tag-based budgets — Plan 2: default tags on API keys + merge | Not started | ~2-3h | Multi-entity research (2026-03-21) |
+| **P2** | Tag-based budgets — Plan 3: analytics groupBy + CRUD API + dashboard | Not started | ~4-6h | Multi-entity research (2026-03-21) |
 | **P2** | GitHub Secret Scanning registration | Not started | External | Audit Section 2 |
 | **P3** | First-class agent entities | Not started | ~1-2 days | Multi-entity research (2026-03-21) |
 | **P3** | AI SDK middleware adapter | Not started | ~2-3 days | Architecture Review |
