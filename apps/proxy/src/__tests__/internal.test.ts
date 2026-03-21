@@ -226,6 +226,7 @@ describe("handleBudgetInvalidation — sync", () => {
 
     expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", { keyId: "u1", userId: "u1" });
     expect(mockDoBudgetUpsertEntities).toHaveBeenCalledWith(env, "u1", entities);
+    expect(mockEmitMetric).not.toHaveBeenCalledWith("budget_sync_empty", expect.anything());
   });
 
   it("syncs velocity fields through the full flow", async () => {
@@ -252,7 +253,8 @@ describe("handleBudgetInvalidation — sync", () => {
     expect(upsertedEntities[0].velocityCooldown).toBe(90_000);
   });
 
-  it("handles empty lookup result (no budgets for entity)", async () => {
+  it("handles empty lookup result — emits budget_sync_empty metric and console.warn", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockLookupBudgetsForDO.mockResolvedValue([]);
 
     const req = makeRequest({ action: "sync", userId: "u1", entityType: "user", entityId: "u1" });
@@ -260,6 +262,17 @@ describe("handleBudgetInvalidation — sync", () => {
 
     expect(res.status).toBe(200);
     expect(mockDoBudgetUpsertEntities).toHaveBeenCalledWith(expect.anything(), "u1", []);
+    expect(mockEmitMetric).toHaveBeenCalledWith("budget_sync_empty", {
+      userId: "u1",
+      entityType: "user",
+      entityId: "u1",
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[internal] sync returned 0 entities from Postgres",
+      { userId: "u1", entityType: "user", entityId: "u1" },
+    );
+
+    warnSpy.mockRestore();
   });
 
   it("invalidates auth cache after sync", async () => {

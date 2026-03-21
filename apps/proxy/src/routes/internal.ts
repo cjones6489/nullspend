@@ -90,6 +90,19 @@ export async function handleBudgetInvalidation(
       const connectionString = env.HYPERDRIVE.connectionString;
       const identity = { keyId: body.entityId, userId: body.userId };
       const entities = await lookupBudgetsForDO(connectionString, identity);
+      // Empty on sync is unexpected (removes use action: "remove") — may indicate
+      // Postgres commit timing or stale reads.
+      if (entities.length === 0) {
+        console.warn(
+          `[internal] sync returned 0 entities from Postgres`,
+          { userId: body.userId, entityType: body.entityType, entityId: body.entityId },
+        );
+        emitMetric("budget_sync_empty", {
+          userId: body.userId,
+          entityType: body.entityType,
+          entityId: body.entityId,
+        });
+      }
       await doBudgetUpsertEntities(env, body.userId, entities);
     }
 
