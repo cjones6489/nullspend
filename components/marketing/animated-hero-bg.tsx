@@ -1,155 +1,269 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 
-/**
- * Neon-style animated hero background.
- * Renders a canvas with:
- * - Perspective grid lines that pulse
- * - Flowing aurora gradient that shifts
- * - Floating particles that drift upward
- */
-export function AnimatedHeroBg() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
+// Animated counter component
+function AnimatedNumber({ 
+  value, 
+  prefix = "", 
+  suffix = "",
+  duration = 2000 
+}: { 
+  value: number; 
+  prefix?: string; 
+  suffix?: string;
+  duration?: number;
+}) {
+  const [displayValue, setDisplayValue] = useState(0);
+  
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let animationId: number;
-    let time = 0;
-
-    function resize() {
-      if (!canvas) return;
-      const dpr = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx!.scale(dpr, dpr);
-    }
-
-    resize();
-    window.addEventListener("resize", resize);
-
-    // Particle pool
-    const particles: { x: number; y: number; speed: number; opacity: number; size: number }[] = [];
-    for (let i = 0; i < 40; i++) {
-      particles.push({
-        x: Math.random(),
-        y: Math.random(),
-        speed: 0.0002 + Math.random() * 0.0004,
-        opacity: 0.1 + Math.random() * 0.3,
-        size: 0.5 + Math.random() * 1.5,
-      });
-    }
-
-    function draw() {
-      if (!canvas || !ctx) return;
-      const w = canvas.getBoundingClientRect().width;
-      const h = canvas.getBoundingClientRect().height;
-
-      ctx.clearRect(0, 0, w, h);
-      time += 1;
-
-      // --- Aurora glow ---
-      const auroraY = h * 0.3 + Math.sin(time * 0.008) * 30;
-      const gradient = ctx.createRadialGradient(
-        w * 0.5, auroraY, 0,
-        w * 0.5, auroraY, w * 0.6
-      );
-      gradient.addColorStop(0, "rgba(52, 211, 153, 0.07)");
-      gradient.addColorStop(0.4, "rgba(16, 185, 129, 0.03)");
-      gradient.addColorStop(1, "transparent");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, w, h);
-
-      // Secondary aurora (shifted)
-      const aurora2Y = h * 0.25 + Math.cos(time * 0.006) * 40;
-      const gradient2 = ctx.createRadialGradient(
-        w * 0.35 + Math.sin(time * 0.005) * 50, aurora2Y, 0,
-        w * 0.4, aurora2Y, w * 0.4
-      );
-      gradient2.addColorStop(0, "rgba(16, 185, 129, 0.05)");
-      gradient2.addColorStop(0.5, "rgba(52, 211, 153, 0.02)");
-      gradient2.addColorStop(1, "transparent");
-      ctx.fillStyle = gradient2;
-      ctx.fillRect(0, 0, w, h);
-
-      // --- Perspective grid ---
-      const gridLines = 12;
-      const vanishY = h * 0.15;
-      const vanishX = w * 0.5;
-      const baseY = h;
-
-      ctx.strokeStyle = "rgba(52, 211, 153, 0.04)";
-      ctx.lineWidth = 0.5;
-
-      // Vertical converging lines
-      for (let i = 0; i <= gridLines; i++) {
-        const t = i / gridLines;
-        const baseX = t * w;
-        const pulse = 0.03 + Math.sin(time * 0.01 + i * 0.5) * 0.015;
-        ctx.globalAlpha = pulse / 0.03;
-        ctx.beginPath();
-        ctx.moveTo(baseX, baseY);
-        ctx.lineTo(vanishX + (baseX - vanishX) * 0.1, vanishY);
-        ctx.stroke();
+    const startTime = Date.now();
+    const startValue = displayValue;
+    
+    const animate = () => {
+      const now = Date.now();
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      
+      setDisplayValue(Math.floor(startValue + (value - startValue) * eased));
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
       }
-
-      // Horizontal lines (with perspective spacing)
-      for (let i = 1; i <= 8; i++) {
-        const t = i / 8;
-        const y = vanishY + (baseY - vanishY) * (t * t); // quadratic for perspective
-        const spread = t;
-        const leftX = vanishX - (vanishX * spread);
-        const rightX = vanishX + (vanishX * spread);
-        const pulse = 0.03 + Math.sin(time * 0.012 + i * 0.8) * 0.015;
-        ctx.globalAlpha = pulse / 0.03 * t; // fade near vanishing point
-        ctx.beginPath();
-        ctx.moveTo(leftX, y);
-        ctx.lineTo(rightX, y);
-        ctx.stroke();
-      }
-
-      ctx.globalAlpha = 1;
-
-      // --- Particles ---
-      for (const p of particles) {
-        p.y -= p.speed;
-        if (p.y < -0.05) {
-          p.y = 1.05;
-          p.x = Math.random();
-        }
-
-        const px = p.x * w;
-        const py = p.y * h;
-        const flicker = p.opacity * (0.6 + 0.4 * Math.sin(time * 0.02 + p.x * 20));
-
-        ctx.beginPath();
-        ctx.arc(px, py, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(52, 211, 153, ${flicker})`;
-        ctx.fill();
-      }
-
-      animationId = requestAnimationFrame(draw);
-    }
-
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener("resize", resize);
     };
-  }, []);
-
+    
+    requestAnimationFrame(animate);
+  }, [value, duration]);
+  
   return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none absolute inset-0 h-full w-full"
-      style={{ opacity: 0.8 }}
-    />
+    <span className="tabular-nums">
+      {prefix}{displayValue.toLocaleString()}{suffix}
+    </span>
+  );
+}
+
+// Individual transaction row
+function TransactionRow({ 
+  model, 
+  tokens, 
+  cost, 
+  time, 
+  delay 
+}: { 
+  model: string; 
+  tokens: number; 
+  cost: number; 
+  time: string;
+  delay: number;
+}) {
+  const [visible, setVisible] = useState(false);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
+  
+  return (
+    <div 
+      className={`flex items-center justify-between border-b border-primary/10 py-3 transition-all duration-500 ${
+        visible ? "translate-x-0 opacity-100" : "-translate-x-4 opacity-0"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+        <span className="font-mono text-sm text-foreground">{model}</span>
+      </div>
+      <div className="flex items-center gap-6">
+        <span className="font-mono text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</span>
+        <span className="font-mono text-sm font-medium text-primary">${cost.toFixed(4)}</span>
+        <span className="font-mono text-xs text-muted-foreground">{time}</span>
+      </div>
+    </div>
+  );
+}
+
+// Animated mini bar chart
+function MiniBarChart() {
+  const [bars, setBars] = useState([40, 65, 45, 80, 55, 70, 90]);
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBars(prev => prev.map(bar => 
+        Math.max(20, Math.min(95, bar + (Math.random() - 0.5) * 20))
+      ));
+    }, 1500);
+    return () => clearInterval(interval);
+  }, []);
+  
+  return (
+    <div className="flex h-16 items-end gap-1">
+      {bars.map((height, i) => (
+        <div
+          key={i}
+          className="w-4 rounded-t bg-gradient-to-t from-primary/60 to-primary transition-all duration-700"
+          style={{ height: `${height}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Main dashboard preview component - exported for use in hero section
+export function DashboardPreview() {
+  const [totalSpend, setTotalSpend] = useState(12847);
+  const [requestCount, setRequestCount] = useState(847293);
+  
+  const transactions = [
+    { model: "gpt-5.4", tokens: 2847, cost: 0.0854, time: "2ms ago" },
+    { model: "claude-opus-4.6", tokens: 1293, cost: 0.0387, time: "15ms ago" },
+    { model: "gpt-5.4-mini", tokens: 8472, cost: 0.0127, time: "48ms ago" },
+    { model: "claude-sonnet-4.6", tokens: 3918, cost: 0.0235, time: "102ms ago" },
+    { model: "gpt-5.4", tokens: 1847, cost: 0.0554, time: "156ms ago" },
+  ];
+  
+  // Simulate live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTotalSpend(prev => prev + Math.random() * 2);
+      setRequestCount(prev => prev + Math.floor(Math.random() * 50));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  return (
+    <div className="relative">
+      {/* Glow effect behind dashboard */}
+      <div className="absolute -inset-4 rounded-3xl bg-primary/20 blur-3xl" />
+      <div className="absolute -inset-8 rounded-3xl bg-cyan-500/10 blur-[60px]" />
+      
+      {/* Main dashboard card */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-background/80 p-6 shadow-2xl shadow-primary/10 backdrop-blur-xl">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full bg-red-500/80" />
+            <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
+            <div className="h-3 w-3 rounded-full bg-green-500/80" />
+          </div>
+          <div className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1">
+            <span className="flex items-center gap-2 text-xs font-medium text-primary">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+              Live
+            </span>
+          </div>
+        </div>
+        
+        {/* Stats row */}
+        <div className="mb-6 grid grid-cols-3 gap-4">
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+            <p className="mb-1 text-xs text-muted-foreground">Total Spend (24h)</p>
+            <p className="text-2xl font-bold text-foreground">
+              <AnimatedNumber value={Math.floor(totalSpend)} prefix="$" />
+            </p>
+            <p className="mt-1 text-xs text-primary">+12.4% from yesterday</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+            <p className="mb-1 text-xs text-muted-foreground">API Requests</p>
+            <p className="text-2xl font-bold text-foreground">
+              <AnimatedNumber value={requestCount} />
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">847K total</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+            <p className="mb-1 text-xs text-muted-foreground">Avg Cost/Request</p>
+            <p className="text-2xl font-bold text-foreground">$0.015</p>
+            <p className="mt-1 text-xs text-green-400">-8.2% optimized</p>
+          </div>
+        </div>
+        
+        {/* Chart section */}
+        <div className="mb-6 rounded-xl border border-border/50 bg-card/30 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">Spend by Model</p>
+            <p className="text-xs text-muted-foreground">Last 7 days</p>
+          </div>
+          <MiniBarChart />
+          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+            <span>Mon</span>
+            <span>Tue</span>
+            <span>Wed</span>
+            <span>Thu</span>
+            <span>Fri</span>
+            <span>Sat</span>
+            <span>Sun</span>
+          </div>
+        </div>
+        
+        {/* Live transactions */}
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">Live Transactions</p>
+            <p className="text-xs text-muted-foreground">Streaming...</p>
+          </div>
+          <div className="space-y-0">
+            {transactions.map((tx, i) => (
+              <TransactionRow key={i} {...tx} delay={i * 200} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Floating particles in background
+function FloatingParticles() {
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {Array.from({ length: 20 }).map((_, i) => (
+        <div
+          key={i}
+          className="absolute h-1 w-1 rounded-full bg-primary/30"
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
+            animation: `float ${10 + Math.random() * 20}s ease-in-out infinite`,
+            animationDelay: `${Math.random() * 10}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function AnimatedHeroBg() {
+  return (
+    <div className="absolute inset-0 h-full w-full overflow-hidden">
+      {/* Base gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-primary/5" />
+      
+      {/* Animated gradient orbs */}
+      <div className="absolute right-0 top-0 h-[800px] w-[800px] -translate-y-1/4 translate-x-1/4">
+        <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10 blur-[120px]" />
+      </div>
+      <div className="absolute bottom-0 left-1/4 h-[600px] w-[600px] translate-y-1/2">
+        <div className="absolute inset-0 animate-pulse rounded-full bg-cyan-500/10 blur-[100px]" style={{ animationDelay: "1s" }} />
+      </div>
+      
+      {/* Grid pattern */}
+      <div 
+        className="absolute inset-0 opacity-[0.02]"
+        style={{
+          backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px),
+                           linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
+          backgroundSize: '60px 60px',
+        }}
+      />
+      
+      {/* Floating particles */}
+      <FloatingParticles />
+      
+      {/* Gradient overlays for text readability */}
+      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/95 to-transparent lg:via-background/80" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/60" />
+    </div>
   );
 }
