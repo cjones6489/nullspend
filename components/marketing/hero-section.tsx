@@ -34,7 +34,7 @@ export function HeroSection() {
                 <br />
                 <span className="text-foreground">platform</span>{" "}
                 <span className="bg-gradient-to-r from-primary via-cyan-400 to-primary bg-clip-text text-transparent">
-                  for AI.
+                  for Agents.
                 </span>
               </h1>
 
