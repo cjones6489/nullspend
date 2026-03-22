@@ -701,7 +701,7 @@ export function WebhooksSection() {
 // ============================================================================
 function ApprovalVisual() {
   const [stage, setStage] = useState<"waiting" | "pressing" | "approved">("waiting");
-  const [countdown, setCountdown] = useState(5);
+  const [countdown, setCountdown] = useState(3);
   const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
@@ -717,7 +717,7 @@ function ApprovalVisual() {
             setStage("approved");
             setTimeout(() => {
               setStage("waiting");
-              setCountdown(5);
+              setCountdown(3);
               setCycle(c => c + 1);
             }, 2000);
           }, 300);
