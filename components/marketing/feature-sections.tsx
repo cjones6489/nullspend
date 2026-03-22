@@ -222,7 +222,7 @@ export function BudgetEnforcementSection() {
 }
 
 // ============================================================================
-// SECTION 3: Velocity Limits - Oscilloscope-style square wave monitor
+// SECTION 3: Velocity Limits - Tektronix-style oscilloscope with noisy square waves
 // ============================================================================
 function VelocityChartVisual() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -238,18 +238,19 @@ function VelocityChartVisual() {
     const width = canvas.width;
     const height = canvas.height;
     
-    // Fixed amplitude levels (consistent height like oscilloscope)
-    const baselineY = height * 0.75;
-    const pulseHeight = height * 0.45; // Fixed height for all pulses
+    // Signal parameters - inverted pulses like in the Tek scope image
+    const centerY = height * 0.5;
+    const pulseAmplitude = height * 0.3;
     
-    // Store the signal data that scrolls left (0 = low, 1 = high)
-    const signalLength = 400;
-    const signal: number[] = new Array(signalLength).fill(0);
+    // Two channels of data for that dual-trace look
+    const signalLength = 600;
+    const signal1: number[] = new Array(signalLength).fill(0);
+    const signal2: number[] = new Array(signalLength).fill(0);
     
     let frameCount = 0;
     let inPulse = false;
     let pulseWidth = 0;
-    let gapWidth = 0;
+    let gapWidth = 30;
     let burstMode = false;
     let burstPulsesRemaining = 0;
     let thresholdTriggered = false;
@@ -258,154 +259,157 @@ function VelocityChartVisual() {
     const draw = () => {
       frameCount++;
       
-      // Dark oscilloscope background
-      ctx.fillStyle = "#050a08";
+      // Tektronix amber/olive background
+      ctx.fillStyle = "#1a1a0a";
       ctx.fillRect(0, 0, width, height);
 
-      // Draw grid lines (oscilloscope style)
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.08)";
+      // Draw grid lines (Tek style - subtle)
+      ctx.strokeStyle = "rgba(180, 180, 100, 0.15)";
       ctx.lineWidth = 1;
       // Horizontal grid
-      for (let i = 1; i < 6; i++) {
-        const y = (height / 6) * i;
+      for (let i = 1; i < 8; i++) {
+        const y = (height / 8) * i;
         ctx.beginPath();
+        ctx.setLineDash(i === 4 ? [] : [2, 4]);
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
       }
       // Vertical grid
-      for (let i = 1; i < 10; i++) {
-        const x = (width / 10) * i;
+      for (let i = 1; i < 12; i++) {
+        const x = (width / 12) * i;
         ctx.beginPath();
+        ctx.setLineDash([2, 4]);
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
       }
-
-      // Draw threshold line
-      const thresholdY = height * 0.2;
-      ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
-      ctx.setLineDash([6, 4]);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, thresholdY);
-      ctx.lineTo(width, thresholdY);
-      ctx.stroke();
       ctx.setLineDash([]);
-      
-      // Threshold label
-      ctx.fillStyle = "rgba(239, 68, 68, 0.6)";
-      ctx.font = "10px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText("THRESHOLD", 8, thresholdY - 6);
 
-      // Generate signal - single pulses and bursts
-      let newValue = signal[signal.length - 1];
-      
-      if (inPulse) {
-        newValue = 1;
-        pulseWidth--;
-        if (pulseWidth <= 0) {
-          inPulse = false;
-          // Set gap before next potential pulse
-          if (burstMode && burstPulsesRemaining > 0) {
-            gapWidth = 3 + Math.floor(Math.random() * 4); // Short gaps in burst
-          } else {
-            gapWidth = 20 + Math.floor(Math.random() * 60); // Normal gaps
-            burstMode = false;
+      // Generate multiple samples per frame for faster streaming
+      for (let s = 0; s < 4; s++) {
+        let newValue = signal1[signal1.length - 1];
+        
+        if (inPulse) {
+          newValue = 1;
+          pulseWidth--;
+          if (pulseWidth <= 0) {
+            inPulse = false;
+            if (burstMode && burstPulsesRemaining > 0) {
+              gapWidth = 8 + Math.floor(Math.random() * 12);
+            } else {
+              gapWidth = 40 + Math.floor(Math.random() * 80);
+              burstMode = false;
+            }
           }
-        }
-      } else {
-        newValue = 0;
-        gapWidth--;
-        if (gapWidth <= 0) {
-          // Chance to start a new pulse
-          if (burstMode && burstPulsesRemaining > 0) {
-            // Continue burst
-            inPulse = true;
-            pulseWidth = 4 + Math.floor(Math.random() * 6);
-            burstPulsesRemaining--;
-          } else if (Math.random() < 0.08) {
-            // Start single pulse
-            inPulse = true;
-            pulseWidth = 6 + Math.floor(Math.random() * 10);
-          } else if (Math.random() < 0.015) {
-            // Start a burst (multiple rapid pulses)
-            burstMode = true;
-            burstPulsesRemaining = 4 + Math.floor(Math.random() * 6);
-            inPulse = true;
-            pulseWidth = 4 + Math.floor(Math.random() * 5);
-            
-            // Trigger threshold alert during bursts
-            if (!thresholdTriggered) {
-              thresholdTriggered = true;
-              triggerFlashCount = 90;
-              setTriggered(true);
-              setTimeout(() => {
-                setTriggered(false);
-                thresholdTriggered = false;
-              }, 2000);
+        } else {
+          newValue = 0;
+          gapWidth--;
+          if (gapWidth <= 0) {
+            if (burstMode && burstPulsesRemaining > 0) {
+              inPulse = true;
+              pulseWidth = 15 + Math.floor(Math.random() * 20);
+              burstPulsesRemaining--;
+            } else if (Math.random() < 0.06) {
+              inPulse = true;
+              pulseWidth = 20 + Math.floor(Math.random() * 35);
+            } else if (Math.random() < 0.012) {
+              burstMode = true;
+              burstPulsesRemaining = 3 + Math.floor(Math.random() * 4);
+              inPulse = true;
+              pulseWidth = 15 + Math.floor(Math.random() * 20);
+              
+              if (!thresholdTriggered) {
+                thresholdTriggered = true;
+                triggerFlashCount = 60;
+                setTriggered(true);
+                setTimeout(() => {
+                  setTriggered(false);
+                  thresholdTriggered = false;
+                }, 1500);
+              }
             }
           }
         }
+
+        signal1.shift();
+        signal1.push(newValue);
+        
+        // Second channel slightly delayed/offset
+        signal2.shift();
+        signal2.push(signal1[signal1.length - 3] ?? 0);
       }
 
-      // Shift signal left and add new value
-      signal.shift();
-      signal.push(newValue);
-
-      // Draw the square wave signal with glow effect
-      const drawSquareWave = (lineWidth: number, color: string) => {
+      // Draw noisy square wave with overshoot/ringing
+      const drawNoisySquareWave = (signal: number[], color: string, offset: number) => {
         ctx.strokeStyle = color;
-        ctx.lineWidth = lineWidth;
-        ctx.lineCap = "butt";
-        ctx.lineJoin = "miter";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.beginPath();
 
-        let prevY = baselineY;
+        let prevState = signal[0];
+        let overshootDecay = 0;
+        let overshootDir = 0;
+        
         for (let i = 0; i < signal.length; i++) {
           const x = (i / signal.length) * width;
-          const y = signal[i] === 1 ? baselineY - pulseHeight : baselineY;
+          const currentState = signal[i];
           
-          // Add slight noise to the signal for that analog feel
-          const noise = (Math.random() - 0.5) * 1.5;
-          const noisyY = y + noise;
+          // Base Y position (inverted - pulses go down)
+          let baseY = currentState === 1 
+            ? centerY + pulseAmplitude + offset
+            : centerY - pulseAmplitude * 0.2 + offset;
+          
+          // Detect transitions for overshoot
+          if (currentState !== prevState) {
+            overshootDecay = 12;
+            overshootDir = currentState === 1 ? 1 : -1;
+          }
+          
+          // Apply overshoot/ringing decay
+          let overshoot = 0;
+          if (overshootDecay > 0) {
+            const ringing = Math.sin(overshootDecay * 1.5) * Math.exp(-0.3 * (12 - overshootDecay));
+            overshoot = overshootDir * ringing * pulseAmplitude * 0.25;
+            overshootDecay -= 0.5;
+          }
+          
+          // Add continuous high-frequency noise (jitter)
+          const noise = (Math.random() - 0.5) * 6;
+          const y = baseY + overshoot + noise;
 
           if (i === 0) {
-            ctx.moveTo(x, noisyY);
-            prevY = noisyY;
+            ctx.moveTo(x, y);
           } else {
-            const prevX = ((i - 1) / signal.length) * width;
-            // Square wave: horizontal line, then vertical transition
-            ctx.lineTo(x, prevY);
-            ctx.lineTo(x, noisyY);
-            prevY = noisyY;
+            ctx.lineTo(x, y);
           }
+          
+          prevState = currentState;
         }
         ctx.stroke();
       };
 
-      // Glow layers
-      drawSquareWave(12, "rgba(16, 185, 129, 0.05)");
-      drawSquareWave(6, "rgba(16, 185, 129, 0.1)");
-      drawSquareWave(3, "rgba(16, 185, 129, 0.3)");
+      // Draw glow layer
+      ctx.globalAlpha = 0.3;
+      ctx.filter = "blur(3px)";
+      drawNoisySquareWave(signal1, "#00ffff", 0);
+      drawNoisySquareWave(signal2, "#ffff00", 2);
+      ctx.filter = "none";
+      ctx.globalAlpha = 1;
       
-      // Bright core signal
-      drawSquareWave(1.5, "rgba(74, 222, 128, 0.95)");
+      // Draw main signals - cyan and yellow like Tek scope
+      drawNoisySquareWave(signal1, "#00dddd", 0);
+      drawNoisySquareWave(signal2, "#dddd00", 2);
 
-      // Scanline effect
-      const scanlineY = (frameCount * 2) % height;
-      ctx.fillStyle = "rgba(74, 222, 128, 0.03)";
-      ctx.fillRect(0, scanlineY, width, 2);
-
-      // Flash "RUNAWAY DETECTED" when triggered
+      // Flash alert when triggered
       if (triggerFlashCount > 0) {
         triggerFlashCount--;
-        if (Math.floor(triggerFlashCount / 6) % 2 === 0) {
-          ctx.fillStyle = "rgba(239, 68, 68, 0.95)";
-          ctx.font = "bold 13px monospace";
+        if (Math.floor(triggerFlashCount / 5) % 2 === 0) {
+          ctx.fillStyle = "rgba(255, 80, 80, 0.95)";
+          ctx.font = "bold 14px monospace";
           ctx.textAlign = "center";
-          ctx.fillText("RUNAWAY DETECTED", width / 2, thresholdY + 20);
+          ctx.fillText("RUNAWAY DETECTED", width / 2, 25);
         }
       }
 
@@ -422,41 +426,43 @@ function VelocityChartVisual() {
         <div className="absolute -inset-4 animate-pulse rounded-2xl bg-destructive/20 blur-2xl" />
       )}
       
-      <div className={`relative overflow-hidden rounded-xl border bg-[#050a08] backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-primary/30"}`}>
-        {/* Header - oscilloscope style */}
-        <div className="flex items-center justify-between border-b border-primary/20 bg-[#030806] px-4 py-3">
+      <div className={`relative overflow-hidden rounded-xl border bg-[#1a1a0a] backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-amber-500/30"}`}>
+        {/* Header - Tektronix style */}
+        <div className="flex items-center justify-between border-b border-amber-500/20 bg-[#0f0f05] px-4 py-2">
           <div className="flex items-center gap-3">
-            <div className={`h-2 w-2 rounded-full ${triggered ? "animate-pulse bg-destructive" : "bg-primary"}`} />
-            <span className="font-mono text-sm font-medium text-primary">SPEND VELOCITY</span>
+            <span className="font-mono text-sm font-bold text-amber-100">Tek</span>
+            <span className={`font-mono text-xs ${triggered ? "text-red-400" : "text-green-400"}`}>
+              {triggered ? "Trig'd" : "Auto"}
+            </span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="font-mono text-xs text-primary/40">500ms/div</span>
-            <span className={`font-mono text-xs ${triggered ? "text-destructive" : "text-primary/60"}`}>
-              {triggered ? "ALERT" : "LIVE"}
-            </span>
+            <span className="font-mono text-xs text-amber-200/60">M Pos: 0.000s</span>
           </div>
         </div>
 
         {/* Oscilloscope display */}
-        <div className="p-1">
+        <div className="p-0">
           <canvas
             ref={canvasRef}
-            width={500}
-            height={200}
-            className="h-[200px] w-full"
+            width={600}
+            height={220}
+            className="h-[220px] w-full"
           />
         </div>
 
-        {/* Status bar */}
-        <div className={`flex items-center justify-between border-t border-primary/20 px-4 py-2 text-xs ${triggered ? "bg-destructive/10" : "bg-[#030806]"}`}>
-          <span className="font-mono text-primary/40">$/min</span>
+        {/* Status bar - Tek style */}
+        <div className={`flex items-center justify-between border-t border-amber-500/20 px-4 py-2 text-xs ${triggered ? "bg-red-900/20" : "bg-[#0f0f05]"}`}>
+          <div className="flex items-center gap-4">
+            <span className="font-mono text-cyan-400">1 2.00$/s</span>
+            <span className="font-mono text-yellow-400">2 2.00$/s</span>
+          </div>
           {triggered ? (
-            <span className="flex items-center gap-2 font-mono text-destructive">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
-              CIRCUIT BREAKER ACTIVE
+            <span className="flex items-center gap-2 font-mono text-red-400">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+              CIRCUIT BREAKER
             </span>
           ) : (
-            <span className="font-mono text-primary/50">Monitoring</span>
+            <span className="font-mono text-amber-200/50">25.0ms/div</span>
           )}
         </div>
       </div>
