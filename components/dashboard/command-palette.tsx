@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Activity, BarChart3, CreditCard, Inbox, Clock, DollarSign, Settings } from "lucide-react";
+import { Activity, BarChart3, BookOpen, CreditCard, Home, Inbox, Clock, DollarSign, Settings } from "lucide-react";
 
 import {
   CommandDialog,
@@ -19,6 +19,7 @@ import { formatActionType } from "@/lib/utils/format";
 import { useCommandPalette } from "./command-palette-context";
 
 const NAV_ITEMS = [
+  { label: "Home", href: "/app/home", icon: Home, shortcut: "G G" },
   { label: "Inbox", href: "/app/inbox", icon: Inbox, shortcut: "G I" },
   { label: "History", href: "/app/history", icon: Clock, shortcut: "G H" },
   { label: "Budgets", href: "/app/budgets", icon: DollarSign, shortcut: "G B" },
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { label: "Activity", href: "/app/activity", icon: Activity, shortcut: "G A" },
   { label: "Billing", href: "/app/billing", icon: CreditCard, shortcut: "G L" },
   { label: "Settings", href: "/app/settings", icon: Settings, shortcut: "G S" },
+  { label: "Documentation", href: "/docs", icon: BookOpen, shortcut: "G D" },
 ];
 
 export function CommandPalette() {

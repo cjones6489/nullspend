@@ -1,18 +1,18 @@
-# NullSpend Documentation
+# NullSpend Internal Documentation
 
-Navigational index for all project documentation. Files are grouped by purpose — start with the section most relevant to what you're looking for.
+Navigational index for internal project documentation. For developer-facing docs, see [`docs/`](../).
 
 ---
 
-## Getting Started
+## Getting Started (public docs)
 
 | Doc | Description |
 |-----|-------------|
-| [guides/quickstart.md](guides/quickstart.md) | 5-minute setup: API key, env vars, first request |
-| [guides/provider-setup-openai.md](guides/provider-setup-openai.md) | OpenAI integration: models, pricing, SDK config |
-| [guides/provider-setup-anthropic.md](guides/provider-setup-anthropic.md) | Anthropic integration: models, cache tokens, SDK config |
-| [guides/budget-configuration.md](guides/budget-configuration.md) | Budgets, velocity limits, thresholds, session limits |
-| [guides/migrating-from-helicone.md](guides/migrating-from-helicone.md) | One-line migration for Helicone customers |
+| [guides/quickstart.md](../guides/quickstart.md) | 5-minute setup: API key, env vars, first request |
+| [guides/provider-setup-openai.md](../guides/provider-setup-openai.md) | OpenAI integration: models, pricing, SDK config |
+| [guides/provider-setup-anthropic.md](../guides/provider-setup-anthropic.md) | Anthropic integration: models, cache tokens, SDK config |
+| [guides/budget-configuration.md](../guides/budget-configuration.md) | Budgets, velocity limits, thresholds, session limits |
+| [guides/migrating-from-helicone.md](../guides/migrating-from-helicone.md) | One-line migration for Helicone customers |
 
 ## Architecture & Design
 
@@ -73,13 +73,19 @@ All audit work is complete (91/91 resolved). These docs are preserved in `archiv
 | [archive/finops-pivot-tech-audit.md](archive/finops-pivot-tech-audit.md) | Pre-build tech stack audit (decision made) |
 | [archive/repo-guide.md](archive/repo-guide.md) | Original repo structure guide (superseded by CLAUDE.md) |
 
+## Open-Source Strategy
+
+| Doc | Description | Status |
+|-----|-------------|--------|
+| [open-source-migration.md](open-source-migration.md) | Open-core migration plan: licensing, codebase restructuring, implementation phases, revenue model | Active |
+
 ## Strategy & Competitive Intelligence
 
 | Doc | Description |
 |-----|-------------|
 | [competitive-landscape-march-2026.md](competitive-landscape-march-2026.md) | Market map: Helicone acquired, Portkey/LiteLLM/Revenium tiers |
 | [nullspend-building Brex for AI Agents-A Complete Strategic Analysis.md](nullspend-building%20Brex%20for%20AI%20Agents-A%20Complete%20Strategic%20Analysis.md) | Strategic vision: 16 Brex patterns mapped to AI agent FinOps |
-| [guides/show-hn-draft.md](guides/show-hn-draft.md) | Show HN launch narrative draft |
+| [show-hn-draft.md](show-hn-draft.md) | Show HN launch narrative draft |
 
 ### Competitor Bug Database
 

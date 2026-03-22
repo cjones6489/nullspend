@@ -1,5 +1,6 @@
 .next
 .turbo
+.source
 coverage
 dist
 node_modules

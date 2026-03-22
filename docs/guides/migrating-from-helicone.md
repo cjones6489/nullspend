@@ -51,7 +51,7 @@ the same.
 ANTHROPIC_BASE_URL=https://anthropic.helicone.ai
 
 # NullSpend (after)
-ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
+ANTHROPIC_BASE_URL=https://proxy.nullspend.com
 ```
 
 ## Feature mapping
@@ -61,12 +61,13 @@ ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
 | Request logging | Cost event logging | Automatic — every request is logged |
 | Cost tracking | Cost tracking | Per-request, per-model, per-key breakdown |
 | Dashboard | Analytics dashboard | Daily spend, model breakdown, provider breakdown |
-| Custom properties | API key attribution | Costs attributed per API key |
-| Alerts | Budget enforcement | Hard stops, not just alerts — prevents overspend |
+| Custom properties | [Tags](../api-reference/custom-headers.md#x-nullspend-tags) | `X-NullSpend-Tags` header — JSON object with up to 10 key-value pairs for cost attribution |
+| Alerts | Budget enforcement + [Webhooks](../webhooks/overview.md) | Hard stops (not just alerts) + 15 webhook event types with HMAC-SHA256 signing |
 | Caching | — | Not yet supported (roadmap) |
-| Rate limiting | Budget enforcement | Budget ceilings act as spending rate limits |
-| User tracking | API key tracking | Track costs per key (one key per agent/user) |
+| Rate limiting | Budget enforcement + Velocity limits | Budget ceilings + velocity limits detect runaway loops by spend rate |
+| User tracking | API key tracking + Session limits | Track costs per key, plus per-conversation spend caps via `X-NullSpend-Session` |
 | Prompt templates | — | Not supported (out of scope) |
+| — | W3C traceparent | Automatic `traceparent`/`tracestate` propagation to upstream providers |
 
 ## What NullSpend adds that Helicone didn't have
 
@@ -88,11 +89,25 @@ Budget enforcement is tied to API keys on the server side. There's no
 client-side header that can be spoofed or omitted to bypass the budget. This
 was a known issue with Helicone's header-based approach.
 
-### Kill receipts (coming soon)
+### Tags for cost attribution
 
-When a request is blocked by a budget ceiling, NullSpend will generate a
-cryptographically signed, tamper-evident receipt — proof that the block happened,
-when, and why. Useful for compliance and audit trails.
+Helicone had custom properties. NullSpend has [tags](../features/tags.md) — attach a JSON object via the `X-NullSpend-Tags` header to attribute costs to teams, environments, features, or anything else. Up to 10 keys per request, queryable in the dashboard.
+
+### Velocity limits
+
+Detect runaway agent loops automatically. Set a spend-rate threshold (e.g., "$5 in 60 seconds") and the proxy blocks requests when the rate is exceeded. Helicone had no equivalent.
+
+### Session limits
+
+Cap spend per conversation with the `X-NullSpend-Session` header. When a session's cumulative spend hits the limit, the proxy returns `429`. Useful for chat-based agents where each conversation should have a budget.
+
+### Webhooks
+
+15 event types with HMAC-SHA256 signed payloads: cost events, budget exceeded, threshold crossings, velocity alerts, budget resets, blocked requests, and more. Supports both full and thin (Stripe v2 pattern) payload modes. See [Webhooks](../webhooks/overview.md). Helicone had no webhook support.
+
+### W3C traceparent propagation
+
+The proxy automatically forwards `traceparent` and `tracestate` headers to upstream providers, integrating with your existing distributed tracing infrastructure.
 
 ## Step-by-step migration
 
@@ -103,8 +118,8 @@ account.
 
 ### 2. Create an API key
 
-In the dashboard, go to **Settings** → **Create API Key**. Copy the platform
-key.
+In the dashboard, go to **Settings** → **Create API Key**. Copy the API
+key (starts with `ns_live_sk_`).
 
 ### 3. Set a budget (optional but recommended)
 
@@ -168,5 +183,4 @@ cache, you'll need to implement caching at the application level or wait for
 our caching feature (on the roadmap).
 
 **What about Helicone's custom properties?**
-Use API keys to segment costs. Create one key per agent, team, or environment.
-Costs are automatically attributed per key in the dashboard.
+Use [tags](../features/tags.md) — add the `X-NullSpend-Tags` header with a JSON object to attribute costs by team, environment, feature, or any custom dimension. You can also segment by API key (one key per agent or user).

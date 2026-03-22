@@ -89,6 +89,29 @@ describe("buildAnthropicUpstreamHeaders", () => {
     expect(headers.get("x-api-key")).toBeNull();
     expect(headers.get("anthropic-version")).toBe("2023-06-01");
   });
+
+  it("forwards traceparent and tracestate to upstream", () => {
+    const req = makeRequest({
+      authorization: "Bearer sk-ant-test",
+      traceparent:
+        "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+      tracestate: "vendor1=value1,vendor2=value2",
+    });
+    const headers = buildAnthropicUpstreamHeaders(req);
+
+    expect(headers.get("traceparent")).toBe(
+      "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+    );
+    expect(headers.get("tracestate")).toBe("vendor1=value1,vendor2=value2");
+  });
+
+  it("omits traceparent and tracestate when not present", () => {
+    const req = makeRequest({ authorization: "Bearer sk-ant-test" });
+    const headers = buildAnthropicUpstreamHeaders(req);
+
+    expect(headers.get("traceparent")).toBeNull();
+    expect(headers.get("tracestate")).toBeNull();
+  });
 });
 
 describe("buildAnthropicClientHeaders", () => {

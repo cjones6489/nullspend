@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, BarChart3, Clock, CreditCard, DollarSign, Inbox, Settings, Shield, Wrench } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Clock, CreditCard, DollarSign, ExternalLink, Home, Inbox, Settings, Shield, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -48,16 +48,29 @@ export function Sidebar() {
       <div className="flex h-14 items-center gap-2 border-b border-border/50 px-5">
         <Shield className="h-4 w-4 text-primary" />
         <Link
-          href="/app/analytics"
+          href="/app/home"
           className="text-sm font-semibold tracking-tight text-foreground"
         >
           NullSpend
         </Link>
       </div>
       <nav className="flex flex-1 flex-col p-2">
+        <Link
+          href="/app/home"
+          aria-current={pathname === "/app/home" ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+            pathname === "/app/home"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+          )}
+        >
+          <Home className="h-3.5 w-3.5" />
+          Home
+        </Link>
         {navSections.map((section) => (
           <div key={section.label}>
-            <p className="px-3 pt-4 pb-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50">
+            <p className="px-3 pt-4 pb-1 text-[11px] font-medium uppercase tracking-widest text-muted-foreground/70">
               {section.label}
             </p>
             <div className="flex flex-col gap-0.5">
@@ -83,7 +96,17 @@ export function Sidebar() {
             </div>
           </div>
         ))}
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col gap-0.5">
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            Documentation
+            <ExternalLink className="ml-auto h-2.5 w-2.5 opacity-50" />
+          </a>
           <Link
             href={settingsItem.href}
             aria-current={pathname === settingsItem.href || pathname.startsWith(settingsItem.href + "/") ? "page" : undefined}
@@ -100,7 +123,7 @@ export function Sidebar() {
         </div>
       </nav>
       <div className="border-t border-border/50 p-3">
-        <p className="text-[11px] text-muted-foreground/60">v0.1.0</p>
+        <p className="text-[11px] text-muted-foreground/80">v0.1.0</p>
       </div>
     </aside>
   );

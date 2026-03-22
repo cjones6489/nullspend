@@ -158,3 +158,10 @@ models and agents drive the most cost.
 
 The Free tier includes one budget, which is enough for a single production key.
 Upgrade to Pro for unlimited budgets across multiple keys and environments.
+
+## API Reference
+
+For programmatic budget management, see the [Budgets API](../api-reference/budgets-api.md). Key endpoints:
+
+- [`POST /api/budgets`](../api-reference/budgets-api.md#create-or-update-budget) — create or update a budget (session auth)
+- [`GET /api/budgets/status`](../api-reference/budgets-api.md#get-budget-status) — check remaining balance (API key auth)
