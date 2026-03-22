@@ -241,27 +241,27 @@ function VelocityChartVisual() {
     const threshold = 0.6;
 
     const draw = () => {
-      time += 0.03;
+      time += 0.04;
       const width = canvas.width;
       const height = canvas.height;
       const centerY = height / 2;
 
-      // Fade effect for trailing glow
-      ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+      // Clear to black
+      ctx.fillStyle = "#000000";
       ctx.fillRect(0, 0, width, height);
 
-      // Draw grid lines (oscilloscope style)
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.1)";
+      // Draw subtle grid lines
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.08)";
       ctx.lineWidth = 1;
-      for (let i = 0; i < 5; i++) {
-        const y = (height / 5) * i;
+      for (let i = 1; i < 4; i++) {
+        const y = (height / 4) * i;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
       }
-      for (let i = 0; i < 8; i++) {
-        const x = (width / 8) * i;
+      for (let i = 1; i < 6; i++) {
+        const x = (width / 6) * i;
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
@@ -269,95 +269,60 @@ function VelocityChartVisual() {
       }
 
       // Trigger spike periodically
-      if (Math.floor(time) % 8 === 5 && !spikeActive) {
+      if (Math.floor(time) % 10 === 6 && !spikeActive) {
         spikeActive = true;
         spikeStart = time;
         setTriggered(true);
-        setTimeout(() => setTriggered(false), 2000);
+        setTimeout(() => setTriggered(false), 2500);
       }
-      if (spikeActive && time - spikeStart > 2) {
+      if (spikeActive && time - spikeStart > 2.5) {
         spikeActive = false;
       }
 
-      // Draw threshold line
-      const thresholdY = centerY - threshold * (height / 2);
-      ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
-      ctx.setLineDash([8, 4]);
+      // Wave parameters
+      const baseColor = spikeActive ? [239, 68, 68] : [16, 185, 129]; // RGB
+      const amplitude = spikeActive ? 0.7 : 0.35;
+      const frequency = 3;
+
+      // Draw multiple glow layers for phosphor effect (outer to inner)
+      const glowLayers = [
+        { width: 20, alpha: 0.03 },
+        { width: 12, alpha: 0.06 },
+        { width: 6, alpha: 0.15 },
+        { width: 3, alpha: 0.4 },
+        { width: 1.5, alpha: 1 },
+      ];
+
+      glowLayers.forEach(({ width: lineWidth, alpha }) => {
+        ctx.strokeStyle = `rgba(${baseColor[0]}, ${baseColor[1]}, ${baseColor[2]}, ${alpha})`;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        
+        for (let x = 0; x <= width; x += 2) {
+          const normalizedX = (x / width) * Math.PI * 2 * frequency;
+          const wave = Math.sin(normalizedX - time * 2) * amplitude;
+          const y = centerY - wave * (height / 2);
+          
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+
+      // Bright white core for extra glow
+      ctx.strokeStyle = `rgba(255, 255, 255, 0.6)`;
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(0, thresholdY);
-      ctx.lineTo(width, thresholdY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Draw the oscilloscope waveform
-      const baseColor = spikeActive ? "#ef4444" : "#10b981";
-      
-      // Glow layer
-      ctx.strokeStyle = baseColor;
-      ctx.lineWidth = 6;
-      ctx.globalAlpha = 0.3;
-      ctx.beginPath();
-      for (let x = 0; x < width; x++) {
-        const progress = x / width;
-        const localTime = time - progress * 2;
-        
-        // Complex waveform with multiple frequencies
-        let amplitude = 0.25;
-        if (spikeActive) {
-          const spikeDist = Math.abs(progress - 0.5);
-          amplitude = 0.25 + Math.exp(-spikeDist * 8) * 0.6;
-        }
-        
-        const wave = 
-          Math.sin(localTime * 4) * amplitude +
-          Math.sin(localTime * 7.3) * (amplitude * 0.4) +
-          Math.sin(localTime * 12.7) * (amplitude * 0.2) +
-          (Math.random() - 0.5) * 0.03;
-        
+      for (let x = 0; x <= width; x += 2) {
+        const normalizedX = (x / width) * Math.PI * 2 * frequency;
+        const wave = Math.sin(normalizedX - time * 2) * amplitude;
         const y = centerY - wave * (height / 2);
+        
         if (x === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-
-      // Main line
-      ctx.strokeStyle = baseColor;
-      ctx.lineWidth = 2;
-      ctx.shadowColor = baseColor;
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      for (let x = 0; x < width; x++) {
-        const progress = x / width;
-        const localTime = time - progress * 2;
-        
-        let amplitude = 0.25;
-        if (spikeActive) {
-          const spikeDist = Math.abs(progress - 0.5);
-          amplitude = 0.25 + Math.exp(-spikeDist * 8) * 0.6;
-        }
-        
-        const wave = 
-          Math.sin(localTime * 4) * amplitude +
-          Math.sin(localTime * 7.3) * (amplitude * 0.4) +
-          Math.sin(localTime * 12.7) * (amplitude * 0.2) +
-          (Math.random() - 0.5) * 0.03;
-        
-        const y = centerY - wave * (height / 2);
-        if (x === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Draw scan line (moving vertical line)
-      const scanX = ((time * 50) % width);
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.6)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(scanX, 0);
-      ctx.lineTo(scanX, height);
       ctx.stroke();
 
       animationId = requestAnimationFrame(draw);
