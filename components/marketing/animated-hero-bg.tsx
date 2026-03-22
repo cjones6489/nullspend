@@ -114,11 +114,11 @@ export function DashboardPreview() {
   const [requestCount, setRequestCount] = useState(847293);
   
   const transactions = [
-    { model: "gpt-4o", tokens: 2847, cost: 0.0854, time: "2ms ago" },
-    { model: "claude-3-opus", tokens: 1293, cost: 0.0387, time: "15ms ago" },
-    { model: "gpt-4o-mini", tokens: 8472, cost: 0.0127, time: "48ms ago" },
-    { model: "claude-3-sonnet", tokens: 3918, cost: 0.0235, time: "102ms ago" },
-    { model: "gpt-4o", tokens: 1847, cost: 0.0554, time: "156ms ago" },
+    { model: "gpt-5.4", tokens: 2847, cost: 0.0854, time: "2ms ago" },
+    { model: "claude-opus-4.6", tokens: 1293, cost: 0.0387, time: "15ms ago" },
+    { model: "gpt-5.4-mini", tokens: 8472, cost: 0.0127, time: "48ms ago" },
+    { model: "claude-sonnet-4.6", tokens: 3918, cost: 0.0235, time: "102ms ago" },
+    { model: "gpt-5.4", tokens: 1847, cost: 0.0554, time: "156ms ago" },
   ];
   
   // Simulate live updates
