@@ -131,7 +131,7 @@ vi.mock("../lib/reconciliation-queue.js", () => ({
 // ── Imports ────────────────────────────────────────────────────────
 
 import { handleChatCompletions } from "../routes/openai.js";
-import { handleAnthropicMessages } from "../routes/anthropic.js";
+import { handleAnthropicMessages as _handleAnthropicMessages } from "../routes/anthropic.js";
 import { handleMcpBudgetCheck } from "../routes/mcp.js";
 import {
   buildVelocityRecoveredPayload,

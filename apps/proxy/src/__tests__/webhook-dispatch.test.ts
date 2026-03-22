@@ -20,7 +20,7 @@ vi.mock("../lib/webhook-signer.js", () => ({
 
 import { createWebhookDispatcher, dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import type { WebhookEndpointWithSecret } from "../lib/webhook-cache.js";
-import type { WebhookEvent, ThinWebhookEvent, AnyWebhookEvent } from "../lib/webhook-events.js";
+import type { WebhookEvent, ThinWebhookEvent } from "../lib/webhook-events.js";
 
 function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): WebhookEndpointWithSecret {
   return {

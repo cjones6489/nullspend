@@ -71,7 +71,7 @@ async function run() {
   try {
     const health = await fetch(`${BASE}/health`);
     if (!health.ok) throw new Error(`Health check failed: ${health.status}`);
-  } catch (err) {
+  } catch (_err) {
     console.error(`Proxy not reachable at ${BASE}. Start with pnpm proxy:dev.`);
     process.exit(1);
   }

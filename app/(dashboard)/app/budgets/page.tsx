@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, Clock, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -301,10 +301,18 @@ function BudgetRow({
     ? velocityEntries.find((v) => matchesEntityKey(budget.entityType, budget.entityId, v.entity_key))
     : undefined;
   const cooldownMs = (budget.velocityCooldownSeconds ?? 60) * 1000;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const hasActiveCooldown = velocityEntry?.tripped_at != null
+      && (velocityEntry.tripped_at + cooldownMs > Date.now());
+    if (!hasActiveCooldown) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [velocityEntry?.tripped_at, cooldownMs]);
   const isInCooldown = velocityEntry?.tripped_at != null
-    && (velocityEntry.tripped_at + cooldownMs > Date.now());
+    && (velocityEntry.tripped_at + cooldownMs > now);
   const cooldownRemainingSec = isInCooldown
-    ? Math.ceil((velocityEntry!.tripped_at! + cooldownMs - Date.now()) / 1000)
+    ? Math.ceil((velocityEntry!.tripped_at! + cooldownMs - now) / 1000)
     : 0;
 
   return (

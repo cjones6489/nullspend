@@ -10,7 +10,6 @@ import {
   BookOpen,
   DollarSign,
   ExternalLink,
-  Home,
   Inbox,
   Key,
 } from "lucide-react";

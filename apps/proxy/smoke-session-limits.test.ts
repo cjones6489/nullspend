@@ -100,7 +100,7 @@ describe("End-to-end session limit enforcement", () => {
   /**
    * Insert a user budget WITHOUT a session limit.
    */
-  async function setupBudgetWithoutSessionLimit(maxBudgetMicrodollars: number) {
+  async function _setupBudgetWithoutSessionLimit(maxBudgetMicrodollars: number) {
     const userId = NULLSPEND_SMOKE_USER_ID!;
 
     try { await invalidateBudget(userId, "user", userId); } catch { /* may not exist */ }

@@ -13,7 +13,6 @@ import { describe, it, expect, beforeAll } from "vitest";
 import {
   BASE,
   OPENAI_API_KEY,
-  NULLSPEND_API_KEY,
   isServerUp,
   authHeaders,
   smallRequest,

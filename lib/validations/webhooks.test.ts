@@ -81,7 +81,7 @@ describe("webhookRecordSchema", () => {
   };
 
   it("requires payloadMode field", () => {
-    const { payloadMode, ...missing } = validRecord;
+    const { payloadMode: _payloadMode, ...missing } = validRecord;
     const result = webhookRecordSchema.safeParse(missing);
     expect(result.success).toBe(false);
   });
