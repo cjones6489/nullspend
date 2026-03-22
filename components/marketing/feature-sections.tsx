@@ -222,7 +222,7 @@ export function BudgetEnforcementSection() {
 }
 
 // ============================================================================
-// SECTION 3: Velocity Limits - Animated spike detection
+// SECTION 3: Velocity Limits - Oscilloscope-style visualization
 // ============================================================================
 function VelocityChartVisual() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -235,74 +235,137 @@ function VelocityChartVisual() {
     if (!ctx) return;
 
     let animationId: number;
-    let dataPoints: number[] = Array(60).fill(20);
-    let frame = 0;
-    const threshold = 60;
+    let time = 0;
+    let spikeActive = false;
+    let spikeStart = 0;
+    const threshold = 0.6;
 
     const draw = () => {
-      frame++;
+      time += 0.03;
       const width = canvas.width;
       const height = canvas.height;
+      const centerY = height / 2;
 
-      // Clear
-      ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+      // Fade effect for trailing glow
+      ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
       ctx.fillRect(0, 0, width, height);
 
-      // Simulate normal activity with occasional spikes
-      const isSpike = frame > 120 && frame < 180;
-      const newValue = isSpike 
-        ? 20 + Math.random() * 70 
-        : 15 + Math.random() * 15;
-      
-      dataPoints.push(newValue);
-      dataPoints.shift();
+      // Draw grid lines (oscilloscope style)
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.1)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        const y = (height / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 8; i++) {
+        const x = (width / 8) * i;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
 
-      // Check if triggered
-      if (newValue > threshold && !triggered) {
+      // Trigger spike periodically
+      if (Math.floor(time) % 8 === 5 && !spikeActive) {
+        spikeActive = true;
+        spikeStart = time;
         setTriggered(true);
         setTimeout(() => setTriggered(false), 2000);
       }
+      if (spikeActive && time - spikeStart > 2) {
+        spikeActive = false;
+      }
 
       // Draw threshold line
-      const thresholdY = height - (threshold / 100) * height;
-      ctx.strokeStyle = "rgba(239, 68, 68, 0.5)";
-      ctx.setLineDash([5, 5]);
+      const thresholdY = centerY - threshold * (height / 2);
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
+      ctx.setLineDash([8, 4]);
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, thresholdY);
       ctx.lineTo(width, thresholdY);
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Draw line chart
-      ctx.strokeStyle = triggered ? "#ef4444" : "#10b981";
+      // Draw the oscilloscope waveform
+      const baseColor = spikeActive ? "#ef4444" : "#10b981";
+      
+      // Glow layer
+      ctx.strokeStyle = baseColor;
+      ctx.lineWidth = 6;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        const progress = x / width;
+        const localTime = time - progress * 2;
+        
+        // Complex waveform with multiple frequencies
+        let amplitude = 0.25;
+        if (spikeActive) {
+          const spikeDist = Math.abs(progress - 0.5);
+          amplitude = 0.25 + Math.exp(-spikeDist * 8) * 0.6;
+        }
+        
+        const wave = 
+          Math.sin(localTime * 4) * amplitude +
+          Math.sin(localTime * 7.3) * (amplitude * 0.4) +
+          Math.sin(localTime * 12.7) * (amplitude * 0.2) +
+          (Math.random() - 0.5) * 0.03;
+        
+        const y = centerY - wave * (height / 2);
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Main line
+      ctx.strokeStyle = baseColor;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = baseColor;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      for (let x = 0; x < width; x++) {
+        const progress = x / width;
+        const localTime = time - progress * 2;
+        
+        let amplitude = 0.25;
+        if (spikeActive) {
+          const spikeDist = Math.abs(progress - 0.5);
+          amplitude = 0.25 + Math.exp(-spikeDist * 8) * 0.6;
+        }
+        
+        const wave = 
+          Math.sin(localTime * 4) * amplitude +
+          Math.sin(localTime * 7.3) * (amplitude * 0.4) +
+          Math.sin(localTime * 12.7) * (amplitude * 0.2) +
+          (Math.random() - 0.5) * 0.03;
+        
+        const y = centerY - wave * (height / 2);
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Draw scan line (moving vertical line)
+      const scanX = ((time * 50) % width);
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.6)";
       ctx.lineWidth = 2;
       ctx.beginPath();
-      dataPoints.forEach((value, i) => {
-        const x = (i / dataPoints.length) * width;
-        const y = height - (value / 100) * height;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
+      ctx.moveTo(scanX, 0);
+      ctx.lineTo(scanX, height);
       ctx.stroke();
-
-      // Fill area under curve
-      ctx.lineTo(width, height);
-      ctx.lineTo(0, height);
-      ctx.closePath();
-      ctx.fillStyle = triggered 
-        ? "rgba(239, 68, 68, 0.1)" 
-        : "rgba(16, 185, 129, 0.1)";
-      ctx.fill();
-
-      // Reset after spike
-      if (frame > 240) frame = 0;
 
       animationId = requestAnimationFrame(draw);
     };
 
     draw();
     return () => cancelAnimationFrame(animationId);
-  }, [triggered]);
+  }, []);
 
   return (
     <div className="relative">
@@ -310,35 +373,43 @@ function VelocityChartVisual() {
         <div className="absolute -inset-4 animate-pulse rounded-2xl bg-destructive/20 blur-2xl" />
       )}
       
-      <div className={`relative overflow-hidden rounded-xl border bg-card/80 backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-border/50"}`}>
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/50 p-4">
+      <div className={`relative overflow-hidden rounded-xl border bg-black/90 backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-primary/30"}`}>
+        {/* Header - Oscilloscope style */}
+        <div className="flex items-center justify-between border-b border-primary/20 bg-black/50 px-4 py-3">
           <div className="flex items-center gap-3">
             <div className={`h-2 w-2 rounded-full ${triggered ? "animate-pulse bg-destructive" : "bg-primary"}`} />
-            <span className="text-sm font-medium">Spend Velocity</span>
+            <span className="font-mono text-sm font-medium text-primary/80">VELOCITY MONITOR</span>
           </div>
-          <span className="font-mono text-xs text-muted-foreground">$/min</span>
+          <div className="flex items-center gap-4">
+            <span className="font-mono text-xs text-muted-foreground">THRESH: 60%</span>
+            <span className={`font-mono text-xs ${triggered ? "text-destructive" : "text-primary"}`}>
+              {triggered ? "ALERT" : "NOMINAL"}
+            </span>
+          </div>
         </div>
 
-        {/* Chart */}
-        <div className="p-4">
+        {/* Oscilloscope display */}
+        <div className="p-2">
           <canvas
             ref={canvasRef}
-            width={400}
-            height={200}
-            className="h-[200px] w-full rounded-lg bg-background/50"
+            width={500}
+            height={220}
+            className="h-[220px] w-full rounded bg-black"
           />
         </div>
 
-        {/* Alert */}
-        {triggered && (
-          <div className="border-t border-destructive/30 bg-destructive/10 p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-destructive">Circuit breaker triggered</span>
-              <span className="ml-auto rounded bg-destructive/20 px-2 py-0.5 text-xs text-destructive">AUTO-PAUSED</span>
-            </div>
-          </div>
-        )}
+        {/* Status bar */}
+        <div className={`flex items-center justify-between px-4 py-2 text-xs ${triggered ? "bg-destructive/20" : "bg-primary/5"}`}>
+          <span className="font-mono text-muted-foreground">$/min spend rate</span>
+          {triggered ? (
+            <span className="flex items-center gap-2 font-mono text-destructive">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
+              CIRCUIT BREAKER ENGAGED
+            </span>
+          ) : (
+            <span className="font-mono text-primary/60">Monitoring active</span>
+          )}
+        </div>
       </div>
     </div>
   );
