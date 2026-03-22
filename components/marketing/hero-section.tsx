@@ -27,10 +27,11 @@ export function HeroSection() {
 
             {/* Headline - Large and bold */}
             <h1 className="text-5xl font-bold leading-[1.1] tracking-tight text-balance sm:text-6xl md:text-7xl lg:text-8xl">
-              <span className="text-foreground">Stop AI</span>
+              <span className="text-foreground">The FinOps</span>
               <br />
+              <span className="text-foreground">platform</span>{" "}
               <span className="bg-gradient-to-r from-primary via-cyan-400 to-primary bg-clip-text text-transparent">
-                cost chaos.
+                for AI.
               </span>
             </h1>
 
