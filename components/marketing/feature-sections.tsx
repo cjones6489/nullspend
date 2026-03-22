@@ -222,7 +222,7 @@ export function BudgetEnforcementSection() {
 }
 
 // ============================================================================
-// SECTION 3: Velocity Limits - Pulse monitor with square wave bursts
+// SECTION 3: Velocity Limits - Oscilloscope-style square wave monitor
 // ============================================================================
 function VelocityChartVisual() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -237,140 +237,175 @@ function VelocityChartVisual() {
     let animationId: number;
     const width = canvas.width;
     const height = canvas.height;
-    const baselineY = height * 0.6;
     
-    // Store the signal data that scrolls left
-    const signalLength = 300;
+    // Fixed amplitude levels (consistent height like oscilloscope)
+    const baselineY = height * 0.75;
+    const pulseHeight = height * 0.45; // Fixed height for all pulses
+    
+    // Store the signal data that scrolls left (0 = low, 1 = high)
+    const signalLength = 400;
     const signal: number[] = new Array(signalLength).fill(0);
     
     let frameCount = 0;
-    let burstCooldown = 0;
+    let inPulse = false;
+    let pulseWidth = 0;
+    let gapWidth = 0;
+    let burstMode = false;
+    let burstPulsesRemaining = 0;
     let thresholdTriggered = false;
     let triggerFlashCount = 0;
 
     const draw = () => {
       frameCount++;
       
-      // Clear to black
-      ctx.fillStyle = "#000000";
+      // Dark oscilloscope background
+      ctx.fillStyle = "#050a08";
       ctx.fillRect(0, 0, width, height);
 
-      // Draw subtle grid lines
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.06)";
+      // Draw grid lines (oscilloscope style)
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.08)";
       ctx.lineWidth = 1;
-      for (let i = 1; i < 4; i++) {
-        const y = (height / 4) * i;
+      // Horizontal grid
+      for (let i = 1; i < 6; i++) {
+        const y = (height / 6) * i;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
       }
+      // Vertical grid
+      for (let i = 1; i < 10; i++) {
+        const x = (width / 10) * i;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
 
       // Draw threshold line
-      const thresholdY = height * 0.25;
-      ctx.strokeStyle = "rgba(239, 68, 68, 0.3)";
-      ctx.setLineDash([4, 4]);
+      const thresholdY = height * 0.2;
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, thresholdY);
       ctx.lineTo(width, thresholdY);
       ctx.stroke();
       ctx.setLineDash([]);
+      
+      // Threshold label
+      ctx.fillStyle = "rgba(239, 68, 68, 0.6)";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("THRESHOLD", 8, thresholdY - 6);
 
-      // Generate new signal value
-      let newValue = 0;
-      burstCooldown--;
-
-      // Random single pulses
-      if (burstCooldown <= 0 && Math.random() < 0.03) {
-        newValue = 0.3 + Math.random() * 0.25;
-        burstCooldown = 15 + Math.floor(Math.random() * 30);
-      }
-
-      // Burst of rapid pulses (triggers threshold)
-      if (frameCount % 400 > 320 && frameCount % 400 < 380) {
-        if (Math.random() < 0.4) {
-          newValue = 0.5 + Math.random() * 0.4;
+      // Generate signal - single pulses and bursts
+      let newValue = signal[signal.length - 1];
+      
+      if (inPulse) {
+        newValue = 1;
+        pulseWidth--;
+        if (pulseWidth <= 0) {
+          inPulse = false;
+          // Set gap before next potential pulse
+          if (burstMode && burstPulsesRemaining > 0) {
+            gapWidth = 3 + Math.floor(Math.random() * 4); // Short gaps in burst
+          } else {
+            gapWidth = 20 + Math.floor(Math.random() * 60); // Normal gaps
+            burstMode = false;
+          }
         }
-        if (!thresholdTriggered && frameCount % 400 > 350) {
-          thresholdTriggered = true;
-          triggerFlashCount = 120;
-          setTriggered(true);
-          setTimeout(() => setTriggered(false), 2500);
+      } else {
+        newValue = 0;
+        gapWidth--;
+        if (gapWidth <= 0) {
+          // Chance to start a new pulse
+          if (burstMode && burstPulsesRemaining > 0) {
+            // Continue burst
+            inPulse = true;
+            pulseWidth = 4 + Math.floor(Math.random() * 6);
+            burstPulsesRemaining--;
+          } else if (Math.random() < 0.08) {
+            // Start single pulse
+            inPulse = true;
+            pulseWidth = 6 + Math.floor(Math.random() * 10);
+          } else if (Math.random() < 0.015) {
+            // Start a burst (multiple rapid pulses)
+            burstMode = true;
+            burstPulsesRemaining = 4 + Math.floor(Math.random() * 6);
+            inPulse = true;
+            pulseWidth = 4 + Math.floor(Math.random() * 5);
+            
+            // Trigger threshold alert during bursts
+            if (!thresholdTriggered) {
+              thresholdTriggered = true;
+              triggerFlashCount = 90;
+              setTriggered(true);
+              setTimeout(() => {
+                setTriggered(false);
+                thresholdTriggered = false;
+              }, 2000);
+            }
+          }
         }
-      }
-
-      if (frameCount % 400 === 0) {
-        thresholdTriggered = false;
       }
 
       // Shift signal left and add new value
       signal.shift();
       signal.push(newValue);
 
-      // Draw the signal line with glow
-      const drawSignal = (lineWidth: number, alpha: number) => {
-        ctx.strokeStyle = `rgba(16, 185, 129, ${alpha})`;
+      // Draw the square wave signal with glow effect
+      const drawSquareWave = (lineWidth: number, color: string) => {
+        ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
-        ctx.lineCap = "square";
+        ctx.lineCap = "butt";
         ctx.lineJoin = "miter";
         ctx.beginPath();
 
+        let prevY = baselineY;
         for (let i = 0; i < signal.length; i++) {
           const x = (i / signal.length) * width;
-          const pulseHeight = signal[i] * (height * 0.5);
-          const y = baselineY - pulseHeight;
+          const y = signal[i] === 1 ? baselineY - pulseHeight : baselineY;
+          
+          // Add slight noise to the signal for that analog feel
+          const noise = (Math.random() - 0.5) * 1.5;
+          const noisyY = y + noise;
 
           if (i === 0) {
-            ctx.moveTo(x, y);
+            ctx.moveTo(x, noisyY);
+            prevY = noisyY;
           } else {
-            // Square wave style: horizontal then vertical
             const prevX = ((i - 1) / signal.length) * width;
-            const prevPulseHeight = signal[i - 1] * (height * 0.5);
-            const prevY = baselineY - prevPulseHeight;
-            
-            // Draw horizontal to current x, then vertical to current y
+            // Square wave: horizontal line, then vertical transition
             ctx.lineTo(x, prevY);
-            ctx.lineTo(x, y);
+            ctx.lineTo(x, noisyY);
+            prevY = noisyY;
           }
         }
         ctx.stroke();
       };
 
-      // Glow layers (outer to inner)
-      drawSignal(8, 0.08);
-      drawSignal(4, 0.15);
-      drawSignal(2, 0.5);
+      // Glow layers
+      drawSquareWave(12, "rgba(16, 185, 129, 0.05)");
+      drawSquareWave(6, "rgba(16, 185, 129, 0.1)");
+      drawSquareWave(3, "rgba(16, 185, 129, 0.3)");
       
-      // Bright core
-      ctx.strokeStyle = "rgba(74, 222, 128, 1)";
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = "square";
-      ctx.lineJoin = "miter";
-      ctx.beginPath();
-      for (let i = 0; i < signal.length; i++) {
-        const x = (i / signal.length) * width;
-        const pulseHeight = signal[i] * (height * 0.5);
-        const y = baselineY - pulseHeight;
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          const prevX = ((i - 1) / signal.length) * width;
-          const prevPulseHeight = signal[i - 1] * (height * 0.5);
-          const prevY = baselineY - prevPulseHeight;
-          ctx.lineTo(x, prevY);
-          ctx.lineTo(x, y);
-        }
-      }
-      ctx.stroke();
+      // Bright core signal
+      drawSquareWave(1.5, "rgba(74, 222, 128, 0.95)");
 
-      // Flash "THRESHOLD REACHED" when triggered
+      // Scanline effect
+      const scanlineY = (frameCount * 2) % height;
+      ctx.fillStyle = "rgba(74, 222, 128, 0.03)";
+      ctx.fillRect(0, scanlineY, width, 2);
+
+      // Flash "RUNAWAY DETECTED" when triggered
       if (triggerFlashCount > 0) {
         triggerFlashCount--;
-        if (Math.floor(triggerFlashCount / 8) % 2 === 0) {
-          ctx.fillStyle = "rgba(239, 68, 68, 0.9)";
-          ctx.font = "bold 14px monospace";
+        if (Math.floor(triggerFlashCount / 6) % 2 === 0) {
+          ctx.fillStyle = "rgba(239, 68, 68, 0.95)";
+          ctx.font = "bold 13px monospace";
           ctx.textAlign = "center";
-          ctx.fillText("THRESHOLD REACHED", width / 2, height * 0.15);
+          ctx.fillText("RUNAWAY DETECTED", width / 2, thresholdY + 20);
         }
       }
 
@@ -387,38 +422,41 @@ function VelocityChartVisual() {
         <div className="absolute -inset-4 animate-pulse rounded-2xl bg-destructive/20 blur-2xl" />
       )}
       
-      <div className={`relative overflow-hidden rounded-xl border bg-black backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-primary/30"}`}>
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-primary/20 bg-black px-4 py-3">
+      <div className={`relative overflow-hidden rounded-xl border bg-[#050a08] backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-primary/30"}`}>
+        {/* Header - oscilloscope style */}
+        <div className="flex items-center justify-between border-b border-primary/20 bg-[#030806] px-4 py-3">
           <div className="flex items-center gap-3">
             <div className={`h-2 w-2 rounded-full ${triggered ? "animate-pulse bg-destructive" : "bg-primary"}`} />
             <span className="font-mono text-sm font-medium text-primary">SPEND VELOCITY</span>
           </div>
-          <span className={`font-mono text-xs ${triggered ? "text-destructive" : "text-primary/60"}`}>
-            {triggered ? "ALERT" : "MONITORING"}
-          </span>
+          <div className="flex items-center gap-4">
+            <span className="font-mono text-xs text-primary/40">500ms/div</span>
+            <span className={`font-mono text-xs ${triggered ? "text-destructive" : "text-primary/60"}`}>
+              {triggered ? "ALERT" : "LIVE"}
+            </span>
+          </div>
         </div>
 
-        {/* Monitor display */}
+        {/* Oscilloscope display */}
         <div className="p-1">
           <canvas
             ref={canvasRef}
             width={500}
-            height={180}
-            className="h-[180px] w-full bg-black"
+            height={200}
+            className="h-[200px] w-full"
           />
         </div>
 
         {/* Status bar */}
-        <div className={`flex items-center justify-between border-t border-primary/20 px-4 py-2 text-xs ${triggered ? "bg-destructive/10" : "bg-black"}`}>
-          <span className="font-mono text-muted-foreground">$/min</span>
+        <div className={`flex items-center justify-between border-t border-primary/20 px-4 py-2 text-xs ${triggered ? "bg-destructive/10" : "bg-[#030806]"}`}>
+          <span className="font-mono text-primary/40">$/min</span>
           {triggered ? (
             <span className="flex items-center gap-2 font-mono text-destructive">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
               CIRCUIT BREAKER ACTIVE
             </span>
           ) : (
-            <span className="font-mono text-primary/50">Active</span>
+            <span className="font-mono text-primary/50">Monitoring</span>
           )}
         </div>
       </div>
