@@ -697,102 +697,84 @@ export function WebhooksSection() {
 }
 
 // ============================================================================
-// SECTION 6: Human-in-the-Loop - Approval workflow animation
+// SECTION 6: Human-in-the-Loop - Simple approve button animation
 // ============================================================================
 function ApprovalVisual() {
-  const [stage, setStage] = useState<"waiting" | "approved" | "denied">("waiting");
-  const [countdown, setCountdown] = useState(10);
+  const [stage, setStage] = useState<"waiting" | "pressing" | "approved">("waiting");
+  const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          setStage(Math.random() > 0.3 ? "approved" : "denied");
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (stage !== "waiting") {
-      const timeout = setTimeout(() => {
-        setStage("waiting");
-        setCountdown(10);
-      }, 3000);
-      return () => clearTimeout(timeout);
-    }
-  }, [stage]);
+    // Auto-press the button every few seconds
+    const timeout = setTimeout(() => {
+      setStage("pressing");
+      setTimeout(() => {
+        setStage("approved");
+        setTimeout(() => {
+          setStage("waiting");
+          setCycle(c => c + 1);
+        }, 2000);
+      }, 300);
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [cycle]);
 
   return (
     <div className="relative">
       <div className={`absolute -inset-4 rounded-2xl blur-2xl transition-colors duration-500 ${
-        stage === "approved" ? "bg-primary/20" : 
-        stage === "denied" ? "bg-destructive/20" : 
-        "bg-amber-500/10"
+        stage === "approved" ? "bg-primary/30" : "bg-primary/10"
       }`} />
       
-      <div className="relative rounded-xl border border-border/50 bg-card/80 p-6 backdrop-blur-sm">
-        {/* Request details */}
-        <div className="mb-6 rounded-lg border border-border/30 bg-background/50 p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Estimated Cost</span>
-            <span className="font-mono text-lg font-bold text-amber-400">$24.50</span>
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Model</span>
-            <span className="font-mono text-sm">gpt-5.4</span>
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Tokens</span>
-            <span className="font-mono text-sm">~128,000</span>
-          </div>
+      <div className="relative flex flex-col items-center rounded-xl border border-border/50 bg-card/80 p-8 backdrop-blur-sm">
+        {/* Status text above button */}
+        <div className="mb-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            {stage === "approved" ? "Request approved" : "Agent waiting for approval"}
+          </p>
         </div>
 
-        {/* Status */}
-        <div className={`mb-6 rounded-lg p-4 text-center transition-colors duration-300 ${
-          stage === "approved" ? "border border-primary/30 bg-primary/10" :
-          stage === "denied" ? "border border-destructive/30 bg-destructive/10" :
-          "border border-amber-500/30 bg-amber-500/10"
-        }`}>
-          {stage === "waiting" ? (
-            <>
-              <div className="mb-2 flex items-center justify-center gap-2">
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-                <span className="font-medium text-amber-400">Awaiting Approval</span>
-              </div>
-              <p className="text-sm text-muted-foreground">Agent paused. Human decision required.</p>
-              <p className="mt-2 font-mono text-2xl font-bold">{countdown}s</p>
-            </>
-          ) : stage === "approved" ? (
-            <>
-              <span className="text-lg font-medium text-primary">Approved</span>
-              <p className="mt-1 text-sm text-muted-foreground">Request proceeding to provider</p>
-            </>
-          ) : (
-            <>
-              <span className="text-lg font-medium text-destructive">Denied</span>
-              <p className="mt-1 text-sm text-muted-foreground">Agent notified of rejection</p>
-            </>
+        {/* Large circular approve button */}
+        <button
+          className={`relative h-32 w-32 rounded-full font-semibold transition-all duration-200 ${
+            stage === "pressing" 
+              ? "scale-95 bg-primary/80 shadow-lg shadow-primary/30" 
+              : stage === "approved"
+              ? "scale-100 bg-primary shadow-xl shadow-primary/40"
+              : "scale-100 bg-primary shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
+          }`}
+        >
+          {/* Outer ring pulse when waiting */}
+          {stage === "waiting" && (
+            <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
           )}
-        </div>
-
-        {/* Action buttons (decorative) */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => setStage("approved")}
-            className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
+          
+          {/* Button content */}
+          <span className={`relative z-10 text-lg text-primary-foreground transition-opacity ${
+            stage === "approved" ? "opacity-0" : "opacity-100"
+          }`}>
             Approve
-          </button>
-          <button
-            onClick={() => setStage("denied")}
-            className="flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            Deny
-          </button>
+          </span>
+          
+          {/* Checkmark when approved */}
+          {stage === "approved" && (
+            <svg 
+              className="absolute inset-0 m-auto h-12 w-12 text-primary-foreground" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor" 
+              strokeWidth={3}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </button>
+
+        {/* Status text below */}
+        <div className="mt-6 text-center">
+          <p className={`font-mono text-sm transition-colors ${
+            stage === "approved" ? "text-primary" : "text-muted-foreground"
+          }`}>
+            {stage === "approved" ? "Proceeding to provider..." : "Human decision required"}
+          </p>
         </div>
       </div>
     </div>
