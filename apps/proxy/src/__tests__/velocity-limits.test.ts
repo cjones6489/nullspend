@@ -206,7 +206,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -517,13 +517,13 @@ describe("OpenAI route — velocity denial", () => {
     mockDoBudgetCheck.mockResolvedValue(velocityDeniedCheckResult);
     mockGetWebhookEndpoints.mockResolvedValue([{ id: "ep-1" }]);
     mockGetWebhookEndpointsWithSecrets.mockResolvedValue([
-      { id: "ep-1", url: "https://hook.example.com", apiVersion: "2026-04-01", currentSecret: "sec-1", rotatedSecret: null, rotatedAt: null },
+      { id: "ep-1", url: "https://hook.example.com", apiVersion: "2026-04-01", defaultTags: {}, currentSecret: "sec-1", rotatedSecret: null, rotatedAt: null },
     ]);
     mockDispatchToEndpoints.mockResolvedValue(undefined);
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(defaultBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
       redis: {} as any,
       webhookDispatcher: mockDispatcher as any,
     });
@@ -626,13 +626,13 @@ describe("Anthropic route — velocity denial", () => {
     mockDoBudgetCheck.mockResolvedValue(velocityDeniedCheckResult);
     mockGetWebhookEndpoints.mockResolvedValue([{ id: "ep-1" }]);
     mockGetWebhookEndpointsWithSecrets.mockResolvedValue([
-      { id: "ep-1", url: "https://hook.example.com", apiVersion: "2026-04-01", currentSecret: "sec-1", rotatedSecret: null, rotatedAt: null },
+      { id: "ep-1", url: "https://hook.example.com", apiVersion: "2026-04-01", defaultTags: {}, currentSecret: "sec-1", rotatedSecret: null, rotatedAt: null },
     ]);
     mockDispatchToEndpoints.mockResolvedValue(undefined);
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(anthropicBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
       redis: {} as any,
       webhookDispatcher: mockDispatcher as any,
     });
@@ -1152,7 +1152,7 @@ describe("Velocity limits — edge cases", () => {
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(defaultBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
       redis: {} as any,
       webhookDispatcher: mockDispatcher as any,
     });
@@ -1183,13 +1183,13 @@ describe("Velocity limits — edge cases", () => {
 
     mockGetWebhookEndpoints.mockResolvedValue([{ id: "ep-1" }]);
     mockGetWebhookEndpointsWithSecrets.mockResolvedValue([
-      { id: "ep-1", url: "https://hook.example.com", apiVersion: "2026-04-01", currentSecret: "sec-1", rotatedSecret: null, rotatedAt: null },
+      { id: "ep-1", url: "https://hook.example.com", apiVersion: "2026-04-01", defaultTags: {}, currentSecret: "sec-1", rotatedSecret: null, rotatedAt: null },
     ]);
     mockDispatchToEndpoints.mockResolvedValue(undefined);
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(defaultBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
       redis: {} as any,
       webhookDispatcher: mockDispatcher as any,
     });

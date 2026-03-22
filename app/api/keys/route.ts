@@ -46,6 +46,7 @@ export async function GET(request: Request) {
         id: apiKeys.id,
         name: apiKeys.name,
         keyPrefix: apiKeys.keyPrefix,
+        defaultTags: apiKeys.defaultTags,
         lastUsedAt: apiKeys.lastUsedAt,
         createdAt: apiKeys.createdAt,
       })
@@ -109,11 +110,13 @@ export async function POST(request: Request) {
         keyHash: hashKey(rawKey),
         keyPrefix: extractPrefix(rawKey),
         apiVersion: CURRENT_VERSION,
+        defaultTags: input.defaultTags,
       })
       .returning({
         id: apiKeys.id,
         name: apiKeys.name,
         keyPrefix: apiKeys.keyPrefix,
+        defaultTags: apiKeys.defaultTags,
         createdAt: apiKeys.createdAt,
       });
 
@@ -133,4 +136,3 @@ export async function POST(request: Request) {
     return handleRouteError(error);
   }
 }
-

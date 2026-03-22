@@ -9,7 +9,7 @@ import { authenticateRequest } from "./lib/auth.js";
 import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
-import { parseTags } from "./lib/tags.js";
+import { mergeTags } from "./lib/tags.js";
 import { resolveTraceId } from "./lib/trace-context.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 import { handleReconciliationQueue } from "./queue-handler.js";
@@ -241,6 +241,8 @@ export default {
         auth.apiVersion,
       );
 
+      const tags = mergeTags(auth.defaultTags, request.headers.get("x-nullspend-tags"));
+
       const ctx: RequestContext = {
         body: result.body,
         auth,
@@ -248,13 +250,17 @@ export default {
         connectionString,
         sessionId: truncateSessionId(request.headers.get("x-nullspend-session")),
         traceId,
-        tags: parseTags(request.headers.get("x-nullspend-tags")),
+        tags,
         webhookDispatcher,
         resolvedApiVersion,
         requestStartMs,
       };
 
-      return await handler(request, env, ctx);
+      const response = await handler(request, env, ctx);
+      if (Object.keys(ctx.tags).length > 0) {
+        response.headers.set("X-NullSpend-Effective-Tags", JSON.stringify(ctx.tags));
+      }
+      return response;
     } catch (err) {
       console.error("[proxy] Unhandled error:", { traceId, err });
       const resp = errorResponse("internal_error", "Internal server error", 500);

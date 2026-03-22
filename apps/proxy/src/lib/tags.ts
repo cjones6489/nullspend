@@ -1,4 +1,5 @@
-const MAX_KEYS = 10;
+export const MAX_TAGS = 10;
+const MAX_KEYS = MAX_TAGS;
 const MAX_KEY_LENGTH = 64;
 const MAX_VALUE_LENGTH = 256;
 const KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -61,4 +62,41 @@ export function parseTags(header: string | null): Record<string, string> {
   }
 
   return result;
+}
+
+/**
+ * Merge API key default tags with request-level tags.
+ *
+ * Semantics: request tags override defaults for the same key,
+ * non-conflicting keys are unioned. Merged result is capped at MAX_TAGS.
+ */
+export function mergeTags(
+  defaults: Record<string, string>,
+  requestHeader: string | null,
+): Record<string, string> {
+  const requestTags = parseTags(requestHeader);
+  if (Object.keys(defaults).length === 0) return requestTags;
+  if (Object.keys(requestTags).length === 0) {
+    // Defaults alone — shallow copy to avoid mutating the cached identity object.
+    // Also cap at MAX_TAGS and filter reserved _ns_ prefix (defense-in-depth against malformed DB data).
+    const result: Record<string, string> = {};
+    let count = 0;
+    for (const [k, v] of Object.entries(defaults)) {
+      if (count >= MAX_TAGS) break;
+      if (k.startsWith(RESERVED_PREFIX)) continue;
+      result[k] = v;
+      count++;
+    }
+    return result;
+  }
+  // Merge: request tags win, then fill remaining slots from defaults up to MAX_TAGS.
+  // Filter _ns_ prefix from defaults (defense-in-depth against malformed DB data).
+  const merged: Record<string, string> = { ...requestTags };
+  for (const [k, v] of Object.entries(defaults)) {
+    if (Object.keys(merged).length >= MAX_TAGS) break;
+    if (Object.hasOwn(merged, k)) continue;
+    if (k.startsWith(RESERVED_PREFIX)) continue;
+    merged[k] = v;
+  }
+  return merged;
 }

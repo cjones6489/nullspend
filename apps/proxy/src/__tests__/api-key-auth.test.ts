@@ -83,12 +83,12 @@ describe("authenticateApiKey", () => {
 
   it("returns identity on valid key (cache miss → DB hit)", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
     });
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
 
-    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false });
+    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockConnect).toHaveBeenCalledTimes(1);
     expect(mockQuery).toHaveBeenCalledTimes(1);
 
@@ -100,17 +100,17 @@ describe("authenticateApiKey", () => {
 
   it("returns cached identity on second call (cache hit → no DB call)", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
     });
 
     // First call — cache miss, hits DB
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false });
+    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockConnect).toHaveBeenCalledTimes(1);
 
     // Second call — cache hit, no DB call
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false });
+    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockConnect).toHaveBeenCalledTimes(1); // Still 1, not 2
     expect(mockQuery).toHaveBeenCalledTimes(1);
   });
@@ -194,7 +194,7 @@ describe("authenticateApiKey", () => {
     // 257 entries → evicts key_0 (the oldest), leaving keys 1–256 (256 entries).
     for (let i = 0; i < 257; i++) {
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: `key-${i}`, user_id: `user-${i}`, has_webhooks: false }],
+        rows: [{ id: `key-${i}`, user_id: `user-${i}`, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
       });
       await authenticateApiKey(`ns_live_sk_key_${i}`, TEST_CONNECTION_STRING);
     }
@@ -204,16 +204,16 @@ describe("authenticateApiKey", () => {
 
     // key_0 was evicted — looking it up should require a new DB call
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: "key-0", user_id: "user-0", has_webhooks: false }],
+      rows: [{ id: "key-0", user_id: "user-0", has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
     });
     const result = await authenticateApiKey("ns_live_sk_key_0", TEST_CONNECTION_STRING);
-    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false });
+    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockConnect).toHaveBeenCalledTimes(258); // Had to go to DB again
 
     // Re-adding key_0 brought cache to 257 → key_1 was evicted.
     // key_2 should still be cached (it was the third entry, not evicted).
     const result2 = await authenticateApiKey("ns_live_sk_key_2", TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false });
+    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockConnect).toHaveBeenCalledTimes(258); // No additional DB call — cache hit
 
     vi.restoreAllMocks();
@@ -240,7 +240,7 @@ describe("authenticateApiKey", () => {
   it("queries with the correct SQL and hashed key parameter", async () => {
     const expectedHash = await hashApiKey(TEST_RAW_KEY);
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
     });
 
     await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -254,7 +254,7 @@ describe("authenticateApiKey", () => {
 
   it("registers a pg client error handler", async () => {
     mockQuery.mockResolvedValueOnce({
-      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false }],
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
     });
 
     await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -305,10 +305,10 @@ describe("authenticateApiKey cache expiry", () => {
 
     mockQuery
       .mockResolvedValueOnce({
-        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false }],
+        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
       })
       .mockResolvedValueOnce({
-        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false }],
+        rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
       });
 
     // First call — populates cache
@@ -318,5 +318,80 @@ describe("authenticateApiKey cache expiry", () => {
     // Second call — cache expired, hits DB again
     await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
     expect(mockConnect).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("authenticateApiKey defaultTags", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetCaches();
+    mockConnect.mockResolvedValue(undefined);
+    mockEnd.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    _resetCaches();
+  });
+
+  it("returns defaultTags from DB query", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: { project: "openclaw", team: "backend" } }],
+    });
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.defaultTags).toEqual({ project: "openclaw", team: "backend" });
+  });
+
+  it("returns empty defaultTags when default_tags column is null", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: null }],
+    });
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.defaultTags).toEqual({});
+  });
+
+  it("returns empty defaultTags when default_tags is not an object", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: "not-an-object" }],
+    });
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.defaultTags).toEqual({});
+  });
+
+  it("returns empty defaultTags when default_tags is a JSONB array", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: ["a", "b"] }],
+    });
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.defaultTags).toEqual({});
+  });
+
+  it("defaultTags are cached in positive cache entry", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: { env: "prod" } }],
+    });
+
+    // First call — cache miss
+    const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result1!.defaultTags).toEqual({ env: "prod" });
+
+    // Second call — cache hit
+    const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result2!.defaultTags).toEqual({ env: "prod" });
+    expect(mockConnect).toHaveBeenCalledTimes(1); // Only one DB call
+  });
+
+  it("SQL query selects default_tags column", async () => {
+    mockQuery.mockResolvedValueOnce({
+      rows: [{ id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} }],
+    });
+
+    await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+
+    const queryCall = mockQuery.mock.calls[0];
+    expect(queryCall[0]).toContain("default_tags");
   });
 });

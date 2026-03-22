@@ -118,7 +118,7 @@ describe("Worker entry point routing", () => {
       userId: "user-1",
       keyId: "key-1",
       hasWebhooks: false,
-      apiVersion: "2026-04-01",
+      apiVersion: "2026-04-01", defaultTags: {},
     });
   });
 
@@ -377,6 +377,98 @@ describe("Worker entry point routing", () => {
       expect(res.status).toBe(401);
       const body = await res.json();
       expect(body.error.code).toBe("unauthorized");
+    });
+  });
+
+  describe("effective tags header", () => {
+    it("sets X-NullSpend-Effective-Tags when tags are present", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      mockAuthenticateRequest.mockResolvedValueOnce({
+        userId: "user-1",
+        keyId: "key-1",
+        hasWebhooks: false,
+        apiVersion: "2026-04-01",
+        defaultTags: { project: "openclaw" },
+      });
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      const effectiveTags = res.headers.get("X-NullSpend-Effective-Tags");
+      expect(effectiveTags).toBeTruthy();
+      expect(JSON.parse(effectiveTags!)).toEqual({ project: "openclaw" });
+    });
+
+    it("does not set X-NullSpend-Effective-Tags when no tags", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-NullSpend-Effective-Tags")).toBeNull();
+    });
+
+    it("merges default tags with request tags (request wins)", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      mockAuthenticateRequest.mockResolvedValueOnce({
+        userId: "user-1",
+        keyId: "key-1",
+        hasWebhooks: false,
+        apiVersion: "2026-04-01",
+        defaultTags: { project: "openclaw", team: "backend" },
+      });
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+          "X-NullSpend-Tags": '{"project":"other","env":"prod"}',
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      const effectiveTags = JSON.parse(res.headers.get("X-NullSpend-Effective-Tags")!);
+      expect(effectiveTags).toEqual({
+        project: "other",  // request wins
+        team: "backend",   // from defaults
+        env: "prod",       // from request
+      });
     });
   });
 

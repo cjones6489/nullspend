@@ -65,6 +65,7 @@ describe("GET /api/keys", () => {
         id: "00000000-0000-4000-a000-000000000011",
         name: "My Key",
         keyPrefix: "ns_live_sk_abcdef12",
+        defaultTags: { project: "alpha" },
         lastUsedAt: null,
         createdAt: new Date("2026-01-01"),
       },
@@ -77,7 +78,39 @@ describe("GET /api/keys", () => {
     const body = await res.json();
     expect(body.data).toHaveLength(1);
     expect(body.data[0].name).toBe("My Key");
+    expect(body.data[0].defaultTags).toEqual({ project: "alpha" });
     expect(body.cursor).toBeNull();
+  });
+
+  it("returns defaultTags in key list response", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockSelectCount.mockResolvedValue([{ value: 0 }]);
+    mockSelectList.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-a000-000000000011",
+        name: "Key 1",
+        keyPrefix: "ns_live_sk_abcdef12",
+        defaultTags: { team: "backend", env: "prod" },
+        lastUsedAt: null,
+        createdAt: new Date("2026-01-01"),
+      },
+      {
+        id: "00000000-0000-4000-a000-000000000022",
+        name: "Key 2",
+        keyPrefix: "ns_live_sk_ghijkl34",
+        defaultTags: {},
+        lastUsedAt: null,
+        createdAt: new Date("2026-01-02"),
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/keys");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data[0].defaultTags).toEqual({ team: "backend", env: "prod" });
+    expect(body.data[1].defaultTags).toEqual({});
   });
 
   it("returns 401 when session is invalid", async () => {
@@ -107,6 +140,7 @@ describe("POST /api/keys", () => {
         id: "00000000-0000-4000-a000-000000000011",
         name: "Production Key",
         keyPrefix: "ns_live_sk_abcdef12",
+        defaultTags: {},
         createdAt: new Date("2026-01-01"),
       },
     ]);
@@ -123,6 +157,37 @@ describe("POST /api/keys", () => {
     const body = await res.json();
     expect(body.rawKey).toBe("ns_live_sk_abcdef1234567890abcdef1234567890");
     expect(body.name).toBe("Production Key");
+    expect(body.defaultTags).toEqual({});
+  });
+
+  it("creates key with defaultTags and returns them", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockSelectCount.mockResolvedValue([{ value: 0 }]);
+    mockedGenerateRawKey.mockReturnValue("ns_live_sk_abcdef1234567890abcdef1234567890");
+    mockedHashKey.mockReturnValue("hashed_key");
+    mockedExtractPrefix.mockReturnValue("ns_live_sk_abcdef12");
+    mockInsertReturning.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-a000-000000000011",
+        name: "Tagged Key",
+        keyPrefix: "ns_live_sk_abcdef12",
+        defaultTags: { project: "openclaw", team: "backend" },
+        createdAt: new Date("2026-01-01"),
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tagged Key", defaultTags: { project: "openclaw", team: "backend" } }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.name).toBe("Tagged Key");
+    expect(body.defaultTags).toEqual({ project: "openclaw", team: "backend" });
   });
 
   it("returns 409 when max keys per user reached", async () => {
@@ -154,6 +219,48 @@ describe("POST /api/keys", () => {
 
     const res = await POST(req);
 
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when defaultTags has >10 keys", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-1");
+
+    const tags: Record<string, string> = {};
+    for (let i = 0; i < 11; i++) tags[`key${i}`] = `v${i}`;
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Too Many Tags", defaultTags: tags }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when defaultTags has _ns_ prefix key", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-1");
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Reserved", defaultTags: { _ns_internal: "bad" } }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when defaultTags has invalid key characters", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-1");
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Bad Chars", defaultTags: { "invalid key": "val" } }),
+    });
+
+    const res = await POST(req);
     expect(res.status).toBe(400);
   });
 

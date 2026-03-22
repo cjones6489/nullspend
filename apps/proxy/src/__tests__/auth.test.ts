@@ -29,6 +29,8 @@ describe("authenticateRequest", () => {
       userId: "user-1",
       keyId: "key-1",
       hasWebhooks: false,
+      apiVersion: "2026-04-01",
+      defaultTags: { project: "alpha" },
     });
 
     const request = new Request("http://localhost/v1/chat/completions", {
@@ -36,7 +38,13 @@ describe("authenticateRequest", () => {
     });
 
     const result = await authenticateRequest(request, "postgresql://localhost");
-    expect(result).toEqual({ userId: "user-1", keyId: "key-1", hasWebhooks: false });
+    expect(result).toEqual({
+      userId: "user-1",
+      keyId: "key-1",
+      hasWebhooks: false,
+      apiVersion: "2026-04-01",
+      defaultTags: { project: "alpha" },
+    });
   });
 
   it("returns null when x-nullspend-key header is missing", async () => {

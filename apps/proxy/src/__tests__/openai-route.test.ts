@@ -114,7 +114,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -953,12 +953,12 @@ describe("handleChatCompletions", () => {
       );
 
       // Two endpoints with distinct apiVersions
-      const endpointV1 = { id: "ep-1", url: "https://hooks.example.com/1", signingSecret: "sec1", eventTypes: [], apiVersion: "2026-04-01" };
+      const endpointV1 = { id: "ep-1", url: "https://hooks.example.com/1", signingSecret: "sec1", eventTypes: [], apiVersion: "2026-04-01", defaultTags: {} };
       const endpointV2 = { id: "ep-2", url: "https://hooks.example.com/2", signingSecret: "sec2", eventTypes: [], apiVersion: "2099-01-01" };
 
       // getWebhookEndpoints returns non-empty (cache hit) so the secrets path is entered
       mockGetWebhookEndpoints.mockResolvedValue([
-        { id: "ep-1", url: "https://hooks.example.com/1", eventTypes: [], apiVersion: "2026-04-01" },
+        { id: "ep-1", url: "https://hooks.example.com/1", eventTypes: [], apiVersion: "2026-04-01", defaultTags: {} },
         { id: "ep-2", url: "https://hooks.example.com/2", eventTypes: [], apiVersion: "2099-01-01" },
       ]);
       mockGetWebhookEndpointsWithSecrets.mockResolvedValue([endpointV1, endpointV2]);
@@ -975,7 +975,7 @@ describe("handleChatCompletions", () => {
         makeRequest(body),
         makeEnv(),
         makeCtx(body, {
-          auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+          auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
           redis: {} as any,
           webhookDispatcher: { dispatch: dispatchSpy },
         }),
@@ -1026,7 +1026,7 @@ describe("handleChatCompletions", () => {
         previousSigningSecret: null,
         secretRotatedAt: null,
         eventTypes: [],
-        apiVersion: "2026-04-01",
+        apiVersion: "2026-04-01", defaultTags: {},
         payloadMode: "thin" as const,
       };
 
@@ -1047,7 +1047,7 @@ describe("handleChatCompletions", () => {
         makeRequest(body),
         makeEnv(),
         makeCtx(body, {
-          auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+          auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
           redis: {} as any,
           webhookDispatcher: { dispatch: dispatchSpy },
         }),

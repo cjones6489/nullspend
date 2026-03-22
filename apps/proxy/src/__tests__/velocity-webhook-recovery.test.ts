@@ -166,7 +166,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -181,7 +181,7 @@ function makeCtx(
 
 function makeWebhookCtx(body: Record<string, unknown>): RequestContext {
   return makeCtx(body, {
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
     redis: {} as any,
     webhookDispatcher: { dispatch: vi.fn().mockResolvedValue(undefined) } as any,
   });
@@ -220,7 +220,7 @@ const recoveredCheckResult: CheckResult = {
 const webhookEndpoint = {
   id: "ep-1",
   url: "https://hook.example.com",
-  apiVersion: "2026-04-01",
+  apiVersion: "2026-04-01", defaultTags: {},
   currentSecret: "sec-1",
   signingSecret: "sec-1",
   rotatedSecret: null,

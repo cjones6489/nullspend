@@ -34,7 +34,7 @@ export function useApiKeys() {
 export function useCreateApiKey() {
   const queryClient = useQueryClient();
 
-  return useMutation<CreateApiKeyResponse, Error, { name: string }>({
+  return useMutation<CreateApiKeyResponse, Error, { name: string; defaultTags?: Record<string, string> }>({
     mutationFn: (input) => apiPost("/api/keys", input),
     onSuccess: (createdKey) => {
       queryClient.setQueryData<ListApiKeysResponse | undefined>(
@@ -45,6 +45,7 @@ export function useCreateApiKey() {
               id: createdKey.id,
               name: createdKey.name,
               keyPrefix: createdKey.keyPrefix,
+              defaultTags: createdKey.defaultTags,
               lastUsedAt: null,
               createdAt: createdKey.createdAt,
             },

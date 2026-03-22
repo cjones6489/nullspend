@@ -204,7 +204,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://test",
     sessionId: null,
@@ -297,14 +297,14 @@ describe("Tag Budget Enforcement", () => {
         signingSecret: "test-secret",
         eventTypes: [],
         enabled: true,
-        apiVersion: "2026-04-01",
+        apiVersion: "2026-04-01", defaultTags: {},
         payloadMode: "full",
       }]);
 
       const env = makeEnv();
       const ctx = makeCtx(defaultBody, {
         tags: { project: "openclaw" },
-        auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+        auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
         redis: {} as any,
         webhookDispatcher: mockDispatcher as any,
       });

@@ -6,6 +6,7 @@ export interface ApiKeyIdentity {
   keyId: string;
   hasWebhooks: boolean;
   apiVersion: string;
+  defaultTags: Record<string, string>;
 }
 
 const CONNECTION_TIMEOUT_MS = 5_000;
@@ -84,7 +85,7 @@ async function lookupKeyInDb(
       await client.connect();
 
       const result = await client.query(
-        `SELECT k.id, k.user_id, k.api_version,
+        `SELECT k.id, k.user_id, k.api_version, k.default_tags,
           EXISTS(
             SELECT 1 FROM webhook_endpoints w
             WHERE w.user_id = k.user_id AND w.enabled = true
@@ -103,6 +104,9 @@ async function lookupKeyInDb(
         keyId: result.rows[0].id as string,
         hasWebhooks: result.rows[0].has_webhooks === true,
         apiVersion: result.rows[0].api_version as string,
+        defaultTags: (typeof result.rows[0].default_tags === "object" && result.rows[0].default_tags !== null && !Array.isArray(result.rows[0].default_tags))
+          ? result.rows[0].default_tags as Record<string, string>
+          : {},
       };
     } catch (err) {
       console.error(
@@ -126,7 +130,7 @@ async function lookupKeyInDb(
  * Authenticate a raw API key.
  *
  * 1. Hash the key with SHA-256
- * 2. Check positive cache (valid keys, 60s TTL)
+ * 2. Check positive cache (valid keys, 30s TTL)
  * 3. Check negative cache (invalid keys, 30s TTL)
  * 4. Query the database
  * 5. Populate the appropriate cache

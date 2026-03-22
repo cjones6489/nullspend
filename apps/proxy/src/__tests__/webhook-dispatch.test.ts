@@ -30,7 +30,7 @@ function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): Webho
     previousSigningSecret: null,
     secretRotatedAt: null,
     eventTypes: [],
-    apiVersion: "2026-04-01",
+    apiVersion: "2026-04-01", defaultTags: {},
     payloadMode: "full" as const,
     ...overrides,
   };

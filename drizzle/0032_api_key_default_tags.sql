@@ -1,0 +1,1 @@
+ALTER TABLE api_keys ADD COLUMN default_tags JSONB NOT NULL DEFAULT '{}';

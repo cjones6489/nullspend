@@ -144,7 +144,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -201,7 +201,7 @@ describe("Budget Edge Cases", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
-      auth: { userId: "user-uuid-456", keyId: null as any, hasWebhooks: false, apiVersion: "2026-04-01" },
+      auth: { userId: "user-uuid-456", keyId: null as any, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     }));
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
@@ -220,7 +220,7 @@ describe("Budget Edge Cases", () => {
 
     // userId=null means DO path skips (returns skipped) so no lookupBudgetsForDO call
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
-      auth: { userId: null as any, keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01" },
+      auth: { userId: null as any, keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     }));
 
     // DO path skips when no userId — no lookup call
@@ -231,7 +231,7 @@ describe("Budget Edge Cases", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
-      auth: { userId: null as any, keyId: null as any, hasWebhooks: false, apiVersion: "2026-04-01" },
+      auth: { userId: null as any, keyId: null as any, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     }));
 
     expect(mockDoBudgetCheck).not.toHaveBeenCalled();

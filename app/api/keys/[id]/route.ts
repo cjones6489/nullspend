@@ -4,8 +4,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { apiKeys } from "@nullspend/db";
-import { handleRouteError, readRouteParams } from "@/lib/utils/http";
-import { deleteApiKeyResponseSchema, keyIdParamsSchema } from "@/lib/validations/api-keys";
+import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
+import { deleteApiKeyResponseSchema, keyIdParamsSchema, updateApiKeyInputSchema, apiKeyRecordSchema } from "@/lib/validations/api-keys";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
 export async function DELETE(
   _request: Request,
@@ -53,3 +54,69 @@ export async function DELETE(
   }
 }
 
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  try {
+    const userId = await resolveSessionUserId();
+    const params = await readRouteParams(context.params);
+    const { id } = keyIdParamsSchema.parse(params);
+    const body = await readJsonBody(request);
+    const input = updateApiKeyInputSchema.parse(body);
+
+    const db = getDb();
+
+    const updates: Partial<{ name: string; defaultTags: Record<string, string> }> = {};
+    if (input.name !== undefined) updates.name = input.name;
+    if (input.defaultTags !== undefined) updates.defaultTags = input.defaultTags;
+
+    const [updated] = await db
+      .update(apiKeys)
+      .set(updates)
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.userId, userId),
+          isNull(apiKeys.revokedAt),
+        ),
+      )
+      .returning({
+        id: apiKeys.id,
+        name: apiKeys.name,
+        keyPrefix: apiKeys.keyPrefix,
+        defaultTags: apiKeys.defaultTags,
+        lastUsedAt: apiKeys.lastUsedAt,
+        createdAt: apiKeys.createdAt,
+      });
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: { code: "not_found", message: "API key not found or already revoked.", details: null } },
+        { status: 404 },
+      );
+    }
+
+    // Flush the proxy's auth cache so the new defaultTags take effect immediately
+    invalidateProxyCache({
+      action: "sync",
+      userId,
+      entityType: "api_key",
+      entityId: id,
+    }).catch(() => {});
+
+    console.info(
+      `[NullSpend] API key updated: userId=${userId}, keyId=${updated.id}`,
+    );
+
+    return NextResponse.json(
+      apiKeyRecordSchema.parse({
+        ...updated,
+        lastUsedAt: updated.lastUsedAt?.toISOString() ?? null,
+        createdAt: updated.createdAt.toISOString(),
+      }),
+    );
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}

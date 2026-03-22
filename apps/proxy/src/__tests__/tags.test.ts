@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { parseTags } from "../lib/tags.js";
+import { parseTags, mergeTags } from "../lib/tags.js";
 
 describe("parseTags", () => {
   beforeEach(() => {
@@ -111,5 +111,132 @@ describe("parseTags", () => {
   it("allows keys starting with _n or _ns but not _ns_", () => {
     const result = parseTags('{"_n":"ok","_ns":"ok","_ns_bad":"no","ns_ok":"ok"}');
     expect(result).toEqual({ _n: "ok", _ns: "ok", ns_ok: "ok" });
+  });
+});
+
+describe("mergeTags", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("returns request tags only when defaults are empty", () => {
+    const result = mergeTags({}, '{"env":"prod"}');
+    expect(result).toEqual({ env: "prod" });
+  });
+
+  it("returns defaults only when request header is null", () => {
+    const result = mergeTags({ project: "alpha" }, null);
+    expect(result).toEqual({ project: "alpha" });
+  });
+
+  it("returns defaults only when request header is empty string", () => {
+    const result = mergeTags({ project: "alpha" }, "");
+    expect(result).toEqual({ project: "alpha" });
+  });
+
+  it("returns empty object when both are empty", () => {
+    const result = mergeTags({}, null);
+    expect(result).toEqual({});
+  });
+
+  it("request tags override defaults for the same key", () => {
+    const result = mergeTags(
+      { project: "openclaw", team: "backend" },
+      '{"project":"other"}',
+    );
+    expect(result).toEqual({ project: "other", team: "backend" });
+  });
+
+  it("non-conflicting keys are unioned", () => {
+    const result = mergeTags(
+      { team: "backend" },
+      '{"env":"prod"}',
+    );
+    expect(result).toEqual({ team: "backend", env: "prod" });
+  });
+
+  it("merged result capped at 10 keys (request tags win)", () => {
+    // 8 defaults + 5 request tags — some overlap, some unique
+    const defaults: Record<string, string> = {};
+    for (let i = 0; i < 8; i++) {
+      defaults[`def${i}`] = `v${i}`;
+    }
+    const requestTags: Record<string, string> = {};
+    for (let i = 0; i < 5; i++) {
+      requestTags[`req${i}`] = `v${i}`;
+    }
+    // Total unique: 13, should be capped at 10
+    const result = mergeTags(defaults, JSON.stringify(requestTags));
+    expect(Object.keys(result).length).toBe(10);
+    // All 5 request tags must be present (they win)
+    for (let i = 0; i < 5; i++) {
+      expect(result[`req${i}`]).toBe(`v${i}`);
+    }
+  });
+
+  it("defaults with >10 keys (malformed DB data) are capped at 10", () => {
+    const defaults: Record<string, string> = {};
+    for (let i = 0; i < 15; i++) {
+      defaults[`key${i}`] = `v${i}`;
+    }
+    const result = mergeTags(defaults, null);
+    expect(Object.keys(result).length).toBe(10);
+  });
+
+  it("full merge example: key defaults + request override + union", () => {
+    const result = mergeTags(
+      { project: "openclaw", team: "backend" },
+      '{"project":"other","env":"prod"}',
+    );
+    expect(result).toEqual({
+      project: "other",   // request wins
+      team: "backend",    // from defaults
+      env: "prod",        // from request
+    });
+  });
+
+  it("returns a shallow copy — mutating result does not corrupt original defaults", () => {
+    const defaults = { project: "openclaw", team: "backend" };
+    const result = mergeTags(defaults, null);
+    // Mutate the returned object
+    result.injected = "bad";
+    // Original defaults must be unaffected
+    expect(defaults).toEqual({ project: "openclaw", team: "backend" });
+    expect("injected" in defaults).toBe(false);
+  });
+
+  it("filters _ns_ prefix keys from defaults (defense-in-depth)", () => {
+    const result = mergeTags(
+      { _ns_estimated: "true", _ns_cancelled: "true", env: "prod" },
+      null,
+    );
+    expect(result).toEqual({ env: "prod" });
+    expect(result._ns_estimated).toBeUndefined();
+    expect(result._ns_cancelled).toBeUndefined();
+  });
+
+  it("filters _ns_ prefix keys from defaults during merge", () => {
+    const result = mergeTags(
+      { _ns_internal: "bad", team: "backend" },
+      '{"env":"prod"}',
+    );
+    expect(result).toEqual({ env: "prod", team: "backend" });
+    expect(result._ns_internal).toBeUndefined();
+  });
+
+  it("clearing defaults with empty object returns empty from merge", () => {
+    const result = mergeTags({}, null);
+    expect(result).toEqual({});
+  });
+
+  it("does not drop default keys that collide with Object.prototype names during merge", () => {
+    const result = mergeTags(
+      { constructor: "team-a", toString: "team-b", project: "alpha" },
+      '{"env":"prod"}',
+    );
+    expect(result.constructor).toBe("team-a");
+    expect(result.toString).toBe("team-b");
+    expect(result.project).toBe("alpha");
+    expect(result.env).toBe("prod");
   });
 });

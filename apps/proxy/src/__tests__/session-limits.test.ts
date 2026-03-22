@@ -227,7 +227,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -380,14 +380,14 @@ describe("Session Limits", () => {
       mockGetWebhookEndpointsWithSecrets.mockResolvedValue([{
         url: "https://example.com/wh",
         signingSecret: "secret",
-        apiVersion: "2026-04-01",
+        apiVersion: "2026-04-01", defaultTags: {},
       }]);
 
       const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
       const env = makeEnv();
       const ctx = makeCtx(defaultBody, {
         sessionId: "sess-abc-123",
-        auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01" },
+        auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
         redis: {} as any,
         webhookDispatcher: mockDispatcher as any,
       });

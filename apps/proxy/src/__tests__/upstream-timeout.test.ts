@@ -115,7 +115,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres",
     sessionId: null,

@@ -166,7 +166,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
-    auth: { userId: "user-uuid-456", keyId: "key-uuid-001", hasWebhooks: false, apiVersion: "2026-04-01" },
+    auth: { userId: "user-uuid-456", keyId: "key-uuid-001", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
     redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
