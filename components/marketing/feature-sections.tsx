@@ -99,30 +99,33 @@ export function CostTrackingSection() {
 function BudgetGaugeVisual() {
   const [spending, setSpending] = useState(0);
   const [isBlocked, setIsBlocked] = useState(false);
+  const [cycle, setCycle] = useState(0); // Trigger to restart animation
   const budget = 100;
   const percentage = Math.min((spending / budget) * 100, 100);
 
   useEffect(() => {
+    if (isBlocked) return; // Don't run interval while blocked
+    
     const interval = setInterval(() => {
       setSpending((prev) => {
         const next = prev + Math.random() * 2;
         if (next >= budget) {
           setIsBlocked(true);
-          clearInterval(interval);
           return budget;
         }
         return next;
       });
     }, 150);
     return () => clearInterval(interval);
-  }, []);
+  }, [cycle, isBlocked]);
 
-  // Reset animation
+  // Reset animation after blocked
   useEffect(() => {
     if (isBlocked) {
       const timeout = setTimeout(() => {
         setSpending(0);
         setIsBlocked(false);
+        setCycle((c) => c + 1); // Trigger new interval
       }, 3000);
       return () => clearTimeout(timeout);
     }
