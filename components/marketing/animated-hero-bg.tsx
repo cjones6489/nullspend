@@ -262,7 +262,7 @@ export function AnimatedHeroBg() {
       <FloatingParticles />
       
       {/* Dashboard preview - positioned right */}
-      <div className="absolute right-8 top-1/2 z-10 hidden w-[520px] -translate-y-1/2 lg:block xl:right-16 xl:w-[580px]">
+      <div className="absolute right-4 top-1/2 z-10 hidden w-[480px] -translate-y-1/2 lg:block xl:right-12 xl:w-[540px] 2xl:right-24 2xl:w-[580px]">
         <DashboardPreview />
       </div>
       

@@ -15,7 +15,7 @@ export function HeroSection() {
       {/* Content - positioned left for asymmetric layout */}
       <div className="relative z-10 flex min-h-screen items-center">
         <div className="mx-auto w-full max-w-7xl px-6 lg:px-8">
-          <div className="max-w-2xl">
+          <div className="max-w-xl lg:max-w-lg xl:max-w-xl">
             {/* Eyebrow */}
             <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary backdrop-blur-sm">
               <span className="relative flex h-2 w-2">
