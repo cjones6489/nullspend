@@ -701,22 +701,33 @@ export function WebhooksSection() {
 // ============================================================================
 function ApprovalVisual() {
   const [stage, setStage] = useState<"waiting" | "pressing" | "approved">("waiting");
+  const [countdown, setCountdown] = useState(5);
   const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
-    // Auto-press the button every few seconds
-    const timeout = setTimeout(() => {
-      setStage("pressing");
-      setTimeout(() => {
-        setStage("approved");
-        setTimeout(() => {
-          setStage("waiting");
-          setCycle(c => c + 1);
-        }, 2000);
-      }, 300);
-    }, 3000);
-    return () => clearTimeout(timeout);
-  }, [cycle]);
+    if (stage !== "waiting") return;
+    
+    // Countdown timer
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          // Time's up - press the button
+          setStage("pressing");
+          setTimeout(() => {
+            setStage("approved");
+            setTimeout(() => {
+              setStage("waiting");
+              setCountdown(5);
+              setCycle(c => c + 1);
+            }, 2000);
+          }, 300);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cycle, stage]);
 
   return (
     <div className="relative">
@@ -745,11 +756,16 @@ function ApprovalVisual() {
         <div className="flex items-center gap-6">
           {/* Status text */}
           <div className="flex-1">
-            <p className={`font-medium transition-colors ${
-              stage === "approved" ? "text-primary" : "text-amber-400"
-            }`}>
-              {stage === "approved" ? "Approved" : "Awaiting Approval"}
-            </p>
+            <div className="flex items-center gap-3">
+              <p className={`font-medium transition-colors ${
+                stage === "approved" ? "text-primary" : "text-amber-400"
+              }`}>
+                {stage === "approved" ? "Approved" : "Awaiting Approval"}
+              </p>
+              {stage === "waiting" && (
+                <span className="font-mono text-xl font-bold text-amber-400">{countdown}s</span>
+              )}
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {stage === "approved" ? "Proceeding to provider..." : "Agent paused. Human decision required."}
             </p>
