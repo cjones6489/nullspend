@@ -591,11 +591,11 @@ export function TagsAttributionSection() {
 // ============================================================================
 function WebhooksVisual() {
   const events = [
-    { type: "request.completed", icon: "check", color: "text-primary" },
-    { type: "budget.warning", icon: "alert", color: "text-amber-500" },
-    { type: "budget.exceeded", icon: "block", color: "text-destructive" },
-    { type: "velocity.spike", icon: "trending", color: "text-cyan-400" },
-    { type: "approval.requested", icon: "clock", color: "text-violet-400" },
+    { type: "mcp.tool_call", icon: "check", color: "text-primary" },
+    { type: "mcp.tool_result", icon: "check", color: "text-cyan-400" },
+    { type: "mcp.budget_exceeded", icon: "block", color: "text-destructive" },
+    { type: "mcp.approval_required", icon: "clock", color: "text-amber-500" },
+    { type: "mcp.session_start", icon: "trending", color: "text-violet-400" },
   ];
 
   const [eventStream, setEventStream] = useState<Array<{ id: number; event: typeof events[0]; timestamp: string }>>([]);
@@ -647,8 +647,8 @@ function WebhooksVisual() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-px border-t border-border/50 bg-border/50">
           <div className="bg-card/80 p-3 text-center">
-            <p className="text-lg font-semibold">15</p>
-            <p className="text-xs text-muted-foreground">Event types</p>
+            <p className="text-lg font-semibold">MCP</p>
+            <p className="text-xs text-muted-foreground">Tool calls</p>
           </div>
           <div className="bg-card/80 p-3 text-center">
             <p className="text-lg font-semibold">99.9%</p>
@@ -677,11 +677,11 @@ export function WebhooksSection() {
               <span className="h-1.5 w-1.5 rounded-full bg-primary" />
               Real-time events
             </div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              15 event types.
-              <span className="mt-2 block text-muted-foreground">HMAC-SHA256 signed.</span>
-            </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
+<h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+            MCP tool call tracking.
+            <span className="mt-2 block text-muted-foreground">Every agent action logged.</span>
+          </h2>
+          <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
               Cost events, budget warnings, velocity alerts, threshold crossings, approval requests. Signed webhooks delivered in under 50ms. Build the integrations you need.
             </p>
           </div>
