@@ -14,8 +14,8 @@
   --card-foreground: oklch(0.93 0.005 265);
   --popover: oklch(0.18 0.006 265);
   --popover-foreground: oklch(0.93 0.005 265);
-  --primary: oklch(0.62 0.22 250);
-  --primary-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.72 0.19 160);
+  --primary-foreground: oklch(0.14 0.02 160);
   --secondary: oklch(0.22 0.006 265);
   --secondary-foreground: oklch(0.85 0.005 265);
   --muted: oklch(0.20 0.005 265);
@@ -25,21 +25,21 @@
   --destructive: oklch(0.65 0.2 25);
   --border: oklch(0.25 0.006 265);
   --input: oklch(0.22 0.006 265);
-  --ring: oklch(0.55 0.18 250);
-  --chart-1: oklch(0.62 0.22 250);
-  --chart-2: oklch(0.58 0.24 280);
-  --chart-3: oklch(0.68 0.22 160);
-  --chart-4: oklch(0.65 0.25 25);
-  --chart-5: oklch(0.62 0.22 50);
+  --ring: oklch(0.60 0.16 160);
+  --chart-1: oklch(0.72 0.19 160);
+  --chart-2: oklch(0.65 0.17 145);
+  --chart-3: oklch(0.60 0.15 175);
+  --chart-4: oklch(0.68 0.20 130);
+  --chart-5: oklch(0.55 0.14 190);
   --radius: 0.5rem;
   --sidebar: oklch(0.11 0.004 265);
   --sidebar-foreground: oklch(0.85 0.005 265);
-  --sidebar-primary: oklch(0.62 0.22 250);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(0.72 0.19 160);
+  --sidebar-primary-foreground: oklch(0.14 0.02 160);
   --sidebar-accent: oklch(0.20 0.008 265);
   --sidebar-accent-foreground: oklch(0.93 0.005 265);
   --sidebar-border: oklch(0.22 0.006 265);
-  --sidebar-ring: oklch(0.55 0.18 250);
+  --sidebar-ring: oklch(0.60 0.16 160);
 }
 
 html,
@@ -102,4 +102,17 @@ body {
   html {
     @apply font-sans;
   }
+}
+
+/* Noise texture overlay for depth (Neon-style) */
+.noise-overlay::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }

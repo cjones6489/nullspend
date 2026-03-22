@@ -31,7 +31,7 @@ export function HowItWorks() {
             <div key={step.number} className="relative flex flex-col items-center text-center">
               {/* Connector line (desktop only) */}
               {i < steps.length - 1 && (
-                <div className="absolute top-5 left-[calc(50%+28px)] hidden h-px w-[calc(100%-56px)] bg-border/50 md:block" />
+                <div className="absolute top-5 left-[calc(50%+28px)] hidden h-px w-[calc(100%-56px)] bg-gradient-to-r from-primary/30 to-primary/10 md:block" />
               )}
 
               <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-sm font-bold text-primary">

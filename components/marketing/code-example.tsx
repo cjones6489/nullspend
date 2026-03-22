@@ -50,7 +50,16 @@ export function CodeExample() {
           </p>
         </div>
 
-        <div className="mt-10 overflow-hidden rounded-xl border border-border/50">
+        <div className="relative mt-10">
+          {/* Glow behind code block */}
+          <div
+            className="pointer-events-none absolute -inset-4 -z-10 rounded-2xl"
+            style={{
+              background:
+                "radial-gradient(ellipse 80% 60% at 50% 50%, oklch(0.72 0.19 160 / 0.06), transparent)",
+            }}
+          />
+        <div className="overflow-hidden rounded-xl border border-border/50">
           {/* Tabs */}
           <div className="flex gap-1 border-b border-border/50 bg-muted/30 p-1.5">
             {tabs.map((tab) => (
@@ -78,6 +87,7 @@ export function CodeExample() {
               <CopyButton value={snippets[activeTab]} />
             </div>
           </div>
+        </div>
         </div>
       </div>
     </section>

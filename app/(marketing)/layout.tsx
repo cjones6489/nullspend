@@ -22,7 +22,7 @@ export default async function MarketingLayout({
   const authed = await isAuthenticated();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="noise-overlay min-h-screen bg-background">
       <MarketingNav isAuthenticated={authed} />
       <main>{children}</main>
       <MarketingFooter />
