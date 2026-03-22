@@ -108,8 +108,8 @@ function MiniBarChart() {
   );
 }
 
-// Main dashboard preview component
-function DashboardPreview() {
+// Main dashboard preview component - exported for use in hero section
+export function DashboardPreview() {
   const [totalSpend, setTotalSpend] = useState(12847);
   const [requestCount, setRequestCount] = useState(847293);
   
@@ -260,11 +260,6 @@ export function AnimatedHeroBg() {
       
       {/* Floating particles */}
       <FloatingParticles />
-      
-      {/* Dashboard preview - positioned right */}
-      <div className="absolute right-4 top-1/2 z-10 hidden w-[480px] -translate-y-1/2 lg:block xl:right-12 xl:w-[540px] 2xl:right-24 2xl:w-[580px]">
-        <DashboardPreview />
-      </div>
       
       {/* Gradient overlays for text readability */}
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/95 to-transparent lg:via-background/80" />
