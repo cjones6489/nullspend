@@ -248,11 +248,12 @@ function VelocityChartVisual() {
     
     let inPulse = false;
     let pulseWidth = 0;
-    let gapWidth = 20;
+    let gapWidth = 60;
     let burstMode = false;
     let burstPulsesRemaining = 0;
     let thresholdTriggered = false;
     let triggerFlashCount = 0;
+    let isolatedCount = 0; // Track isolated pulses before burst
 
     const draw = () => {
       // Dark background
@@ -279,8 +280,8 @@ function VelocityChartVisual() {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Generate 6 samples per frame for fast streaming
-      for (let s = 0; s < 6; s++) {
+      // Generate 4 samples per frame for smooth streaming
+      for (let s = 0; s < 4; s++) {
         let newValue = 0;
         
         if (inPulse) {
@@ -289,9 +290,11 @@ function VelocityChartVisual() {
           if (pulseWidth <= 0) {
             inPulse = false;
             if (burstMode && burstPulsesRemaining > 0) {
-              gapWidth = 4 + Math.floor(Math.random() * 8);
+              // Short gaps within burst
+              gapWidth = 12 + Math.floor(Math.random() * 10);
             } else {
-              gapWidth = 25 + Math.floor(Math.random() * 50);
+              // Long gaps between isolated pulses
+              gapWidth = 80 + Math.floor(Math.random() * 100);
               burstMode = false;
             }
           }
@@ -299,19 +302,22 @@ function VelocityChartVisual() {
           gapWidth--;
           if (gapWidth <= 0) {
             if (burstMode && burstPulsesRemaining > 0) {
+              // Continue burst
               inPulse = true;
-              pulseWidth = 3 + Math.floor(Math.random() * 6);
+              pulseWidth = 18 + Math.floor(Math.random() * 12); // Wide pulses
               burstPulsesRemaining--;
-            } else if (Math.random() < 0.08) {
-              // Single pulse
+            } else if (isolatedCount < 2 + Math.floor(Math.random() * 2)) {
+              // Isolated single pulse (far spaced)
               inPulse = true;
-              pulseWidth = 4 + Math.floor(Math.random() * 8);
-            } else if (Math.random() < 0.02) {
-              // Start burst
+              pulseWidth = 20 + Math.floor(Math.random() * 15); // Wide pulses
+              isolatedCount++;
+            } else {
+              // Start burst of 3 pulses
               burstMode = true;
-              burstPulsesRemaining = 3 + Math.floor(Math.random() * 5);
+              burstPulsesRemaining = 2; // 3 total (this one + 2 remaining)
               inPulse = true;
-              pulseWidth = 3 + Math.floor(Math.random() * 5);
+              pulseWidth = 18 + Math.floor(Math.random() * 12);
+              isolatedCount = 0; // Reset for next cycle
               
               if (!thresholdTriggered) {
                 thresholdTriggered = true;
@@ -331,44 +337,43 @@ function VelocityChartVisual() {
       }
 
       // Draw glow layer
-      ctx.strokeStyle = "rgba(74, 222, 128, 0.15)";
-      ctx.lineWidth = 8;
+      ctx.strokeStyle = "rgba(74, 222, 128, 0.12)";
+      ctx.lineWidth = 10;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.beginPath();
       
       for (let i = 0; i < signal.length; i++) {
         const x = (i / signal.length) * width;
-        const noise = (Math.random() - 0.5) * 2;
+        const noise = (Math.random() - 0.5) * 5;
         const y = signal[i] === 1 ? baselineY - pulseHeight + noise : baselineY + noise;
         
         if (i === 0) {
           ctx.moveTo(x, y);
         } else {
-          const prevX = ((i - 1) / signal.length) * width;
           const prevY = signal[i - 1] === 1 ? baselineY - pulseHeight : baselineY;
           // Square wave: horizontal then vertical
-          ctx.lineTo(x, prevY + noise);
+          ctx.lineTo(x, prevY + (Math.random() - 0.5) * 5);
           ctx.lineTo(x, y);
         }
       }
       ctx.stroke();
 
-      // Draw main signal - bright green
+      // Draw main signal - bright green with more noise
       ctx.strokeStyle = "#22c55e";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
       
       for (let i = 0; i < signal.length; i++) {
         const x = (i / signal.length) * width;
-        const noise = (Math.random() - 0.5) * 1.5;
+        const noise = (Math.random() - 0.5) * 4;
         const y = signal[i] === 1 ? baselineY - pulseHeight + noise : baselineY + noise;
         
         if (i === 0) {
           ctx.moveTo(x, y);
         } else {
           const prevY = signal[i - 1] === 1 ? baselineY - pulseHeight : baselineY;
-          ctx.lineTo(x, prevY + noise);
+          ctx.lineTo(x, prevY + (Math.random() - 0.5) * 4);
           ctx.lineTo(x, y);
         }
       }
