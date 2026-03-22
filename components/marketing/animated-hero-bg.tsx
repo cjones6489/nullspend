@@ -1,345 +1,274 @@
 "use client";
 
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
-import * as THREE from "three";
+import { useEffect, useState } from "react";
 
-// Dramatic flowing liquid/aurora blob
-function FlowingBlob() {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.ShaderMaterial>(null);
-
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uMouse: { value: new THREE.Vector2(0.5, 0.5) },
-      uColorA: { value: new THREE.Color("#10b981") },
-      uColorB: { value: new THREE.Color("#06b6d4") },
-      uColorC: { value: new THREE.Color("#8b5cf6") },
-      uColorD: { value: new THREE.Color("#ec4899") },
-    }),
-    []
-  );
-
-  const vertexShader = `
-    uniform float uTime;
-    varying vec3 vPosition;
-    varying vec3 vNormal;
-    varying float vDisplacement;
-    varying vec2 vUv;
-    
-    //
-    // GLSL textureless classic 3D noise "cnoise",
-    // with an RSL-style periodic variant "pnoise".
-    //
-    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-    vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
-    vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
-    vec3 fade(vec3 t) { return t*t*t*(t*(t*6.0-15.0)+10.0); }
-
-    float cnoise(vec3 P) {
-      vec3 Pi0 = floor(P);
-      vec3 Pi1 = Pi0 + vec3(1.0);
-      Pi0 = mod289(Pi0);
-      Pi1 = mod289(Pi1);
-      vec3 Pf0 = fract(P);
-      vec3 Pf1 = Pf0 - vec3(1.0);
-      vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
-      vec4 iy = vec4(Pi0.yy, Pi1.yy);
-      vec4 iz0 = Pi0.zzzz;
-      vec4 iz1 = Pi1.zzzz;
-
-      vec4 ixy = permute(permute(ix) + iy);
-      vec4 ixy0 = permute(ixy + iz0);
-      vec4 ixy1 = permute(ixy + iz1);
-
-      vec4 gx0 = ixy0 * (1.0 / 7.0);
-      vec4 gy0 = fract(floor(gx0) * (1.0 / 7.0)) - 0.5;
-      gx0 = fract(gx0);
-      vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
-      vec4 sz0 = step(gz0, vec4(0.0));
-      gx0 -= sz0 * (step(0.0, gx0) - 0.5);
-      gy0 -= sz0 * (step(0.0, gy0) - 0.5);
-
-      vec4 gx1 = ixy1 * (1.0 / 7.0);
-      vec4 gy1 = fract(floor(gx1) * (1.0 / 7.0)) - 0.5;
-      gx1 = fract(gx1);
-      vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
-      vec4 sz1 = step(gz1, vec4(0.0));
-      gx1 -= sz1 * (step(0.0, gx1) - 0.5);
-      gy1 -= sz1 * (step(0.0, gy1) - 0.5);
-
-      vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
-      vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
-      vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
-      vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
-      vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
-      vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
-      vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
-      vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
-
-      vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
-      g000 *= norm0.x;
-      g010 *= norm0.y;
-      g100 *= norm0.z;
-      g110 *= norm0.w;
-      vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
-      g001 *= norm1.x;
-      g011 *= norm1.y;
-      g101 *= norm1.z;
-      g111 *= norm1.w;
-
-      float n000 = dot(g000, Pf0);
-      float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
-      float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
-      float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
-      float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
-      float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
-      float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
-      float n111 = dot(g111, Pf1);
-
-      vec3 fade_xyz = fade(Pf0);
-      vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
-      vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
-      float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x);
-      return 2.2 * n_xyz;
-    }
-    
-    void main() {
-      vUv = uv;
-      vPosition = position;
-      vNormal = normal;
-      
-      // Multi-octave noise for dramatic organic deformation
-      float slowTime = uTime * 0.15;
-      float noise1 = cnoise(position * 0.8 + slowTime) * 0.8;
-      float noise2 = cnoise(position * 1.6 + slowTime * 1.3) * 0.4;
-      float noise3 = cnoise(position * 3.2 + slowTime * 1.7) * 0.2;
-      float noise4 = cnoise(position * 6.4 + slowTime * 2.1) * 0.1;
-      
-      // Swirling motion
-      float swirl = sin(position.y * 2.0 + uTime * 0.3) * 0.3;
-      
-      float displacement = noise1 + noise2 + noise3 + noise4 + swirl;
-      vDisplacement = displacement;
-      
-      vec3 newPosition = position + normal * displacement;
-      
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
-    }
-  `;
-
-  const fragmentShader = `
-    uniform float uTime;
-    uniform vec3 uColorA;
-    uniform vec3 uColorB;
-    uniform vec3 uColorC;
-    uniform vec3 uColorD;
-    
-    varying vec3 vPosition;
-    varying vec3 vNormal;
-    varying float vDisplacement;
-    varying vec2 vUv;
-    
-    void main() {
-      // Dramatic fresnel for glowing edges
-      vec3 viewDirection = normalize(cameraPosition - vPosition);
-      float fresnel = pow(1.0 - abs(dot(viewDirection, vNormal)), 2.5);
-      
-      // Flowing color gradient based on position and time
-      float colorMix1 = sin(vPosition.y * 1.5 + uTime * 0.2) * 0.5 + 0.5;
-      float colorMix2 = cos(vPosition.x * 1.2 + uTime * 0.15) * 0.5 + 0.5;
-      float colorMix3 = sin(vDisplacement * 3.0 + uTime * 0.3) * 0.5 + 0.5;
-      
-      // Blend between 4 colors for iridescent effect
-      vec3 color1 = mix(uColorA, uColorB, colorMix1);
-      vec3 color2 = mix(uColorC, uColorD, colorMix2);
-      vec3 baseColor = mix(color1, color2, colorMix3 * 0.7);
-      
-      // Add bright edge glow
-      vec3 glowColor = mix(uColorB, uColorA, fresnel);
-      baseColor = mix(baseColor, glowColor, fresnel * 0.8);
-      
-      // Specular highlights
-      float specular = pow(fresnel, 4.0) * 1.5;
-      baseColor += vec3(specular * 0.3);
-      
-      // Chromatic aberration effect at edges
-      float chromatic = fresnel * 0.2;
-      baseColor.r += chromatic;
-      baseColor.b += chromatic * 0.5;
-      
-      gl_FragColor = vec4(baseColor, 0.95);
-    }
-  `;
-
-  useFrame((state) => {
-    if (materialRef.current) {
-      materialRef.current.uniforms.uTime.value = state.clock.elapsedTime;
-    }
-    if (meshRef.current) {
-      meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.1) * 0.2;
-      meshRef.current.rotation.y = state.clock.elapsedTime * 0.08;
-      meshRef.current.rotation.z = Math.cos(state.clock.elapsedTime * 0.05) * 0.1;
-    }
-  });
-
-  return (
-    <mesh ref={meshRef} scale={2.8} position={[-2, 0.5, 0]}>
-      <icosahedronGeometry args={[1, 128]} />
-      <shaderMaterial
-        ref={materialRef}
-        vertexShader={vertexShader}
-        fragmentShader={fragmentShader}
-        uniforms={uniforms}
-        transparent
-        side={THREE.DoubleSide}
-      />
-    </mesh>
-  );
-}
-
-// Orbiting light trails
-function LightTrails() {
-  const trailsRef = useRef<THREE.Group>(null);
-  const trails = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => ({
-      radius: 3.5 + i * 0.4,
-      speed: 0.3 + i * 0.08,
-      offset: (i / 6) * Math.PI * 2,
-      color: i % 2 === 0 ? "#10b981" : "#06b6d4",
-    }));
-  }, []);
-
-  useFrame((state) => {
-    if (trailsRef.current) {
-      trailsRef.current.rotation.z = state.clock.elapsedTime * 0.1;
-    }
-  });
-
-  return (
-    <group ref={trailsRef} position={[-2, 0.5, 0]}>
-      {trails.map((trail, i) => (
-        <TrailOrbit key={i} {...trail} />
-      ))}
-    </group>
-  );
-}
-
-function TrailOrbit({ radius, speed, offset, color }: { radius: number; speed: number; offset: number; color: string }) {
-  const meshRef = useRef<THREE.Mesh>(null);
+// Animated counter component
+function AnimatedNumber({ 
+  value, 
+  prefix = "", 
+  suffix = "",
+  duration = 2000 
+}: { 
+  value: number; 
+  prefix?: string; 
+  suffix?: string;
+  duration?: number;
+}) {
+  const [displayValue, setDisplayValue] = useState(0);
   
-  useFrame((state) => {
-    if (meshRef.current) {
-      const angle = state.clock.elapsedTime * speed + offset;
-      meshRef.current.position.x = Math.cos(angle) * radius;
-      meshRef.current.position.y = Math.sin(angle) * radius * 0.6;
-      meshRef.current.position.z = Math.sin(angle * 0.5) * 1.5;
-    }
-  });
-
+  useEffect(() => {
+    const startTime = Date.now();
+    const startValue = displayValue;
+    
+    const animate = () => {
+      const now = Date.now();
+      const progress = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      
+      setDisplayValue(Math.floor(startValue + (value - startValue) * eased));
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+    
+    requestAnimationFrame(animate);
+  }, [value, duration]);
+  
   return (
-    <mesh ref={meshRef}>
-      <sphereGeometry args={[0.04, 16, 16]} />
-      <meshBasicMaterial color={color} transparent opacity={0.9} />
-    </mesh>
+    <span className="tabular-nums">
+      {prefix}{displayValue.toLocaleString()}{suffix}
+    </span>
   );
 }
 
-// Ambient floating particles
-function AmbientParticles() {
-  const pointsRef = useRef<THREE.Points>(null);
+// Individual transaction row
+function TransactionRow({ 
+  model, 
+  tokens, 
+  cost, 
+  time, 
+  delay 
+}: { 
+  model: string; 
+  tokens: number; 
+  cost: number; 
+  time: string;
+  delay: number;
+}) {
+  const [visible, setVisible] = useState(false);
   
-  const positions = useMemo(() => {
-    const count = 800;
-    const positions = new Float32Array(count * 3);
-    
-    for (let i = 0; i < count; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 20;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 15;
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 10;
-    }
-    
-    return positions;
-  }, []);
-
-  useFrame((state) => {
-    if (pointsRef.current) {
-      pointsRef.current.rotation.y = state.clock.elapsedTime * 0.02;
-      pointsRef.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.01) * 0.1;
-    }
-  });
-
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
+  
   return (
-    <points ref={pointsRef}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={positions.length / 3}
-          array={positions}
-          itemSize={3}
+    <div 
+      className={`flex items-center justify-between border-b border-primary/10 py-3 transition-all duration-500 ${
+        visible ? "translate-x-0 opacity-100" : "-translate-x-4 opacity-0"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+        <span className="font-mono text-sm text-foreground">{model}</span>
+      </div>
+      <div className="flex items-center gap-6">
+        <span className="font-mono text-xs text-muted-foreground">{tokens.toLocaleString()} tokens</span>
+        <span className="font-mono text-sm font-medium text-primary">${cost.toFixed(4)}</span>
+        <span className="font-mono text-xs text-muted-foreground">{time}</span>
+      </div>
+    </div>
+  );
+}
+
+// Animated mini bar chart
+function MiniBarChart() {
+  const [bars, setBars] = useState([40, 65, 45, 80, 55, 70, 90]);
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBars(prev => prev.map(bar => 
+        Math.max(20, Math.min(95, bar + (Math.random() - 0.5) * 20))
+      ));
+    }, 1500);
+    return () => clearInterval(interval);
+  }, []);
+  
+  return (
+    <div className="flex h-16 items-end gap-1">
+      {bars.map((height, i) => (
+        <div
+          key={i}
+          className="w-4 rounded-t bg-gradient-to-t from-primary/60 to-primary transition-all duration-700"
+          style={{ height: `${height}%` }}
         />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.02}
-        color="#34d399"
-        transparent
-        opacity={0.4}
-        sizeAttenuation
-      />
-    </points>
+      ))}
+    </div>
   );
 }
 
-// Camera animation
-function CameraRig() {
-  const { camera } = useThree();
+// Main dashboard preview component
+function DashboardPreview() {
+  const [totalSpend, setTotalSpend] = useState(12847);
+  const [requestCount, setRequestCount] = useState(847293);
   
-  useFrame((state) => {
-    const t = state.clock.elapsedTime;
-    camera.position.x = Math.sin(t * 0.05) * 0.5;
-    camera.position.y = Math.cos(t * 0.03) * 0.3;
-    camera.lookAt(new THREE.Vector3(-1, 0, 0));
-  });
+  const transactions = [
+    { model: "gpt-4o", tokens: 2847, cost: 0.0854, time: "2ms ago" },
+    { model: "claude-3-opus", tokens: 1293, cost: 0.0387, time: "15ms ago" },
+    { model: "gpt-4o-mini", tokens: 8472, cost: 0.0127, time: "48ms ago" },
+    { model: "claude-3-sonnet", tokens: 3918, cost: 0.0235, time: "102ms ago" },
+    { model: "gpt-4o", tokens: 1847, cost: 0.0554, time: "156ms ago" },
+  ];
   
-  return null;
+  // Simulate live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTotalSpend(prev => prev + Math.random() * 2);
+      setRequestCount(prev => prev + Math.floor(Math.random() * 50));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  return (
+    <div className="relative">
+      {/* Glow effect behind dashboard */}
+      <div className="absolute -inset-4 rounded-3xl bg-primary/20 blur-3xl" />
+      <div className="absolute -inset-8 rounded-3xl bg-cyan-500/10 blur-[60px]" />
+      
+      {/* Main dashboard card */}
+      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-background/80 p-6 shadow-2xl shadow-primary/10 backdrop-blur-xl">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full bg-red-500/80" />
+            <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
+            <div className="h-3 w-3 rounded-full bg-green-500/80" />
+          </div>
+          <div className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1">
+            <span className="flex items-center gap-2 text-xs font-medium text-primary">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+              Live
+            </span>
+          </div>
+        </div>
+        
+        {/* Stats row */}
+        <div className="mb-6 grid grid-cols-3 gap-4">
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+            <p className="mb-1 text-xs text-muted-foreground">Total Spend (24h)</p>
+            <p className="text-2xl font-bold text-foreground">
+              <AnimatedNumber value={Math.floor(totalSpend)} prefix="$" />
+            </p>
+            <p className="mt-1 text-xs text-primary">+12.4% from yesterday</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+            <p className="mb-1 text-xs text-muted-foreground">API Requests</p>
+            <p className="text-2xl font-bold text-foreground">
+              <AnimatedNumber value={requestCount} />
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">847K total</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-card/50 p-4">
+            <p className="mb-1 text-xs text-muted-foreground">Avg Cost/Request</p>
+            <p className="text-2xl font-bold text-foreground">$0.015</p>
+            <p className="mt-1 text-xs text-green-400">-8.2% optimized</p>
+          </div>
+        </div>
+        
+        {/* Chart section */}
+        <div className="mb-6 rounded-xl border border-border/50 bg-card/30 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">Spend by Model</p>
+            <p className="text-xs text-muted-foreground">Last 7 days</p>
+          </div>
+          <MiniBarChart />
+          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+            <span>Mon</span>
+            <span>Tue</span>
+            <span>Wed</span>
+            <span>Thu</span>
+            <span>Fri</span>
+            <span>Sat</span>
+            <span>Sun</span>
+          </div>
+        </div>
+        
+        {/* Live transactions */}
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-medium text-foreground">Live Transactions</p>
+            <p className="text-xs text-muted-foreground">Streaming...</p>
+          </div>
+          <div className="space-y-0">
+            {transactions.map((tx, i) => (
+              <TransactionRow key={i} {...tx} delay={i * 200} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function Scene() {
+// Floating particles in background
+function FloatingParticles() {
   return (
-    <>
-      <color attach="background" args={["#030712"]} />
-      <fog attach="fog" args={["#030712", 8, 20]} />
-      
-      <ambientLight intensity={0.3} />
-      <pointLight position={[5, 5, 5]} intensity={0.5} color="#10b981" />
-      <pointLight position={[-5, -3, -5]} intensity={0.3} color="#06b6d4" />
-      <pointLight position={[0, 5, -5]} intensity={0.2} color="#8b5cf6" />
-      
-      <FlowingBlob />
-      <LightTrails />
-      <AmbientParticles />
-      <CameraRig />
-    </>
+    <div className="absolute inset-0 overflow-hidden">
+      {Array.from({ length: 20 }).map((_, i) => (
+        <div
+          key={i}
+          className="absolute h-1 w-1 rounded-full bg-primary/30"
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
+            animation: `float ${10 + Math.random() * 20}s ease-in-out infinite`,
+            animationDelay: `${Math.random() * 10}s`,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
 export function AnimatedHeroBg() {
   return (
-    <div className="absolute inset-0 h-full w-full">
-      <Canvas
-        camera={{ position: [0, 0, 8], fov: 50 }}
-        dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true }}
-      >
-        <Scene />
-      </Canvas>
+    <div className="absolute inset-0 h-full w-full overflow-hidden">
+      {/* Base gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-primary/5" />
       
-      {/* Dramatic gradient overlays */}
-      <div className="absolute inset-0 bg-gradient-to-r from-gray-950/90 via-gray-950/50 to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-gray-950/60" />
-      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-gray-950 to-transparent" />
+      {/* Animated gradient orbs */}
+      <div className="absolute right-0 top-0 h-[800px] w-[800px] -translate-y-1/4 translate-x-1/4">
+        <div className="absolute inset-0 animate-pulse rounded-full bg-primary/10 blur-[120px]" />
+      </div>
+      <div className="absolute bottom-0 left-1/4 h-[600px] w-[600px] translate-y-1/2">
+        <div className="absolute inset-0 animate-pulse rounded-full bg-cyan-500/10 blur-[100px]" style={{ animationDelay: "1s" }} />
+      </div>
+      
+      {/* Grid pattern */}
+      <div 
+        className="absolute inset-0 opacity-[0.02]"
+        style={{
+          backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px),
+                           linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
+          backgroundSize: '60px 60px',
+        }}
+      />
+      
+      {/* Floating particles */}
+      <FloatingParticles />
+      
+      {/* Dashboard preview - positioned right */}
+      <div className="absolute right-8 top-1/2 z-10 hidden w-[520px] -translate-y-1/2 lg:block xl:right-16 xl:w-[580px]">
+        <DashboardPreview />
+      </div>
+      
+      {/* Gradient overlays for text readability */}
+      <div className="absolute inset-0 bg-gradient-to-r from-background via-background/95 to-transparent lg:via-background/80" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/60" />
     </div>
   );
 }
