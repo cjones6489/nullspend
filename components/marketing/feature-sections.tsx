@@ -775,15 +775,15 @@ function ApprovalVisual() {
           <button
             className={`relative h-20 w-20 shrink-0 rounded-full font-semibold transition-all duration-200 ${
               stage === "pressing" 
-                ? "scale-90 bg-amber-500/80 shadow-lg shadow-amber-500/30" 
+                ? "scale-90 bg-primary/80 shadow-lg shadow-primary/30" 
                 : stage === "approved"
                 ? "scale-100 bg-primary shadow-xl shadow-primary/40"
-                : "scale-100 bg-amber-500 shadow-lg shadow-amber-500/20"
+                : "scale-100 bg-primary shadow-lg shadow-primary/20"
             }`}
           >
             {/* Outer ring pulse when waiting */}
             {stage === "waiting" && (
-              <span className="absolute inset-0 animate-ping rounded-full bg-amber-500/30" />
+              <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
             )}
             
             {/* Button content */}
