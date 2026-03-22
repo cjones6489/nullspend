@@ -222,7 +222,7 @@ export function BudgetEnforcementSection() {
 }
 
 // ============================================================================
-// SECTION 3: Velocity Limits - Tektronix-style oscilloscope with noisy square waves
+// SECTION 3: Velocity Limits - EKG-style network traffic monitor
 // ============================================================================
 function VelocityChartVisual() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -238,57 +238,50 @@ function VelocityChartVisual() {
     const width = canvas.width;
     const height = canvas.height;
     
-    // Signal parameters - inverted pulses like in the Tek scope image
-    const centerY = height * 0.5;
-    const pulseAmplitude = height * 0.3;
+    // Baseline at center, pulses go up
+    const baselineY = height * 0.65;
+    const pulseHeight = height * 0.5;
     
-    // Two channels of data for that dual-trace look
-    const signalLength = 600;
-    const signal1: number[] = new Array(signalLength).fill(0);
-    const signal2: number[] = new Array(signalLength).fill(0);
+    // Single channel signal data
+    const signalLength = 500;
+    const signal: number[] = new Array(signalLength).fill(0);
     
-    let frameCount = 0;
     let inPulse = false;
     let pulseWidth = 0;
-    let gapWidth = 30;
+    let gapWidth = 20;
     let burstMode = false;
     let burstPulsesRemaining = 0;
     let thresholdTriggered = false;
     let triggerFlashCount = 0;
 
     const draw = () => {
-      frameCount++;
-      
-      // Tektronix amber/olive background
-      ctx.fillStyle = "#1a1a0a";
+      // Dark background
+      ctx.fillStyle = "#030806";
       ctx.fillRect(0, 0, width, height);
 
-      // Draw grid lines (Tek style - subtle)
-      ctx.strokeStyle = "rgba(180, 180, 100, 0.15)";
+      // Subtle grid
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.1)";
       ctx.lineWidth = 1;
-      // Horizontal grid
-      for (let i = 1; i < 8; i++) {
-        const y = (height / 8) * i;
+      for (let i = 1; i < 6; i++) {
+        const y = (height / 6) * i;
         ctx.beginPath();
-        ctx.setLineDash(i === 4 ? [] : [2, 4]);
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
         ctx.stroke();
       }
-      // Vertical grid
-      for (let i = 1; i < 12; i++) {
-        const x = (width / 12) * i;
-        ctx.beginPath();
-        ctx.setLineDash([2, 4]);
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
+
+      // Baseline indicator
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(0, baselineY);
+      ctx.lineTo(width, baselineY);
+      ctx.stroke();
       ctx.setLineDash([]);
 
-      // Generate multiple samples per frame for faster streaming
-      for (let s = 0; s < 4; s++) {
-        let newValue = signal1[signal1.length - 1];
+      // Generate 6 samples per frame for fast streaming
+      for (let s = 0; s < 6; s++) {
+        let newValue = 0;
         
         if (inPulse) {
           newValue = 1;
@@ -296,28 +289,29 @@ function VelocityChartVisual() {
           if (pulseWidth <= 0) {
             inPulse = false;
             if (burstMode && burstPulsesRemaining > 0) {
-              gapWidth = 8 + Math.floor(Math.random() * 12);
+              gapWidth = 4 + Math.floor(Math.random() * 8);
             } else {
-              gapWidth = 40 + Math.floor(Math.random() * 80);
+              gapWidth = 25 + Math.floor(Math.random() * 50);
               burstMode = false;
             }
           }
         } else {
-          newValue = 0;
           gapWidth--;
           if (gapWidth <= 0) {
             if (burstMode && burstPulsesRemaining > 0) {
               inPulse = true;
-              pulseWidth = 15 + Math.floor(Math.random() * 20);
+              pulseWidth = 3 + Math.floor(Math.random() * 6);
               burstPulsesRemaining--;
-            } else if (Math.random() < 0.06) {
+            } else if (Math.random() < 0.08) {
+              // Single pulse
               inPulse = true;
-              pulseWidth = 20 + Math.floor(Math.random() * 35);
-            } else if (Math.random() < 0.012) {
+              pulseWidth = 4 + Math.floor(Math.random() * 8);
+            } else if (Math.random() < 0.02) {
+              // Start burst
               burstMode = true;
-              burstPulsesRemaining = 3 + Math.floor(Math.random() * 4);
+              burstPulsesRemaining = 3 + Math.floor(Math.random() * 5);
               inPulse = true;
-              pulseWidth = 15 + Math.floor(Math.random() * 20);
+              pulseWidth = 3 + Math.floor(Math.random() * 5);
               
               if (!thresholdTriggered) {
                 thresholdTriggered = true;
@@ -332,84 +326,62 @@ function VelocityChartVisual() {
           }
         }
 
-        signal1.shift();
-        signal1.push(newValue);
-        
-        // Second channel slightly delayed/offset
-        signal2.shift();
-        signal2.push(signal1[signal1.length - 3] ?? 0);
+        signal.shift();
+        signal.push(newValue);
       }
 
-      // Draw noisy square wave with overshoot/ringing
-      const drawNoisySquareWave = (signal: number[], color: string, offset: number) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-
-        let prevState = signal[0];
-        let overshootDecay = 0;
-        let overshootDir = 0;
-        
-        for (let i = 0; i < signal.length; i++) {
-          const x = (i / signal.length) * width;
-          const currentState = signal[i];
-          
-          // Base Y position (inverted - pulses go down)
-          let baseY = currentState === 1 
-            ? centerY + pulseAmplitude + offset
-            : centerY - pulseAmplitude * 0.2 + offset;
-          
-          // Detect transitions for overshoot
-          if (currentState !== prevState) {
-            overshootDecay = 12;
-            overshootDir = currentState === 1 ? 1 : -1;
-          }
-          
-          // Apply overshoot/ringing decay
-          let overshoot = 0;
-          if (overshootDecay > 0) {
-            const ringing = Math.sin(overshootDecay * 1.5) * Math.exp(-0.3 * (12 - overshootDecay));
-            overshoot = overshootDir * ringing * pulseAmplitude * 0.25;
-            overshootDecay -= 0.5;
-          }
-          
-          // Add continuous high-frequency noise (jitter)
-          const noise = (Math.random() - 0.5) * 6;
-          const y = baseY + overshoot + noise;
-
-          if (i === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-          
-          prevState = currentState;
-        }
-        ctx.stroke();
-      };
-
       // Draw glow layer
-      ctx.globalAlpha = 0.3;
-      ctx.filter = "blur(3px)";
-      drawNoisySquareWave(signal1, "#00ffff", 0);
-      drawNoisySquareWave(signal2, "#ffff00", 2);
-      ctx.filter = "none";
-      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(74, 222, 128, 0.15)";
+      ctx.lineWidth = 8;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
       
-      // Draw main signals - cyan and yellow like Tek scope
-      drawNoisySquareWave(signal1, "#00dddd", 0);
-      drawNoisySquareWave(signal2, "#dddd00", 2);
+      for (let i = 0; i < signal.length; i++) {
+        const x = (i / signal.length) * width;
+        const noise = (Math.random() - 0.5) * 2;
+        const y = signal[i] === 1 ? baselineY - pulseHeight + noise : baselineY + noise;
+        
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevX = ((i - 1) / signal.length) * width;
+          const prevY = signal[i - 1] === 1 ? baselineY - pulseHeight : baselineY;
+          // Square wave: horizontal then vertical
+          ctx.lineTo(x, prevY + noise);
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
 
-      // Flash alert when triggered
+      // Draw main signal - bright green
+      ctx.strokeStyle = "#22c55e";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      
+      for (let i = 0; i < signal.length; i++) {
+        const x = (i / signal.length) * width;
+        const noise = (Math.random() - 0.5) * 1.5;
+        const y = signal[i] === 1 ? baselineY - pulseHeight + noise : baselineY + noise;
+        
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevY = signal[i - 1] === 1 ? baselineY - pulseHeight : baselineY;
+          ctx.lineTo(x, prevY + noise);
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+
+      // Alert flash
       if (triggerFlashCount > 0) {
         triggerFlashCount--;
         if (Math.floor(triggerFlashCount / 5) % 2 === 0) {
-          ctx.fillStyle = "rgba(255, 80, 80, 0.95)";
-          ctx.font = "bold 14px monospace";
+          ctx.fillStyle = "rgba(239, 68, 68, 0.95)";
+          ctx.font = "bold 13px monospace";
           ctx.textAlign = "center";
-          ctx.fillText("RUNAWAY DETECTED", width / 2, 25);
+          ctx.fillText("RUNAWAY DETECTED", width / 2, 24);
         }
       }
 
@@ -426,43 +398,38 @@ function VelocityChartVisual() {
         <div className="absolute -inset-4 animate-pulse rounded-2xl bg-destructive/20 blur-2xl" />
       )}
       
-      <div className={`relative overflow-hidden rounded-xl border bg-[#1a1a0a] backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-amber-500/30"}`}>
-        {/* Header - Tektronix style */}
-        <div className="flex items-center justify-between border-b border-amber-500/20 bg-[#0f0f05] px-4 py-2">
+      <div className={`relative overflow-hidden rounded-xl border bg-[#030806] backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-primary/30"}`}>
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-primary/20 bg-[#020504] px-4 py-3">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-sm font-bold text-amber-100">Tek</span>
-            <span className={`font-mono text-xs ${triggered ? "text-red-400" : "text-green-400"}`}>
-              {triggered ? "Trig'd" : "Auto"}
-            </span>
+            <div className={`h-2 w-2 rounded-full ${triggered ? "animate-pulse bg-destructive" : "bg-primary"}`} />
+            <span className="font-mono text-sm font-medium text-primary">SPEND VELOCITY</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="font-mono text-xs text-amber-200/60">M Pos: 0.000s</span>
-          </div>
+          <span className={`font-mono text-xs ${triggered ? "text-destructive" : "text-primary/60"}`}>
+            {triggered ? "ALERT" : "LIVE"}
+          </span>
         </div>
 
-        {/* Oscilloscope display */}
-        <div className="p-0">
+        {/* Monitor display */}
+        <div className="p-1">
           <canvas
             ref={canvasRef}
-            width={600}
-            height={220}
-            className="h-[220px] w-full"
+            width={550}
+            height={180}
+            className="h-[180px] w-full"
           />
         </div>
 
-        {/* Status bar - Tek style */}
-        <div className={`flex items-center justify-between border-t border-amber-500/20 px-4 py-2 text-xs ${triggered ? "bg-red-900/20" : "bg-[#0f0f05]"}`}>
-          <div className="flex items-center gap-4">
-            <span className="font-mono text-cyan-400">1 2.00$/s</span>
-            <span className="font-mono text-yellow-400">2 2.00$/s</span>
-          </div>
+        {/* Status bar */}
+        <div className={`flex items-center justify-between border-t border-primary/20 px-4 py-2 text-xs ${triggered ? "bg-destructive/10" : "bg-[#020504]"}`}>
+          <span className="font-mono text-muted-foreground">$/min</span>
           {triggered ? (
-            <span className="flex items-center gap-2 font-mono text-red-400">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-              CIRCUIT BREAKER
+            <span className="flex items-center gap-2 font-mono text-destructive">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
+              CIRCUIT BREAKER ACTIVE
             </span>
           ) : (
-            <span className="font-mono text-amber-200/50">25.0ms/div</span>
+            <span className="font-mono text-primary/50">Monitoring</span>
           )}
         </div>
       </div>
