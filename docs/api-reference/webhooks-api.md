@@ -108,7 +108,7 @@ curl -X POST https://nullspend.com/api/webhooks \
     "payloadMode": "full",
     "createdAt": "2026-03-20T14:30:00.000Z",
     "updatedAt": "2026-03-20T14:30:00.000Z",
-    "signingSecret": "whsec_a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890"
+    "signingSecret": "whsec_your_signing_secret_will_appear_here_shown_only_once_at_create"
   }
 }
 ```
@@ -321,7 +321,7 @@ curl -X POST https://nullspend.com/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef
 ```json
 {
   "data": {
-    "signingSecret": "whsec_f1e2d3c4b5a67890f1e2d3c4b5a67890f1e2d3c4b5a67890f1e2d3c4b5a67890",
+    "signingSecret": "whsec_your_new_rotated_secret_will_appear_here_shown_only_at_rotate",
     "secretRotatedAt": "2026-03-20T15:00:00.000Z"
   }
 }
