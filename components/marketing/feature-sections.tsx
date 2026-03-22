@@ -724,57 +724,72 @@ function ApprovalVisual() {
         stage === "approved" ? "bg-primary/30" : "bg-primary/10"
       }`} />
       
-      <div className="relative flex flex-col items-center rounded-xl border border-border/50 bg-card/80 p-8 backdrop-blur-sm">
-        {/* Status text above button */}
-        <div className="mb-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            {stage === "approved" ? "Request approved" : "Agent waiting for approval"}
-          </p>
+      <div className="relative rounded-xl border border-border/50 bg-card/80 p-6 backdrop-blur-sm">
+        {/* Request details */}
+        <div className="mb-6 rounded-lg border border-border/30 bg-background/50 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Estimated Cost</span>
+            <span className="font-mono text-lg font-bold text-amber-400">$24.50</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Model</span>
+            <span className="font-mono text-sm">gpt-5.4</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Tokens</span>
+            <span className="font-mono text-sm">~128,000</span>
+          </div>
         </div>
 
-        {/* Large circular approve button */}
-        <button
-          className={`relative h-32 w-32 rounded-full font-semibold transition-all duration-200 ${
-            stage === "pressing" 
-              ? "scale-95 bg-primary/80 shadow-lg shadow-primary/30" 
-              : stage === "approved"
-              ? "scale-100 bg-primary shadow-xl shadow-primary/40"
-              : "scale-100 bg-primary shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
-          }`}
-        >
-          {/* Outer ring pulse when waiting */}
-          {stage === "waiting" && (
-            <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
-          )}
-          
-          {/* Button content */}
-          <span className={`relative z-10 text-lg text-primary-foreground transition-opacity ${
-            stage === "approved" ? "opacity-0" : "opacity-100"
-          }`}>
-            Approve
-          </span>
-          
-          {/* Checkmark when approved */}
-          {stage === "approved" && (
-            <svg 
-              className="absolute inset-0 m-auto h-12 w-12 text-primary-foreground" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor" 
-              strokeWidth={3}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          )}
-        </button>
+        {/* Status and circular approve button */}
+        <div className="flex items-center gap-6">
+          {/* Status text */}
+          <div className="flex-1">
+            <p className={`font-medium transition-colors ${
+              stage === "approved" ? "text-primary" : "text-amber-400"
+            }`}>
+              {stage === "approved" ? "Approved" : "Awaiting Approval"}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {stage === "approved" ? "Proceeding to provider..." : "Agent paused. Human decision required."}
+            </p>
+          </div>
 
-        {/* Status text below */}
-        <div className="mt-6 text-center">
-          <p className={`font-mono text-sm transition-colors ${
-            stage === "approved" ? "text-primary" : "text-muted-foreground"
-          }`}>
-            {stage === "approved" ? "Proceeding to provider..." : "Human decision required"}
-          </p>
+          {/* Circular approve button */}
+          <button
+            className={`relative h-20 w-20 shrink-0 rounded-full font-semibold transition-all duration-200 ${
+              stage === "pressing" 
+                ? "scale-90 bg-primary/80 shadow-lg shadow-primary/30" 
+                : stage === "approved"
+                ? "scale-100 bg-primary shadow-xl shadow-primary/40"
+                : "scale-100 bg-primary shadow-lg shadow-primary/20"
+            }`}
+          >
+            {/* Outer ring pulse when waiting */}
+            {stage === "waiting" && (
+              <span className="absolute inset-0 animate-ping rounded-full bg-primary/30" />
+            )}
+            
+            {/* Button content */}
+            <span className={`relative z-10 text-sm text-primary-foreground transition-opacity ${
+              stage === "approved" ? "opacity-0" : "opacity-100"
+            }`}>
+              Approve
+            </span>
+            
+            {/* Checkmark when approved */}
+            {stage === "approved" && (
+              <svg 
+                className="absolute inset-0 m-auto h-8 w-8 text-primary-foreground" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor" 
+                strokeWidth={3}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
     </div>
