@@ -587,30 +587,44 @@ export function TagsAttributionSection() {
 }
 
 // ============================================================================
-// SECTION 5: Webhooks - Animated event stream
+// SECTION 5: MCP Tool Calls - Live agent activity feed
 // ============================================================================
-function WebhooksVisual() {
-  const events = [
-    { type: "mcp.tool_call", icon: "check", color: "text-primary" },
-    { type: "mcp.tool_result", icon: "check", color: "text-cyan-400" },
-    { type: "mcp.budget_exceeded", icon: "block", color: "text-destructive" },
-    { type: "mcp.approval_required", icon: "clock", color: "text-amber-500" },
-    { type: "mcp.session_start", icon: "trending", color: "text-violet-400" },
+function MCPToolCallsVisual() {
+  const toolCalls = [
+    { tool: "search_web", server: "brave-search", cost: 0.002 },
+    { tool: "read_file", server: "filesystem", cost: 0.001 },
+    { tool: "query_db", server: "postgres", cost: 0.004 },
+    { tool: "send_email", server: "gmail", cost: 0.003 },
+    { tool: "create_issue", server: "linear", cost: 0.002 },
+    { tool: "fetch_url", server: "web-fetch", cost: 0.001 },
   ];
 
-  const [eventStream, setEventStream] = useState<Array<{ id: number; event: typeof events[0]; timestamp: string }>>([]);
+  const [callStream, setCallStream] = useState<Array<{ id: number; call: typeof toolCalls[0]; status: "running" | "complete" }>>([]);
   const [idCounter, setIdCounter] = useState(0);
+  const [totalCost, setTotalCost] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const event = events[Math.floor(Math.random() * events.length)];
-      const timestamp = new Date().toISOString().split("T")[1].slice(0, 12);
-      setEventStream((prev) => [
-        { id: idCounter, event, timestamp },
+      const call = toolCalls[Math.floor(Math.random() * toolCalls.length)];
+      const newId = idCounter;
+      
+      // Add as running
+      setCallStream((prev) => [
+        { id: newId, call, status: "running" },
         ...prev.slice(0, 4),
       ]);
       setIdCounter((prev) => prev + 1);
-    }, 1200);
+      
+      // Mark as complete after delay
+      setTimeout(() => {
+        setCallStream((prev) => 
+          prev.map((item) => 
+            item.id === newId ? { ...item, status: "complete" } : item
+          )
+        );
+        setTotalCost((prev) => prev + call.cost);
+      }, 600);
+    }, 1400);
     return () => clearInterval(interval);
   }, [idCounter]);
 
@@ -623,40 +637,30 @@ function WebhooksVisual() {
         <div className="flex items-center justify-between border-b border-border/50 bg-background/50 p-4">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
-            <span className="text-sm font-medium">Webhook Events</span>
+            <span className="text-sm font-medium">MCP Tool Calls</span>
           </div>
-          <span className="rounded bg-primary/20 px-2 py-0.5 font-mono text-xs text-primary">LIVE</span>
+          <span className="font-mono text-sm text-primary">${totalCost.toFixed(3)}</span>
         </div>
 
-        {/* Event stream */}
+        {/* Tool call stream */}
         <div className="p-4">
           <div className="space-y-2 font-mono text-xs">
-            {eventStream.map((item) => (
+            {callStream.map((item) => (
               <div
                 key={item.id}
-                className="flex animate-[fade-in_0.3s_ease-out] items-center gap-3 rounded border border-border/30 bg-background/50 p-2"
+                className="flex animate-[fade-in_0.3s_ease-out] items-center gap-3 rounded border border-border/30 bg-background/50 p-3"
               >
-                <span className="text-muted-foreground">{item.timestamp}</span>
-                <span className={item.event.color}>{item.event.type}</span>
-                <span className="ml-auto text-muted-foreground/50">HMAC-SHA256</span>
+                <div className={`h-2 w-2 rounded-full ${item.status === "running" ? "animate-pulse bg-amber-500" : "bg-primary"}`} />
+                <div className="flex-1">
+                  <span className="text-foreground">{item.call.tool}</span>
+                  <span className="mx-2 text-muted-foreground/50">→</span>
+                  <span className="text-muted-foreground">{item.call.server}</span>
+                </div>
+                <span className={`${item.status === "running" ? "text-amber-500" : "text-primary"}`}>
+                  {item.status === "running" ? "..." : `$${item.call.cost.toFixed(3)}`}
+                </span>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-px border-t border-border/50 bg-border/50">
-          <div className="bg-card/80 p-3 text-center">
-            <p className="text-lg font-semibold">MCP</p>
-            <p className="text-xs text-muted-foreground">Tool calls</p>
-          </div>
-          <div className="bg-card/80 p-3 text-center">
-            <p className="text-lg font-semibold">99.9%</p>
-            <p className="text-xs text-muted-foreground">Delivery</p>
-          </div>
-          <div className="bg-card/80 p-3 text-center">
-            <p className="text-lg font-semibold">&lt;50ms</p>
-            <p className="text-xs text-muted-foreground">Latency</p>
           </div>
         </div>
       </div>
@@ -664,7 +668,7 @@ function WebhooksVisual() {
   );
 }
 
-export function WebhooksSection() {
+export function MCPSection() {
   return (
     <section className="relative overflow-hidden py-24 md:py-32">
       <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/[0.02] to-background" />
@@ -675,20 +679,20 @@ export function WebhooksSection() {
           <div>
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
               <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              Real-time events
+              MCP Native
             </div>
-<h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-            MCP tool call tracking.
-            <span className="mt-2 block text-muted-foreground">Every agent action logged.</span>
-          </h2>
-          <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Cost events, budget warnings, velocity alerts, threshold crossings, approval requests. Signed webhooks delivered in under 50ms. Build the integrations you need.
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+              Track every tool call.
+              <span className="mt-2 block text-muted-foreground">Cost per action, not just tokens.</span>
+            </h2>
+            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
+              Your agents call tools across MCP servers. We track each call, attribute costs, and give you visibility into what your agents are actually doing.
             </p>
           </div>
 
           {/* Visual */}
           <div className="lg:pl-8">
-            <WebhooksVisual />
+            <MCPToolCallsVisual />
           </div>
         </div>
       </div>
@@ -854,7 +858,7 @@ export function FeatureSections() {
       <BudgetEnforcementSection />
       <VelocityLimitsSection />
       <TagsAttributionSection />
-      <WebhooksSection />
+      <MCPSection />
       <HumanInLoopSection />
     </>
   );
