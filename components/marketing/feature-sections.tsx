@@ -3,58 +3,91 @@
 import { useEffect, useRef, useState } from "react";
 
 // ============================================================================
-// SECTION 1: Cost Tracking - Animated cost counter with token breakdown
+// SECTION 1: Cost Tracking - Streaming cost ticker with live API calls
 // ============================================================================
 function CostTrackingVisual() {
+  const [calls, setCalls] = useState<Array<{
+    id: number;
+    model: string;
+    tokens: number;
+    cost: number;
+    status: "streaming" | "complete";
+  }>>([]);
   const [totalCost, setTotalCost] = useState(0);
-  const [inputTokens, setInputTokens] = useState(0);
-  const [outputTokens, setOutputTokens] = useState(0);
-  const [cachedTokens, setCachedTokens] = useState(0);
+  const idRef = useRef(0);
+
+  const models = [
+    { name: "gpt-5.4", costPer1k: 0.03 },
+    { name: "claude-opus-4.6", costPer1k: 0.075 },
+    { name: "gpt-5.4-mini", costPer1k: 0.0015 },
+    { name: "claude-sonnet-4.6", costPer1k: 0.015 },
+  ];
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTotalCost((prev) => prev + Math.random() * 0.003);
-      setInputTokens((prev) => prev + Math.floor(Math.random() * 50));
-      setOutputTokens((prev) => prev + Math.floor(Math.random() * 120));
-      setCachedTokens((prev) => prev + Math.floor(Math.random() * 30));
-    }, 100);
+    const addCall = () => {
+      const model = models[Math.floor(Math.random() * models.length)];
+      const tokens = Math.floor(Math.random() * 2000) + 500;
+      const cost = (tokens / 1000) * model.costPer1k;
+      const id = idRef.current++;
+
+      setCalls(prev => [...prev.slice(-4), { id, model: model.name, tokens, cost, status: "streaming" }]);
+
+      setTimeout(() => {
+        setCalls(prev => prev.map(c => c.id === id ? { ...c, status: "complete" } : c));
+        setTotalCost(prev => prev + cost);
+      }, 800 + Math.random() * 400);
+    };
+
+    addCall();
+    const interval = setInterval(addCall, 1500);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="relative">
-      {/* Glow effect */}
-      <div className="absolute -inset-4 rounded-2xl bg-gradient-to-r from-primary/20 via-cyan-500/10 to-primary/20 blur-2xl" />
+    <div className="relative h-[400px] w-full">
+      {/* Glowing backdrop */}
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-cyan-500/10" />
       
-      <div className="relative rounded-xl border border-border/50 bg-card/80 p-8 backdrop-blur-sm">
-        {/* Main cost display */}
-        <div className="mb-8 text-center">
-          <p className="mb-2 text-sm font-medium text-muted-foreground">Total Spend</p>
-          <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-foreground md:text-6xl">
+      {/* Main container */}
+      <div className="relative h-full rounded-2xl border border-border/40 bg-card/50 backdrop-blur-xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border/40 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-3 w-3 rounded-full bg-primary animate-pulse" />
+            <span className="font-mono text-sm text-muted-foreground">Live Cost Stream</span>
+          </div>
+          <div className="font-mono text-2xl font-bold text-foreground">
             ${totalCost.toFixed(4)}
           </div>
         </div>
 
-        {/* Token breakdown */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-center">
-            <p className="mb-1 text-xs text-muted-foreground">Input</p>
-            <p className="font-mono text-lg font-semibold text-primary">{inputTokens.toLocaleString()}</p>
-          </div>
-          <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4 text-center">
-            <p className="mb-1 text-xs text-muted-foreground">Output</p>
-            <p className="font-mono text-lg font-semibold text-cyan-400">{outputTokens.toLocaleString()}</p>
-          </div>
-          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 text-center">
-            <p className="mb-1 text-xs text-muted-foreground">Cached</p>
-            <p className="font-mono text-lg font-semibold text-amber-400">{cachedTokens.toLocaleString()}</p>
-          </div>
+        {/* Streaming calls */}
+        <div className="p-4 space-y-3">
+          {calls.map((call, i) => (
+            <div
+              key={call.id}
+              className="flex items-center justify-between rounded-lg border border-border/30 bg-background/50 px-4 py-3 transition-all duration-300"
+              style={{
+                opacity: call.status === "streaming" ? 0.7 : 1,
+                transform: `translateX(${call.status === "streaming" ? "10px" : "0"})`,
+              }}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`h-2 w-2 rounded-full ${call.status === "streaming" ? "bg-amber-500 animate-pulse" : "bg-primary"}`} />
+                <span className="font-mono text-sm text-foreground">{call.model}</span>
+              </div>
+              <div className="flex items-center gap-6">
+                <span className="font-mono text-xs text-muted-foreground">{call.tokens.toLocaleString()} tokens</span>
+                <span className={`font-mono text-sm font-medium ${call.status === "streaming" ? "text-amber-500" : "text-primary"}`}>
+                  ${call.cost.toFixed(4)}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Animated pulse line */}
-        <div className="mt-6 h-1 overflow-hidden rounded-full bg-border/30">
-          <div className="h-full w-1/3 animate-[pulse-line_2s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-primary to-transparent" />
-        </div>
+        {/* Bottom gradient fade */}
+        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-card to-transparent pointer-events-none" />
       </div>
     </div>
   );
@@ -62,31 +95,28 @@ function CostTrackingVisual() {
 
 export function CostTrackingSection() {
   return (
-    <section className="relative overflow-hidden py-24 md:py-32">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/[0.02] to-background" />
+    <section className="relative py-32 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent" />
       
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
-          {/* Content */}
+      <div className="relative mx-auto max-w-7xl px-6">
+        <div className="grid items-center gap-16 lg:grid-cols-2">
           <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
               Real-time tracking
             </div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              Per-request cost tracking.
-              <span className="mt-2 block text-muted-foreground">Down to the token.</span>
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              Every token.
+              <span className="block text-muted-foreground">Every cent.</span>
             </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Every request logged with input, output, cached, and reasoning tokens. Costs calculated automatically using the latest provider pricing. No estimation, no surprises.
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground max-w-md">
+              Watch costs stream in real-time as your agents work. Input, output, cached, and reasoning tokens - all tracked automatically with latest provider pricing.
             </p>
           </div>
-
-          {/* Visual */}
-          <div className="lg:pl-8">
-            <CostTrackingVisual />
-          </div>
+          <CostTrackingVisual />
         </div>
       </div>
     </section>
@@ -94,125 +124,145 @@ export function CostTrackingSection() {
 }
 
 // ============================================================================
-// SECTION 2: Budget Enforcement - Animated budget gauge with limit
+// SECTION 2: Budget Enforcement - Animated shield with blocking
 // ============================================================================
-function BudgetGaugeVisual() {
+function BudgetShieldVisual() {
   const [spending, setSpending] = useState(0);
-  const [isBlocked, setIsBlocked] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [requests, setRequests] = useState<Array<{ id: number; blocked: boolean; y: number }>>([]);
   const budget = 100;
-  const percentage = Math.min((spending / budget) * 100, 100);
+  const idRef = useRef(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setSpending((prev) => {
-        const next = prev + Math.random() * 2;
+      if (blocked) return;
+      
+      const newSpend = Math.random() * 8;
+      setSpending(prev => {
+        const next = prev + newSpend;
         if (next >= budget) {
-          setIsBlocked(true);
-          clearInterval(interval);
+          setBlocked(true);
           return budget;
         }
         return next;
       });
-    }, 150);
-    return () => clearInterval(interval);
-  }, []);
 
-  // Reset animation
+      // Add request particle
+      const id = idRef.current++;
+      setRequests(prev => [...prev, { id, blocked: false, y: Math.random() * 80 + 10 }]);
+      setTimeout(() => {
+        setRequests(prev => prev.filter(r => r.id !== id));
+      }, 1000);
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, [blocked]);
+
+  // Reset after blocked
   useEffect(() => {
-    if (isBlocked) {
+    if (blocked) {
+      // Show blocked requests
+      const blockInterval = setInterval(() => {
+        const id = idRef.current++;
+        setRequests(prev => [...prev, { id, blocked: true, y: Math.random() * 80 + 10 }]);
+        setTimeout(() => {
+          setRequests(prev => prev.filter(r => r.id !== id));
+        }, 600);
+      }, 200);
+
       const timeout = setTimeout(() => {
+        clearInterval(blockInterval);
+        setBlocked(false);
         setSpending(0);
-        setIsBlocked(false);
       }, 3000);
-      return () => clearTimeout(timeout);
+
+      return () => {
+        clearInterval(blockInterval);
+        clearTimeout(timeout);
+      };
     }
-  }, [isBlocked]);
+  }, [blocked]);
+
+  const percentage = (spending / budget) * 100;
 
   return (
-    <div className="relative">
-      {/* Glow when blocked */}
-      {isBlocked && (
-        <div className="absolute -inset-4 animate-pulse rounded-2xl bg-destructive/20 blur-2xl" />
-      )}
+    <div className="relative h-[400px] w-full">
+      {/* Shield glow */}
+      <div className={`absolute inset-0 rounded-2xl blur-3xl transition-colors duration-500 ${blocked ? "bg-destructive/20" : "bg-primary/10"}`} />
       
-      <div className={`relative rounded-xl border bg-card/80 p-8 backdrop-blur-sm transition-colors duration-300 ${isBlocked ? "border-destructive/50" : "border-border/50"}`}>
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Monthly Budget</span>
-          <span className={`rounded-full px-3 py-1 text-xs font-medium ${isBlocked ? "bg-destructive/20 text-destructive" : "bg-primary/20 text-primary"}`}>
-            {isBlocked ? "BLOCKED" : "ACTIVE"}
-          </span>
+      <div className={`relative h-full rounded-2xl border backdrop-blur-xl overflow-hidden transition-colors duration-300 ${blocked ? "border-destructive/50 bg-destructive/5" : "border-border/40 bg-card/50"}`}>
+        {/* Animated requests */}
+        <div className="absolute inset-0 overflow-hidden">
+          {requests.map(req => (
+            <div
+              key={req.id}
+              className={`absolute left-0 h-1 rounded-full transition-all duration-500 ${req.blocked ? "bg-destructive" : "bg-primary"}`}
+              style={{
+                top: `${req.y}%`,
+                width: req.blocked ? "45%" : "100%",
+                opacity: req.blocked ? 0.8 : 0.4,
+                animation: req.blocked ? "none" : "requestFlow 1s linear forwards",
+              }}
+            />
+          ))}
         </div>
 
-        {/* Circular gauge */}
-        <div className="relative mx-auto mb-6 h-48 w-48">
-          <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100">
-            {/* Background circle */}
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="8"
-              className="text-border/30"
-            />
-            {/* Progress circle */}
-            <circle
-              cx="50"
-              cy="50"
-              r="40"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeDasharray={`${percentage * 2.51} 251`}
-              className={`transition-all duration-300 ${isBlocked ? "text-destructive" : percentage > 80 ? "text-amber-500" : "text-primary"}`}
-            />
-          </svg>
-          {/* Center text */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="font-mono text-3xl font-bold">${spending.toFixed(0)}</span>
-            <span className="text-sm text-muted-foreground">/ ${budget}</span>
-          </div>
-        </div>
+        {/* Shield line */}
+        <div className={`absolute left-1/2 top-0 bottom-0 w-1 transition-colors duration-300 ${blocked ? "bg-destructive shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "bg-border/30"}`} />
 
-        {/* Status message */}
-        {isBlocked && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-center">
-            <p className="text-sm font-medium text-destructive">429 — Budget exceeded</p>
-            <p className="mt-1 text-xs text-destructive/70">Request blocked before reaching provider</p>
+        {/* Center content */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className={`text-7xl font-bold font-mono transition-colors duration-300 ${blocked ? "text-destructive" : "text-foreground"}`}>
+            ${Math.floor(spending)}
           </div>
-        )}
+          <div className="text-muted-foreground mt-2">/ ${budget} budget</div>
+          
+          {/* Progress bar */}
+          <div className="w-48 h-2 rounded-full bg-border/30 mt-6 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${percentage > 80 ? "bg-destructive" : percentage > 50 ? "bg-amber-500" : "bg-primary"}`}
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+
+          {blocked && (
+            <div className="mt-6 px-4 py-2 rounded-lg bg-destructive/20 border border-destructive/30">
+              <span className="font-mono text-sm text-destructive font-medium">429 - BUDGET EXCEEDED</span>
+            </div>
+          )}
+        </div>
       </div>
+
+      <style jsx>{`
+        @keyframes requestFlow {
+          from { transform: translateX(-100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 0.4; }
+        }
+      `}</style>
     </div>
   );
 }
 
 export function BudgetEnforcementSection() {
   return (
-    <section className="relative overflow-hidden py-24 md:py-32">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-destructive/[0.02] to-background" />
+    <section className="relative py-32 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,_var(--tw-gradient-stops))] from-amber-500/5 via-transparent to-transparent" />
       
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
-          {/* Visual - Left on this one */}
-          <div className="order-2 lg:order-1 lg:pr-8">
-            <BudgetGaugeVisual />
+      <div className="relative mx-auto max-w-7xl px-6">
+        <div className="grid items-center gap-16 lg:grid-cols-2">
+          <div className="order-2 lg:order-1">
+            <BudgetShieldVisual />
           </div>
-
-          {/* Content */}
           <div className="order-1 lg:order-2">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-sm font-medium text-amber-500 mb-6">
               Hard limits
             </div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              Budget enforcement.
-              <span className="mt-2 block text-muted-foreground">Before the request leaves.</span>
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              Budget walls.
+              <span className="block text-muted-foreground">Not suggestions.</span>
             </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Set hard spending ceilings per key, team, or project. The proxy returns 429 before the request ever reaches OpenAI or Anthropic. No overages, no surprises, no arguments with finance.
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground max-w-md">
+              Set hard spending limits per key, team, or project. Requests are blocked at the proxy before they ever reach OpenAI or Anthropic. Zero overages guaranteed.
             </p>
           </div>
         </div>
@@ -222,11 +272,11 @@ export function BudgetEnforcementSection() {
 }
 
 // ============================================================================
-// SECTION 3: Velocity Limits - Oscilloscope-style square wave monitor
+// SECTION 3: Velocity Limits - EKG-style heartbeat monitor
 // ============================================================================
-function VelocityChartVisual() {
+function VelocityMonitorVisual() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [triggered, setTriggered] = useState(false);
+  const [alert, setAlert] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -235,177 +285,114 @@ function VelocityChartVisual() {
     if (!ctx) return;
 
     let animationId: number;
-    const width = canvas.width;
-    const height = canvas.height;
-    
-    // Fixed amplitude levels (consistent height like oscilloscope)
-    const baselineY = height * 0.75;
-    const pulseHeight = height * 0.45; // Fixed height for all pulses
-    
-    // Store the signal data that scrolls left (0 = low, 1 = high)
-    const signalLength = 400;
-    const signal: number[] = new Array(signalLength).fill(0);
-    
-    let frameCount = 0;
-    let inPulse = false;
-    let pulseWidth = 0;
-    let gapWidth = 0;
-    let burstMode = false;
-    let burstPulsesRemaining = 0;
-    let thresholdTriggered = false;
-    let triggerFlashCount = 0;
+    let offset = 0;
+    let spikeCountdown = 0;
+    let inSpike = false;
 
     const draw = () => {
-      frameCount++;
-      
-      // Dark oscilloscope background
-      ctx.fillStyle = "#050a08";
+      const width = canvas.width;
+      const height = canvas.height;
+
+      // Clear with dark background
+      ctx.fillStyle = "#030712";
       ctx.fillRect(0, 0, width, height);
 
-      // Draw grid lines (oscilloscope style)
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.08)";
+      // Draw subtle grid
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.06)";
       ctx.lineWidth = 1;
-      // Horizontal grid
-      for (let i = 1; i < 6; i++) {
-        const y = (height / 6) * i;
+      for (let i = 0; i < width; i += 40) {
         ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, height);
         ctx.stroke();
       }
-      // Vertical grid
-      for (let i = 1; i < 10; i++) {
-        const x = (width / 10) * i;
+      for (let i = 0; i < height; i += 40) {
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+        ctx.moveTo(0, i);
+        ctx.lineTo(width, i);
         ctx.stroke();
       }
 
-      // Draw threshold line
-      const thresholdY = height * 0.2;
-      ctx.strokeStyle = "rgba(239, 68, 68, 0.4)";
-      ctx.setLineDash([6, 4]);
-      ctx.lineWidth = 1;
+      // Danger zone
+      const dangerY = height * 0.25;
+      ctx.fillStyle = "rgba(239, 68, 68, 0.05)";
+      ctx.fillRect(0, 0, width, dangerY);
+      ctx.strokeStyle = "rgba(239, 68, 68, 0.3)";
+      ctx.setLineDash([8, 8]);
       ctx.beginPath();
-      ctx.moveTo(0, thresholdY);
-      ctx.lineTo(width, thresholdY);
+      ctx.moveTo(0, dangerY);
+      ctx.lineTo(width, dangerY);
       ctx.stroke();
       ctx.setLineDash([]);
-      
-      // Threshold label
-      ctx.fillStyle = "rgba(239, 68, 68, 0.6)";
-      ctx.font = "10px monospace";
-      ctx.textAlign = "left";
-      ctx.fillText("THRESHOLD", 8, thresholdY - 6);
 
-      // Generate signal - single pulses and bursts
-      let newValue = signal[signal.length - 1];
-      
-      if (inPulse) {
-        newValue = 1;
-        pulseWidth--;
-        if (pulseWidth <= 0) {
-          inPulse = false;
-          // Set gap before next potential pulse
-          if (burstMode && burstPulsesRemaining > 0) {
-            gapWidth = 3 + Math.floor(Math.random() * 4); // Short gaps in burst
-          } else {
-            gapWidth = 20 + Math.floor(Math.random() * 60); // Normal gaps
-            burstMode = false;
-          }
+      // Generate EKG-style line
+      ctx.beginPath();
+      const baseY = height * 0.65;
+
+      for (let x = 0; x < width; x++) {
+        const t = (x + offset) * 0.02;
+        let y = baseY;
+
+        // Normal small variations
+        y += Math.sin(t * 3) * 5;
+        y += Math.sin(t * 7) * 3;
+
+        // Periodic heartbeat spikes
+        const beatPhase = (t % 4);
+        if (beatPhase < 0.3) {
+          // Sharp spike up
+          const spikeProgress = beatPhase / 0.3;
+          const spikeHeight = inSpike ? height * 0.5 : height * 0.2;
+          y -= Math.sin(spikeProgress * Math.PI) * spikeHeight;
+        } else if (beatPhase < 0.5) {
+          // Small dip down
+          const dipProgress = (beatPhase - 0.3) / 0.2;
+          y += Math.sin(dipProgress * Math.PI) * 15;
         }
-      } else {
-        newValue = 0;
-        gapWidth--;
-        if (gapWidth <= 0) {
-          // Chance to start a new pulse
-          if (burstMode && burstPulsesRemaining > 0) {
-            // Continue burst
-            inPulse = true;
-            pulseWidth = 4 + Math.floor(Math.random() * 6);
-            burstPulsesRemaining--;
-          } else if (Math.random() < 0.08) {
-            // Start single pulse
-            inPulse = true;
-            pulseWidth = 6 + Math.floor(Math.random() * 10);
-          } else if (Math.random() < 0.015) {
-            // Start a burst (multiple rapid pulses)
-            burstMode = true;
-            burstPulsesRemaining = 4 + Math.floor(Math.random() * 6);
-            inPulse = true;
-            pulseWidth = 4 + Math.floor(Math.random() * 5);
-            
-            // Trigger threshold alert during bursts
-            if (!thresholdTriggered) {
-              thresholdTriggered = true;
-              triggerFlashCount = 90;
-              setTriggered(true);
-              setTimeout(() => {
-                setTriggered(false);
-                thresholdTriggered = false;
-              }, 2000);
-            }
-          }
+
+        if (x === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+
+        // Check if we're hitting danger zone
+        if (y < dangerY && !alert && inSpike) {
+          setAlert(true);
+          setTimeout(() => setAlert(false), 2000);
         }
       }
 
-      // Shift signal left and add new value
-      signal.shift();
-      signal.push(newValue);
-
-      // Draw the square wave signal with glow effect
-      const drawSquareWave = (lineWidth: number, color: string) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = lineWidth;
-        ctx.lineCap = "butt";
-        ctx.lineJoin = "miter";
-        ctx.beginPath();
-
-        let prevY = baselineY;
-        for (let i = 0; i < signal.length; i++) {
-          const x = (i / signal.length) * width;
-          const y = signal[i] === 1 ? baselineY - pulseHeight : baselineY;
-          
-          // Add slight noise to the signal for that analog feel
-          const noise = (Math.random() - 0.5) * 1.5;
-          const noisyY = y + noise;
-
-          if (i === 0) {
-            ctx.moveTo(x, noisyY);
-            prevY = noisyY;
-          } else {
-            const prevX = ((i - 1) / signal.length) * width;
-            // Square wave: horizontal line, then vertical transition
-            ctx.lineTo(x, prevY);
-            ctx.lineTo(x, noisyY);
-            prevY = noisyY;
-          }
-        }
-        ctx.stroke();
-      };
-
-      // Glow layers
-      drawSquareWave(12, "rgba(16, 185, 129, 0.05)");
-      drawSquareWave(6, "rgba(16, 185, 129, 0.1)");
-      drawSquareWave(3, "rgba(16, 185, 129, 0.3)");
-      
-      // Bright core signal
-      drawSquareWave(1.5, "rgba(74, 222, 128, 0.95)");
+      // Glow effect
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.15)";
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.3)";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.strokeStyle = alert ? "#ef4444" : "#10b981";
+      ctx.lineWidth = 2;
+      ctx.stroke();
 
       // Scanline effect
-      const scanlineY = (frameCount * 2) % height;
-      ctx.fillStyle = "rgba(74, 222, 128, 0.03)";
-      ctx.fillRect(0, scanlineY, width, 2);
+      const scanX = (offset * 2) % width;
+      const gradient = ctx.createLinearGradient(scanX - 100, 0, scanX, 0);
+      gradient.addColorStop(0, "transparent");
+      gradient.addColorStop(1, "rgba(16, 185, 129, 0.1)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(scanX - 100, 0, 100, height);
 
-      // Flash "RUNAWAY DETECTED" when triggered
-      if (triggerFlashCount > 0) {
-        triggerFlashCount--;
-        if (Math.floor(triggerFlashCount / 6) % 2 === 0) {
-          ctx.fillStyle = "rgba(239, 68, 68, 0.95)";
-          ctx.font = "bold 13px monospace";
-          ctx.textAlign = "center";
-          ctx.fillText("RUNAWAY DETECTED", width / 2, thresholdY + 20);
+      offset += 2;
+
+      // Randomly trigger spike mode
+      if (!inSpike && Math.random() < 0.003) {
+        inSpike = true;
+        spikeCountdown = 150;
+      }
+      if (inSpike) {
+        spikeCountdown--;
+        if (spikeCountdown <= 0) {
+          inSpike = false;
         }
       }
 
@@ -414,50 +401,40 @@ function VelocityChartVisual() {
 
     draw();
     return () => cancelAnimationFrame(animationId);
-  }, []);
+  }, [alert]);
 
   return (
-    <div className="relative">
-      {triggered && (
-        <div className="absolute -inset-4 animate-pulse rounded-2xl bg-destructive/20 blur-2xl" />
-      )}
+    <div className="relative h-[400px] w-full">
+      <div className={`absolute inset-0 rounded-2xl blur-3xl transition-colors duration-500 ${alert ? "bg-destructive/20" : "bg-cyan-500/10"}`} />
       
-      <div className={`relative overflow-hidden rounded-xl border bg-[#050a08] backdrop-blur-sm transition-colors duration-300 ${triggered ? "border-destructive/50" : "border-primary/30"}`}>
-        {/* Header - oscilloscope style */}
-        <div className="flex items-center justify-between border-b border-primary/20 bg-[#030806] px-4 py-3">
+      <div className={`relative h-full rounded-2xl border backdrop-blur-xl overflow-hidden transition-colors duration-300 ${alert ? "border-destructive/50" : "border-border/40"} bg-[#030712]`}>
+        {/* Header */}
+        <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
-            <div className={`h-2 w-2 rounded-full ${triggered ? "animate-pulse bg-destructive" : "bg-primary"}`} />
-            <span className="font-mono text-sm font-medium text-primary">SPEND VELOCITY</span>
+            <div className={`h-3 w-3 rounded-full ${alert ? "bg-destructive animate-pulse" : "bg-cyan-500"}`} />
+            <span className="font-mono text-sm text-cyan-500">$/min VELOCITY</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="font-mono text-xs text-primary/40">500ms/div</span>
-            <span className={`font-mono text-xs ${triggered ? "text-destructive" : "text-primary/60"}`}>
-              {triggered ? "ALERT" : "LIVE"}
-            </span>
-          </div>
-        </div>
-
-        {/* Oscilloscope display */}
-        <div className="p-1">
-          <canvas
-            ref={canvasRef}
-            width={500}
-            height={200}
-            className="h-[200px] w-full"
-          />
-        </div>
-
-        {/* Status bar */}
-        <div className={`flex items-center justify-between border-t border-primary/20 px-4 py-2 text-xs ${triggered ? "bg-destructive/10" : "bg-[#030806]"}`}>
-          <span className="font-mono text-primary/40">$/min</span>
-          {triggered ? (
-            <span className="flex items-center gap-2 font-mono text-destructive">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-destructive" />
-              CIRCUIT BREAKER ACTIVE
-            </span>
-          ) : (
-            <span className="font-mono text-primary/50">Monitoring</span>
+          {alert && (
+            <div className="px-3 py-1 rounded bg-destructive/20 border border-destructive/30">
+              <span className="font-mono text-xs text-destructive font-medium">RUNAWAY DETECTED</span>
+            </div>
           )}
+        </div>
+
+        {/* Canvas */}
+        <canvas
+          ref={canvasRef}
+          width={600}
+          height={400}
+          className="w-full h-full"
+        />
+
+        {/* Stats overlay */}
+        <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
+          <span className="font-mono text-xs text-muted-foreground">Threshold: $5.00/min</span>
+          <span className={`font-mono text-xs ${alert ? "text-destructive" : "text-cyan-500"}`}>
+            {alert ? "Circuit breaker active" : "Monitoring"}
+          </span>
         </div>
       </div>
     </div>
@@ -466,30 +443,24 @@ function VelocityChartVisual() {
 
 export function VelocityLimitsSection() {
   return (
-    <section className="relative overflow-hidden py-24 md:py-32">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-cyan-500/[0.02] to-background" />
+    <section className="relative py-32 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-500/5 via-transparent to-transparent" />
       
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
-          {/* Content */}
+      <div className="relative mx-auto max-w-7xl px-6">
+        <div className="grid items-center gap-16 lg:grid-cols-2">
           <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-4 py-1.5 text-sm font-medium text-cyan-500 mb-6">
               Auto-protection
             </div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              Detect runaway loops.
-              <span className="mt-2 block text-muted-foreground">Auto-circuit-breaker.</span>
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              Catch runaways.
+              <span className="block text-muted-foreground">Instantly.</span>
             </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Set velocity thresholds for $/minute spend rates. When an agent goes haywire, NullSpend automatically trips the circuit breaker before your bill does.
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground max-w-md">
+              Set velocity thresholds on $/minute spend rates. When an agent enters an infinite loop, the circuit breaker trips before your bill explodes.
             </p>
           </div>
-
-          {/* Visual */}
-          <div className="lg:pl-8">
-            <VelocityChartVisual />
-          </div>
+          <VelocityMonitorVisual />
         </div>
       </div>
     </section>
@@ -497,76 +468,70 @@ export function VelocityLimitsSection() {
 }
 
 // ============================================================================
-// SECTION 4: Tags & Attribution - Visual tag assignment
+// SECTION 4: Tags & Attribution - Visual flow diagram
 // ============================================================================
-function TagsVisual() {
+function TagsFlowVisual() {
+  const [activeTag, setActiveTag] = useState(0);
   const tags = [
-    { name: "production", color: "bg-primary text-primary-foreground" },
-    { name: "staging", color: "bg-amber-500 text-amber-950" },
-    { name: "team:ml", color: "bg-cyan-500 text-cyan-950" },
-    { name: "feature:search", color: "bg-violet-500 text-violet-950" },
+    { name: "production", color: "bg-primary", borderColor: "border-primary/50" },
+    { name: "team:ml", color: "bg-violet-500", borderColor: "border-violet-500/50" },
+    { name: "feature:chat", color: "bg-cyan-500", borderColor: "border-cyan-500/50" },
+    { name: "cost-center:eng", color: "bg-amber-500", borderColor: "border-amber-500/50" },
   ];
-
-  const [activeRequests, setActiveRequests] = useState<Array<{ id: number; tag: typeof tags[0]; x: number }>>([]);
-  const [idCounter, setIdCounter] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const tag = tags[Math.floor(Math.random() * tags.length)];
-      setActiveRequests((prev) => [
-        ...prev.slice(-5),
-        { id: idCounter, tag, x: 0 },
-      ]);
-      setIdCounter((prev) => prev + 1);
-    }, 800);
+      setActiveTag(prev => (prev + 1) % tags.length);
+    }, 2000);
     return () => clearInterval(interval);
-  }, [idCounter]);
+  }, []);
 
   return (
-    <div className="relative">
-      <div className="absolute -inset-4 rounded-2xl bg-gradient-to-r from-violet-500/10 via-cyan-500/10 to-primary/10 blur-2xl" />
+    <div className="relative h-[400px] w-full">
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-violet-500/10 via-transparent to-primary/10" />
       
-      <div className="relative rounded-xl border border-border/50 bg-card/80 p-6 backdrop-blur-sm">
-        {/* Header */}
-        <div className="mb-6 flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">X-NullSpend-Tags:</span>
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <span key={tag.name} className={`rounded-full px-2 py-0.5 text-xs font-medium ${tag.color}`}>
-                {tag.name}
-              </span>
+      <div className="relative h-full rounded-2xl border border-border/40 bg-card/50 backdrop-blur-xl overflow-hidden p-8">
+        {/* Flow visualization */}
+        <div className="flex flex-col items-center justify-center h-full gap-8">
+          {/* Request */}
+          <div className="flex items-center gap-4">
+            <div className="px-4 py-3 rounded-lg border border-border/50 bg-background/50">
+              <span className="font-mono text-sm text-foreground">API Request</span>
+            </div>
+            <svg className="w-8 h-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+            </svg>
+          </div>
+
+          {/* Tags being applied */}
+          <div className="flex flex-wrap justify-center gap-3">
+            {tags.map((tag, i) => (
+              <div
+                key={tag.name}
+                className={`px-4 py-2 rounded-full border transition-all duration-500 ${tag.borderColor} ${i === activeTag ? `${tag.color} text-white scale-110` : "bg-background/50 text-muted-foreground"}`}
+              >
+                <span className="font-mono text-sm">{tag.name}</span>
+              </div>
             ))}
           </div>
-        </div>
 
-        {/* Animated requests flow */}
-        <div className="space-y-2">
-          {activeRequests.map((req) => (
-            <div
-              key={req.id}
-              className="flex animate-[slide-in_0.5s_ease-out] items-center gap-3 rounded-lg border border-border/30 bg-background/50 p-3"
-            >
-              <span className="font-mono text-xs text-muted-foreground">POST /v1/chat/completions</span>
-              <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${req.tag.color}`}>
-                {req.tag.name}
-              </span>
-            </div>
-          ))}
-        </div>
+          {/* Arrow down */}
+          <svg className="w-8 h-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+          </svg>
 
-        {/* Cost breakdown by tag */}
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          {tags.map((tag) => (
-            <div key={tag.name} className="rounded-lg border border-border/30 bg-background/30 p-3">
-              <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${tag.color.split(" ")[0]}`} />
-                <span className="text-xs text-muted-foreground">{tag.name}</span>
+          {/* Attribution result */}
+          <div className="px-6 py-4 rounded-xl border border-primary/30 bg-primary/5">
+            <div className="text-center">
+              <div className="text-sm text-muted-foreground mb-1">Attributed to</div>
+              <div className="font-mono text-lg text-foreground font-medium">
+                {tags[activeTag].name}
               </div>
-              <p className="mt-1 font-mono text-sm font-semibold">
-                ${(Math.random() * 100 + 10).toFixed(2)}
-              </p>
+              <div className="text-primary font-mono text-2xl font-bold mt-2">
+                $0.0847
+              </div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </div>
@@ -575,28 +540,24 @@ function TagsVisual() {
 
 export function TagsAttributionSection() {
   return (
-    <section className="relative overflow-hidden py-24 md:py-32">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-violet-500/[0.02] to-background" />
+    <section className="relative py-32 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-500/5 via-transparent to-transparent" />
       
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
-          {/* Visual - Left */}
-          <div className="order-2 lg:order-1 lg:pr-8">
-            <TagsVisual />
+      <div className="relative mx-auto max-w-7xl px-6">
+        <div className="grid items-center gap-16 lg:grid-cols-2">
+          <div className="order-2 lg:order-1">
+            <TagsFlowVisual />
           </div>
-
-          {/* Content */}
           <div className="order-1 lg:order-2">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-              Attribution
+            <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-4 py-1.5 text-sm font-medium text-violet-500 mb-6">
+              Cost allocation
             </div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
               Tag everything.
-              <span className="mt-2 block text-muted-foreground">Attribute costs anywhere.</span>
+              <span className="block text-muted-foreground">Bill anyone.</span>
             </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Add a single header to attribute costs to teams, environments, or features. Set default tags on API keys. Finally know where your AI spend is going.
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground max-w-md">
+              Attach custom metadata to every request. Filter costs by team, feature, environment, or customer. Finally know exactly where your AI budget goes.
             </p>
           </div>
         </div>
@@ -606,77 +567,99 @@ export function TagsAttributionSection() {
 }
 
 // ============================================================================
-// SECTION 5: Webhooks - Animated event stream
+// SECTION 5: Webhooks - Event stream visualization
 // ============================================================================
-function WebhooksVisual() {
-  const events = [
-    { type: "request.completed", icon: "check", color: "text-primary" },
-    { type: "budget.warning", icon: "alert", color: "text-amber-500" },
-    { type: "budget.exceeded", icon: "block", color: "text-destructive" },
-    { type: "velocity.spike", icon: "trending", color: "text-cyan-400" },
-    { type: "approval.requested", icon: "clock", color: "text-violet-400" },
+function WebhooksStreamVisual() {
+  const [events, setEvents] = useState<Array<{
+    id: number;
+    type: string;
+    status: "pending" | "sent" | "delivered";
+  }>>([]);
+  const idRef = useRef(0);
+
+  const eventTypes = [
+    "budget.warning",
+    "budget.exceeded",
+    "velocity.alert",
+    "spend.threshold",
+    "request.blocked",
   ];
 
-  const [eventStream, setEventStream] = useState<Array<{ id: number; event: typeof events[0]; timestamp: string }>>([]);
-  const [idCounter, setIdCounter] = useState(0);
-
   useEffect(() => {
-    const interval = setInterval(() => {
-      const event = events[Math.floor(Math.random() * events.length)];
-      const timestamp = new Date().toISOString().split("T")[1].slice(0, 12);
-      setEventStream((prev) => [
-        { id: idCounter, event, timestamp },
-        ...prev.slice(0, 4),
-      ]);
-      setIdCounter((prev) => prev + 1);
-    }, 1200);
+    const addEvent = () => {
+      const id = idRef.current++;
+      const type = eventTypes[Math.floor(Math.random() * eventTypes.length)];
+      
+      setEvents(prev => [...prev.slice(-5), { id, type, status: "pending" }]);
+
+      setTimeout(() => {
+        setEvents(prev => prev.map(e => e.id === id ? { ...e, status: "sent" } : e));
+      }, 300);
+
+      setTimeout(() => {
+        setEvents(prev => prev.map(e => e.id === id ? { ...e, status: "delivered" } : e));
+      }, 800);
+    };
+
+    addEvent();
+    const interval = setInterval(addEvent, 1800);
     return () => clearInterval(interval);
-  }, [idCounter]);
+  }, []);
 
   return (
-    <div className="relative">
-      <div className="absolute -inset-4 rounded-2xl bg-gradient-to-b from-primary/10 to-transparent blur-2xl" />
+    <div className="relative h-[400px] w-full">
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-orange-500/10 via-transparent to-pink-500/10" />
       
-      <div className="relative overflow-hidden rounded-xl border border-border/50 bg-card/80 backdrop-blur-sm">
+      <div className="relative h-full rounded-2xl border border-border/40 bg-card/50 backdrop-blur-xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/50 bg-background/50 p-4">
-          <div className="flex items-center gap-2">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
-            <span className="text-sm font-medium">Webhook Events</span>
+        <div className="flex items-center justify-between border-b border-border/40 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-3 w-3 rounded-full bg-orange-500 animate-pulse" />
+            <span className="font-mono text-sm text-muted-foreground">Webhook Events</span>
           </div>
-          <span className="rounded bg-primary/20 px-2 py-0.5 font-mono text-xs text-primary">LIVE</span>
+          <span className="font-mono text-xs text-muted-foreground">https://your-app.com/webhooks</span>
         </div>
 
-        {/* Event stream */}
-        <div className="p-4">
-          <div className="space-y-2 font-mono text-xs">
-            {eventStream.map((item) => (
-              <div
-                key={item.id}
-                className="flex animate-[fade-in_0.3s_ease-out] items-center gap-3 rounded border border-border/30 bg-background/50 p-2"
-              >
-                <span className="text-muted-foreground">{item.timestamp}</span>
-                <span className={item.event.color}>{item.event.type}</span>
-                <span className="ml-auto text-muted-foreground/50">HMAC-SHA256</span>
+        {/* Events stream */}
+        <div className="p-4 space-y-2">
+          {events.map(event => (
+            <div
+              key={event.id}
+              className="flex items-center justify-between rounded-lg border border-border/30 bg-background/50 px-4 py-3 transition-all duration-300"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`h-2 w-2 rounded-full transition-colors duration-300 ${
+                  event.status === "pending" ? "bg-amber-500" :
+                  event.status === "sent" ? "bg-cyan-500" : "bg-primary"
+                }`} />
+                <code className="text-sm text-orange-400">{event.type}</code>
               </div>
-            ))}
-          </div>
+              <div className="flex items-center gap-2">
+                {event.status === "delivered" && (
+                  <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                <span className={`font-mono text-xs ${
+                  event.status === "pending" ? "text-amber-500" :
+                  event.status === "sent" ? "text-cyan-500" : "text-primary"
+                }`}>
+                  {event.status}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-px border-t border-border/50 bg-border/50">
-          <div className="bg-card/80 p-3 text-center">
-            <p className="text-lg font-semibold">15</p>
-            <p className="text-xs text-muted-foreground">Event types</p>
-          </div>
-          <div className="bg-card/80 p-3 text-center">
-            <p className="text-lg font-semibold">99.9%</p>
-            <p className="text-xs text-muted-foreground">Delivery</p>
-          </div>
-          <div className="bg-card/80 p-3 text-center">
-            <p className="text-lg font-semibold">&lt;50ms</p>
-            <p className="text-xs text-muted-foreground">Latency</p>
-          </div>
+        {/* Connection lines animation */}
+        <div className="absolute right-8 top-1/2 -translate-y-1/2 flex flex-col gap-2">
+          {[0, 1, 2].map(i => (
+            <div
+              key={i}
+              className="w-16 h-0.5 bg-gradient-to-r from-orange-500/50 to-transparent animate-pulse"
+              style={{ animationDelay: `${i * 200}ms` }}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -685,30 +668,24 @@ function WebhooksVisual() {
 
 export function WebhooksSection() {
   return (
-    <section className="relative overflow-hidden py-24 md:py-32">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-primary/[0.02] to-background" />
+    <section className="relative py-32 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-orange-500/5 via-transparent to-transparent" />
       
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
-          {/* Content */}
+      <div className="relative mx-auto max-w-7xl px-6">
+        <div className="grid items-center gap-16 lg:grid-cols-2">
           <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              Real-time events
+            <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-1.5 text-sm font-medium text-orange-500 mb-6">
+              Integrations
             </div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              15 event types.
-              <span className="mt-2 block text-muted-foreground">HMAC-SHA256 signed.</span>
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              Real-time webhooks.
+              <span className="block text-muted-foreground">Instant alerts.</span>
             </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Cost events, budget warnings, velocity alerts, threshold crossings, approval requests. Signed webhooks delivered in under 50ms. Build the integrations you need.
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground max-w-md">
+              Push events to Slack, PagerDuty, or your own endpoints. Get notified the moment spend anomalies occur - not at the end of the month.
             </p>
           </div>
-
-          {/* Visual */}
-          <div className="lg:pl-8">
-            <WebhooksVisual />
-          </div>
+          <WebhooksStreamVisual />
         </div>
       </div>
     </section>
@@ -716,102 +693,83 @@ export function WebhooksSection() {
 }
 
 // ============================================================================
-// SECTION 6: Human-in-the-Loop - Approval workflow animation
+// SECTION 6: Human in the Loop - Approval flow
 // ============================================================================
-function ApprovalVisual() {
-  const [stage, setStage] = useState<"waiting" | "approved" | "denied">("waiting");
-  const [countdown, setCountdown] = useState(10);
+function ApprovalFlowVisual() {
+  const [stage, setStage] = useState<"request" | "pending" | "approved" | "executing">("request");
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          setStage(Math.random() > 0.3 ? "approved" : "denied");
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const cycle = () => {
+      setStage("request");
+      setTimeout(() => setStage("pending"), 1000);
+      setTimeout(() => setStage("approved"), 3000);
+      setTimeout(() => setStage("executing"), 4000);
+    };
+
+    cycle();
+    const interval = setInterval(cycle, 6000);
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (stage !== "waiting") {
-      const timeout = setTimeout(() => {
-        setStage("waiting");
-        setCountdown(10);
-      }, 3000);
-      return () => clearTimeout(timeout);
-    }
-  }, [stage]);
-
   return (
-    <div className="relative">
-      <div className={`absolute -inset-4 rounded-2xl blur-2xl transition-colors duration-500 ${
-        stage === "approved" ? "bg-primary/20" : 
-        stage === "denied" ? "bg-destructive/20" : 
-        "bg-amber-500/10"
-      }`} />
+    <div className="relative h-[400px] w-full">
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-pink-500/10 via-transparent to-primary/10" />
       
-      <div className="relative rounded-xl border border-border/50 bg-card/80 p-6 backdrop-blur-sm">
-        {/* Request details */}
-        <div className="mb-6 rounded-lg border border-border/30 bg-background/50 p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Estimated Cost</span>
-            <span className="font-mono text-lg font-bold text-amber-400">$24.50</span>
+      <div className="relative h-full rounded-2xl border border-border/40 bg-card/50 backdrop-blur-xl overflow-hidden p-8">
+        <div className="flex flex-col items-center justify-center h-full gap-6">
+          {/* Request card */}
+          <div className={`w-full max-w-sm p-6 rounded-xl border transition-all duration-500 ${
+            stage === "request" ? "border-pink-500/50 bg-pink-500/10 scale-105" : "border-border/30 bg-background/30"
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-mono text-sm text-muted-foreground">Expensive Request</span>
+              <span className="font-mono text-lg text-pink-500 font-bold">$47.00</span>
+            </div>
+            <div className="text-xs text-muted-foreground font-mono">
+              gpt-5.4 • 150k tokens • batch analysis
+            </div>
           </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Model</span>
-            <span className="font-mono text-sm">gpt-5.4</span>
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Tokens</span>
-            <span className="font-mono text-sm">~128,000</span>
-          </div>
-        </div>
 
-        {/* Status */}
-        <div className={`mb-6 rounded-lg p-4 text-center transition-colors duration-300 ${
-          stage === "approved" ? "border border-primary/30 bg-primary/10" :
-          stage === "denied" ? "border border-destructive/30 bg-destructive/10" :
-          "border border-amber-500/30 bg-amber-500/10"
-        }`}>
-          {stage === "waiting" ? (
-            <>
-              <div className="mb-2 flex items-center justify-center gap-2">
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-                <span className="font-medium text-amber-400">Awaiting Approval</span>
+          {/* Flow indicator */}
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full transition-colors duration-300 ${stage !== "request" ? "bg-primary" : "bg-border"}`} />
+            <div className={`w-12 h-0.5 transition-colors duration-300 ${stage === "pending" || stage === "approved" || stage === "executing" ? "bg-primary" : "bg-border"}`} />
+            <div className={`w-3 h-3 rounded-full transition-colors duration-300 ${stage === "approved" || stage === "executing" ? "bg-primary" : "bg-border"}`} />
+            <div className={`w-12 h-0.5 transition-colors duration-300 ${stage === "executing" ? "bg-primary" : "bg-border"}`} />
+            <div className={`w-3 h-3 rounded-full transition-colors duration-300 ${stage === "executing" ? "bg-primary" : "bg-border"}`} />
+          </div>
+
+          {/* Status */}
+          <div className={`px-6 py-3 rounded-xl border transition-all duration-500 ${
+            stage === "pending" ? "border-amber-500/50 bg-amber-500/10" :
+            stage === "approved" ? "border-primary/50 bg-primary/10" :
+            stage === "executing" ? "border-cyan-500/50 bg-cyan-500/10" :
+            "border-border/30 bg-background/30"
+          }`}>
+            <span className={`font-mono text-sm font-medium ${
+              stage === "pending" ? "text-amber-500" :
+              stage === "approved" ? "text-primary" :
+              stage === "executing" ? "text-cyan-500" :
+              "text-muted-foreground"
+            }`}>
+              {stage === "request" && "Intercepting..."}
+              {stage === "pending" && "Awaiting approval..."}
+              {stage === "approved" && "Approved by @sarah"}
+              {stage === "executing" && "Executing request"}
+            </span>
+          </div>
+
+          {/* Approval buttons (shown during pending) */}
+          {stage === "pending" && (
+            <div className="flex items-center gap-3 animate-pulse">
+              <div className="px-4 py-2 rounded-lg bg-primary/20 border border-primary/30">
+                <span className="text-sm text-primary">Approve</span>
               </div>
-              <p className="text-sm text-muted-foreground">Agent paused. Human decision required.</p>
-              <p className="mt-2 font-mono text-2xl font-bold">{countdown}s</p>
-            </>
-          ) : stage === "approved" ? (
-            <>
-              <span className="text-lg font-medium text-primary">Approved</span>
-              <p className="mt-1 text-sm text-muted-foreground">Request proceeding to provider</p>
-            </>
-          ) : (
-            <>
-              <span className="text-lg font-medium text-destructive">Denied</span>
-              <p className="mt-1 text-sm text-muted-foreground">Agent notified of rejection</p>
-            </>
+              <div className="px-4 py-2 rounded-lg bg-destructive/20 border border-destructive/30">
+                <span className="text-sm text-destructive">Reject</span>
+              </div>
+            </div>
           )}
-        </div>
-
-        {/* Action buttons (decorative) */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => setStage("approved")}
-            className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            Approve
-          </button>
-          <button
-            onClick={() => setStage("denied")}
-            className="flex-1 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            Deny
-          </button>
         </div>
       </div>
     </div>
@@ -820,28 +778,24 @@ function ApprovalVisual() {
 
 export function HumanInLoopSection() {
   return (
-    <section className="relative overflow-hidden py-24 md:py-32">
-      <div className="absolute inset-0 bg-gradient-to-b from-background via-amber-500/[0.02] to-background" />
+    <section className="relative py-32 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center_right,_var(--tw-gradient-stops))] from-pink-500/5 via-transparent to-transparent" />
       
-      <div className="relative mx-auto max-w-6xl px-6">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20">
-          {/* Visual - Left */}
-          <div className="order-2 lg:order-1 lg:pr-8">
-            <ApprovalVisual />
+      <div className="relative mx-auto max-w-7xl px-6">
+        <div className="grid items-center gap-16 lg:grid-cols-2">
+          <div className="order-2 lg:order-1">
+            <ApprovalFlowVisual />
           </div>
-
-          {/* Content */}
           <div className="order-1 lg:order-2">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              Human control
+            <div className="inline-flex items-center gap-2 rounded-full border border-pink-500/30 bg-pink-500/10 px-4 py-1.5 text-sm font-medium text-pink-500 mb-6">
+              Approval flows
             </div>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              Agents wait.
-              <span className="mt-2 block text-muted-foreground">Humans decide.</span>
+            <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+              Human in the loop.
+              <span className="block text-muted-foreground">When it matters.</span>
             </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Approval workflows for high-cost or sensitive operations. Set cost thresholds, require sign-off for certain models, or flag specific prompt patterns. The agent pauses until a human approves.
+            <p className="mt-6 text-lg leading-relaxed text-muted-foreground max-w-md">
+              Require approval for requests above a threshold. Agents pause, humans approve via Slack or dashboard, then execution continues. Full control when you need it.
             </p>
           </div>
         </div>
@@ -851,7 +805,7 @@ export function HumanInLoopSection() {
 }
 
 // ============================================================================
-// Combined export for all sections
+// MAIN EXPORT - All sections combined
 // ============================================================================
 export function FeatureSections() {
   return (
