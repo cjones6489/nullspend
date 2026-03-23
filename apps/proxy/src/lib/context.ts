@@ -1,5 +1,6 @@
 import type { AuthResult } from "./auth.js";
 import type { WebhookDispatcher } from "./webhook-dispatch.js";
+import type { StepTiming } from "./headers.js";
 
 export interface RequestContext {
   body: Record<string, unknown>;
@@ -11,6 +12,7 @@ export interface RequestContext {
   webhookDispatcher: WebhookDispatcher | null;
   resolvedApiVersion: string;
   requestStartMs: number;       // performance.now() at request entry
+  stepTiming?: StepTiming;      // per-step latency for Server-Timing header
 }
 
 export type RouteHandler = (

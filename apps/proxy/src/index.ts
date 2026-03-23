@@ -157,10 +157,6 @@ export default {
         return handleMetrics(request, env);
       }
 
-      if (url.pathname === "/health/ready") {
-        return Response.json({ status: "ok", service: "nullspend-proxy" });
-      }
-
       // Internal endpoints — separate auth pipeline (shared secret, not API key)
       if (url.pathname === "/internal/budget/invalidate" && request.method === "POST") {
         return handleBudgetInvalidation(request, env);
@@ -178,20 +174,25 @@ export default {
         return errorResponse("not_found", "Not found", 404);
       }
 
-      // Rate limit
-      const rateLimitResult = await applyRateLimit(request, env);
-      if (rateLimitResult) return rateLimitResult;
-
-      // Body parse
-      const result = await parseRequestBody(request);
-      if (result.error) return result.error;
-
-      // Auth
+      // Rate limit + auth in parallel (neither reads request body)
       const connectionString = env.HYPERDRIVE.connectionString;
-      const auth = await authenticateRequest(request, connectionString);
+      const preFlightStartMs = performance.now();
+      const [rateLimitResult, auth] = await Promise.all([
+        applyRateLimit(request, env),
+        authenticateRequest(request, connectionString),
+      ]);
+      const preFlightMs = Math.round(performance.now() - preFlightStartMs);
+
+      if (rateLimitResult) return rateLimitResult;
       if (!auth) {
         return errorResponse("unauthorized", "Invalid or missing authentication header", 401);
       }
+
+      // Body parse (sequential — budget check needs the parsed body)
+      const bodyStartMs = performance.now();
+      const result = await parseRequestBody(request);
+      const bodyParseMs = Math.round(performance.now() - bodyStartMs);
+      if (result.error) return result.error;
 
       // Build context
       const webhookDispatcher = auth.hasWebhooks
@@ -219,6 +220,7 @@ export default {
         webhookDispatcher,
         resolvedApiVersion,
         requestStartMs,
+        stepTiming: { preFlightMs, bodyParseMs },
       };
 
       const response = await handler(request, env, ctx);

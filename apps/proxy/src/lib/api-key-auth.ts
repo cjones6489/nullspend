@@ -12,8 +12,9 @@ export interface ApiKeyIdentity {
 const CONNECTION_TIMEOUT_MS = 5_000;
 const CACHE_MAX_SIZE = 256;
 const NEGATIVE_CACHE_MAX_SIZE = 2048;
-const POSITIVE_TTL_MS = 30_000; // 30s
-const NEGATIVE_TTL_MS = 30_000; // 30s
+const POSITIVE_TTL_MS = 120_000; // 120s — longer TTL reduces DB lookups; invalidated actively via /internal/budget/invalidate
+const NEGATIVE_TTL_MS = 30_000; // 30s — keep short to avoid blocking new valid keys
+const TTL_JITTER_MS = 20_000;   // ±10s jitter to prevent thundering herd on isolate recycle
 
 interface CacheEntry {
   identity: ApiKeyIdentity;
@@ -130,7 +131,7 @@ async function lookupKeyInDb(
  * Authenticate a raw API key.
  *
  * 1. Hash the key with SHA-256
- * 2. Check positive cache (valid keys, 30s TTL)
+ * 2. Check positive cache (valid keys, 120s TTL ±10s jitter)
  * 3. Check negative cache (invalid keys, 30s TTL)
  * 4. Query the database
  * 5. Populate the appropriate cache
@@ -168,7 +169,7 @@ export async function authenticateApiKey(
   if (identity) {
     positiveCache.set(keyHash, {
       identity,
-      expiresAt: now + POSITIVE_TTL_MS,
+      expiresAt: now + POSITIVE_TTL_MS + (Math.floor(Math.random() * TTL_JITTER_MS) - TTL_JITTER_MS / 2),
     });
     evictIfNeeded(positiveCache, CACHE_MAX_SIZE);
   } else {

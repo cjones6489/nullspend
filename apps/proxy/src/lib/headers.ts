@@ -59,21 +59,40 @@ export function buildClientHeaders(upstreamResponse: Response, apiVersion?: stri
 }
 
 /**
+ * Per-step latency breakdown. Populated in index.ts, passed through
+ * RequestContext, consumed here for Server-Timing header.
+ */
+export interface StepTiming {
+  preFlightMs?: number;   // parallel: rate limit + auth
+  bodyParseMs?: number;   // sequential: JSON parse
+  budgetCheckMs?: number; // sequential: DO RPC
+}
+
+/**
  * Append latency timing headers to a client response.
- * Sets `x-nullspend-overhead-ms` and W3C `Server-Timing` header.
+ * Sets `x-nullspend-overhead-ms` and W3C `Server-Timing` header
+ * with per-step breakdown when available.
  * Returns computed values so callers can emit metrics without recomputing.
  */
 export function appendTimingHeaders(
   headers: Headers,
   requestStartMs: number,
   upstreamDurationMs: number,
+  steps?: StepTiming,
 ): { totalMs: number; overheadMs: number } {
   const totalMs = Math.round(performance.now() - requestStartMs);
   const overheadMs = Math.max(0, totalMs - upstreamDurationMs);
   headers.set("x-nullspend-overhead-ms", String(overheadMs));
-  headers.set(
-    "Server-Timing",
-    `overhead;dur=${overheadMs};desc="Proxy overhead",upstream;dur=${upstreamDurationMs};desc="Provider latency",total;dur=${totalMs}`,
-  );
+
+  // Build Server-Timing with per-step breakdown
+  const parts: string[] = [];
+  if (steps?.preFlightMs != null) parts.push(`preflight;dur=${steps.preFlightMs};desc="Auth + rate limit"`);
+  if (steps?.bodyParseMs != null) parts.push(`body;dur=${steps.bodyParseMs};desc="Body parse"`);
+  if (steps?.budgetCheckMs != null) parts.push(`budget;dur=${steps.budgetCheckMs};desc="Budget check"`);
+  parts.push(`overhead;dur=${overheadMs};desc="Proxy overhead"`);
+  parts.push(`upstream;dur=${upstreamDurationMs};desc="Provider latency"`);
+  parts.push(`total;dur=${totalMs};desc="Total"`);
+  headers.set("Server-Timing", parts.join(","));
+
   return { totalMs, overheadMs };
 }

@@ -55,7 +55,9 @@ export async function handleMcpBudgetCheck(
   }
 
   try {
+    const budgetStartMs = performance.now();
     const outcome = await checkBudget(env, ctx, parsed.estimateMicrodollars);
+    if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
     if (outcome.status === "denied" && outcome.velocityDenied) {
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {

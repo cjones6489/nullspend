@@ -75,7 +75,9 @@ export async function handleChatCompletions(
   let budgetEntities: BudgetEntity[] = [];
 
   try {
+    const budgetStartMs = performance.now();
     const outcome = await checkBudget(env, ctx, estimate);
+    if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
     // Velocity denial — separate from budget exhaustion
     if (outcome.status === "denied" && outcome.velocityDenied) {
@@ -307,7 +309,7 @@ export async function handleChatCompletions(
       }
       const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
       clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
-      const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs);
+      const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs, ctx.stepTiming);
       emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
       writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs);
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "openai");
@@ -540,7 +542,7 @@ function handleStreaming(
   clientHeaders.set("cache-control", "no-cache, no-transform");
   clientHeaders.set("x-accel-buffering", "no");
   clientHeaders.set("connection", "keep-alive");
-  const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs);
+  const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs, ctx.stepTiming);
   emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: true });
   // AE data point is written at stream completion inside the waitUntil callback
   // (see resultPromise.then) — NOT here, because overhead/total at this point
@@ -659,7 +661,7 @@ async function handleNonStreaming(
     }
   }
 
-  const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs);
+  const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs, ctx.stepTiming);
   emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: false });
   writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs);
 
