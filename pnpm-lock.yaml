@@ -178,9 +178,6 @@ importers:
       postgres:
         specifier: ^3.4.7
         version: 3.4.8
-      zod:
-        specifier: ^4.3.6
-        version: 4.3.6
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.13.2

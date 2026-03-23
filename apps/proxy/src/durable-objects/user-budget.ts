@@ -185,12 +185,13 @@ export class UserBudgetDO extends DurableObject {
       INSERT OR IGNORE INTO _schema_version(version) VALUES (1);
     `);
 
-    // v2 migration: velocity limits
-    const schemaVersion = this.ctx.storage.sql.exec<{ version: number }>(
+    // Read schema version once — cascade through all applicable migrations
+    const version = this.ctx.storage.sql.exec<{ version: number }>(
       "SELECT MAX(version) as version FROM _schema_version",
     ).toArray()[0]?.version ?? 1;
 
-    if (schemaVersion < 2) {
+    // v2 migration: velocity limits
+    if (version < 2) {
       this.ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS velocity_state (
           entity_key TEXT PRIMARY KEY,
@@ -203,32 +204,20 @@ export class UserBudgetDO extends DurableObject {
           tripped_at INTEGER
         );
       `);
-
-      // ALTER TABLE ADD COLUMN throws if column exists — wrap each in try/catch
-      // for safety against partial migration re-runs
       try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN velocity_limit INTEGER"); } catch { /* already exists */ }
       try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN velocity_window INTEGER DEFAULT 60000"); } catch { /* already exists */ }
       try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN velocity_cooldown INTEGER DEFAULT 60000"); } catch { /* already exists */ }
-
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (2)");
     }
 
     // v3 migration: configurable budget thresholds
-    const v3Version = this.ctx.storage.sql.exec<{ version: number }>(
-      "SELECT MAX(version) as version FROM _schema_version",
-    ).toArray()[0]?.version ?? 1;
-
-    if (v3Version < 3) {
+    if (version < 3) {
       try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN threshold_percentages TEXT DEFAULT '[50,80,90,95]'"); } catch { /* already exists */ }
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (3)");
     }
 
     // v4 migration: session limits
-    const v4Version = this.ctx.storage.sql.exec<{ version: number }>(
-      "SELECT MAX(version) as version FROM _schema_version",
-    ).toArray()[0]?.version ?? 1;
-
-    if (v4Version < 4) {
+    if (version < 4) {
       this.ctx.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS session_spend (
           entity_key TEXT NOT NULL,

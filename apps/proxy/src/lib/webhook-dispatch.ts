@@ -50,14 +50,14 @@ export async function dispatchToEndpoints(
   endpoints: WebhookEndpointWithSecret[],
   event: AnyWebhookEvent,
 ): Promise<void> {
-  for (const endpoint of endpoints) {
-    try {
-      await dispatcher.dispatch(endpoint, event);
-    } catch (err) {
-      console.error(
-        `[webhook-dispatch] Failed to dispatch ${event.type} to ${endpoint.id}:`,
-        err,
-      );
-    }
-  }
+  await Promise.allSettled(
+    endpoints.map((endpoint) =>
+      dispatcher.dispatch(endpoint, event).catch((err) => {
+        console.error(
+          `[webhook-dispatch] Failed to dispatch ${event.type} to ${endpoint.id}:`,
+          err,
+        );
+      }),
+    ),
+  );
 }
