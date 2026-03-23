@@ -304,13 +304,18 @@ export async function handleMcpEvents(
         }
       }
 
+      let reconcileFailures = 0;
       if (budgetEntities.length > 0 && eventsWithReservations.length > 0) {
         for (const event of eventsWithReservations) {
           try {
             await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
           } catch (err) {
-            console.error("[mcp-events] Failed to reconcile reservation:", err);
+            reconcileFailures++;
+            console.error("[mcp-events] Failed to reconcile reservation:", { reservationId: event.reservationId, error: err });
           }
+        }
+        if (reconcileFailures > 0) {
+          console.error(`[mcp-events] ${reconcileFailures}/${eventsWithReservations.length} reconciliations failed — reservations will expire via alarm`);
         }
       }
 

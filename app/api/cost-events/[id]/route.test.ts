@@ -61,15 +61,15 @@ function makeRequest() {
 describe("GET /api/cost-events/[id]", () => {
   let mockSelect: ReturnType<typeof vi.fn>;
   let mockFrom: ReturnType<typeof vi.fn>;
-  let mockInnerJoin: ReturnType<typeof vi.fn>;
+  let mockLeftJoin: ReturnType<typeof vi.fn>;
   let mockWhere: ReturnType<typeof vi.fn>;
   let mockLimit: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     mockLimit = vi.fn();
     mockWhere = vi.fn(() => ({ limit: mockLimit }));
-    mockInnerJoin = vi.fn(() => ({ where: mockWhere }));
-    mockFrom = vi.fn(() => ({ innerJoin: mockInnerJoin }));
+    mockLeftJoin = vi.fn(() => ({ where: mockWhere }));
+    mockFrom = vi.fn(() => ({ leftJoin: mockLeftJoin }));
     mockSelect = vi.fn(() => ({ from: mockFrom }));
     mockedGetDb.mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof getDb>);
   });
@@ -203,17 +203,16 @@ describe("GET /api/cost-events/[id]", () => {
     expect(data.createdAt).toBe("2026-03-18T00:00:00.000Z");
   });
 
-  it("returns 404 for cost event with null apiKeyId (innerJoin excludes it)", async () => {
-    // When apiKeyId is null on the cost_events row, the INNER JOIN with
-    // api_keys produces no matching rows — the event is effectively invisible.
+  it("returns 200 for cost event with null apiKeyId (leftJoin includes it)", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
-    mockLimit.mockResolvedValue([]);
+    const row = makeCostEventRow({ apiKeyId: null, keyName: null });
+    mockLimit.mockResolvedValue([row]);
 
     const res = await GET(makeRequest(), makeContext(VALID_UUID));
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
 
     const json = await res.json();
-    expect(json.error.code).toBe("not_found");
-    expect(json.error.message).toBe("Cost event not found.");
+    expect(json.data.apiKeyId).toBeNull();
+    expect(json.data.keyName).toBeNull();
   });
 });

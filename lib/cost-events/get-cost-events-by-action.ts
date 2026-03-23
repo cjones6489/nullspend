@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
 import { getDb } from "@/lib/db/client";
@@ -30,12 +30,11 @@ export async function getCostEventsByActionId(
       keyName: apiKeys.name,
     })
     .from(costEvents)
-    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(
       and(
         eq(costEvents.actionId, actionId),
-        eq(apiKeys.userId, userId),
-        isNull(apiKeys.revokedAt),
+        eq(costEvents.userId, userId),
       ),
     )
     .orderBy(desc(costEvents.createdAt));

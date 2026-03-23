@@ -248,6 +248,10 @@ export class UserBudgetDO extends DurableObject {
     sessionId: string | null = null,
     tagEntityIds: string[] = [],
   ): Promise<CheckResult> {
+    if (estimateMicrodollars < 0 || !Number.isFinite(estimateMicrodollars)) {
+      return { status: "denied", hasBudgets: false };
+    }
+
     const reservationId = crypto.randomUUID();
     const now = Date.now();
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
@@ -54,12 +54,11 @@ export async function GET(
         keyName: apiKeys.name,
       })
       .from(costEvents)
-      .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+      .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
       .where(
         and(
           eq(costEvents.id, id),
-          eq(apiKeys.userId, userId),
-          isNull(apiKeys.revokedAt),
+          eq(costEvents.userId, userId),
         ),
       )
       .limit(1);
