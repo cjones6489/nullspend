@@ -5,7 +5,7 @@
  * - Tool calling / function calling responses
  * - Multiple choices (n > 1)
  * - Long streaming responses (100+ tokens)
- * - Health/ready endpoint (Redis connectivity)
+ * - Health/ready endpoint
  * - JSON mode responses
  * - Streaming + non-streaming cost consistency
  * - Response format edge cases
@@ -250,12 +250,11 @@ describe("Advanced proxy scenarios", () => {
   // ── Health/ready endpoint ──
 
   describe("Health and readiness", () => {
-    it("/health/ready checks Redis connectivity", async () => {
+    it("/health/ready returns 200", async () => {
       const res = await fetch(`${BASE}/health/ready`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.status).toBe("ok");
-      expect(body.redis).toBeTruthy();
     });
 
     it("/health responds faster than 500ms", async () => {

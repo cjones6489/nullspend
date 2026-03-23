@@ -92,7 +92,7 @@ describe("Anthropic resilience", () => {
     const ready = await fetch(`${BASE}/health/ready`);
     expect(ready.ok).toBe(true);
     const body = await ready.json();
-    expect(body.redis).toBe("PONG");
+    expect(body.status).toBe("ok");
   }, 30_000);
 
   it("proxy recovers after client aborts 5 streaming Anthropic requests", async () => {

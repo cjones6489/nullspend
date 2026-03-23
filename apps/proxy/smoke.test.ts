@@ -42,31 +42,13 @@ describe("proxy smoke tests", () => {
   });
 
   describe("GET /health/ready", () => {
-    it("returns 200 or 503 with valid JSON", async () => {
+    it("returns 200 with valid JSON", async () => {
       const res = await fetch(`${BASE}/health/ready`);
-      expect([200, 503]).toContain(res.status);
+      expect(res.status).toBe(200);
 
       const body = await res.json();
-      expect(body).toHaveProperty("status");
-      expect(body).toHaveProperty("redis");
-    });
-
-    it("200 response includes PONG from redis", async () => {
-      const res = await fetch(`${BASE}/health/ready`);
-      if (res.status === 200) {
-        const body = await res.json();
-        expect(body.status).toBe("ok");
-        expect(body.redis).toBe("PONG");
-      }
-    });
-
-    it("503 response indicates redis unreachable", async () => {
-      const res = await fetch(`${BASE}/health/ready`);
-      if (res.status === 503) {
-        const body = await res.json();
-        expect(body.status).toBe("error");
-        expect(body.redis).toBe("unreachable");
-      }
+      expect(body.status).toBe("ok");
+      expect(body.service).toBe("nullspend-proxy");
     });
   });
 
