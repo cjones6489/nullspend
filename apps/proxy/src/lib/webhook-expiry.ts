@@ -1,9 +1,6 @@
-import { Client } from "pg";
-import { withDbConnection } from "./db-semaphore.js";
+import { getSql } from "./db.js";
 import { SECRET_ROTATION_WINDOW_SECONDS } from "./webhook-signer.js";
 import type { WebhookEndpointWithSecret } from "./webhook-cache.js";
-
-const CONNECTION_TIMEOUT_MS = 5_000;
 
 /**
  * Lazy-expire rotated secrets that are past the 24h window.
@@ -23,32 +20,11 @@ export async function expireRotatedSecrets(
 
   if (expiredIds.length === 0) return;
 
-  await withDbConnection(async () => {
-    let client: Client | null = null;
-    try {
-      client = new Client({
-        connectionString,
-        connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-      });
-      client.on("error", (err) => {
-        console.error("[webhook-expiry] pg client error:", err.message);
-      });
-      await client.connect();
+  const sql = getSql(connectionString);
 
-      await client.query(
-        `UPDATE webhook_endpoints
-         SET previous_signing_secret = NULL, secret_rotated_at = NULL
-         WHERE id = ANY($1) AND secret_rotated_at < NOW() - INTERVAL '24 hours'`,
-        [expiredIds],
-      );
-    } finally {
-      if (client) {
-        try {
-          await client.end();
-        } catch {
-          // already closed
-        }
-      }
-    }
-  });
+  await sql`
+    UPDATE webhook_endpoints
+    SET previous_signing_secret = NULL, secret_rotated_at = NULL
+    WHERE id = ANY(${expiredIds}) AND secret_rotated_at < NOW() - INTERVAL '24 hours'
+  `;
 }

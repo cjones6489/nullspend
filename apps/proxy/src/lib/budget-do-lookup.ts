@@ -1,10 +1,6 @@
-import { Client } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, inArray, getTableColumns } from "drizzle-orm";
 import { budgets } from "@nullspend/db";
-import { withDbConnection } from "./db-semaphore.js";
-
-const CONNECTION_TIMEOUT_MS = 5_000;
+import { getDb } from "./db.js";
 
 export interface BudgetEntity {
   entityKey: string;
@@ -34,6 +30,7 @@ export interface DOBudgetEntity {
 
 /**
  * Query Postgres directly for budget entities with all DO-required fields.
+ * Uses the shared postgres.js pool via getDb() with Drizzle ORM.
  * Throws on error (caller decides fail mode).
  */
 export async function lookupBudgetsForDO(
@@ -54,97 +51,78 @@ export async function lookupBudgetsForDO(
 
   const result: DOBudgetEntity[] = [];
 
-  await withDbConnection(async () => {
-    let client: Client | null = null;
-    try {
-      client = new Client({
-        connectionString,
-        connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-      });
-      client.on("error", (err) => {
-        console.error("[budget-do-lookup] pg client error:", err.message);
-      });
-      await client.connect();
-      const db = drizzle({ client });
+  try {
+    const db = getDb(connectionString);
 
-      for (const entity of entities) {
-        const rows = await db
-          .select(getTableColumns(budgets))
-          .from(budgets)
-          .where(
-            and(
-              eq(budgets.entityType, entity.type),
-              eq(budgets.entityId, entity.id),
-            ),
-          );
+    for (const entity of entities) {
+      const rows = await db
+        .select(getTableColumns(budgets))
+        .from(budgets)
+        .where(
+          and(
+            eq(budgets.entityType, entity.type),
+            eq(budgets.entityId, entity.id),
+          ),
+        );
 
-        if (rows.length > 0) {
-          const row = rows[0];
-          result.push({
-            entityType: entity.type,
-            entityId: entity.id,
-            maxBudget: row.maxBudgetMicrodollars,
-            spend: row.spendMicrodollars,
-            policy: row.policy,
-            resetInterval: row.resetInterval ?? null,
-            periodStart: row.currentPeriodStart?.getTime() ?? 0,
-            velocityLimit: row.velocityLimitMicrodollars ?? null,
-            velocityWindow: (row.velocityWindowSeconds ?? 60) * 1000,
-            velocityCooldown: (row.velocityCooldownSeconds ?? 60) * 1000,
-            thresholdPercentages: row.thresholdPercentages ?? [50, 80, 90, 95],
-            sessionLimit: row.sessionLimitMicrodollars ?? null,
-          });
-        }
-      }
-
-      // Tag budget lookup: query by user_id + entity_type='tag' + entity_id IN (tag keys)
-      const tags = identity.tags;
-      if (Object.keys(tags).length > 0 && userId) {
-        const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
-        const tagRows = await db
-          .select(getTableColumns(budgets))
-          .from(budgets)
-          .where(
-            and(
-              eq(budgets.userId, userId),
-              eq(budgets.entityType, "tag"),
-              inArray(budgets.entityId, tagEntityIds),
-            ),
-          );
-
-        for (const row of tagRows) {
-          result.push({
-            entityType: "tag",
-            entityId: row.entityId,
-            maxBudget: row.maxBudgetMicrodollars,
-            spend: row.spendMicrodollars,
-            policy: row.policy,
-            resetInterval: row.resetInterval ?? null,
-            periodStart: row.currentPeriodStart?.getTime() ?? 0,
-            velocityLimit: row.velocityLimitMicrodollars ?? null,
-            velocityWindow: (row.velocityWindowSeconds ?? 60) * 1000,
-            velocityCooldown: (row.velocityCooldownSeconds ?? 60) * 1000,
-            thresholdPercentages: row.thresholdPercentages ?? [50, 80, 90, 95],
-            sessionLimit: row.sessionLimitMicrodollars ?? null,
-          });
-        }
-      }
-    } catch (err) {
-      console.error(
-        "[budget-do-lookup] Postgres lookup failed:",
-        err instanceof Error ? err.message : "Unknown error",
-      );
-      throw err;
-    } finally {
-      if (client) {
-        try {
-          await client.end();
-        } catch {
-          // already closed
-        }
+      if (rows.length > 0) {
+        const row = rows[0];
+        result.push({
+          entityType: entity.type,
+          entityId: entity.id,
+          maxBudget: row.maxBudgetMicrodollars,
+          spend: row.spendMicrodollars,
+          policy: row.policy,
+          resetInterval: row.resetInterval ?? null,
+          periodStart: row.currentPeriodStart?.getTime() ?? 0,
+          velocityLimit: row.velocityLimitMicrodollars ?? null,
+          velocityWindow: (row.velocityWindowSeconds ?? 60) * 1000,
+          velocityCooldown: (row.velocityCooldownSeconds ?? 60) * 1000,
+          thresholdPercentages: row.thresholdPercentages ?? [50, 80, 90, 95],
+          sessionLimit: row.sessionLimitMicrodollars ?? null,
+        });
       }
     }
-  });
+
+    // Tag budget lookup: query by user_id + entity_type='tag' + entity_id IN (tag keys)
+    const tags = identity.tags;
+    if (Object.keys(tags).length > 0 && userId) {
+      const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
+      const tagRows = await db
+        .select(getTableColumns(budgets))
+        .from(budgets)
+        .where(
+          and(
+            eq(budgets.userId, userId),
+            eq(budgets.entityType, "tag"),
+            inArray(budgets.entityId, tagEntityIds),
+          ),
+        );
+
+      for (const row of tagRows) {
+        result.push({
+          entityType: "tag",
+          entityId: row.entityId,
+          maxBudget: row.maxBudgetMicrodollars,
+          spend: row.spendMicrodollars,
+          policy: row.policy,
+          resetInterval: row.resetInterval ?? null,
+          periodStart: row.currentPeriodStart?.getTime() ?? 0,
+          velocityLimit: row.velocityLimitMicrodollars ?? null,
+          velocityWindow: (row.velocityWindowSeconds ?? 60) * 1000,
+          velocityCooldown: (row.velocityCooldownSeconds ?? 60) * 1000,
+          thresholdPercentages: row.thresholdPercentages ?? [50, 80, 90, 95],
+          sessionLimit: row.sessionLimitMicrodollars ?? null,
+        });
+      }
+    }
+  } catch (err) {
+    console.error(
+      "[budget-do-lookup] Postgres lookup failed:",
+      err instanceof Error ? err.message : "Unknown error",
+    );
+    throw err;
+  }
 
   return result;
 }

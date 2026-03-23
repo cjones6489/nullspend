@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 
 /**
  * Module-level postgres.js instance.
@@ -35,4 +36,12 @@ export function getSql(connectionString: string): ReturnType<typeof postgres> {
   _connStr = connectionString;
 
   return _sql;
+}
+
+/**
+ * Get a Drizzle ORM instance backed by the shared postgres.js pool.
+ * Used by budget-spend, budget-do-lookup, and cost-logger for type-safe queries.
+ */
+export function getDb(connectionString: string) {
+  return drizzle(getSql(connectionString));
 }

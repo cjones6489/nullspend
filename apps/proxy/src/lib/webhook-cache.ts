@@ -1,5 +1,4 @@
-import { Client } from "pg";
-import { withDbConnection } from "./db-semaphore.js";
+import { getSql } from "./db.js";
 import {
   getCachedWebhookEndpoints,
   setCachedWebhookEndpoints,
@@ -8,8 +7,6 @@ import {
 } from "./cache-kv.js";
 
 export type { CachedWebhookEndpoint } from "./cache-kv.js";
-
-const CONNECTION_TIMEOUT_MS = 5_000;
 
 /**
  * Full endpoint data including signing secret.
@@ -43,7 +40,7 @@ export async function getWebhookEndpoints(
 
   let endpoints: WebhookEndpointWithSecret[];
   try {
-    endpoints = await withDbConnection(() => queryActiveEndpoints(connectionString, userId));
+    endpoints = await queryActiveEndpoints(connectionString, userId);
   } catch (err) {
     console.error("[webhook-cache:kv] DB query error:", err);
     return []; // Fail-open
@@ -74,7 +71,7 @@ export async function getWebhookEndpointsWithSecrets(
   userId: string,
 ): Promise<WebhookEndpointWithSecret[]> {
   try {
-    return await withDbConnection(() => queryActiveEndpoints(connectionString, userId));
+    return await queryActiveEndpoints(connectionString, userId);
   } catch (err) {
     console.error("[webhook-cache] DB query error (secrets):", err);
     return []; // Fail-open
@@ -100,42 +97,22 @@ async function queryActiveEndpoints(
   connectionString: string,
   userId: string,
 ): Promise<WebhookEndpointWithSecret[]> {
-  let client: Client | null = null;
-  try {
-    client = new Client({
-      connectionString,
-      connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-    });
-    client.on("error", (err) => {
-      console.error("[webhook-cache] pg client error:", err.message);
-    });
-    await client.connect();
+  const sql = getSql(connectionString);
 
-    // payload_mode added in migration 0030 — rollback requires code revert first
-    const result = await client.query(
-      `SELECT id, url, signing_secret, previous_signing_secret, secret_rotated_at, event_types, api_version, payload_mode
-       FROM webhook_endpoints
-       WHERE user_id = $1 AND enabled = true`,
-      [userId],
-    );
+  const rows = await sql`
+    SELECT id, url, signing_secret, previous_signing_secret, secret_rotated_at, event_types, api_version, payload_mode
+    FROM webhook_endpoints
+    WHERE user_id = ${userId} AND enabled = true
+  `;
 
-    return result.rows.map((row) => ({
-      id: row.id as string,
-      url: row.url as string,
-      signingSecret: row.signing_secret as string,
-      previousSigningSecret: (row.previous_signing_secret as string) ?? null,
-      secretRotatedAt: row.secret_rotated_at ? (row.secret_rotated_at as Date).toISOString() : null,
-      eventTypes: (row.event_types as string[]) ?? [],
-      apiVersion: (row.api_version as string) ?? "2026-04-01",
-      payloadMode: ((row.payload_mode as string) ?? "full") as "full" | "thin",
-    }));
-  } finally {
-    if (client) {
-      try {
-        await client.end();
-      } catch {
-        // already closed
-      }
-    }
-  }
+  return rows.map((row) => ({
+    id: row.id as string,
+    url: row.url as string,
+    signingSecret: row.signing_secret as string,
+    previousSigningSecret: (row.previous_signing_secret as string) ?? null,
+    secretRotatedAt: row.secret_rotated_at ? new Date(row.secret_rotated_at as string).toISOString() : null,
+    eventTypes: (row.event_types as string[]) ?? [],
+    apiVersion: (row.api_version as string) ?? "2026-04-01",
+    payloadMode: ((row.payload_mode as string) ?? "full") as "full" | "thin",
+  }));
 }
