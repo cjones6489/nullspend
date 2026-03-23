@@ -9,10 +9,6 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../lib/db-semaphore.js", () => ({
-  withDbConnection: <T>(fn: () => Promise<T>) => fn(),
-}));
-
 import { isLocalConnection } from "../lib/cost-logger.js";
 
 function makeCostEvent(overrides: Record<string, unknown> = {}) {

@@ -1,21 +1,13 @@
 /**
  * Budget Spend Unit Tests
  *
- * Tests updateBudgetSpend in isolation with mocked pg Client and Drizzle.
- * Validates defensive behavior: never throws, early returns on zero/negative
- * cost or empty entities, local dev bypass, and Postgres client cleanup.
+ * Tests updateBudgetSpend and resetBudgetPeriod with mocked Drizzle.
+ * Validates defensive behavior: early returns on zero/negative cost or
+ * empty entities, local dev bypass, transaction ordering, and error handling.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const {
-  mockConnect,
-  mockEnd,
-  mockOn,
-  mockUpdateSet,
-} = vi.hoisted(() => ({
-  mockConnect: vi.fn(),
-  mockEnd: vi.fn(),
-  mockOn: vi.fn(),
+const { mockUpdateSet } = vi.hoisted(() => ({
   mockUpdateSet: vi.fn(),
 }));
 
@@ -30,20 +22,8 @@ const mockDrizzleDb = {
   }),
 };
 
-vi.mock("pg", () => {
-  return {
-    Client: function MockClient() {
-      return { connect: mockConnect, end: mockEnd, on: mockOn };
-    },
-  };
-});
-
-vi.mock("../lib/db-semaphore.js", () => ({
-  withDbConnection: <T>(fn: () => Promise<T>) => fn(),
-}));
-
-vi.mock("drizzle-orm/node-postgres", () => ({
-  drizzle: vi.fn(() => mockDrizzleDb),
+vi.mock("../lib/db.js", () => ({
+  getDb: () => mockDrizzleDb,
 }));
 
 vi.mock("drizzle-orm", () => {
@@ -72,8 +52,6 @@ const REMOTE_CONN = "postgresql://postgres:postgres@db.example.com:5432/postgres
 describe("updateBudgetSpend", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockConnect.mockResolvedValue(undefined);
-    mockEnd.mockResolvedValue(undefined);
     mockUpdateWhere.mockResolvedValue(undefined);
   });
 
@@ -83,7 +61,7 @@ describe("updateBudgetSpend", () => {
       [{ entityType: "api_key", entityId: "key-1" }],
       0,
     );
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockDrizzleDb.update).not.toHaveBeenCalled();
   });
 
   it("early returns when actualCostMicrodollars is negative", async () => {
@@ -92,12 +70,12 @@ describe("updateBudgetSpend", () => {
       [{ entityType: "api_key", entityId: "key-1" }],
       -100,
     );
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockDrizzleDb.update).not.toHaveBeenCalled();
   });
 
   it("early returns when entities array is empty", async () => {
     await updateBudgetSpend(REMOTE_CONN, [], 500_000);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockDrizzleDb.update).not.toHaveBeenCalled();
   });
 
   it("skips DB write when __SKIP_DB_PERSIST is set", async () => {
@@ -108,7 +86,7 @@ describe("updateBudgetSpend", () => {
       [{ entityType: "api_key", entityId: "key-1" }],
       500_000,
     );
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockDrizzleDb.update).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("[budget-spend]"),
       expect.anything(),
@@ -122,7 +100,7 @@ describe("updateBudgetSpend", () => {
       [{ entityType: "user", entityId: "user-1" }],
       100_000,
     );
-    expect(mockConnect).toHaveBeenCalled();
+    expect(mockDrizzleDb.transaction).toHaveBeenCalled();
   });
 
   it("force persists when __FORCE_DB_PERSIST overrides __SKIP_DB_PERSIST", async () => {
@@ -133,7 +111,7 @@ describe("updateBudgetSpend", () => {
       [{ entityType: "api_key", entityId: "key-1" }],
       500_000,
     );
-    expect(mockConnect).toHaveBeenCalled();
+    expect(mockDrizzleDb.transaction).toHaveBeenCalled();
     delete (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST;
     delete (globalThis as Record<string, unknown>).__FORCE_DB_PERSIST;
   });
@@ -148,21 +126,7 @@ describe("updateBudgetSpend", () => {
       500_000,
     );
 
-    expect(mockConnect).toHaveBeenCalledTimes(1);
     expect(mockDrizzleDb.update).toHaveBeenCalledTimes(2);
-    expect(mockEnd).toHaveBeenCalled();
-  });
-
-  it("throws when Postgres connect fails (for retry by caller)", async () => {
-    mockConnect.mockRejectedValueOnce(new Error("ECONNREFUSED"));
-
-    await expect(
-      updateBudgetSpend(
-        REMOTE_CONN,
-        [{ entityType: "api_key", entityId: "key-1" }],
-        500_000,
-      ),
-    ).rejects.toThrow("ECONNREFUSED");
   });
 
   it("throws when Drizzle update fails (for retry by caller)", async () => {
@@ -177,22 +141,7 @@ describe("updateBudgetSpend", () => {
     ).rejects.toThrow("relation does not exist");
   });
 
-  it("closes Postgres client in finally even on error", async () => {
-    mockUpdateWhere.mockRejectedValueOnce(new Error("boom"));
-
-    await expect(
-      updateBudgetSpend(
-        REMOTE_CONN,
-        [{ entityType: "api_key", entityId: "key-1" }],
-        500_000,
-      ),
-    ).rejects.toThrow("boom");
-
-    expect(mockEnd).toHaveBeenCalled();
-  });
-
   it("sorts entities by (entityType, entityId) before transaction", async () => {
-    // Pass entities in reverse order
     await updateBudgetSpend(
       REMOTE_CONN,
       [
@@ -204,12 +153,7 @@ describe("updateBudgetSpend", () => {
     );
 
     expect(mockDrizzleDb.update).toHaveBeenCalledTimes(3);
-    // Verify the where() calls are in sorted order: api_key:key-1, api_key:key-2, user:user-1
     const whereCalls = mockUpdateWhere.mock.calls;
-    // The mock eq returns the second arg, and `and` returns all args as array
-    // eq(budgets.entityType, entity.entityType) returns entity.entityType
-    // eq(budgets.entityId, entity.entityId) returns entity.entityId
-    // and(type, id) returns [type, id]
     expect(whereCalls[0][0]).toEqual(["api_key", "key-1"]);
     expect(whereCalls[1][0]).toEqual(["api_key", "key-2"]);
     expect(whereCalls[2][0]).toEqual(["user", "user-1"]);
@@ -219,14 +163,12 @@ describe("updateBudgetSpend", () => {
 describe("resetBudgetPeriod", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockConnect.mockResolvedValue(undefined);
-    mockEnd.mockResolvedValue(undefined);
     mockUpdateWhere.mockResolvedValue(undefined);
   });
 
   it("early returns on empty array", async () => {
     await resetBudgetPeriod(REMOTE_CONN, []);
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockDrizzleDb.update).not.toHaveBeenCalled();
   });
 
   it("sets spend=0 and currentPeriodStart for each entity", async () => {
@@ -235,14 +177,12 @@ describe("resetBudgetPeriod", () => {
       { entityType: "api_key", entityId: "key-1", newPeriodStart: 1_710_000_000_000 },
     ]);
 
-    expect(mockConnect).toHaveBeenCalledTimes(1);
     expect(mockDrizzleDb.update).toHaveBeenCalledTimes(2);
-    expect(mockEnd).toHaveBeenCalled();
   });
 
   it("never throws on Postgres error", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    mockConnect.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    mockDrizzleDb.transaction.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 
     await expect(
       resetBudgetPeriod(REMOTE_CONN, [
@@ -254,6 +194,11 @@ describe("resetBudgetPeriod", () => {
       expect.stringContaining("[budget-spend]"),
       expect.any(String),
     );
+
+    // Restore transaction mock for subsequent tests
+    mockDrizzleDb.transaction.mockImplementation(async (cb: (tx: any) => Promise<void>) => {
+      await cb(mockDrizzleDb);
+    });
   });
 
   it("skips on local connection", async () => {
@@ -265,7 +210,7 @@ describe("resetBudgetPeriod", () => {
       [{ entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 }],
     );
 
-    expect(mockConnect).not.toHaveBeenCalled();
+    expect(mockDrizzleDb.update).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("[budget-spend]"),
       expect.anything(),
@@ -282,8 +227,6 @@ describe("resetBudgetPeriod", () => {
     ]);
 
     expect(mockDrizzleDb.update).toHaveBeenCalledTimes(3);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
-    expect(mockEnd).toHaveBeenCalledTimes(1);
   });
 
   it("sorts entities before transaction to prevent deadlocks", async () => {

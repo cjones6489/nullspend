@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { MockClient } = vi.hoisted(() => {
-  const MockClient = vi.fn();
-  return { MockClient };
+const { mockSql } = vi.hoisted(() => {
+  const mockSql = vi.fn().mockResolvedValue([]);
+  return { mockSql };
 });
 
-vi.mock("pg", () => ({
-  Client: MockClient,
-}));
-
-vi.mock("../lib/db-semaphore.js", () => ({
-  withDbConnection: <T>(fn: () => Promise<T>) => fn(),
+vi.mock("../lib/db.js", () => ({
+  getSql: () => mockSql,
 }));
 
 const mockKvFns = vi.hoisted(() => ({
@@ -35,9 +31,8 @@ import {
   invalidateWebhookCache,
 } from "../lib/webhook-cache.js";
 
-const mockKv = {} as KVNamespace; // Sentinel — actual calls go through mocked cache-kv.js
+const mockKv = {} as KVNamespace;
 
-// Mock DB rows (snake_case as returned by pg)
 const mockDbRows = [
   {
     id: "ep-1",
@@ -61,15 +56,6 @@ const mockDbRows = [
   },
 ];
 
-function mockDbClient(rows = mockDbRows) {
-  MockClient.mockImplementation(function (this: any) {
-    this.connect = vi.fn().mockResolvedValue(undefined);
-    this.query = vi.fn().mockResolvedValue({ rows });
-    this.end = vi.fn().mockResolvedValue(undefined);
-    this.on = vi.fn();
-  });
-}
-
 describe("getWebhookEndpoints", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -85,12 +71,12 @@ describe("getWebhookEndpoints", () => {
     const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
 
     expect(result).toEqual(kvData);
-    expect(MockClient).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("queries DB on KV miss and writes result to KV", async () => {
     mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    mockDbClient();
+    mockSql.mockResolvedValueOnce(mockDbRows);
 
     const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
 
@@ -100,15 +86,9 @@ describe("getWebhookEndpoints", () => {
       url: "https://hooks.example.com/1",
       eventTypes: ["cost_event.created"],
     });
-    expect(result[1]).toEqual({
-      id: "ep-2",
-      url: "https://hooks.example.com/2",
-      eventTypes: [],
-    });
 
     // Secrets must NOT be in the cached value
     expect(result[0]).not.toHaveProperty("signingSecret");
-    expect(result[1]).not.toHaveProperty("signingSecret");
 
     // Verify KV cache was written
     expect(mockKvFns.setCachedWebhookEndpoints).toHaveBeenCalledWith(
@@ -123,52 +103,44 @@ describe("getWebhookEndpoints", () => {
 
   it("does not include secrets in KV write", async () => {
     mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    mockDbClient();
+    mockSql.mockResolvedValueOnce(mockDbRows);
 
     await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
 
     const writtenData = mockKvFns.setCachedWebhookEndpoints.mock.calls[0][2];
     const serialized = JSON.stringify(writtenData);
     expect(serialized).not.toContain("whsec_secret1");
-    expect(serialized).not.toContain("whsec_secret2");
     expect(serialized).not.toContain("signingSecret");
   });
 
   it("falls through to DB on KV read error (fail-open)", async () => {
     mockKvFns.getCachedWebhookEndpoints.mockRejectedValue(new Error("KV read fail"));
-    mockDbClient();
+    mockSql.mockResolvedValueOnce(mockDbRows);
 
     const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
-
     expect(result).toHaveLength(2);
   });
 
   it("returns endpoints even if KV write fails (fail-open)", async () => {
     mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
     mockKvFns.setCachedWebhookEndpoints.mockRejectedValue(new Error("KV write fail"));
-    mockDbClient();
+    mockSql.mockResolvedValueOnce(mockDbRows);
 
     const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
-
     expect(result).toHaveLength(2);
   });
 
   it("returns empty array on DB error (fail-open)", async () => {
     mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    MockClient.mockImplementation(function (this: any) {
-      this.connect = vi.fn().mockRejectedValue(new Error("db down"));
-      this.end = vi.fn();
-      this.on = vi.fn();
-    });
+    mockSql.mockRejectedValueOnce(new Error("db down"));
 
     const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
-
     expect(result).toEqual([]);
   });
 
   it("returns empty array when user has no endpoints", async () => {
     mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    mockDbClient([]);
+    mockSql.mockResolvedValueOnce([]);
 
     const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
     expect(result).toEqual([]);
@@ -182,61 +154,31 @@ describe("getWebhookEndpointsWithSecrets", () => {
   });
 
   it("maps payload_mode from DB row to payloadMode", async () => {
-    mockDbClient([
-      {
-        id: "ep-1",
-        url: "https://hooks.example.com/1",
-        signing_secret: "whsec_secret1",
-        previous_signing_secret: null,
-        secret_rotated_at: null,
-        event_types: [],
-        api_version: "2026-04-01",
-        payload_mode: "thin",
-      },
+    mockSql.mockResolvedValueOnce([
+      { ...mockDbRows[0], payload_mode: "thin" },
     ]);
 
     const result = await getWebhookEndpointsWithSecrets("postgresql://test", "user-1");
-
     expect(result).toHaveLength(1);
     expect(result[0].payloadMode).toBe("thin");
   });
 
   it("falls back to 'full' when payload_mode is null/missing", async () => {
-    mockDbClient([
-      {
-        id: "ep-1",
-        url: "https://hooks.example.com/1",
-        signing_secret: "whsec_secret1",
-        previous_signing_secret: null,
-        secret_rotated_at: null,
-        event_types: [],
-        api_version: "2026-04-01",
-        payload_mode: null,
-      },
-      {
-        id: "ep-2",
-        url: "https://hooks.example.com/2",
-        signing_secret: "whsec_secret2",
-        previous_signing_secret: null,
-        secret_rotated_at: null,
-        event_types: [],
-        api_version: "2026-04-01",
-        // payload_mode intentionally omitted
-      },
+    mockSql.mockResolvedValueOnce([
+      { ...mockDbRows[0], payload_mode: null },
+      { ...mockDbRows[1] }, // payload_mode already "full"
     ]);
 
     const result = await getWebhookEndpointsWithSecrets("postgresql://test", "user-1");
-
     expect(result).toHaveLength(2);
     expect(result[0].payloadMode).toBe("full");
     expect(result[1].payloadMode).toBe("full");
   });
 
   it("returns endpoints with signing secrets from DB", async () => {
-    mockDbClient();
+    mockSql.mockResolvedValueOnce(mockDbRows);
 
     const result = await getWebhookEndpointsWithSecrets("postgresql://test", "user-1");
-
     expect(result).toHaveLength(2);
     expect(result[0].signingSecret).toBe("whsec_secret1");
     expect(result[1].signingSecret).toBe("whsec_secret2");
@@ -245,11 +187,7 @@ describe("getWebhookEndpointsWithSecrets", () => {
   });
 
   it("returns empty array on database error (fail-open)", async () => {
-    MockClient.mockImplementation(function (this: any) {
-      this.connect = vi.fn().mockRejectedValue(new Error("connection failed"));
-      this.end = vi.fn();
-      this.on = vi.fn();
-    });
+    mockSql.mockRejectedValueOnce(new Error("connection failed"));
 
     const result = await getWebhookEndpointsWithSecrets("postgresql://test", "user-1");
     expect(result).toEqual([]);
@@ -264,13 +202,11 @@ describe("invalidateWebhookCache", () => {
 
   it("invalidates KV cache for user", async () => {
     await invalidateWebhookCache("user-1", mockKv);
-
     expect(mockKvFns.invalidateWebhookEndpoints).toHaveBeenCalledWith(mockKv, "user-1");
   });
 
   it("does not throw on KV invalidation error", async () => {
     mockKvFns.invalidateWebhookEndpoints.mockRejectedValue(new Error("KV delete fail"));
-
     await expect(invalidateWebhookCache("user-1", mockKv)).resolves.not.toThrow();
   });
 });

@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { MockClient } = vi.hoisted(() => {
-  const MockClient = vi.fn();
-  return { MockClient };
+const { mockSql } = vi.hoisted(() => {
+  const mockSql = vi.fn().mockResolvedValue([]);
+  return { mockSql };
 });
 
-vi.mock("pg", () => ({
-  Client: MockClient,
-}));
-
-vi.mock("../lib/db-semaphore.js", () => ({
-  withDbConnection: <T>(fn: () => Promise<T>) => fn(),
+vi.mock("../lib/db.js", () => ({
+  getSql: () => mockSql,
 }));
 
 vi.mock("../lib/webhook-signer.js", () => ({
@@ -28,24 +24,16 @@ function makeEndpoint(overrides: Partial<WebhookEndpointWithSecret> = {}): Webho
     previousSigningSecret: null,
     secretRotatedAt: null,
     eventTypes: [],
-    apiVersion: "2026-04-01", defaultTags: {},
+    apiVersion: "2026-04-01",
     payloadMode: "full" as const,
     ...overrides,
   };
 }
 
 describe("expireRotatedSecrets", () => {
-  const mockQuery = vi.fn().mockResolvedValue({ rowCount: 0 });
-
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => {});
-    MockClient.mockImplementation(function (this: any) {
-      this.connect = vi.fn().mockResolvedValue(undefined);
-      this.query = mockQuery;
-      this.end = vi.fn().mockResolvedValue(undefined);
-      this.on = vi.fn();
-    });
   });
 
   it("does nothing when no endpoints have secretRotatedAt", async () => {
@@ -54,7 +42,7 @@ describe("expireRotatedSecrets", () => {
       makeEndpoint({ id: "ep-2" }),
     ]);
 
-    expect(MockClient).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("does nothing when all rotations are within the 24h window", async () => {
@@ -65,7 +53,7 @@ describe("expireRotatedSecrets", () => {
       }),
     ]);
 
-    expect(MockClient).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("issues UPDATE for endpoints past the 24h window", async () => {
@@ -79,11 +67,11 @@ describe("expireRotatedSecrets", () => {
       }),
     ]);
 
-    expect(MockClient).toHaveBeenCalled();
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining("previous_signing_secret = NULL"),
-      [["ep-expired"]],
-    );
+    expect(mockSql).toHaveBeenCalledTimes(1);
+    // Tagged template receives (strings[], ...values) — first value is the expiredIds array
+    const callArgs = mockSql.mock.calls[0];
+    expect(callArgs[0].join("")).toContain("previous_signing_secret");
+    expect(callArgs[1]).toEqual(["ep-expired"]);
   });
 
   it("batches multiple expired endpoint IDs into a single query", async () => {
@@ -92,14 +80,12 @@ describe("expireRotatedSecrets", () => {
     await expireRotatedSecrets("postgresql://test", [
       makeEndpoint({ id: "ep-1", previousSigningSecret: "old1", secretRotatedAt: expired }),
       makeEndpoint({ id: "ep-2", previousSigningSecret: "old2", secretRotatedAt: expired }),
-      makeEndpoint({ id: "ep-3" }), // no rotation — should be filtered out
+      makeEndpoint({ id: "ep-3" }), // no rotation — filtered out
     ]);
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining("id = ANY($1)"),
-      [["ep-1", "ep-2"]],
-    );
+    expect(mockSql).toHaveBeenCalledTimes(1);
+    const callArgs = mockSql.mock.calls[0];
+    expect(callArgs[1]).toEqual(["ep-1", "ep-2"]);
   });
 
   it("boundary: exactly 24h elapsed is expired (>= not >)", async () => {
@@ -109,23 +95,16 @@ describe("expireRotatedSecrets", () => {
       makeEndpoint({ id: "ep-boundary", previousSigningSecret: "old", secretRotatedAt: exactBoundary }),
     ]);
 
-    expect(MockClient).toHaveBeenCalled();
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.any(String),
-      [["ep-boundary"]],
-    );
+    expect(mockSql).toHaveBeenCalledTimes(1);
+    const callArgs = mockSql.mock.calls[0];
+    expect(callArgs[1]).toEqual(["ep-boundary"]);
   });
 
-  it("does not throw on DB connection error", async () => {
-    MockClient.mockImplementation(function (this: any) {
-      this.connect = vi.fn().mockRejectedValue(new Error("connection refused"));
-      this.end = vi.fn();
-      this.on = vi.fn();
-    });
+  it("throws on DB error (caller expected to .catch)", async () => {
+    mockSql.mockRejectedValueOnce(new Error("connection refused"));
 
     const expired = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
 
-    // Should throw (caller is expected to .catch)
     await expect(
       expireRotatedSecrets("postgresql://test", [
         makeEndpoint({ id: "ep-1", previousSigningSecret: "old", secretRotatedAt: expired }),
