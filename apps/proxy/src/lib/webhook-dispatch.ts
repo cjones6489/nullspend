@@ -1,28 +1,23 @@
-import { Client as QStashClient } from "@upstash/qstash";
-import { dualSignWebhookPayload, SECRET_ROTATION_WINDOW_SECONDS } from "./webhook-signer.js";
+import { enqueueWebhook } from "./webhook-queue.js";
 import type { WebhookEndpointWithSecret } from "./webhook-cache.js";
 import type { AnyWebhookEvent } from "./webhook-events.js";
-
-function isWithinRotationWindow(rotatedAt: string | null): boolean {
-  if (!rotatedAt) return false;
-  const elapsed = Date.now() - new Date(rotatedAt).getTime();
-  return elapsed < SECRET_ROTATION_WINDOW_SECONDS * 1000;
-}
 
 export interface WebhookDispatcher {
   dispatch(endpoint: WebhookEndpointWithSecret, event: AnyWebhookEvent): Promise<void>;
 }
 
 /**
- * Create a webhook dispatcher backed by QStash.
- * Returns null if QSTASH_TOKEN is not configured.
+ * Create a webhook dispatcher backed by Cloudflare Queue.
+ * Returns null if the WEBHOOK_QUEUE binding is not configured.
+ *
+ * The dispatcher enqueues a thin message (userId, endpointId, event).
+ * The queue consumer handles signing, delivery, and retries.
  */
 export function createWebhookDispatcher(
-  qstashToken: string | undefined,
+  queue: Queue | undefined,
+  userId: string,
 ): WebhookDispatcher | null {
-  if (!qstashToken) return null;
-
-  const qstash = new QStashClient({ token: qstashToken });
+  if (!queue) return null;
 
   return {
     async dispatch(
@@ -37,25 +32,10 @@ export function createWebhookDispatcher(
         return;
       }
 
-      const payload = JSON.stringify(event);
-      const timestamp = Math.floor(Date.now() / 1000);
-      const signature = await dualSignWebhookPayload(
-        payload,
-        endpoint.signingSecret,
-        isWithinRotationWindow(endpoint.secretRotatedAt) ? endpoint.previousSigningSecret : null,
-        timestamp,
-      );
-
-      await qstash.publishJSON({
-        url: endpoint.url,
-        body: event,
-        headers: {
-          "X-NullSpend-Signature": signature,
-          "X-NullSpend-Webhook-Id": event.id,
-          "X-NullSpend-Webhook-Timestamp": String(timestamp),
-          "User-Agent": "NullSpend-Webhooks/1.0",
-        },
-        retries: 5,
+      await enqueueWebhook(queue, {
+        userId,
+        endpointId: endpoint.id,
+        event,
       });
     },
   };

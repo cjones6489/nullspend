@@ -14,8 +14,11 @@ import { handleReconciliationQueue } from "./queue-handler.js";
 import { handleDlqQueue, DLQ_QUEUE_NAME } from "./dlq-handler.js";
 import { handleCostEventQueue, COST_EVENT_QUEUE_NAME } from "./cost-event-queue-handler.js";
 import { handleCostEventDlq, COST_EVENT_DLQ_NAME } from "./cost-event-dlq-handler.js";
+import { handleWebhookQueue, WEBHOOK_QUEUE_NAME } from "./webhook-queue-handler.js";
+import { handleWebhookDlq, WEBHOOK_DLQ_NAME } from "./webhook-dlq-handler.js";
 import type { ReconciliationMessage } from "./lib/reconciliation-queue.js";
 import type { CostEventMessage } from "./lib/cost-event-queue.js";
+import type { WebhookQueueMessage } from "./lib/webhook-queue.js";
 
 export { UserBudgetDO } from "./durable-objects/user-budget.js";
 
@@ -116,10 +119,14 @@ function truncateSessionId(raw: string | null): string | null {
 
 export default {
   async queue(
-    batch: MessageBatch<ReconciliationMessage | CostEventMessage>,
+    batch: MessageBatch<ReconciliationMessage | CostEventMessage | WebhookQueueMessage>,
     env: Env,
   ): Promise<void> {
-    if (batch.queue === COST_EVENT_DLQ_NAME) {
+    if (batch.queue === WEBHOOK_DLQ_NAME) {
+      await handleWebhookDlq(batch as MessageBatch<WebhookQueueMessage>);
+    } else if (batch.queue === WEBHOOK_QUEUE_NAME) {
+      await handleWebhookQueue(batch as MessageBatch<WebhookQueueMessage>, env);
+    } else if (batch.queue === COST_EVENT_DLQ_NAME) {
       await handleCostEventDlq(batch as MessageBatch<CostEventMessage>, env);
     } else if (batch.queue === COST_EVENT_QUEUE_NAME) {
       await handleCostEventQueue(batch as MessageBatch<CostEventMessage>, env);
@@ -198,11 +205,11 @@ export default {
 
       // Build context
       const webhookDispatcher = auth.hasWebhooks
-        ? createWebhookDispatcher(env.QSTASH_TOKEN || undefined)
+        ? createWebhookDispatcher((env as Record<string, unknown>).WEBHOOK_QUEUE as Queue | undefined, auth.userId)
         : null;
 
       if (auth.hasWebhooks && !webhookDispatcher) {
-        console.warn("[proxy] User has webhooks but QSTASH_TOKEN is not configured");
+        console.warn("[proxy] User has webhooks but WEBHOOK_QUEUE binding is not configured");
       }
 
       const resolvedApiVersion = resolveApiVersion(

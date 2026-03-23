@@ -41,7 +41,8 @@
   "queues": {
     "producers": [
       { "binding": "RECONCILE_QUEUE", "queue": "nullspend-reconcile" },
-      { "binding": "COST_EVENT_QUEUE", "queue": "nullspend-cost-events" }
+      { "binding": "COST_EVENT_QUEUE", "queue": "nullspend-cost-events" },
+      { "binding": "WEBHOOK_QUEUE", "queue": "nullspend-webhooks" }
     ],
     "consumers": [
       {
@@ -64,6 +65,18 @@
       },
       {
         "queue": "nullspend-cost-events-dlq",
+        "max_retries": 0
+      },
+      {
+        "queue": "nullspend-webhooks",
+        "max_batch_size": 10,
+        "max_batch_timeout": 2,
+        "max_retries": 5,
+        "dead_letter_queue": "nullspend-webhooks-dlq",
+        "retry_delay": 10
+      },
+      {
+        "queue": "nullspend-webhooks-dlq",
         "max_retries": 0
       }
     ]
