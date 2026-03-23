@@ -1,5 +1,4 @@
 import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
 
 /**
  * Per-request postgres.js client for Cloudflare Workers.
@@ -37,10 +36,3 @@ export function getSql(connectionString: string): ReturnType<typeof postgres> {
   });
 }
 
-/**
- * Get a Drizzle ORM instance for the current request context.
- * Used by budget-spend, budget-do-lookup, and cost-logger for type-safe queries.
- */
-export function getDb(connectionString: string) {
-  return drizzle({ client: getSql(connectionString) });
-}
