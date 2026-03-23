@@ -29,6 +29,7 @@ const discoverToolSchema = z.object({
     )
     .nullable().optional(),
   tierCost: z.number().int().nonnegative().max(MAX_COST),
+  suggestedCost: z.number().int().nonnegative().max(MAX_COST).optional(),
 });
 
 export const discoverToolCostsInputSchema = z.object({
@@ -56,6 +57,7 @@ export const toolCostResponseSchema = z.object({
   serverName: z.string(),
   toolName: z.string(),
   costMicrodollars: z.number(),
+  suggestedCost: z.number(),
   source: z.string(),
   description: z.string().nullable(),
   annotations: z.record(z.string(), z.unknown()).nullable(),

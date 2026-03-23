@@ -695,7 +695,11 @@ function BudgetDialog({
                   No API keys available. Create a key first.
                 </p>
               ) : (
-                <Select value={selectedKeyId} onValueChange={(v) => setSelectedKeyId(v ?? "")}>
+                <Select
+                  value={selectedKeyId}
+                  onValueChange={(v) => setSelectedKeyId(v ?? "")}
+                  items={keys.map((key) => ({ value: key.id, label: key.name }))}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select a key..." />
                   </SelectTrigger>
@@ -740,7 +744,16 @@ function BudgetDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Reset interval</Label>
-            <Select value={resetInterval} onValueChange={(v) => setResetInterval(v ?? "none")}>
+            <Select
+              value={resetInterval}
+              onValueChange={(v) => setResetInterval(v ?? "none")}
+              items={[
+                { value: "none", label: "None (manual reset)" },
+                { value: "daily", label: "Daily" },
+                { value: "weekly", label: "Weekly" },
+                { value: "monthly", label: "Monthly" },
+              ]}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>

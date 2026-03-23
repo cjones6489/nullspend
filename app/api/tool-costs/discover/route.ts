@@ -25,6 +25,7 @@ export const POST = withRequestContext(async (request: Request) => {
       serverName: input.serverName,
       toolName: t.name,
       costMicrodollars: t.tierCost,
+      suggestedCost: t.suggestedCost ?? 0,
       source: "discovered" as const,
       description: t.description ?? null,
       annotations: (t.annotations ?? null) as Record<string, unknown> | null,
@@ -42,6 +43,7 @@ export const POST = withRequestContext(async (request: Request) => {
           set: {
             annotations: sql`excluded.annotations`,
             description: sql`excluded.description`,
+            suggestedCost: sql`excluded.suggested_cost`,
             lastSeenAt: sql`NOW()`,
           },
         });

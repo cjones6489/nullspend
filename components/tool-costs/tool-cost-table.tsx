@@ -112,7 +112,13 @@ export function ToolCostTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right text-[13px] tabular-nums text-foreground">
-                    {formatMicrodollars(tc.costMicrodollars)}
+                    {tc.costMicrodollars === 0 && tc.source === "discovered" ? (
+                      <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-400">
+                        Unpriced
+                      </span>
+                    ) : (
+                      formatMicrodollars(tc.costMicrodollars)
+                    )}
                   </TableCell>
                   <TableCell>
                     <span
@@ -123,7 +129,7 @@ export function ToolCostTable({
                           : "bg-secondary text-muted-foreground",
                       )}
                     >
-                      {tc.source === "manual" ? "manual" : "default"}
+                      {tc.source === "manual" ? "manual" : "discovered"}
                     </span>
                   </TableCell>
                   <TableCell className="text-[12px] text-muted-foreground">

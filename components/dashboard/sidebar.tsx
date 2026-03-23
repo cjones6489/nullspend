@@ -49,7 +49,7 @@ export function Sidebar() {
         <Shield className="h-4 w-4 text-primary" />
         <Link
           href="/app/home"
-          className="text-sm font-semibold tracking-tight text-foreground"
+          className="font-mono text-sm font-semibold tracking-tight text-foreground"
         >
           NullSpend
         </Link>
@@ -59,7 +59,7 @@ export function Sidebar() {
           href="/app/home"
           aria-current={pathname === "/app/home" ? "page" : undefined}
           className={cn(
-            "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+            "flex items-center gap-2.5 rounded-md px-3 py-1.5 font-mono text-[13px] font-medium transition-colors",
             pathname === "/app/home"
               ? "bg-accent text-accent-foreground"
               : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -70,7 +70,7 @@ export function Sidebar() {
         </Link>
         {navSections.map((section) => (
           <div key={section.label}>
-            <p className="px-3 pt-4 pb-1 text-[11px] font-medium uppercase tracking-widest text-muted-foreground/70">
+            <p className="px-3 pt-4 pb-1 font-mono text-[11px] font-medium uppercase tracking-widest text-muted-foreground/70">
               {section.label}
             </p>
             <div className="flex flex-col gap-0.5">
@@ -82,7 +82,7 @@ export function Sidebar() {
                     href={item.href}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+                      "flex items-center gap-2.5 rounded-md px-3 py-1.5 font-mono text-[13px] font-medium transition-colors",
                       isActive
                         ? "bg-accent text-accent-foreground"
                         : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -111,7 +111,7 @@ export function Sidebar() {
             href={settingsItem.href}
             aria-current={pathname === settingsItem.href || pathname.startsWith(settingsItem.href + "/") ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+              "flex items-center gap-2.5 rounded-md px-3 py-1.5 font-mono text-[13px] font-medium transition-colors",
               pathname === settingsItem.href || pathname.startsWith(settingsItem.href + "/")
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -123,7 +123,7 @@ export function Sidebar() {
         </div>
       </nav>
       <div className="border-t border-border/50 p-3">
-        <p className="text-[11px] text-muted-foreground/80">v0.1.0</p>
+        <p className="font-mono text-[11px] text-muted-foreground/80">v0.1.0</p>
       </div>
     </aside>
   );

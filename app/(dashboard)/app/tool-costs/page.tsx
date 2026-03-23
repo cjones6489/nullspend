@@ -79,7 +79,15 @@ export default function ToolCostsPage() {
               </SelectContent>
             </Select>
 
-            <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v && v !== "all" ? v : "")}>
+            <Select
+              value={sourceFilter}
+              onValueChange={(v) => setSourceFilter(v && v !== "all" ? v : "")}
+              items={[
+                { value: "all", label: "All Sources" },
+                { value: "manual", label: "Manual" },
+                { value: "discovered", label: "Discovered" },
+              ]}
+            >
               <SelectTrigger className="w-36">
                 <SelectValue placeholder="All Sources" />
               </SelectTrigger>

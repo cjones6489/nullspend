@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
@@ -24,16 +24,21 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
 
     const db = getDb();
 
-    const deleted = await db
-      .delete(toolCosts)
+    const [reset] = await db
+      .update(toolCosts)
+      .set({
+        costMicrodollars: 0,
+        source: "discovered",
+        updatedAt: sql`NOW()`,
+      })
       .where(and(eq(toolCosts.id, id), eq(toolCosts.userId, userId)))
       .returning({ id: toolCosts.id, serverName: toolCosts.serverName, toolName: toolCosts.toolName });
 
-    if (deleted.length === 0) {
+    if (!reset) {
       throw new NotFoundError("Tool cost not found.");
     }
 
-    console.info(`[NullSpend] Tool cost reset to default: ${deleted[0].serverName}/${deleted[0].toolName} (user: ${userId})`);
+    console.info(`[NullSpend] Tool cost reset to unpriced: ${reset.serverName}/${reset.toolName} (user: ${userId})`);
 
     return NextResponse.json({ deleted: true });
   } catch (error) {

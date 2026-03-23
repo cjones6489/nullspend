@@ -34,7 +34,8 @@ export function EditToolCostDialog({ toolCost, onClose }: EditToolCostDialogProp
   if (!toolCost) return null;
 
   const annotations = toolCost.annotations as Record<string, boolean | undefined> | null;
-  const defaultTierCost = computeDefaultTierCost(annotations);
+  const suggestedCost = toolCost.suggestedCost;
+  const hasSuggestion = suggestedCost > 0;
 
   function handleSave() {
     const dollars = parseFloat(costDollars);
@@ -59,10 +60,14 @@ export function EditToolCostDialog({ toolCost, onClose }: EditToolCostDialogProp
     );
   }
 
-  function handleResetToDefault() {
+  function handleAcceptSuggestion() {
+    setCostDollars((suggestedCost / 1_000_000).toString());
+  }
+
+  function handleResetToUnpriced() {
     deleteMutation.mutate(toolCost!.id, {
       onSuccess: () => {
-        toast.success("Reset to default tier cost");
+        toast.success("Reset to unpriced");
         onClose();
       },
       onError: (err) => toast.error(err.message || "Failed to reset tool cost"),
@@ -102,8 +107,24 @@ export function EditToolCostDialog({ toolCost, onClose }: EditToolCostDialogProp
           )}
 
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Default tier cost</Label>
-            <p className="text-sm tabular-nums text-foreground">{formatMicrodollars(defaultTierCost)}</p>
+            <Label className="text-xs text-muted-foreground">Suggested cost</Label>
+            {hasSuggestion ? (
+              <div className="flex items-center gap-2">
+                <p className="text-sm tabular-nums text-foreground">
+                  {formatMicrodollars(suggestedCost)} based on annotations
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-[11px]"
+                  onClick={handleAcceptSuggestion}
+                >
+                  Accept
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No price suggestion available</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -131,11 +152,11 @@ export function EditToolCostDialog({ toolCost, onClose }: EditToolCostDialogProp
             <Button
               variant="outline"
               size="sm"
-              onClick={handleResetToDefault}
+              onClick={handleResetToUnpriced}
               disabled={deleteMutation.isPending}
               className="mr-auto"
             >
-              {deleteMutation.isPending ? "Resetting..." : "Reset to Default"}
+              {deleteMutation.isPending ? "Resetting..." : "Reset to Unpriced"}
             </Button>
           )}
           <DialogClose
@@ -154,13 +175,4 @@ export function EditToolCostDialog({ toolCost, onClose }: EditToolCostDialogProp
       </DialogContent>
     </Dialog>
   );
-}
-
-function computeDefaultTierCost(annotations: Record<string, boolean | undefined> | null): number {
-  if (!annotations) return 10_000; // TIER_READ
-
-  if (annotations.readOnlyHint && annotations.openWorldHint === false) return 0; // TIER_FREE
-  if (annotations.destructiveHint && annotations.openWorldHint) return 100_000; // TIER_WRITE
-
-  return 10_000; // TIER_READ
 }

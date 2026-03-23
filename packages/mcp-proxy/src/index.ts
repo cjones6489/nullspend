@@ -6,7 +6,7 @@ import { NullSpend } from "@nullspend/sdk";
 import { loadConfig, ConfigError } from "./config.js";
 import { discoverUpstreamTools, registerProxyHandlers } from "./proxy.js";
 import { isToolGated } from "./gate.js";
-import { CostTracker, ToolCostRegistry, estimateToolCost } from "./cost-tracker.js";
+import { CostTracker, ToolCostRegistry, suggestToolCost } from "./cost-tracker.js";
 
 const LOG_PREFIX = "[nullspend-proxy]";
 
@@ -129,7 +129,8 @@ async function main() {
       name: t.name,
       description: t.description ?? null,
       annotations: (t.annotations as Record<string, unknown> | undefined) ?? null,
-      tierCost: estimateToolCost(t.name, t.annotations, config.toolCostOverrides),
+      tierCost: 0,
+      suggestedCost: suggestToolCost(t.annotations),
     }));
 
     await registry.discoverTools(discoverPayloads);

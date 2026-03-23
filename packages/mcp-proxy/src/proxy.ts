@@ -3,7 +3,7 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { Tool, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { NullSpend } from "@nullspend/sdk";
 import type { ProxyConfig } from "./config.js";
@@ -48,9 +48,7 @@ export function registerProxyHandlers(
     let reservationId: string | undefined;
 
     if (costTracker) {
-      const tool = cachedTools.find((t) => t.name === name);
-      const annotations: ToolAnnotations | undefined = tool?.annotations;
-      costEstimate = costTracker.estimateCost(name, annotations);
+      costEstimate = costTracker.resolveToolCost(name);
 
       if (costEstimate > 0) {
         const budgetResult = await costTracker.checkBudget(name, costEstimate);

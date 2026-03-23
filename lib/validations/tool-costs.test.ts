@@ -62,6 +62,19 @@ describe("discoverToolCostsInputSchema annotations depth limit", () => {
     });
     expect(result.tools[0].annotations).toEqual({ audience: ["internal"], priority: 0.5 });
   });
+
+  it("accepts optional suggestedCost field", () => {
+    const result = discoverToolCostsInputSchema.parse({
+      ...basePayload,
+      tools: [{ ...baseTool, suggestedCost: 10_000 }],
+    });
+    expect(result.tools[0].suggestedCost).toBe(10_000);
+  });
+
+  it("allows omitting suggestedCost", () => {
+    const result = discoverToolCostsInputSchema.parse(basePayload);
+    expect(result.tools[0].suggestedCost).toBeUndefined();
+  });
 });
 
 describe("toolCostResponseSchema", () => {
@@ -71,6 +84,7 @@ describe("toolCostResponseSchema", () => {
     serverName: "test-server",
     toolName: "test-tool",
     costMicrodollars: 100,
+    suggestedCost: 10_000,
     source: "manual",
     description: null,
     annotations: null,
@@ -85,11 +99,12 @@ describe("toolCostResponseSchema", () => {
     expect(result.userId).toBe("ns_usr_660e8400-e29b-41d4-a716-446655440000");
   });
 
-  it("preserves other fields", () => {
+  it("preserves other fields including suggestedCost", () => {
     const result = toolCostResponseSchema.parse(validRecord);
     expect(result.serverName).toBe("test-server");
     expect(result.toolName).toBe("test-tool");
     expect(result.costMicrodollars).toBe(100);
+    expect(result.suggestedCost).toBe(10_000);
     expect(result.source).toBe("manual");
   });
 

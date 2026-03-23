@@ -14,37 +14,23 @@ const TIER_FREE = 0;
 const TIER_READ = 10_000; // $0.01
 const TIER_WRITE = 100_000; // $0.10
 
-export function estimateToolCost(
-  toolName: string,
+/**
+ * Suggest a cost based on MCP annotations — for UI display only, never auto-applied.
+ * Used by discovery to populate suggested_cost in the dashboard.
+ */
+export function suggestToolCost(
   annotations: ToolAnnotations | undefined,
-  overrides: Record<string, number>,
 ): number {
-  if (toolName in overrides) {
-    return overrides[toolName];
-  }
+  if (!annotations) return TIER_READ;
 
-  if (!annotations) {
-    return TIER_READ;
-  }
-
-  // Free: explicitly read-only AND explicitly not open-world (local operations)
   if (annotations.readOnlyHint && annotations.openWorldHint === false) {
     return TIER_FREE;
   }
 
-  // Expensive: explicitly destructive AND explicitly open-world (API mutations)
   if (annotations.destructiveHint && annotations.openWorldHint) {
     return TIER_WRITE;
   }
 
-  // Everything else: $0.01 safe default
-  // - readOnly with openWorld unset or true (read-only API calls)
-  // - openWorld without destructive (API reads)
-  // - no meaningful hints set
-  // Note: we intentionally do NOT apply MCP spec defaults (destructiveHint
-  // defaults to true, openWorldHint defaults to true) because that would
-  // make every unannotated tool TIER_WRITE. Per-tool overrides exist for
-  // users who need exact costs.
   return TIER_READ;
 }
 
@@ -277,6 +263,7 @@ export interface DiscoverToolPayload {
   description?: string | null;
   annotations?: Record<string, unknown> | null;
   tierCost: number;
+  suggestedCost: number;
 }
 
 export class ToolCostRegistry {
@@ -432,8 +419,7 @@ export class CostTracker {
     this.registry = registry;
   }
 
-  estimateCost(toolName: string, annotations: ToolAnnotations | undefined): number {
-    // Priority: env var overrides > registry (API) > annotation tiers
+  resolveToolCost(toolName: string): number {
     if (toolName in this.config.toolCostOverrides) {
       return this.config.toolCostOverrides[toolName];
     }
@@ -445,7 +431,8 @@ export class CostTracker {
       }
     }
 
-    return estimateToolCost(toolName, annotations, {});
+    // Unpriced: track the call at $0 until user sets a real price
+    return 0;
   }
 
   async checkBudget(

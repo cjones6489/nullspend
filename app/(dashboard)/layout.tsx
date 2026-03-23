@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { CommandPalette } from "@/components/dashboard/command-palette";
 import { CommandPaletteProvider } from "@/components/dashboard/command-palette-context";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { DashboardTheme } from "@/components/dashboard/dashboard-theme";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { SupabaseEnvError } from "@/lib/auth/errors";
@@ -47,6 +48,7 @@ export default async function DashboardLayout({
 
   return (
     <CommandPaletteProvider>
+      <DashboardTheme />
       <div className="flex h-screen overflow-hidden bg-background">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">

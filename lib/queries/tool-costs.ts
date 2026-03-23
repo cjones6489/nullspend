@@ -52,14 +52,7 @@ export function useDeleteToolCost() {
 
   return useMutation<DeleteToolCostResponse, Error, string>({
     mutationFn: (id) => apiDelete(`/api/tool-costs/${id}`),
-    onSuccess: (_, deletedId) => {
-      queryClient.setQueryData<ListToolCostsResponse | undefined>(
-        toolCostKeys.list(),
-        (existing) =>
-          existing
-            ? { data: existing.data.filter((tc) => tc.id !== deletedId) }
-            : existing,
-      );
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: toolCostKeys.all });
     },
   });

@@ -26,6 +26,6 @@ export function PageTitle() {
   }
 
   return (
-    <h1 className="text-sm font-medium text-foreground">{title}</h1>
+    <h1 className="font-mono text-sm font-medium text-foreground">{title}</h1>
   );
 }

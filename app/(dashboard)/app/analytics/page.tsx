@@ -44,6 +44,7 @@ export default function AnalyticsPage() {
           onClick={() => refetch()}
           disabled={isFetching}
           title="Refresh data"
+          aria-label="Refresh data"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
         </Button>

@@ -110,12 +110,18 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
           disabled={isFetching}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
           title="Refresh data"
+          aria-label="Refresh data"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isFetching && !isFetchingNextPage ? "animate-spin" : ""}`} />
         </button>
         <Select
           value={selectedProvider}
           onValueChange={(v) => setSelectedProvider(v ?? ALL_PROVIDERS)}
+          items={[
+            { value: ALL_PROVIDERS, label: "All providers" },
+            { value: "openai", label: "OpenAI" },
+            { value: "anthropic", label: "Anthropic" },
+          ]}
         >
           <SelectTrigger className="h-8 w-[150px] text-xs">
             <SelectValue />
@@ -130,6 +136,10 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
           <Select
             value={selectedKeyId}
             onValueChange={(v) => setSelectedKeyId(v ?? ALL_KEYS)}
+            items={[
+              { value: ALL_KEYS, label: "All keys" },
+              ...keys.map((key) => ({ value: key.id, label: key.name })),
+            ]}
           >
             <SelectTrigger className="h-8 w-[180px] text-xs">
               <SelectValue />

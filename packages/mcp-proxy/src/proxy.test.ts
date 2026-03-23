@@ -566,7 +566,7 @@ describe("registerProxyHandlers", () => {
       mockedIsToolGated.mockReturnValue(false);
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({
           allowed: false,
           denied: true,
@@ -607,7 +607,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({
           allowed: true,
           reservationId: "rsv-1",
@@ -652,7 +652,7 @@ describe("registerProxyHandlers", () => {
       mockCallTool.mockRejectedValue(new Error("upstream crash"));
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -692,7 +692,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(0),
+        resolveToolCost: vi.fn().mockReturnValue(0),
         checkBudget: vi.fn(),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -727,7 +727,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(0),
+        resolveToolCost: vi.fn().mockReturnValue(0),
         checkBudget: vi.fn(),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -759,10 +759,7 @@ describe("registerProxyHandlers", () => {
       const handler = fakeServer.callToolHandler!;
       await handler({ params: { name: "read_file", arguments: {} } });
 
-      expect(mockCostTracker.estimateCost).toHaveBeenCalledWith(
-        "read_file",
-        { readOnlyHint: true },
-      );
+      expect(mockCostTracker.resolveToolCost).toHaveBeenCalledWith("read_file");
     });
 
     it("works without cost tracker (backward compatible)", async () => {
@@ -796,7 +793,7 @@ describe("registerProxyHandlers", () => {
       mockedIsToolGated.mockReturnValue(false);
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({
           allowed: false,
           denied: true,
@@ -848,7 +845,7 @@ describe("registerProxyHandlers", () => {
       mockMarkResult.mockResolvedValue({ id: "act-cost-1", status: "executed" });
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({
           allowed: true,
           reservationId: "rsv-g1",
@@ -896,7 +893,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(0),
+        resolveToolCost: vi.fn().mockReturnValue(0),
         checkBudget: vi.fn(),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -941,7 +938,7 @@ describe("registerProxyHandlers", () => {
       mockMarkResult.mockResolvedValue({});
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -977,7 +974,7 @@ describe("registerProxyHandlers", () => {
       } satisfies GateResult);
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -1013,7 +1010,7 @@ describe("registerProxyHandlers", () => {
       } satisfies GateResult);
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -1053,7 +1050,7 @@ describe("registerProxyHandlers", () => {
       });
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(10_000),
+        resolveToolCost: vi.fn().mockReturnValue(10_000),
         checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
         reportEvent: vi.fn(),
         config: { serverName: "test-server" },
@@ -1081,8 +1078,7 @@ describe("registerProxyHandlers", () => {
       const handler = fakeServer.callToolHandler!;
       await handler({ params: { name: "dynamic_tool", arguments: {} } });
 
-      // Should pass undefined annotations → defaults to TIER_READ
-      expect(mockCostTracker.estimateCost).toHaveBeenCalledWith("dynamic_tool", undefined);
+      expect(mockCostTracker.resolveToolCost).toHaveBeenCalledWith("dynamic_tool");
       expect(mockCallTool).toHaveBeenCalled();
     });
 
@@ -1090,7 +1086,7 @@ describe("registerProxyHandlers", () => {
       const callOrder: string[] = [];
 
       const mockCostTracker = {
-        estimateCost: vi.fn().mockReturnValue(100_000),
+        resolveToolCost: vi.fn().mockReturnValue(100_000),
         checkBudget: vi.fn().mockImplementation(async () => {
           callOrder.push("budget");
           return { allowed: false, denied: true, remaining: 0 };

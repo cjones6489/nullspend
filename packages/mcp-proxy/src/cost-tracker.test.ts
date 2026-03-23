@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  estimateToolCost,
+  suggestToolCost,
   EventBatcher,
   BudgetClient,
   CostTracker,
@@ -8,84 +8,65 @@ import {
 } from "./cost-tracker.js";
 
 // ---------------------------------------------------------------------------
-// estimateToolCost
+// suggestToolCost
 // ---------------------------------------------------------------------------
 
-describe("estimateToolCost", () => {
-  it("returns override when toolName has an override", () => {
-    const cost = estimateToolCost("run_query", undefined, { run_query: 50_000 });
-    expect(cost).toBe(50_000);
-  });
-
+describe("suggestToolCost", () => {
   it("returns TIER_READ (10000) when no annotations", () => {
-    const cost = estimateToolCost("run_query", undefined, {});
+    const cost = suggestToolCost(undefined);
     expect(cost).toBe(10_000);
   });
 
   it("returns TIER_FREE (0) for readOnly + not openWorld", () => {
-    const cost = estimateToolCost("read_file", { readOnlyHint: true, openWorldHint: false }, {});
+    const cost = suggestToolCost({ readOnlyHint: true, openWorldHint: false });
     expect(cost).toBe(0);
   });
 
   it("returns TIER_READ (10000) for readOnly with openWorldHint undefined (spec defaults to true)", () => {
-    // Per MCP spec, openWorldHint defaults to true. A tool with only
-    // readOnlyHint: true is a read-only API call, not a free local operation.
-    const cost = estimateToolCost("read_file", { readOnlyHint: true }, {});
+    const cost = suggestToolCost({ readOnlyHint: true });
     expect(cost).toBe(10_000);
   });
 
   it("returns TIER_FREE (0) for readOnly with openWorldHint explicitly false", () => {
-    const cost = estimateToolCost("read_file", { readOnlyHint: true, openWorldHint: false }, {});
+    const cost = suggestToolCost({ readOnlyHint: true, openWorldHint: false });
     expect(cost).toBe(0);
   });
 
   it("returns TIER_WRITE (100000) for destructive + openWorld", () => {
-    const cost = estimateToolCost("delete_repo", { destructiveHint: true, openWorldHint: true }, {});
+    const cost = suggestToolCost({ destructiveHint: true, openWorldHint: true });
     expect(cost).toBe(100_000);
   });
 
   it("returns TIER_READ (10000) for openWorld + not destructive", () => {
-    const cost = estimateToolCost("api_call", { openWorldHint: true }, {});
+    const cost = suggestToolCost({ openWorldHint: true });
     expect(cost).toBe(10_000);
   });
 
   it("returns TIER_READ (10000) for destructive without openWorld", () => {
-    const cost = estimateToolCost("write_file", { destructiveHint: true }, {});
+    const cost = suggestToolCost({ destructiveHint: true });
     expect(cost).toBe(10_000);
   });
 
-  it("override takes precedence over annotations", () => {
-    const cost = estimateToolCost("read_file", { readOnlyHint: true }, { read_file: 999 });
-    expect(cost).toBe(999);
-  });
-
   it("returns TIER_READ for empty annotations object", () => {
-    const cost = estimateToolCost("tool", {}, {});
+    const cost = suggestToolCost({});
     expect(cost).toBe(10_000);
   });
 
   it("returns TIER_READ for readOnly + openWorld: true (read-only API call)", () => {
-    const cost = estimateToolCost("fetch_url", { readOnlyHint: true, openWorldHint: true }, {});
+    const cost = suggestToolCost({ readOnlyHint: true, openWorldHint: true });
     expect(cost).toBe(10_000);
   });
 
   it("returns TIER_READ for readOnly: false without explicit destructive/openWorld", () => {
-    // Per design, we don't apply spec defaults. Only explicit hints trigger tiers.
-    const cost = estimateToolCost("write_file", { readOnlyHint: false }, {});
+    const cost = suggestToolCost({ readOnlyHint: false });
     expect(cost).toBe(10_000);
   });
 
   it("returns TIER_WRITE only when destructive AND openWorld are both explicit", () => {
-    const cost = estimateToolCost("delete_repo", { destructiveHint: true, openWorldHint: true }, {});
+    const cost = suggestToolCost({ destructiveHint: true, openWorldHint: true });
     expect(cost).toBe(100_000);
-    // Missing openWorldHint → TIER_READ (not TIER_WRITE)
-    const cost2 = estimateToolCost("delete_file", { destructiveHint: true }, {});
+    const cost2 = suggestToolCost({ destructiveHint: true });
     expect(cost2).toBe(10_000);
-  });
-
-  it("returns 0 override correctly", () => {
-    const cost = estimateToolCost("free_tool", undefined, { free_tool: 0 });
-    expect(cost).toBe(0);
   });
 });
 
@@ -572,14 +553,19 @@ describe("CostTracker", () => {
     });
   }
 
-  it("estimateCost delegates to estimateToolCost with overrides", () => {
+  it("resolveToolCost returns override when present", () => {
     const tracker = makeTracker({ toolCostOverrides: { special: 42 } });
-    expect(tracker.estimateCost("special", undefined)).toBe(42);
-    expect(tracker.estimateCost("unknown", undefined)).toBe(10_000);
+    expect(tracker.resolveToolCost("special")).toBe(42);
     tracker.shutdown();
   });
 
-  it("estimateCost uses registry when no env override exists", async () => {
+  it("resolveToolCost returns 0 for unknown tool (unpriced)", () => {
+    const tracker = makeTracker();
+    expect(tracker.resolveToolCost("unknown")).toBe(0);
+    tracker.shutdown();
+  });
+
+  it("resolveToolCost uses registry when no env override exists", async () => {
     const tracker = makeTracker({ serverName: "supabase" });
     const registry = new ToolCostRegistry({
       nullspendUrl: "http://localhost:3000",
@@ -587,7 +573,6 @@ describe("CostTracker", () => {
       serverName: "supabase",
     });
 
-    // Manually populate registry via fetchCosts
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({
         data: [
@@ -598,14 +583,13 @@ describe("CostTracker", () => {
     await registry.fetchCosts();
     tracker.setRegistry(registry);
 
-    expect(tracker.estimateCost("execute_sql", undefined)).toBe(50_000);
-    // Unknown tool falls through to annotation tiers
-    expect(tracker.estimateCost("unknown_tool", undefined)).toBe(10_000);
+    expect(tracker.resolveToolCost("execute_sql")).toBe(50_000);
+    expect(tracker.resolveToolCost("unknown_tool")).toBe(0);
 
     await tracker.shutdown();
   });
 
-  it("estimateCost env override takes precedence over registry", async () => {
+  it("resolveToolCost env override takes precedence over registry", async () => {
     const tracker = makeTracker({
       serverName: "supabase",
       toolCostOverrides: { execute_sql: 999 },
@@ -626,13 +610,12 @@ describe("CostTracker", () => {
     await registry.fetchCosts();
     tracker.setRegistry(registry);
 
-    // Env override (999) beats registry (50_000)
-    expect(tracker.estimateCost("execute_sql", undefined)).toBe(999);
+    expect(tracker.resolveToolCost("execute_sql")).toBe(999);
 
     await tracker.shutdown();
   });
 
-  it("estimateCost registry takes precedence over annotation tiers", async () => {
+  it("resolveToolCost registry takes precedence over $0 default", async () => {
     const tracker = makeTracker({ serverName: "supabase" });
     const registry = new ToolCostRegistry({
       nullspendUrl: "http://localhost:3000",
@@ -650,8 +633,7 @@ describe("CostTracker", () => {
     await registry.fetchCosts();
     tracker.setRegistry(registry);
 
-    // Registry (77_000) beats annotation tier (TIER_FREE=0 for readOnly+not openWorld)
-    expect(tracker.estimateCost("read_file", { readOnlyHint: true, openWorldHint: false })).toBe(77_000);
+    expect(tracker.resolveToolCost("read_file")).toBe(77_000);
 
     await tracker.shutdown();
   });
@@ -904,8 +886,8 @@ describe("ToolCostRegistry", () => {
 
       const registry = makeRegistry({ serverName: "supabase" });
       await registry.discoverTools([
-        { name: "execute_sql", description: "Run SQL", annotations: { openWorldHint: true }, tierCost: 10_000 },
-        { name: "list_tables", description: null, annotations: null, tierCost: 10_000 },
+        { name: "execute_sql", description: "Run SQL", annotations: { openWorldHint: true }, tierCost: 0, suggestedCost: 10_000 },
+        { name: "list_tables", description: null, annotations: null, tierCost: 0, suggestedCost: 10_000 },
       ]);
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -937,7 +919,7 @@ describe("ToolCostRegistry", () => {
 
       const registry = makeRegistry();
       await registry.discoverTools([
-        { name: "tool_a", tierCost: 10_000 },
+        { name: "tool_a", tierCost: 0, suggestedCost: 10_000 },
       ]);
 
       const logCalls = vi.mocked(process.stderr.write).mock.calls;
@@ -951,7 +933,7 @@ describe("ToolCostRegistry", () => {
       const registry = makeRegistry();
       // Should not throw
       await registry.discoverTools([
-        { name: "tool_a", tierCost: 10_000 },
+        { name: "tool_a", tierCost: 0, suggestedCost: 10_000 },
       ]);
     });
 
@@ -964,7 +946,8 @@ describe("ToolCostRegistry", () => {
       const registry = makeRegistry();
       const tools = Array.from({ length: 750 }, (_, i) => ({
         name: `tool_${i}`,
-        tierCost: 10_000,
+        tierCost: 0,
+        suggestedCost: 10_000,
       }));
 
       await registry.discoverTools(tools);
@@ -992,7 +975,8 @@ describe("ToolCostRegistry", () => {
       const registry = makeRegistry();
       const tools = Array.from({ length: 1000 }, (_, i) => ({
         name: `tool_${i}`,
-        tierCost: 10_000,
+        tierCost: 0,
+        suggestedCost: 10_000,
       }));
 
       await registry.discoverTools(tools);

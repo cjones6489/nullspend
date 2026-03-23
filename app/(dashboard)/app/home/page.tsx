@@ -98,8 +98,8 @@ export default function HomePage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-semibold">NullSpend</h1>
-        <p className="text-muted-foreground">Welcome back</p>
+        <h1 className="font-mono text-2xl font-semibold">NullSpend</h1>
+        <p className="font-mono text-sm text-muted-foreground">Welcome back</p>
       </div>
 
       {/* Two-column body */}
@@ -107,7 +107,7 @@ export default function HomePage() {
         {/* Left — Get Started */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Get Started</CardTitle>
+            <CardTitle className="font-mono text-sm font-medium">Get Started</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-[13px] text-muted-foreground">
@@ -121,7 +121,7 @@ export default function HomePage() {
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+                  className={`rounded px-3 py-1 font-mono text-xs font-medium transition-colors ${
                     activeTab === tab
                       ? "bg-background text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -149,7 +149,7 @@ export default function HomePage() {
           {/* API Key card */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium">
+              <CardTitle className="font-mono text-sm font-medium">
                 <div className="flex items-center gap-2">
                   <Key className="h-3.5 w-3.5" />
                   API Key
@@ -184,7 +184,7 @@ export default function HomePage() {
           {/* Usage card */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium">
+              <CardTitle className="font-mono text-sm font-medium">
                 Usage &middot; 7 days
               </CardTitle>
             </CardHeader>
@@ -210,7 +210,7 @@ export default function HomePage() {
                 </ChartContainer>
               )}
               {totals && (
-                <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-3 font-mono text-sm">
                   <span className="font-medium">
                     {formatMicrodollars(totals.totalCostMicrodollars)}
                   </span>
@@ -237,7 +237,7 @@ export default function HomePage() {
             <div className="rounded-lg border border-border/50 bg-card p-4 transition-colors hover:bg-accent/40">
               <div className="flex items-center gap-2">
                 <card.icon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{card.label}</span>
+                <span className="font-mono text-sm font-medium">{card.label}</span>
                 {card.external && (
                   <ExternalLink className="h-3 w-3 text-muted-foreground/50" />
                 )}

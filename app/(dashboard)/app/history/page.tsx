@@ -107,7 +107,14 @@ export default function HistoryPage() {
           </TabsList>
         </Tabs>
 
-        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v ?? ALL_TYPES)}>
+        <Select
+          value={typeFilter}
+          onValueChange={(v) => setTypeFilter(v ?? ALL_TYPES)}
+          items={[
+            { value: ALL_TYPES, label: "All types" },
+            ...ACTION_TYPES.map((type) => ({ value: type, label: formatActionType(type) })),
+          ]}
+        >
           <SelectTrigger className="h-8 w-[160px] text-xs">
             <SelectValue />
           </SelectTrigger>
