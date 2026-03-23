@@ -2,11 +2,11 @@
  * Semaphore that limits concurrent pg.Client connections per isolate.
  *
  * ALL pg.Client creation must go through withDbConnection(). Callers:
- *   - api-key-auth.ts    (request path, usually cached — skips DB)
  *   - budget-do-lookup.ts (request path, in-memory cache — rarely hits DB)
  *   - cost-logger.ts     (background via waitUntil)
  *   - budget-spend.ts    (background via waitUntil)
  *   - webhook-cache.ts   (background via waitUntil)
+ *   - webhook-expiry.ts  (background via waitUntil)
  *
  * Worst case: 3 background tasks fire in parallel after a response is sent
  * while the next request's auth or budget lookup needs a slot. Auth and

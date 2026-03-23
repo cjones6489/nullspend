@@ -1,16 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 
-// Mock pg and db-semaphore so that importing auth.ts (which imports api-key-auth.ts) works
-vi.mock("pg", () => ({
-  Client: function MockClient() {
-    return { connect: vi.fn(), end: vi.fn(), on: vi.fn(), query: vi.fn() };
-  },
-}));
-
-vi.mock("../lib/db-semaphore.js", () => ({
-  withDbConnection: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-}));
-
 const mockAuthenticateApiKey = vi.fn();
 vi.mock("../lib/api-key-auth.js", () => ({
   authenticateApiKey: (...args: unknown[]) => mockAuthenticateApiKey(...args),

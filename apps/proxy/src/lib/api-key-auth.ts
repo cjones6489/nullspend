@@ -1,5 +1,4 @@
-import { Client } from "pg";
-import { withDbConnection } from "./db-semaphore.js";
+import { getSql } from "./db.js";
 
 export interface ApiKeyIdentity {
   userId: string;
@@ -9,7 +8,6 @@ export interface ApiKeyIdentity {
   defaultTags: Record<string, string>;
 }
 
-const CONNECTION_TIMEOUT_MS = 5_000;
 const CACHE_MAX_SIZE = 256;
 const NEGATIVE_CACHE_MAX_SIZE = 2048;
 const POSITIVE_TTL_MS = 120_000; // 120s — longer TTL reduces DB lookups; invalidated actively via /internal/budget/invalidate
@@ -60,9 +58,8 @@ function evictIfNeeded(cache: Map<string, unknown>, maxSize: number): void {
  * Look up an API key by its SHA-256 hash in the database.
  * Returns { userId, keyId } for valid, non-revoked keys.
  *
- * Uses per-request pg.Client + Hyperdrive connection string
- * (same pattern as cost-logger.ts). Wrapped in withDbConnection
- * to respect the isolate connection semaphore.
+ * Uses the shared postgres.js pool via getSql() with Hyperdrive
+ * connection pooling. Connection limits handled by postgres.js max setting.
  *
  * Never throws — returns null for invalid/revoked keys or DB errors.
  */
@@ -70,61 +67,40 @@ async function lookupKeyInDb(
   keyHash: string,
   connectionString: string,
 ): Promise<ApiKeyIdentity | null> {
-  return withDbConnection(async () => {
-    let client: Client | null = null;
+  try {
+    const sql = getSql(connectionString);
 
-    try {
-      client = new Client({
-        connectionString,
-        connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-      });
+    const rows = await sql`
+      SELECT k.id, k.user_id, k.api_version, k.default_tags,
+        EXISTS(
+          SELECT 1 FROM webhook_endpoints w
+          WHERE w.user_id = k.user_id AND w.enabled = true
+        ) AS has_webhooks
+      FROM api_keys k
+      WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
+    `;
 
-      client.on("error", (err) => {
-        console.error("[api-key-auth] pg client error event:", err.message);
-      });
-
-      await client.connect();
-
-      const result = await client.query(
-        `SELECT k.id, k.user_id, k.api_version, k.default_tags,
-          EXISTS(
-            SELECT 1 FROM webhook_endpoints w
-            WHERE w.user_id = k.user_id AND w.enabled = true
-          ) AS has_webhooks
-        FROM api_keys k
-        WHERE k.key_hash = $1 AND k.revoked_at IS NULL`,
-        [keyHash],
-      );
-
-      if (result.rows.length === 0) {
-        return null;
-      }
-
-      return {
-        userId: result.rows[0].user_id as string,
-        keyId: result.rows[0].id as string,
-        hasWebhooks: result.rows[0].has_webhooks === true,
-        apiVersion: result.rows[0].api_version as string,
-        defaultTags: (typeof result.rows[0].default_tags === "object" && result.rows[0].default_tags !== null && !Array.isArray(result.rows[0].default_tags))
-          ? result.rows[0].default_tags as Record<string, string>
-          : {},
-      };
-    } catch (err) {
-      console.error(
-        "[api-key-auth] Failed to look up API key:",
-        err instanceof Error ? err.message : "Unknown error",
-      );
+    if (rows.length === 0) {
       return null;
-    } finally {
-      if (client) {
-        try {
-          await client.end();
-        } catch {
-          // already closed or never connected
-        }
-      }
     }
-  });
+
+    const row = rows[0];
+    return {
+      userId: row.user_id as string,
+      keyId: row.id as string,
+      hasWebhooks: row.has_webhooks === true,
+      apiVersion: row.api_version as string,
+      defaultTags: (typeof row.default_tags === "object" && row.default_tags !== null && !Array.isArray(row.default_tags))
+        ? row.default_tags as Record<string, string>
+        : {},
+    };
+  } catch (err) {
+    console.error(
+      "[api-key-auth] Failed to look up API key:",
+      err instanceof Error ? err.message : "Unknown error",
+    );
+    return null;
+  }
 }
 
 /**
