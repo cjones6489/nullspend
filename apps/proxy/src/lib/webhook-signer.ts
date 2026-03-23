@@ -1,4 +1,5 @@
 import { toHex } from "./hex.js";
+import { timingSafeStringEqual } from "./timing-safe-equal.js";
 
 const SIGNATURE_VERSION = "v1";
 
@@ -117,12 +118,3 @@ export async function verifyWebhookSignature(
   );
 }
 
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const encoder = new TextEncoder();
-  const bufA = encoder.encode(a);
-  const bufB = encoder.encode(b);
-  const lengthsMatch = bufA.byteLength === bufB.byteLength;
-  return lengthsMatch
-    ? crypto.subtle.timingSafeEqual(bufA, bufB)
-    : !crypto.subtle.timingSafeEqual(bufA, bufA);
-}

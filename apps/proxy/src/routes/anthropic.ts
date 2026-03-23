@@ -51,7 +51,7 @@ export async function handleAnthropicMessages(
   const isStreaming = ctx.body.stream === true;
 
   // --- Budget enforcement ---
-  const estimate = estimateAnthropicMaxCost(requestModel, ctx.body);
+  const estimate = estimateAnthropicMaxCost(requestModel, ctx.body, ctx.bodyByteLength);
 
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];

@@ -53,6 +53,7 @@ const DEFAULT_OUTPUT_CAP = 64_000;
 export function estimateAnthropicMaxCost(
   model: string,
   body: Record<string, unknown>,
+  bodyByteLength?: number,
 ): number {
   const pricing = getModelPricing("anthropic", model);
 
@@ -60,8 +61,7 @@ export function estimateAnthropicMaxCost(
     return UNKNOWN_MODEL_FALLBACK_MICRODOLLARS;
   }
 
-  const bodyStr = JSON.stringify(body);
-  const inputTokenEstimate = Math.ceil(bodyStr.length / CHARS_PER_TOKEN);
+  const inputTokenEstimate = Math.ceil((bodyByteLength ?? JSON.stringify(body).length) / CHARS_PER_TOKEN);
 
   const explicitOutputCap = body.max_tokens as number | undefined;
 

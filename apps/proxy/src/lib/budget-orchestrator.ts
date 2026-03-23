@@ -5,7 +5,7 @@ import { doBudgetCheck, doBudgetReconcile } from "./budget-do-client.js";
 import { resetBudgetPeriod } from "./budget-spend.js";
 import { enqueueReconciliation } from "./reconciliation-queue.js";
 
-export interface BudgetCheckOutcome {
+interface BudgetCheckOutcome {
   status: "approved" | "denied" | "skipped";
   reservationId: string | null;
   budgetEntities: BudgetEntity[];

@@ -3,22 +3,13 @@ import { doBudgetRemove, doBudgetResetSpend, doBudgetUpsertEntities, doBudgetGet
 import { lookupBudgetsForDO } from "../lib/budget-do-lookup.js";
 import { errorResponse } from "../lib/errors.js";
 import { emitMetric } from "../lib/metrics.js";
+import { timingSafeStringEqual } from "../lib/timing-safe-equal.js";
 
 interface InvalidationBody {
   action: "remove" | "reset_spend" | "sync";
   userId: string;
   entityType: string;
   entityId: string;
-}
-
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const encoder = new TextEncoder();
-  const bufA = encoder.encode(a);
-  const bufB = encoder.encode(b);
-  const lengthsMatch = bufA.byteLength === bufB.byteLength;
-  return lengthsMatch
-    ? crypto.subtle.timingSafeEqual(bufA, bufB)
-    : !crypto.subtle.timingSafeEqual(bufA, bufA);
 }
 
 const MAX_FIELD_LENGTH = 256;

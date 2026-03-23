@@ -4,6 +4,7 @@ import type { StepTiming } from "./headers.js";
 
 export interface RequestContext {
   body: Record<string, unknown>;
+  bodyByteLength: number;          // original request body size (avoids re-stringify for estimation)
   auth: AuthResult;
   connectionString: string;
   skipDbWrites: boolean;     // true in local dev without Hyperdrive (env: SKIP_DB_PERSIST)

@@ -40,6 +40,7 @@ const DEFAULT_OUTPUT_CAP = 16_384;
 export function estimateMaxCost(
   model: string,
   body: Record<string, unknown>,
+  bodyByteLength?: number,
 ): number {
   const pricing = getModelPricing("openai", model);
 
@@ -47,8 +48,7 @@ export function estimateMaxCost(
     return UNKNOWN_MODEL_FALLBACK_MICRODOLLARS;
   }
 
-  const bodyStr = JSON.stringify(body);
-  const inputTokenEstimate = Math.ceil(bodyStr.length / CHARS_PER_TOKEN);
+  const inputTokenEstimate = Math.ceil((bodyByteLength ?? JSON.stringify(body).length) / CHARS_PER_TOKEN);
 
   const explicitOutputCap =
     (body.max_completion_tokens as number | undefined) ??

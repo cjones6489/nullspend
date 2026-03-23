@@ -65,7 +65,7 @@ export async function handleChatCompletions(
   }
 
   // --- Budget enforcement ---
-  const estimate = estimateMaxCost(requestModel, ctx.body);
+  const estimate = estimateMaxCost(requestModel, ctx.body, ctx.bodyByteLength);
 
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
