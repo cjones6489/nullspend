@@ -53,7 +53,7 @@ No authentication required.
 |---|---|---|
 | GET | `/health` | `{ "status": "ok", "service": "nullspend-proxy" }` |
 | GET | `/health/metrics` | Analytics Engine metrics (JSON or Prometheus, based on `Accept` header) |
-| GET | `/health/ready` | `{ "status": "ok", "redis": "PONG" }` — returns `503` if Redis is unreachable |
+| GET | `/health/ready` | `{ "status": "ok", "service": "nullspend-proxy" }` — simple readiness check |
 
 ---
 

@@ -42,7 +42,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-69 files, ~1,199 tests. All mock `cloudflare:workers` and external dependencies.
+68 files, ~1,185 tests. All mock `cloudflare:workers` and external dependencies.
 
 ### Naming Convention
 
@@ -85,7 +85,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 **Cost Logging & Queue**
 | File | What it tests |
 |---|---|
-| `cost-logger.test.ts` | `logCostEvent` — Postgres write, local dev bypass, error handling, `throwOnError` option, metric separation (pg_error vs semaphore_full) |
+| `cost-logger.test.ts` | `logCostEvent` — Postgres write via shared pool, local dev bypass, error handling, `throwOnError` option, `pg_error` metric |
 | `cost-event-queue.test.ts` | `enqueueCostEvent`, `enqueueCostEventsBatch`, `getCostEventQueue`, queue-first fallback helpers, timeout behavior, fallback metric emission |
 | `cost-event-queue-handler.test.ts` | Queue consumer: batch INSERT + ack, per-message fallback on failure, poison message isolation, empty batch, connectionString from env |
 | `cost-event-dlq-handler.test.ts` | DLQ consumer: always-ack, metric emission, best-effort write, null userId, HYPERDRIVE unavailable guard |

@@ -1,7 +1,4 @@
----
-title: "Custom Headers"
-description: "NullSpend uses HTTP headers as its primary API surface. All NullSpend-specific headers are optional except `X-NullSpend-Key`."
----
+# Custom Headers
 
 NullSpend uses HTTP headers as its primary API surface. All NullSpend-specific headers are optional except `X-NullSpend-Key`.
 
@@ -175,11 +172,13 @@ x-nullspend-overhead-ms: 12
 
 ### `Server-Timing`
 
-W3C Server-Timing header with three metrics:
+W3C Server-Timing header with per-step latency breakdown:
 
 ```
-Server-Timing: overhead;dur=12;desc="Proxy overhead",upstream;dur=834;desc="Provider latency",total;dur=846
+Server-Timing: preflight;dur=0;desc="Auth + rate limit",body;dur=0;desc="Body parse",budget;dur=12;desc="Budget check",overhead;dur=12;desc="Proxy overhead",upstream;dur=834;desc="Provider latency",total;dur=846;desc="Total"
 ```
+
+Steps (`preflight`, `body`, `budget`) are only included when measured. The `overhead`, `upstream`, and `total` entries are always present.
 
 ### Rate Limit Headers (on `429` responses only)
 
@@ -187,10 +186,7 @@ When you hit a rate limit, the response includes:
 
 | Header | Value |
 |---|---|
-| `X-RateLimit-Limit` | Request limit (e.g., `600`) |
-| `X-RateLimit-Remaining` | Remaining requests in this window |
-| `X-RateLimit-Reset` | Unix timestamp (milliseconds) when the limit resets |
-| `Retry-After` | Seconds until it's safe to retry |
+| `Retry-After` | Seconds until it's safe to retry (currently `60`) |
 
 ### Upstream Headers
 
