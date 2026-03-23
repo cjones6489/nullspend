@@ -576,12 +576,22 @@ export class UserBudgetDO extends DurableObject {
 
     // Update in-memory cache
 
-    // Schedule alarm for reservation expiry (session cleanup piggybacks on the same alarm)
+    // Schedule alarm for reservation expiry (session cleanup piggybacks on the same alarm).
+    // Retry once on failure — a missed alarm means reservations are never cleaned up,
+    // permanently holding budget capacity.
     if (reserved) {
       const nextExpiry = now + reservationTtlMs;
-      const currentAlarm = await this.ctx.storage.getAlarm();
-      if (!currentAlarm || currentAlarm > nextExpiry) {
-        await this.ctx.storage.setAlarm(nextExpiry);
+      try {
+        const currentAlarm = await this.ctx.storage.getAlarm();
+        if (!currentAlarm || currentAlarm > nextExpiry) {
+          await this.ctx.storage.setAlarm(nextExpiry);
+        }
+      } catch {
+        try {
+          await this.ctx.storage.setAlarm(nextExpiry);
+        } catch (retryErr) {
+          console.error("[UserBudgetDO] Failed to set alarm after retry:", retryErr);
+        }
       }
     }
 
