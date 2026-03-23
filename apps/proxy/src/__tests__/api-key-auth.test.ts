@@ -172,17 +172,20 @@ describe("authenticateApiKey", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not cache DB failures in the negative cache", async () => {
+  it("does not negative-cache DB errors — next request retries", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    mockSql.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    mockSql
+      .mockRejectedValueOnce(new Error("ECONNREFUSED"))  // first call: DB down
+      .mockResolvedValueOnce([validRow]);                  // second call: DB recovered
 
+    // First call — DB error, returns null
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
     expect(result1).toBeNull();
 
-    // DB failure null gets negative-cached (protects against hammering a failing DB)
+    // Second call — retries DB (not negative-cached), succeeds
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result2).toBeNull();
-    expect(mockSql).toHaveBeenCalledTimes(1); // Only 1 DB attempt
+    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
+    expect(mockSql).toHaveBeenCalledTimes(2); // Both calls hit DB
     vi.restoreAllMocks();
   });
 

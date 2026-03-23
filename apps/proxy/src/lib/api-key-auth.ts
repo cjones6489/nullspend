@@ -56,50 +56,42 @@ function evictIfNeeded(cache: Map<string, unknown>, maxSize: number): void {
 /**
  * Look up an API key by its SHA-256 hash in the database.
  * Returns { userId, keyId } for valid, non-revoked keys.
+ * Returns null for keys not found or revoked.
+ * THROWS on DB errors — caller must distinguish "not found" from "DB down".
  *
  * Uses the shared postgres.js pool via getSql() with Hyperdrive
  * connection pooling. Connection limits handled by postgres.js max setting.
- *
- * Never throws — returns null for invalid/revoked keys or DB errors.
  */
 async function lookupKeyInDb(
   keyHash: string,
   connectionString: string,
 ): Promise<ApiKeyIdentity | null> {
-  try {
-    const sql = getSql(connectionString);
+  const sql = getSql(connectionString);
 
-    const rows = await sql`
-      SELECT k.id, k.user_id, k.api_version, k.default_tags,
-        EXISTS(
-          SELECT 1 FROM webhook_endpoints w
-          WHERE w.user_id = k.user_id AND w.enabled = true
-        ) AS has_webhooks
-      FROM api_keys k
-      WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
-    `;
+  const rows = await sql`
+    SELECT k.id, k.user_id, k.api_version, k.default_tags,
+      EXISTS(
+        SELECT 1 FROM webhook_endpoints w
+        WHERE w.user_id = k.user_id AND w.enabled = true
+      ) AS has_webhooks
+    FROM api_keys k
+    WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
+  `;
 
-    if (rows.length === 0) {
-      return null;
-    }
-
-    const row = rows[0];
-    return {
-      userId: row.user_id as string,
-      keyId: row.id as string,
-      hasWebhooks: row.has_webhooks === true,
-      apiVersion: row.api_version as string,
-      defaultTags: (typeof row.default_tags === "object" && row.default_tags !== null && !Array.isArray(row.default_tags))
-        ? row.default_tags as Record<string, string>
-        : {},
-    };
-  } catch (err) {
-    console.error(
-      "[api-key-auth] Failed to look up API key:",
-      err instanceof Error ? err.message : "Unknown error",
-    );
+  if (rows.length === 0) {
     return null;
   }
+
+  const row = rows[0];
+  return {
+    userId: row.user_id as string,
+    keyId: row.id as string,
+    hasWebhooks: row.has_webhooks === true,
+    apiVersion: row.api_version as string,
+    defaultTags: (typeof row.default_tags === "object" && row.default_tags !== null && !Array.isArray(row.default_tags))
+      ? row.default_tags as Record<string, string>
+      : {},
+  };
 }
 
 /**
@@ -109,9 +101,10 @@ async function lookupKeyInDb(
  * 2. Check positive cache (valid keys, 120s TTL ±10s jitter)
  * 3. Check negative cache (invalid keys, 30s TTL)
  * 4. Query the database
- * 5. Populate the appropriate cache
+ * 5. On success: populate positive or negative cache
+ *    On DB error: return null WITHOUT negative-caching (next request retries)
  *
- * Never throws — returns null for invalid/revoked keys.
+ * Never throws — returns null for invalid/revoked keys or DB errors.
  */
 export async function authenticateApiKey(
   rawKey: string,
@@ -138,8 +131,20 @@ export async function authenticateApiKey(
     negativeCache.delete(keyHash);
   }
 
-  // DB lookup
-  const identity = await lookupKeyInDb(keyHash, connectionString);
+  // DB lookup — throws on DB errors, returns null for "not found"
+  let identity: ApiKeyIdentity | null;
+  try {
+    identity = await lookupKeyInDb(keyHash, connectionString);
+  } catch (err) {
+    // DB error (Hyperdrive down, connection timeout, etc.)
+    // Return null (deny request) but do NOT negative-cache.
+    // Next request will retry the DB lookup instead of being locked out for 30s.
+    console.error(
+      "[api-key-auth] DB lookup failed (not negative-cached):",
+      err instanceof Error ? err.message : "Unknown error",
+    );
+    return null;
+  }
 
   if (identity) {
     positiveCache.set(keyHash, {
@@ -148,6 +153,7 @@ export async function authenticateApiKey(
     });
     evictIfNeeded(positiveCache, CACHE_MAX_SIZE);
   } else {
+    // Key genuinely not found or revoked — safe to negative-cache
     negativeCache.set(keyHash, {
       expiresAt: now + NEGATIVE_TTL_MS,
     });
