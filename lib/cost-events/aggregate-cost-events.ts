@@ -107,7 +107,7 @@ export async function getKeyBreakdown(userId: string, periodDays: number, option
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
-    .where(baseConditions(userId, cutoff, options))
+    .where(and(baseConditions(userId, cutoff, options), sql`${costEvents.apiKeyId} IS NOT NULL`))
     .groupBy(costEvents.apiKeyId, apiKeys.name)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
     .limit(100);

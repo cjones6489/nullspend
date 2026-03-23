@@ -28,13 +28,16 @@ export async function handleWebhookQueue(
 
   const connectionString = env.HYPERDRIVE.connectionString;
 
-  // Lazy per-batch cache: one DB call per unique userId
+  // Lazy per-batch cache: one DB call per unique userId.
+  // Only cache non-empty results — empty could be a fail-open DB error
+  // from getWebhookEndpointsWithSecrets, and caching it would silently
+  // skip all remaining messages for that user in the batch.
   const endpointCache = new Map<string, WebhookEndpointWithSecret[]>();
   async function getEndpoints(userId: string): Promise<WebhookEndpointWithSecret[]> {
-    if (!endpointCache.has(userId)) {
-      endpointCache.set(userId, await getWebhookEndpointsWithSecrets(connectionString, userId));
-    }
-    return endpointCache.get(userId)!;
+    if (endpointCache.has(userId)) return endpointCache.get(userId)!;
+    const endpoints = await getWebhookEndpointsWithSecrets(connectionString, userId);
+    if (endpoints.length > 0) endpointCache.set(userId, endpoints);
+    return endpoints;
   }
 
   for (const msg of batch.messages) {

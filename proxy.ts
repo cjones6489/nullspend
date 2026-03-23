@@ -106,7 +106,8 @@ export async function proxy(request: NextRequest) {
 
     // Body size check
     const contentLength = request.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+    const contentLengthNum = contentLength ? parseInt(contentLength, 10) : NaN;
+    if (!isNaN(contentLengthNum) && contentLengthNum > MAX_BODY_BYTES) {
       return withRequestId(NextResponse.json(
         { error: { code: "payload_too_large", message: "Payload too large.", details: null } },
         { status: 413 },
