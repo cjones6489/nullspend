@@ -192,7 +192,6 @@ function makeMcpRequest(body: Record<string, unknown>): Request {
 
 function makeEnv(overrides: Partial<Record<string, unknown>> = {}): Env {
   return {
-    OPENAI_API_KEY: "sk-test-key",
     ANTHROPIC_API_KEY: "sk-ant-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",

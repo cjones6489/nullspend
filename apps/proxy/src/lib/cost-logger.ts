@@ -1,22 +1,6 @@
 import { costEvents, type NewCostEventRow } from "@nullspend/db";
 import { emitMetric } from "./metrics.js";
-import { getDb } from "./db.js";
-
-/**
- * Check if DB writes should be skipped.
- * In local dev WITHOUT Hyperdrive, pg's raw TCP socket errors crash
- * the workerd process. We skip writes unless __FORCE_DB_PERSIST is set.
- *
- * Hyperdrive rewrites connection strings to local-looking addresses
- * (127.0.0.1) in BOTH production and local dev, so hostname-based
- * detection is unreliable. Instead we use an explicit opt-out flag.
- */
-export function isLocalConnection(_connectionString: string): boolean {
-  const globals = globalThis as Record<string, unknown>;
-  if (globals.__FORCE_DB_PERSIST) return false;
-  if (globals.__SKIP_DB_PERSIST) return true;
-  return false;
-}
+import { getDb, isLocalConnection } from "./db.js";
 
 /**
  * Persist a cost event to Postgres via Hyperdrive.
@@ -80,8 +64,13 @@ export async function logCostEventsBatch(
         requestId: event.requestId,
         provider: event.provider,
         model: event.model,
+        inputTokens: event.inputTokens,
+        outputTokens: event.outputTokens,
         costMicrodollars: event.costMicrodollars,
         durationMs: event.durationMs,
+        eventType: event.eventType,
+        toolName: event.toolName,
+        sessionId: event.sessionId,
         traceId: event.traceId,
       });
     }

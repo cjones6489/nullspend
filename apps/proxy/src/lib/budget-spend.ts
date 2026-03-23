@@ -1,7 +1,6 @@
 import { sql, eq, and } from "drizzle-orm";
 import { budgets } from "@nullspend/db";
-import { isLocalConnection } from "./cost-logger.js";
-import { getDb } from "./db.js";
+import { getDb, isLocalConnection } from "./db.js";
 
 /**
  * Atomically increment `spend_microdollars` on each budget entity in Postgres.

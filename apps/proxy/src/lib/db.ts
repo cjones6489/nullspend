@@ -2,16 +2,32 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 
 /**
- * Module-level postgres.js instance.
+ * Module-level postgres.js instance with Drizzle ORM support.
  *
- * Replaces the per-query `new pg.Client()` + `connect()` + `end()` pattern
- * and the manual db-semaphore. postgres.js handles connection pooling internally
- * via the `max` setting (matches the 6-connection Workers limit with 1 headroom).
+ * Single shared connection pool for all proxy DB access. postgres.js handles
+ * connection lifecycle and pooling via the `max` setting (matches the
+ * 6-connection Workers limit with 1 headroom).
  *
  * The connectionString comes from env.HYPERDRIVE.connectionString which provides
  * connection pooling at the Cloudflare infrastructure level. postgres.js adds
  * application-level pooling on top.
  */
+
+/**
+ * Check if DB writes should be skipped.
+ * In local dev WITHOUT Hyperdrive, postgres socket errors crash
+ * the workerd process. We skip writes unless __FORCE_DB_PERSIST is set.
+ *
+ * Hyperdrive rewrites connection strings to local-looking addresses
+ * (127.0.0.1) in BOTH production and local dev, so hostname-based
+ * detection is unreliable. Instead we use an explicit opt-out flag.
+ */
+export function isLocalConnection(_connectionString: string): boolean {
+  const globals = globalThis as Record<string, unknown>;
+  if (globals.__FORCE_DB_PERSIST) return false;
+  if (globals.__SKIP_DB_PERSIST) return true;
+  return false;
+}
 let _sql: ReturnType<typeof postgres> | null = null;
 let _connStr: string | null = null;
 

@@ -93,7 +93,6 @@ function makeRequest(body: Record<string, unknown>): Request {
 
 function makeEnv(): Env {
   return {
-    OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres" },
     USER_BUDGET: {
       idFromName: vi.fn().mockReturnValue("do-id"),

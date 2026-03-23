@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { isLocalConnection } from "../lib/cost-logger.js";
+import { isLocalConnection } from "../lib/db.js";
 
 function makeCostEvent(overrides: Record<string, unknown> = {}) {
   return {

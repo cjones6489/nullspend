@@ -172,7 +172,6 @@ function makeMcpRequest(body: Record<string, unknown>): Request {
 
 function makeEnv(): Env {
   return {
-    OPENAI_API_KEY: "sk-test-key",
     ANTHROPIC_API_KEY: "sk-ant-test-key",
     HYPERDRIVE: { connectionString: "postgresql://test" },
     CACHE_KV: { get: vi.fn(), put: vi.fn(), delete: vi.fn() },

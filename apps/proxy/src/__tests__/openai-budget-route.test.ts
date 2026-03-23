@@ -89,7 +89,6 @@ function makeRequest(
 
 function makeEnv(): Env {
   return {
-    OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     },

@@ -137,7 +137,6 @@ import type { CheckResult } from "../durable-objects/user-budget.js";
 
 function makeEnv(): Env {
   return {
-    OPENAI_API_KEY: "sk-test-key",
     ANTHROPIC_API_KEY: "sk-ant-test-key",
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres" },
     CACHE_KV: { get: vi.fn(), put: vi.fn(), delete: vi.fn() },

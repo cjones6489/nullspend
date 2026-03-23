@@ -22,9 +22,13 @@ const mockDrizzleDb = {
   }),
 };
 
-vi.mock("../lib/db.js", () => ({
-  getDb: () => mockDrizzleDb,
-}));
+vi.mock("../lib/db.js", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("../lib/db.js")>();
+  return {
+    ...orig,
+    getDb: () => mockDrizzleDb,
+  };
+});
 
 vi.mock("drizzle-orm", () => {
   const sqlTagFn = (..._args: unknown[]) => "sql-placeholder";
