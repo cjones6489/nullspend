@@ -60,13 +60,6 @@ vi.mock("../lib/cost-event-queue.js", () => ({
   logCostEventQueued: vi.fn().mockResolvedValue(undefined),
   getCostEventQueue: vi.fn().mockReturnValue(undefined),
 }));
-
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: {
-    fromEnv: vi.fn().mockReturnValue({ pipeline: vi.fn() }),
-  },
-}));
-
 import { handleAnthropicMessages } from "../routes/anthropic.js";
 import { checkBudget } from "../lib/budget-orchestrator.js";
 import type { RequestContext } from "../lib/context.js";
@@ -117,8 +110,6 @@ function makeEnv(): Env {
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
   } as Env;
 }
 
@@ -129,7 +120,6 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-1", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
-    redis: {} as any,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",

@@ -68,11 +68,6 @@ vi.mock("../lib/cost-event-queue.js", () => ({
 vi.mock("../lib/cost-calculator.js", () => ({
   calculateOpenAICost: (...args: unknown[]) => mockCalculateOpenAICost(...args),
 }));
-
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: { fromEnv: vi.fn(() => ({})) },
-}));
-
 vi.mock("../lib/sanitize-upstream-error.js", () => ({
   sanitizeUpstreamError: vi.fn().mockResolvedValue(JSON.stringify({
     error: { type: "upstream_error", message: "bad" }
@@ -100,8 +95,6 @@ function makeEnv(): Env {
   return {
     OPENAI_API_KEY: "sk-test-key",
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres" },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
     USER_BUDGET: {
       idFromName: vi.fn().mockReturnValue("do-id"),
       get: vi.fn().mockReturnValue({}),
@@ -116,7 +109,6 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
-    redis: null,
     connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",

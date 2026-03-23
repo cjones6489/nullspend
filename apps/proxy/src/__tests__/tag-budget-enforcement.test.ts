@@ -105,13 +105,6 @@ vi.mock("../lib/cost-calculator.js", () => ({
 vi.mock("../lib/anthropic-cost-calculator.js", () => ({
   calculateAnthropicCost: vi.fn().mockReturnValue({ costMicrodollars: 42_000 }),
 }));
-
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: {
-    fromEnv: vi.fn(() => ({})),
-  },
-}));
-
 vi.mock("../lib/webhook-cache.js", () => ({
   getWebhookEndpoints: (...args: unknown[]) => mockGetWebhookEndpoints(...args),
   getWebhookEndpointsWithSecrets: (...args: unknown[]) => mockGetWebhookEndpointsWithSecrets(...args),
@@ -182,8 +175,6 @@ function makeEnv(): Env {
     OPENAI_API_KEY: "sk-test-key",
     ANTHROPIC_API_KEY: "sk-ant-test-key",
     HYPERDRIVE: { connectionString: "postgresql://test" },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
     CACHE_KV: { get: vi.fn(), put: vi.fn(), delete: vi.fn() },
     USER_BUDGET: {
       idFromName: vi.fn().mockReturnValue({ toString: () => "do-id" }),
@@ -205,7 +196,6 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
-    redis: null,
     connectionString: "postgresql://test",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
@@ -305,7 +295,6 @@ describe("Tag Budget Enforcement", () => {
       const ctx = makeCtx(defaultBody, {
         tags: { project: "openclaw" },
         auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
-        redis: {} as any,
         webhookDispatcher: mockDispatcher as any,
       });
       await handleChatCompletions(makeRequest(defaultBody), env, ctx);

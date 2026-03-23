@@ -90,8 +90,6 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
     ...overrides,
   } as Env;
 }
@@ -115,7 +113,6 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
-    redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
@@ -976,7 +973,6 @@ describe("handleChatCompletions", () => {
         makeEnv(),
         makeCtx(body, {
           auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
-          redis: {} as any,
           webhookDispatcher: { dispatch: dispatchSpy },
         }),
       );
@@ -1048,7 +1044,6 @@ describe("handleChatCompletions", () => {
         makeEnv(),
         makeCtx(body, {
           auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, apiVersion: "2026-04-01", defaultTags: {} },
-          redis: {} as any,
           webhookDispatcher: { dispatch: dispatchSpy },
         }),
       );

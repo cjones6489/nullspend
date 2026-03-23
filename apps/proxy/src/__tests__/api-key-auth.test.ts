@@ -299,9 +299,10 @@ describe("authenticateApiKey cache expiry", () => {
   it("re-queries DB when positive cache entry expires", async () => {
     const now = Date.now();
     // authenticateApiKey calls Date.now() exactly once per invocation
+    // Positive TTL is 120s ±10s jitter, so 131s guarantees expiry
     vi.spyOn(Date, "now")
-      .mockReturnValueOnce(now)           // First call — stores expiresAt = now + 60_000
-      .mockReturnValueOnce(now + 61_000); // Second call — past 60s TTL, entry expired
+      .mockReturnValueOnce(now)            // First call — stores expiresAt = now + 120_000 ± jitter
+      .mockReturnValueOnce(now + 131_000); // Second call — past max TTL (130s), entry expired
 
     mockQuery
       .mockResolvedValueOnce({
@@ -323,10 +324,12 @@ describe("authenticateApiKey cache expiry", () => {
 
 describe("authenticateApiKey defaultTags", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     _resetCaches();
     mockConnect.mockResolvedValue(undefined);
     mockEnd.mockResolvedValue(undefined);
+    mockOn.mockImplementation(() => {});
   });
 
   afterEach(() => {

@@ -88,13 +88,6 @@ vi.mock("../lib/cost-calculator.js", () => ({
 vi.mock("../lib/anthropic-cost-calculator.js", () => ({
   calculateAnthropicCost: vi.fn().mockReturnValue({ costMicrodollars: 42_000 }),
 }));
-
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: {
-    fromEnv: vi.fn(() => ({})),
-  },
-}));
-
 vi.mock("../lib/webhook-cache.js", () => ({
   getWebhookEndpoints: vi.fn().mockResolvedValue([]),
   getWebhookEndpointsWithSecrets: vi.fn().mockResolvedValue([]),
@@ -150,8 +143,6 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     HYPERDRIVE: {
       connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
     USER_BUDGET: {
       idFromName: vi.fn().mockReturnValue("do-id"),
       get: vi.fn().mockReturnValue({}),
@@ -167,7 +158,6 @@ function makeCtx(
   return {
     body,
     auth: { userId: "user-uuid-456", keyId: "key-uuid-001", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
-    redis: null,
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",

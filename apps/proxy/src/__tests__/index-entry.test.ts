@@ -29,23 +29,8 @@ vi.mock("cloudflare:workers", () => ({
   },
 }));
 
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: {
-    fromEnv: () => ({
-      ping: vi.fn().mockResolvedValue("PONG"),
-    }),
-  },
-}));
-
-const { mockProxyLimit, MockProxyRatelimit } = vi.hoisted(() => {
-  const mockProxyLimit = vi.fn().mockResolvedValue({ success: true, limit: 120, remaining: 119, reset: Date.now() + 60000 });
-  const MockProxyRatelimit = vi.fn().mockImplementation(function () { return { limit: mockProxyLimit }; });
-  (MockProxyRatelimit as any).slidingWindow = vi.fn();
-  return { mockProxyLimit, MockProxyRatelimit };
-});
-vi.mock("@upstash/ratelimit", () => ({
-  Ratelimit: MockProxyRatelimit,
-}));
+const mockIpLimit = vi.fn().mockResolvedValue({ success: true });
+const mockKeyLimit = vi.fn().mockResolvedValue({ success: true });
 
 vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: vi.fn().mockReturnValue(true),
@@ -92,12 +77,11 @@ import entrypoint from "../index.js";
 
 function makeEnv(): Env {
   return {
-    OPENAI_API_KEY: "sk-test",
     HYPERDRIVE: { connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres" },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
+    IP_RATE_LIMITER: { limit: mockIpLimit },
+    KEY_RATE_LIMITER: { limit: mockKeyLimit },
     CACHE_KV: { get: vi.fn().mockResolvedValue(null), put: vi.fn() },
-  } as Env;
+  } as unknown as Env;
 }
 
 function makeCtx(): ExecutionContext {
@@ -148,14 +132,6 @@ describe("Worker entry point routing", () => {
       expect(body).toHaveProperty("measured_at");
     });
 
-    it("GET /health/ready returns 200 when Redis is up", async () => {
-      const req = new Request("http://localhost/health/ready");
-      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.status).toBe("ok");
-      expect(body.redis).toBe("PONG");
-    });
   });
 
   describe("body parsing", () => {
@@ -513,7 +489,7 @@ describe("Worker entry point routing", () => {
 
   describe("rate limiting", () => {
     it("returns 429 when rate limit is exceeded", async () => {
-      mockProxyLimit.mockResolvedValueOnce({ success: false, limit: 120, remaining: 0, reset: Date.now() + 60000 });
+      mockIpLimit.mockResolvedValueOnce({ success: false });
 
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
@@ -527,8 +503,7 @@ describe("Worker entry point routing", () => {
       expect(res.status).toBe(429);
       const body = await res.json();
       expect(body.error.code).toBe("rate_limited");
-      expect(res.headers.get("X-RateLimit-Limit")).toBe("120");
-      expect(res.headers.get("Retry-After")).toBeTruthy();
+      expect(res.headers.get("Retry-After")).toBe("60");
     });
 
     it("continues processing when rate limit is not exceeded", async () => {
@@ -553,7 +528,7 @@ describe("Worker entry point routing", () => {
     });
 
     it("continues processing when rate limiter throws (fail-open for availability)", async () => {
-      mockProxyLimit.mockRejectedValueOnce(new Error("Redis connection failed"));
+      mockIpLimit.mockRejectedValueOnce(new Error("Rate limiter binding error"));
 
       globalThis.fetch = vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {

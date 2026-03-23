@@ -15,11 +15,6 @@ beforeAll(() => {
   }
 });
 
-const { mockIpLimit, mockKeyLimit } = vi.hoisted(() => ({
-  mockIpLimit: vi.fn(),
-  mockKeyLimit: vi.fn(),
-}));
-
 vi.mock("cloudflare:workers", () => ({
   waitUntil: vi.fn((p: Promise<unknown>) => {
     p.catch(() => {});
@@ -31,37 +26,11 @@ vi.mock("cloudflare:workers", () => ({
   },
 }));
 
-vi.mock("@upstash/redis/cloudflare", () => ({
-  Redis: { fromEnv: vi.fn(() => ({})) },
-}));
-
-// Mock Ratelimit to control IP and key limiting separately
-vi.mock("@upstash/ratelimit", () => {
-  return {
-    Ratelimit: class MockRatelimit {
-      private prefix: string;
-      constructor(opts: { prefix: string }) {
-        this.prefix = opts.prefix;
-      }
-      static slidingWindow() {
-        return "slidingWindow";
-      }
-      async limit(key: string) {
-        if (this.prefix.includes(":key")) {
-          return mockKeyLimit(key);
-        }
-        return mockIpLimit(key);
-      }
-    },
-  };
-});
-
 const mockAuthenticateRequest = vi.fn();
 vi.mock("../lib/auth.js", () => ({
   authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
 }));
 
-// Mock route handlers to avoid needing full auth/budget mocks
 vi.mock("../routes/openai.js", () => ({
   handleChatCompletions: vi.fn().mockResolvedValue(
     Response.json({ id: "test", choices: [] }, { status: 200 }),
@@ -79,6 +48,9 @@ import handler from "../index.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const mockIpLimit = vi.fn();
+const mockKeyLimit = vi.fn();
 
 function makeRequest(
   path: string,
@@ -100,11 +72,10 @@ function makeRequest(
 
 function makeEnv(): Env {
   return {
-    OPENAI_API_KEY: "sk-test",
     HYPERDRIVE: { connectionString: "postgresql://localhost:5432/test" },
-    UPSTASH_REDIS_REST_URL: "https://fake.upstash.io",
-    UPSTASH_REDIS_REST_TOKEN: "fake-token",
-  } as Env;
+    IP_RATE_LIMITER: { limit: mockIpLimit },
+    KEY_RATE_LIMITER: { limit: mockKeyLimit },
+  } as unknown as Env;
 }
 
 function makeCtx(): ExecutionContext {
@@ -114,44 +85,20 @@ function makeCtx(): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-const ipAllowed = {
-  success: true,
-  limit: 120,
-  remaining: 119,
-  reset: Date.now() + 60000,
-};
-const keyAllowed = {
-  success: true,
-  limit: 600,
-  remaining: 599,
-  reset: Date.now() + 60000,
-};
-const ipDenied = {
-  success: false,
-  limit: 120,
-  remaining: 0,
-  reset: Date.now() + 30000,
-};
-const keyDenied = {
-  success: false,
-  limit: 600,
-  remaining: 0,
-  reset: Date.now() + 30000,
-};
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("per-key rate limiting edge cases", () => {
   beforeEach(() => {
-    mockIpLimit.mockReset().mockResolvedValue(ipAllowed);
-    mockKeyLimit.mockReset().mockResolvedValue(keyAllowed);
+    mockIpLimit.mockReset().mockResolvedValue({ success: true });
+    mockKeyLimit.mockReset().mockResolvedValue({ success: true });
     mockAuthenticateRequest.mockReset().mockResolvedValue({
       userId: "user-1",
       keyId: "key-1",
       hasWebhooks: false,
-      apiVersion: "2026-04-01", defaultTags: {},
+      apiVersion: "2026-04-01",
+      defaultTags: {},
     });
   });
 
@@ -172,12 +119,12 @@ describe("per-key rate limiting edge cases", () => {
 
     expect(mockIpLimit).toHaveBeenCalledOnce();
     expect(mockKeyLimit).toHaveBeenCalledOnce();
-    expect(mockKeyLimit).toHaveBeenCalledWith("key-123");
+    expect(mockKeyLimit).toHaveBeenCalledWith({ key: "key-123" });
     expect(res.status).toBe(200);
   });
 
-  it("IP rate limit hit — returns 429 before key check", async () => {
-    mockIpLimit.mockResolvedValue(ipDenied);
+  it("IP rate limit hit — returns 429 with Retry-After", async () => {
+    mockIpLimit.mockResolvedValue({ success: false });
 
     const req = makeRequest("/v1/chat/completions", {
       "x-nullspend-key": "key-123",
@@ -185,20 +132,15 @@ describe("per-key rate limiting edge cases", () => {
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
     expect(res.status).toBe(429);
-    expect(mockKeyLimit).not.toHaveBeenCalled();
 
     const body = await res.json();
     expect(body.error.code).toBe("rate_limited");
-
-    expect(res.headers.has("X-RateLimit-Limit")).toBe(true);
-    expect(res.headers.has("X-RateLimit-Remaining")).toBe(true);
-    expect(res.headers.has("X-RateLimit-Reset")).toBe(true);
-    expect(res.headers.has("Retry-After")).toBe(true);
+    expect(res.headers.get("Retry-After")).toBe("60");
   });
 
   it("IP passes but key rate limit hit — returns 429", async () => {
-    mockIpLimit.mockResolvedValue(ipAllowed);
-    mockKeyLimit.mockResolvedValue(keyDenied);
+    mockIpLimit.mockResolvedValue({ success: true });
+    mockKeyLimit.mockResolvedValue({ success: false });
 
     const req = makeRequest("/v1/chat/completions", {
       "x-nullspend-key": "key-456",
@@ -206,11 +148,7 @@ describe("per-key rate limiting edge cases", () => {
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
     expect(res.status).toBe(429);
-
-    expect(res.headers.has("X-RateLimit-Limit")).toBe(true);
-    expect(res.headers.has("X-RateLimit-Remaining")).toBe(true);
-    expect(res.headers.has("X-RateLimit-Reset")).toBe(true);
-    expect(res.headers.has("Retry-After")).toBe(true);
+    expect(res.headers.get("Retry-After")).toBe("60");
   });
 
   it("key header exceeds 128 chars — key rate limit skipped", async () => {
@@ -232,7 +170,7 @@ describe("per-key rate limiting edge cases", () => {
     const res = await handler.fetch(req, makeEnv(), makeCtx());
 
     expect(mockKeyLimit).toHaveBeenCalledOnce();
-    expect(mockKeyLimit).toHaveBeenCalledWith(exactKeyId);
+    expect(mockKeyLimit).toHaveBeenCalledWith({ key: exactKeyId });
     expect(res.status).toBe(200);
   });
 
@@ -246,23 +184,9 @@ describe("per-key rate limiting edge cases", () => {
     expect(res.status).toBe(200);
   });
 
-  it("custom key rate limit from env — flow still works", async () => {
-    const env = makeEnv();
-    (env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT = "1000";
-
-    const req = makeRequest("/v1/chat/completions", {
-      "x-nullspend-key": "key-custom",
-    });
-    const res = await handler.fetch(req, env, makeCtx());
-
-    expect(mockKeyLimit).toHaveBeenCalledOnce();
-    expect(mockKeyLimit).toHaveBeenCalledWith("key-custom");
-    expect(res.status).toBe(200);
-  });
-
   it("rate limiter error — request proceeds (fail-open)", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    mockIpLimit.mockRejectedValue(new Error("Redis connection failed"));
+    mockIpLimit.mockRejectedValue(new Error("Rate limiter binding error"));
 
     const req = makeRequest("/v1/chat/completions");
     const res = await handler.fetch(req, makeEnv(), makeCtx());

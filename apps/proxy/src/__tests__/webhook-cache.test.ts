@@ -35,14 +35,7 @@ import {
   invalidateWebhookCache,
 } from "../lib/webhook-cache.js";
 
-function makeRedis(overrides: Record<string, unknown> = {}) {
-  return {
-    get: vi.fn().mockResolvedValue(null),
-    set: vi.fn().mockResolvedValue("OK"),
-    del: vi.fn().mockResolvedValue(1),
-    ...overrides,
-  } as any;
-}
+const mockKv = {} as KVNamespace; // Sentinel — actual calls go through mocked cache-kv.js
 
 // Mock DB rows (snake_case as returned by pg)
 const mockDbRows = [
@@ -54,6 +47,7 @@ const mockDbRows = [
     secret_rotated_at: null,
     event_types: ["cost_event.created"],
     api_version: "2026-04-01",
+    payload_mode: "full",
   },
   {
     id: "ep-2",
@@ -63,6 +57,7 @@ const mockDbRows = [
     secret_rotated_at: null,
     event_types: [],
     api_version: "2026-04-01",
+    payload_mode: "full",
   },
 ];
 
@@ -81,22 +76,23 @@ describe("getWebhookEndpoints", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("returns cached endpoints on cache hit", async () => {
-    const cached = [
-      { id: "ep-1", url: "https://hooks.example.com/1", eventTypes: [] },
+  it("returns data from KV on cache hit without querying DB", async () => {
+    const kvData = [
+      { id: "ep-1", url: "https://hooks.example.com/1", eventTypes: ["cost_event.created"] },
     ];
-    const redis = makeRedis({ get: vi.fn().mockResolvedValue(cached) });
+    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(kvData);
 
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1");
-    expect(result).toEqual(cached);
+    const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
+
+    expect(result).toEqual(kvData);
     expect(MockClient).not.toHaveBeenCalled();
   });
 
-  it("queries database on cache miss and caches metadata without secrets", async () => {
+  it("queries DB on KV miss and writes result to KV", async () => {
+    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
     mockDbClient();
 
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1");
+    const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
 
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({
@@ -114,62 +110,67 @@ describe("getWebhookEndpoints", () => {
     expect(result[0]).not.toHaveProperty("signingSecret");
     expect(result[1]).not.toHaveProperty("signingSecret");
 
-    // Verify cache was written
-    expect(redis.set).toHaveBeenCalledWith(
-      "webhooks:user:user-1",
-      expect.any(String),
-      { ex: 300 },
+    // Verify KV cache was written
+    expect(mockKvFns.setCachedWebhookEndpoints).toHaveBeenCalledWith(
+      mockKv,
+      "user-1",
+      expect.arrayContaining([
+        expect.objectContaining({ id: "ep-1" }),
+        expect.objectContaining({ id: "ep-2" }),
+      ]),
     );
-
-    // Verify cached JSON does not contain secrets
-    const cachedJson = redis.set.mock.calls[0][1] as string;
-    expect(cachedJson).not.toContain("whsec_secret1");
-    expect(cachedJson).not.toContain("whsec_secret2");
   });
 
-  it("returns empty array on database error (fail-open)", async () => {
-    MockClient.mockImplementation(function (this: any) {
-      this.connect = vi.fn().mockRejectedValue(new Error("connection failed"));
-      this.end = vi.fn();
-      this.on = vi.fn();
-    });
-
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1");
-    expect(result).toEqual([]);
-  });
-
-  it("returns empty array on Redis read error (fail-open, falls to DB)", async () => {
-    const redis = makeRedis({
-      get: vi.fn().mockRejectedValue(new Error("redis down")),
-    });
-
-    MockClient.mockImplementation(function (this: any) {
-      this.connect = vi.fn().mockRejectedValue(new Error("db also down"));
-      this.end = vi.fn();
-      this.on = vi.fn();
-    });
-
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1");
-    expect(result).toEqual([]);
-  });
-
-  it("returns endpoints even if Redis write fails", async () => {
+  it("does not include secrets in KV write", async () => {
+    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
     mockDbClient();
 
-    const redis = makeRedis({
-      set: vi.fn().mockRejectedValue(new Error("redis write failed")),
-    });
+    await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
 
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1");
+    const writtenData = mockKvFns.setCachedWebhookEndpoints.mock.calls[0][2];
+    const serialized = JSON.stringify(writtenData);
+    expect(serialized).not.toContain("whsec_secret1");
+    expect(serialized).not.toContain("whsec_secret2");
+    expect(serialized).not.toContain("signingSecret");
+  });
+
+  it("falls through to DB on KV read error (fail-open)", async () => {
+    mockKvFns.getCachedWebhookEndpoints.mockRejectedValue(new Error("KV read fail"));
+    mockDbClient();
+
+    const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
+
     expect(result).toHaveLength(2);
   });
 
+  it("returns endpoints even if KV write fails (fail-open)", async () => {
+    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
+    mockKvFns.setCachedWebhookEndpoints.mockRejectedValue(new Error("KV write fail"));
+    mockDbClient();
+
+    const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
+
+    expect(result).toHaveLength(2);
+  });
+
+  it("returns empty array on DB error (fail-open)", async () => {
+    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
+    MockClient.mockImplementation(function (this: any) {
+      this.connect = vi.fn().mockRejectedValue(new Error("db down"));
+      this.end = vi.fn();
+      this.on = vi.fn();
+    });
+
+    const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
+
+    expect(result).toEqual([]);
+  });
+
   it("returns empty array when user has no endpoints", async () => {
+    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
     mockDbClient([]);
 
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1");
+    const result = await getWebhookEndpoints("postgresql://test", "user-1", mockKv);
     expect(result).toEqual([]);
   });
 });
@@ -257,173 +258,19 @@ describe("getWebhookEndpointsWithSecrets", () => {
 
 describe("invalidateWebhookCache", () => {
   beforeEach(() => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  it("deletes the cache key", async () => {
-    const redis = makeRedis();
-    await invalidateWebhookCache(redis, "user-1");
-    expect(redis.del).toHaveBeenCalledWith("webhooks:user:user-1");
-  });
-
-  it("does not throw on Redis error", async () => {
-    const redis = makeRedis({
-      del: vi.fn().mockRejectedValue(new Error("redis error")),
-    });
-    await expect(invalidateWebhookCache(redis, "user-1")).resolves.not.toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// KV path tests
-// ---------------------------------------------------------------------------
-
-const mockKv = {} as KVNamespace; // Sentinel — actual calls go through mocked cache-kv.js
-
-describe("getWebhookEndpoints (KV path)", () => {
-  beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("returns data from KV on cache hit without querying DB", async () => {
-    const kvData = [
-      { id: "ep-1", url: "https://hooks.example.com/1", eventTypes: ["cost_event.created"] },
-    ];
-    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(kvData);
-
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1", mockKv);
-
-    expect(result).toEqual(kvData);
-    expect(MockClient).not.toHaveBeenCalled();
-    expect(redis.get).not.toHaveBeenCalled();
-  });
-
-  it("queries DB on KV miss and writes result to KV", async () => {
-    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    mockDbClient();
-
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1", mockKv);
-
-    expect(result).toHaveLength(2);
-    expect(mockKvFns.setCachedWebhookEndpoints).toHaveBeenCalledWith(
-      mockKv,
-      "user-1",
-      expect.arrayContaining([
-        expect.objectContaining({ id: "ep-1" }),
-        expect.objectContaining({ id: "ep-2" }),
-      ]),
-    );
-  });
-
-  it("does not include secrets in KV write", async () => {
-    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    mockDbClient();
-
-    const redis = makeRedis();
-    await getWebhookEndpoints(redis, "postgresql://test", "user-1", mockKv);
-
-    const writtenData = mockKvFns.setCachedWebhookEndpoints.mock.calls[0][2];
-    const serialized = JSON.stringify(writtenData);
-    expect(serialized).not.toContain("whsec_secret1");
-    expect(serialized).not.toContain("whsec_secret2");
-    expect(serialized).not.toContain("signingSecret");
-  });
-
-  it("falls through to DB on KV read error (fail-open)", async () => {
-    mockKvFns.getCachedWebhookEndpoints.mockRejectedValue(new Error("KV read fail"));
-    mockDbClient();
-
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1", mockKv);
-
-    expect(result).toHaveLength(2);
-  });
-
-  it("returns endpoints even if KV write fails (fail-open)", async () => {
-    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    mockKvFns.setCachedWebhookEndpoints.mockRejectedValue(new Error("KV write fail"));
-    mockDbClient();
-
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1", mockKv);
-
-    expect(result).toHaveLength(2);
-  });
-
-  it("returns empty array on DB error (fail-open)", async () => {
-    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    MockClient.mockImplementation(function (this: any) {
-      this.connect = vi.fn().mockRejectedValue(new Error("db down"));
-      this.end = vi.fn();
-      this.on = vi.fn();
-    });
-
-    const redis = makeRedis();
-    const result = await getWebhookEndpoints(redis, "postgresql://test", "user-1", mockKv);
-
-    expect(result).toEqual([]);
-  });
-
-  it("does NOT call Redis when KV is provided", async () => {
-    mockKvFns.getCachedWebhookEndpoints.mockResolvedValue(null);
-    mockDbClient();
-
-    const redis = makeRedis();
-    await getWebhookEndpoints(redis, "postgresql://test", "user-1", mockKv);
-
-    expect(redis.get).not.toHaveBeenCalled();
-    expect(redis.set).not.toHaveBeenCalled();
-  });
-
-  it("falls back to Redis path when kv is null", async () => {
-    mockDbClient();
-
-    const redis = makeRedis();
-    await getWebhookEndpoints(redis, "postgresql://test", "user-1", null);
-
-    expect(redis.get).toHaveBeenCalled();
-    expect(mockKvFns.getCachedWebhookEndpoints).not.toHaveBeenCalled();
-  });
-});
-
-describe("invalidateWebhookCache (KV path)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  it("invalidates both KV and Redis when kv is provided", async () => {
-    const redis = makeRedis();
-    await invalidateWebhookCache(redis, "user-1", mockKv);
+  it("invalidates KV cache for user", async () => {
+    await invalidateWebhookCache("user-1", mockKv);
 
     expect(mockKvFns.invalidateWebhookEndpoints).toHaveBeenCalledWith(mockKv, "user-1");
-    expect(redis.del).toHaveBeenCalledWith("webhooks:user:user-1");
   });
 
-  it("only invalidates Redis when kv is not provided", async () => {
-    const redis = makeRedis();
-    await invalidateWebhookCache(redis, "user-1");
-
-    expect(mockKvFns.invalidateWebhookEndpoints).not.toHaveBeenCalled();
-    expect(redis.del).toHaveBeenCalledWith("webhooks:user:user-1");
-  });
-
-  it("still invalidates Redis when KV invalidation fails", async () => {
+  it("does not throw on KV invalidation error", async () => {
     mockKvFns.invalidateWebhookEndpoints.mockRejectedValue(new Error("KV delete fail"));
 
-    const redis = makeRedis();
-    await invalidateWebhookCache(redis, "user-1", mockKv);
-
-    expect(redis.del).toHaveBeenCalledWith("webhooks:user:user-1");
-  });
-
-  it("does not throw when KV invalidation fails", async () => {
-    mockKvFns.invalidateWebhookEndpoints.mockRejectedValue(new Error("KV delete fail"));
-
-    const redis = makeRedis();
-    await expect(invalidateWebhookCache(redis, "user-1", mockKv)).resolves.not.toThrow();
+    await expect(invalidateWebhookCache("user-1", mockKv)).resolves.not.toThrow();
   });
 });

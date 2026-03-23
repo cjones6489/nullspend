@@ -33,7 +33,6 @@ function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
   return {
     body: {},
     auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} },
-    redis: null,
     connectionString: "postgres://test",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",

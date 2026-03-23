@@ -55,7 +55,7 @@ async function applyRateLimit(
       if (!keyOk) {
         return Response.json(
           { error: { code: "rate_limited", message: "Too many requests", details: null } },
-          { status: 429 },
+          { status: 429, headers: { "Retry-After": "60" } },
         );
       }
     }
