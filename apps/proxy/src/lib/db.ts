@@ -2,15 +2,17 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 
 /**
- * Module-level postgres.js instance with Drizzle ORM support.
+ * Per-request postgres.js client for Cloudflare Workers.
  *
- * Single shared connection pool for all proxy DB access. postgres.js handles
- * connection lifecycle and pooling via the `max` setting (matches the
- * 6-connection Workers limit with 1 headroom).
+ * IMPORTANT: Cloudflare Workers enforce I/O context isolation — connections
+ * created in one request's handler cannot be reused by another request.
+ * Module-level connection pools violate this and cause:
+ *   "Cannot perform I/O on behalf of a different request"
  *
- * The connectionString comes from env.HYPERDRIVE.connectionString which provides
- * connection pooling at the Cloudflare infrastructure level. postgres.js adds
- * application-level pooling on top.
+ * Instead, we create a fresh postgres.js instance per call. This is efficient
+ * because Hyperdrive handles connection pooling at the infrastructure level —
+ * the postgres.js "connection" is actually a fast local socket to the
+ * Hyperdrive proxy, not a real TCP+TLS connection to Postgres.
  */
 
 /**
@@ -28,34 +30,24 @@ export function isLocalConnection(_connectionString: string): boolean {
   if (globals.__SKIP_DB_PERSIST) return true;
   return false;
 }
-let _sql: ReturnType<typeof postgres> | null = null;
-let _connStr: string | null = null;
 
+/**
+ * Create a postgres.js client for the current request context.
+ * Each call returns a fresh instance — do not cache across requests.
+ * Hyperdrive handles connection pooling at the infrastructure level.
+ */
 export function getSql(connectionString: string): ReturnType<typeof postgres> {
-  // Reuse if same connection string (normal case within a Worker isolate)
-  if (_sql && _connStr === connectionString) {
-    return _sql;
-  }
-
-  // Close old pool if connection string changed (defensive — unlikely in practice)
-  if (_sql) {
-    _sql.end({ timeout: 0 }).catch(() => {});
-  }
-
-  _sql = postgres(connectionString, {
-    max: 5,              // matches old db-semaphore MAX_CONCURRENT; Workers have 6 connection limit
-    idle_timeout: 20,    // seconds before idle connections are closed
+  return postgres(connectionString, {
+    max: 1,              // single connection per instance; Hyperdrive pools at infra level
+    idle_timeout: 20,    // seconds before idle connection is closed
     connect_timeout: 5,  // seconds to wait for connection
     prepare: false,      // required for Hyperdrive compatibility (PgBouncer-style pooling)
     fetch_types: false,  // skip pg_type catalog round-trip — no array types used
   });
-  _connStr = connectionString;
-
-  return _sql;
 }
 
 /**
- * Get a Drizzle ORM instance backed by the shared postgres.js pool.
+ * Get a Drizzle ORM instance for the current request context.
  * Used by budget-spend, budget-do-lookup, and cost-logger for type-safe queries.
  */
 export function getDb(connectionString: string) {
