@@ -1,6 +1,4 @@
-import { sql, eq, and } from "drizzle-orm";
-import { budgets } from "@nullspend/db";
-import { getDb } from "./db.js";
+import { getSql } from "./db.js";
 
 /**
  * Atomically increment `spend_microdollars` on each budget entity in Postgres.
@@ -28,7 +26,7 @@ export async function updateBudgetSpend(
     return;
   }
 
-  const db = getDb(connectionString);
+  const sql = getSql(connectionString);
 
   // Sort entities by (entityType, entityId) to prevent deadlocks
   // when concurrent reconciliations overlap on the same entities.
@@ -36,20 +34,15 @@ export async function updateBudgetSpend(
     a.entityType.localeCompare(b.entityType) || a.entityId.localeCompare(b.entityId),
   );
 
-  await db.transaction(async (tx) => {
+  await sql.begin(async (tx) => {
     for (const entity of sorted) {
-      await tx
-        .update(budgets)
-        .set({
-          spendMicrodollars: sql`${budgets.spendMicrodollars} + ${actualCostMicrodollars}`,
-          updatedAt: sql`NOW()`,
-        })
-        .where(
-          and(
-            eq(budgets.entityType, entity.entityType),
-            eq(budgets.entityId, entity.entityId),
-          ),
-        );
+      await tx`
+        UPDATE budgets
+        SET spend_microdollars = spend_microdollars + ${actualCostMicrodollars},
+            updated_at = NOW()
+        WHERE entity_type = ${entity.entityType}
+          AND entity_id = ${entity.entityId}
+      `;
     }
   });
 }
@@ -72,28 +65,23 @@ export async function resetBudgetPeriod(
   }
 
   try {
-    const db = getDb(connectionString);
+    const sql = getSql(connectionString);
 
     // Sort entities by (entityType, entityId) to prevent deadlocks
     const sorted = [...resets].sort((a, b) =>
       a.entityType.localeCompare(b.entityType) || a.entityId.localeCompare(b.entityId),
     );
 
-    await db.transaction(async (tx) => {
+    await sql.begin(async (tx) => {
       for (const reset of sorted) {
-        await tx
-          .update(budgets)
-          .set({
-            spendMicrodollars: 0,
-            currentPeriodStart: new Date(reset.newPeriodStart),
-            updatedAt: sql`NOW()`,
-          })
-          .where(
-            and(
-              eq(budgets.entityType, reset.entityType),
-              eq(budgets.entityId, reset.entityId),
-            ),
-          );
+        await tx`
+          UPDATE budgets
+          SET spend_microdollars = 0,
+              current_period_start = ${new Date(reset.newPeriodStart).toISOString()},
+              updated_at = NOW()
+          WHERE entity_type = ${reset.entityType}
+            AND entity_id = ${reset.entityId}
+        `;
       }
     });
   } catch (err) {

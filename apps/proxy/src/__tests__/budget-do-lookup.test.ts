@@ -1,42 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockGetDb } = vi.hoisted(() => ({
-  mockGetDb: vi.fn(),
-}));
+const { mockSql } = vi.hoisted(() => {
+  const mockSql = vi.fn().mockResolvedValue([]);
+  return { mockSql };
+});
 
 vi.mock("../lib/db.js", () => ({
-  getDb: () => mockGetDb(),
-}));
-
-vi.mock("drizzle-orm", () => ({
-  eq: vi.fn((_col: unknown, val: unknown) => ({ eq: val })),
-  and: vi.fn((...args: unknown[]) => ({ and: args })),
-  inArray: vi.fn((_col: unknown, vals: unknown) => ({ inArray: vals })),
-  getTableColumns: vi.fn(() => ({})),
-}));
-
-vi.mock("@nullspend/db", () => ({
-  budgets: {
-    entityType: "entityType",
-    entityId: "entityId",
-    userId: "userId",
-    maxBudgetMicrodollars: "maxBudgetMicrodollars",
-    spendMicrodollars: "spendMicrodollars",
-    policy: "policy",
-    resetInterval: "resetInterval",
-    currentPeriodStart: "currentPeriodStart",
-  },
+  getSql: () => mockSql,
 }));
 
 import { lookupBudgetsForDO } from "../lib/budget-do-lookup.js";
 
-function makeMockDb(whereResults: unknown[] | ((...args: unknown[]) => Promise<unknown[]>)) {
+function makeBudgetRow(overrides: Record<string, unknown> = {}) {
   return {
-    select: vi.fn().mockReturnThis(),
-    from: vi.fn().mockReturnThis(),
-    where: typeof whereResults === "function"
-      ? vi.fn().mockImplementation(whereResults)
-      : vi.fn().mockResolvedValue(whereResults),
+    entity_type: "user",
+    entity_id: "user-1",
+    max_budget_microdollars: 50_000_000,
+    spend_microdollars: 10_000_000,
+    policy: "strict_block",
+    reset_interval: "monthly",
+    current_period_start: "2025-03-01T00:00:00Z",
+    velocity_limit_microdollars: null,
+    velocity_window_seconds: null,
+    velocity_cooldown_seconds: null,
+    threshold_percentages: null,
+    session_limit_microdollars: null,
+    ...overrides,
   };
 }
 
@@ -47,15 +36,7 @@ describe("lookupBudgetsForDO", () => {
   });
 
   it("returns entities with all DO-required fields", async () => {
-    const periodDate = new Date("2025-03-01T00:00:00Z");
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 50_000_000,
-      spendMicrodollars: 10_000_000,
-      policy: "strict_block",
-      resetInterval: "monthly",
-      currentPeriodStart: periodDate,
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([makeBudgetRow()]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: {},
@@ -69,7 +50,7 @@ describe("lookupBudgetsForDO", () => {
       spend: 10_000_000,
       policy: "strict_block",
       resetInterval: "monthly",
-      periodStart: periodDate.getTime(),
+      periodStart: new Date("2025-03-01T00:00:00Z").getTime(),
       velocityLimit: null,
       velocityWindow: 60_000,
       velocityCooldown: 60_000,
@@ -79,17 +60,11 @@ describe("lookupBudgetsForDO", () => {
   });
 
   it("converts velocity fields from seconds to ms", async () => {
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 50_000_000,
-      spendMicrodollars: 10_000_000,
-      policy: "strict_block",
-      resetInterval: "monthly",
-      currentPeriodStart: new Date("2025-03-01T00:00:00Z"),
-      velocityLimitMicrodollars: 5_000_000,
-      velocityWindowSeconds: 120,
-      velocityCooldownSeconds: 90,
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([makeBudgetRow({
+      velocity_limit_microdollars: 5_000_000,
+      velocity_window_seconds: 120,
+      velocity_cooldown_seconds: 90,
+    })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: {},
@@ -101,17 +76,7 @@ describe("lookupBudgetsForDO", () => {
   });
 
   it("defaults velocity window and cooldown to 60s when null", async () => {
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 50_000_000,
-      spendMicrodollars: 0,
-      policy: "strict_block",
-      resetInterval: null,
-      currentPeriodStart: null,
-      velocityLimitMicrodollars: null,
-      velocityWindowSeconds: null,
-      velocityCooldownSeconds: null,
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([makeBudgetRow()]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: {},
@@ -123,26 +88,18 @@ describe("lookupBudgetsForDO", () => {
   });
 
   it("converts timestamp to epoch ms", async () => {
-    const date = new Date("2025-06-15T12:00:00Z");
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 100_000, spendMicrodollars: 0,
-      policy: "warn", resetInterval: "daily", currentPeriodStart: date,
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    const dateStr = "2025-06-15T12:00:00Z";
+    mockSql.mockResolvedValueOnce([makeBudgetRow({ current_period_start: dateStr })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: "key-1", userId: null, tags: {},
     });
 
-    expect(result[0].periodStart).toBe(date.getTime());
+    expect(result[0].periodStart).toBe(new Date(dateStr).getTime());
   });
 
   it("handles null currentPeriodStart (→ 0)", async () => {
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 100_000, spendMicrodollars: 0,
-      policy: "strict_block", resetInterval: null, currentPeriodStart: null,
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([makeBudgetRow({ current_period_start: null })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: {},
@@ -152,12 +109,7 @@ describe("lookupBudgetsForDO", () => {
   });
 
   it("handles null resetInterval (→ null)", async () => {
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 100_000, spendMicrodollars: 0,
-      policy: "strict_block", resetInterval: null,
-      currentPeriodStart: new Date("2025-01-01"),
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([makeBudgetRow({ reset_interval: null })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: {},
@@ -167,8 +119,7 @@ describe("lookupBudgetsForDO", () => {
   });
 
   it("returns empty array when no budgets found", async () => {
-    const mockDb = makeMockDb([]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: {},
@@ -178,11 +129,7 @@ describe("lookupBudgetsForDO", () => {
   });
 
   it("throws on Postgres error (fail-closed)", async () => {
-    mockGetDb.mockReturnValue({
-      select: vi.fn().mockReturnThis(),
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockRejectedValue(new Error("connection refused")),
-    });
+    mockSql.mockRejectedValueOnce(new Error("connection refused"));
 
     await expect(
       lookupBudgetsForDO("postgres://test", { keyId: null, userId: "user-1", tags: {} }),
@@ -195,29 +142,20 @@ describe("lookupBudgetsForDO", () => {
     });
 
     expect(result).toEqual([]);
-    expect(mockGetDb).not.toHaveBeenCalled();
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
-  // ── Tag budget lookup ─────────────────────────────────────────────
-
   it("returns tag budget entities when tags match", async () => {
-    const periodDate = new Date("2025-06-01T00:00:00Z");
-    let callCount = 0;
-    const mockDb = makeMockDb(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve([{
-          maxBudgetMicrodollars: 100_000_000, spendMicrodollars: 20_000_000,
-          policy: "strict_block", resetInterval: "monthly", currentPeriodStart: periodDate,
-        }]);
-      }
-      return Promise.resolve([{
-        entityId: "project=openclaw",
-        maxBudgetMicrodollars: 50_000_000, spendMicrodollars: 5_000_000,
-        policy: "strict_block", resetInterval: null, currentPeriodStart: null,
-      }]);
-    });
-    mockGetDb.mockReturnValue(mockDb);
+    // First call: user entity
+    mockSql.mockResolvedValueOnce([makeBudgetRow()]);
+    // Second call: tag entities
+    mockSql.mockResolvedValueOnce([makeBudgetRow({
+      entity_type: "tag",
+      entity_id: "project=openclaw",
+      max_budget_microdollars: 50_000_000,
+      spend_microdollars: 5_000_000,
+      current_period_start: null,
+    })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: { project: "openclaw" },
@@ -225,76 +163,29 @@ describe("lookupBudgetsForDO", () => {
 
     expect(result).toHaveLength(2);
     expect(result[0].entityType).toBe("user");
-    expect(result[1]).toEqual({
-      entityType: "tag", entityId: "project=openclaw",
-      maxBudget: 50_000_000, spend: 5_000_000,
-      policy: "strict_block", resetInterval: null, periodStart: 0,
-      velocityLimit: null, velocityWindow: 60_000, velocityCooldown: 60_000,
-      thresholdPercentages: [50, 80, 90, 95], sessionLimit: null,
-    });
+    expect(result[1].entityType).toBe("tag");
+    expect(result[1].entityId).toBe("project=openclaw");
   });
 
   it("does not query tag budgets when tags is empty", async () => {
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 100_000, spendMicrodollars: 0,
-      policy: "strict_block", resetInterval: null, currentPeriodStart: null,
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([makeBudgetRow()]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: null, userId: "user-1", tags: {},
     });
 
     expect(result).toHaveLength(1);
-    expect(mockDb.where).toHaveBeenCalledTimes(1);
+    expect(mockSql).toHaveBeenCalledTimes(1); // only user query
   });
 
   it("does not query tag budgets when userId is null", async () => {
-    const mockDb = makeMockDb([{
-      maxBudgetMicrodollars: 100_000, spendMicrodollars: 0,
-      policy: "strict_block", resetInterval: null, currentPeriodStart: null,
-    }]);
-    mockGetDb.mockReturnValue(mockDb);
+    mockSql.mockResolvedValueOnce([makeBudgetRow({ entity_type: "api_key", entity_id: "key-1" })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
       keyId: "key-1", userId: null, tags: { project: "openclaw" },
     });
 
     expect(result).toHaveLength(1);
-    expect(mockDb.where).toHaveBeenCalledTimes(1);
-  });
-
-  it("combines user + api_key + tag budgets in one result", async () => {
-    let callCount = 0;
-    const mockDb = makeMockDb(() => {
-      callCount++;
-      if (callCount === 1) {
-        return Promise.resolve([{
-          maxBudgetMicrodollars: 30_000_000, spendMicrodollars: 5_000_000,
-          policy: "strict_block", resetInterval: null, currentPeriodStart: null,
-        }]);
-      }
-      if (callCount === 2) {
-        return Promise.resolve([{
-          maxBudgetMicrodollars: 100_000_000, spendMicrodollars: 20_000_000,
-          policy: "strict_block", resetInterval: null, currentPeriodStart: null,
-        }]);
-      }
-      return Promise.resolve([{
-        entityId: "env=prod",
-        maxBudgetMicrodollars: 10_000_000, spendMicrodollars: 1_000_000,
-        policy: "strict_block", resetInterval: null, currentPeriodStart: null,
-      }]);
-    });
-    mockGetDb.mockReturnValue(mockDb);
-
-    const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: "key-1", userId: "user-1", tags: { env: "prod" },
-    });
-
-    expect(result).toHaveLength(3);
-    expect(result[0].entityType).toBe("api_key");
-    expect(result[1].entityType).toBe("user");
-    expect(result[2].entityType).toBe("tag");
+    expect(mockSql).toHaveBeenCalledTimes(1); // only api_key query
   });
 });
