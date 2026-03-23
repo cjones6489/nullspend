@@ -1,4 +1,5 @@
 import { getSql } from "./db.js";
+import { toHex } from "./hex.js";
 
 export interface ApiKeyIdentity {
   userId: string;
@@ -36,9 +37,7 @@ export async function hashApiKey(rawKey: string): Promise<string> {
     "SHA-256",
     new TextEncoder().encode(rawKey),
   );
-  return [...new Uint8Array(buf)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return toHex(buf);
 }
 
 /**

@@ -1,3 +1,5 @@
+import { toHex } from "./hex.js";
+
 const SIGNATURE_VERSION = "v1";
 
 /** 24-hour dual-signing window for secret rotation. SYNC: lib/webhooks/signer.ts */
@@ -28,9 +30,7 @@ async function computeHmacHex(
     encoder.encode(signedContent),
   );
 
-  return [...new Uint8Array(signature)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return toHex(signature);
 }
 
 /**

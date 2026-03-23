@@ -89,11 +89,9 @@ async function parseRequestBody(
     };
   }
 
-  if (new TextEncoder().encode(bodyText).byteLength > MAX_BODY_SIZE) {
-    return {
-      error: errorResponse("payload_too_large", `Body exceeds ${MAX_BODY_SIZE} bytes`, 413),
-    };
-  }
+  // Content-Length pre-check above catches well-behaved clients.
+  // Workers runtime enforces its own body size limits on request.text().
+  // No need for a redundant TextEncoder().encode() copy just to check byte length.
 
   try {
     const parsed = JSON.parse(bodyText);
