@@ -70,7 +70,10 @@ pnpm deploy           # Deploy to Cloudflare
 **Webhooks**
 - `src/lib/webhook-events.ts` — event payload builders (13 event types)
 - `src/lib/webhook-thresholds.ts` — `detectThresholdCrossings` (per-entity configurable thresholds)
-- `src/lib/webhook-dispatch.ts` — endpoint dispatch with HMAC signing
+- `src/lib/webhook-dispatch.ts` — dispatcher interface + Queue-based enqueue
+- `src/lib/webhook-queue.ts` — webhook queue message type + enqueue helper
+- `src/webhook-queue-handler.ts` — Queue consumer: fetch endpoint, sign, deliver, retry with exponential backoff
+- `src/webhook-dlq-handler.ts` — DLQ consumer: log + metric + ack
 - `src/lib/webhook-signer.ts` — HMAC-SHA256 signature generation
 - `src/lib/webhook-cache.ts` — KV-cached endpoint lookup
 - `src/lib/webhook-expiry.ts` — rotated secret expiry

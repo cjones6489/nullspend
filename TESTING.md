@@ -142,7 +142,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 |---|---|
 | `webhook-events.test.ts` | Payload builders: cost_event, budget.exceeded, threshold, reset, request.blocked, test.ping, isCritical override, `buildThinCostEventPayload` shape/URL/uniqueness |
 | `webhook-thresholds.test.ts` | `detectThresholdCrossings` — default thresholds, custom thresholds, empty/single, mixed entities, backward compat |
-| `webhook-dispatch.test.ts` | Endpoint dispatch with HMAC signing, retry, error handling, thin event dispatch + headers |
+| `webhook-dispatch.test.ts` | Queue-based dispatch: enqueue message shape, event filtering, fail-open error handling, thin events |
 | `webhook-signer.test.ts` | HMAC-SHA256 signature generation and verification |
 | `webhook-cache.test.ts` | KV-cached endpoint lookup, invalidation, `payloadMode` DB mapping + null fallback |
 | `webhook-expiry.test.ts` | Rotated secret expiry logic |
