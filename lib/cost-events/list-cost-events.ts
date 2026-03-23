@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
 import { getDb } from "@/lib/db/client";
@@ -20,8 +20,7 @@ interface ListCostEventsOptions {
 export async function listCostEvents(options: ListCostEventsOptions) {
   const db = getDb();
   const conditions = [
-    eq(apiKeys.userId, options.userId),
-    isNull(apiKeys.revokedAt),
+    eq(costEvents.userId, options.userId),
   ];
 
   if (options.requestId) {
@@ -79,7 +78,7 @@ export async function listCostEvents(options: ListCostEventsOptions) {
       keyName: apiKeys.name,
     })
     .from(costEvents)
-    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(and(...conditions))
     .orderBy(desc(costEvents.createdAt), desc(costEvents.id))
     .limit(options.limit + 1);

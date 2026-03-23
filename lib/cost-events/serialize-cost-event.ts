@@ -16,7 +16,7 @@ interface CostEventJoinRow {
   traceId: string | null;
   source: string;
   tags: Record<string, string>;
-  keyName: string;
+  keyName: string | null;
 }
 
 export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {

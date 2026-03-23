@@ -80,7 +80,7 @@ export function parseSignature(
     const [key, value] = part.split("=", 2);
     if (key === "t") {
       timestamp = parseInt(value, 10);
-      if (isNaN(timestamp)) return null;
+      if (isNaN(timestamp) || !Number.isSafeInteger(timestamp) || timestamp < 0) return null;
     } else if (key === SIGNATURE_VERSION) {
       signatures.push(value);
     }

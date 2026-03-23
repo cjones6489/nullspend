@@ -125,6 +125,7 @@ export function currentPeriodStart(
 /** Parse an entity key safely (handles IDs containing colons). */
 function parseEntityKey(key: string): [string, string] {
   const sep = key.indexOf(":");
+  if (sep <= 0) throw new Error(`Invalid entity key (missing separator): ${key}`);
   return [key.slice(0, sep), key.slice(sep + 1)];
 }
 

@@ -18,7 +18,7 @@ export const costEventRecordSchema = z.object({
   source: z.string(),
   traceId: z.string().nullable(),
   tags: z.record(z.string(), z.string()).default({}),
-  keyName: z.string(),
+  keyName: z.string().nullable(),
 });
 
 const cursorInputSchema = z.object({
