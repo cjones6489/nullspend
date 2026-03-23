@@ -161,7 +161,7 @@ export async function syncBudget(
       "Content-Type": "application/json",
       Authorization: `Bearer ${INTERNAL_SECRET}`,
     },
-    body: JSON.stringify({ action: "sync", userId, entityType: "user", entityId: keyId }),
+    body: JSON.stringify({ action: "sync", userId, entityType: "api_key", entityId: keyId }),
   });
   if (!res.ok) {
     const body = await res.text();

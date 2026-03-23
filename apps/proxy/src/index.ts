@@ -176,9 +176,13 @@ export default {
       const handler = request.method === "POST" ? routes.get(url.pathname) : undefined;
       if (!handler) {
         if (url.pathname.startsWith("/v1/")) {
-          return errorResponse("not_found", "This endpoint is not yet supported", 404);
+          const resp = errorResponse("not_found", "This endpoint is not yet supported", 404);
+          resp.headers.set("X-NullSpend-Trace-Id", traceId);
+          return resp;
         }
-        return errorResponse("not_found", "Not found", 404);
+        const resp = errorResponse("not_found", "Not found", 404);
+        resp.headers.set("X-NullSpend-Trace-Id", traceId);
+        return resp;
       }
 
       // Rate limit + auth in parallel (neither reads request body)
@@ -190,16 +194,24 @@ export default {
       ]);
       const preFlightMs = Math.round(performance.now() - preFlightStartMs);
 
-      if (rateLimitResult) return rateLimitResult;
+      if (rateLimitResult) {
+        rateLimitResult.headers.set("X-NullSpend-Trace-Id", traceId);
+        return rateLimitResult;
+      }
       if (!auth) {
-        return errorResponse("unauthorized", "Invalid or missing authentication header", 401);
+        const resp = errorResponse("unauthorized", "Invalid or missing authentication header", 401);
+        resp.headers.set("X-NullSpend-Trace-Id", traceId);
+        return resp;
       }
 
       // Body parse (sequential — budget check needs the parsed body)
       const bodyStartMs = performance.now();
       const result = await parseRequestBody(request);
       const bodyParseMs = Math.round(performance.now() - bodyStartMs);
-      if (result.error) return result.error;
+      if (result.error) {
+        result.error.headers.set("X-NullSpend-Trace-Id", traceId);
+        return result.error;
+      }
 
       // Build context
       const webhookDispatcher = auth.hasWebhooks
