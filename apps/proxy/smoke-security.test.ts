@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import postgres from "postgres";
-import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, NULLSPEND_SMOKE_USER_ID, DATABASE_URL, authHeaders, smallRequest, isServerUp } from "./smoke-test-helpers.js";
+import { BASE, OPENAI_API_KEY, NULLSPEND_API_KEY, NULLSPEND_SMOKE_USER_ID, DATABASE_URL, authHeaders, smallRequest, isServerUp, waitForCostEvent } from "./smoke-test-helpers.js";
 
 describe("Security tests", () => {
   let sql: postgres.Sql;
@@ -170,18 +170,13 @@ describe("Security tests", () => {
       const body = await res.json();
       const requestId = res.headers.get("x-request-id") ?? body.id;
 
-      // Wait for cost logging
-      await new Promise((r) => setTimeout(r, 3_000));
-
-      const rows = await sql`
-        SELECT user_id FROM cost_events
-        WHERE request_id = ${requestId} AND provider = 'openai'
-      `;
+      // Wait for cost event to be logged (queue consumer + DB write)
+      const row = await waitForCostEvent(sql, requestId, 15_000);
+      expect(row).not.toBeNull();
 
       // The spoofed user ID is NOT recorded — the real userId derived from
       // the API key hash is used instead, preventing attribution spoofing.
-      expect(rows.length).toBe(1);
-      expect(rows[0].user_id).toBe(NULLSPEND_SMOKE_USER_ID);
+      expect(row!.user_id).toBe(NULLSPEND_SMOKE_USER_ID);
     }, 15_000);
   });
 

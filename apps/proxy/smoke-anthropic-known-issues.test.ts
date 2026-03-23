@@ -15,11 +15,13 @@ import {
   BASE,
   ANTHROPIC_API_KEY,
   NULLSPEND_SMOKE_USER_ID,
+  NULLSPEND_SMOKE_KEY_ID,
   DATABASE_URL,
   anthropicAuthHeaders,
   smallAnthropicRequest,
   isServerUp,
   waitForCostEvent,
+  syncBudget,
 } from "./smoke-test-helpers.js";
 
 describe("Anthropic known issues: cost logging & budget edge cases", () => {
@@ -224,6 +226,8 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
   it("budget enforced on /v1/messages route (no bypass)", async () => {
     const userId = NULLSPEND_SMOKE_USER_ID!;
     await setupBudget(userId, 1); // 1 microdollar — guaranteed denial
+    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+    await new Promise((r) => setTimeout(r, 1_000)); // settle
 
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
