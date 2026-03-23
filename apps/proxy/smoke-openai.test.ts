@@ -108,7 +108,7 @@ describe("OpenAI proxy smoke tests", () => {
 
     expect(res.status).toBe(401);
     const body = await res.json();
-    expect(body).toHaveProperty("error", "unauthorized");
+    expect(body.error).toHaveProperty("code", "unauthorized");
   });
 
   it("missing x-nullspend-key returns 401", async () => {
@@ -139,7 +139,7 @@ describe("OpenAI proxy smoke tests", () => {
 
     expect(res.status).toBe(404);
     const body = await res.json();
-    expect(body).toHaveProperty("error", "not_found");
+    expect(body.error).toHaveProperty("code", "not_found");
   });
 
   it("invalid JSON body returns 400", async () => {
@@ -154,6 +154,6 @@ describe("OpenAI proxy smoke tests", () => {
 
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body).toHaveProperty("error", "bad_request");
+    expect(body.error).toHaveProperty("code", "bad_request");
   });
 });
