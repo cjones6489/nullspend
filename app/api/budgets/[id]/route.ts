@@ -36,7 +36,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
       return { entityType: budget.entityType, entityId: budget.entityId };
     });
 
-    invalidateProxyCache({ action: "remove", userId, entityType, entityId }).catch(() => {});
+    invalidateProxyCache({ action: "remove", userId, entityType, entityId }).catch((err) => console.error("[budgets] Proxy cache remove failed:", err));
     return NextResponse.json({ deleted: true });
   } catch (error) {
     if (error instanceof NotFoundError) {
@@ -88,7 +88,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       userId,
       entityType: updated.entityType,
       entityId: updated.entityId,
-    }).catch(() => {});
+    }).catch((err) => console.error("[budgets] Proxy cache reset_spend failed:", err));
 
     return NextResponse.json(
       budgetResponseSchema.parse({

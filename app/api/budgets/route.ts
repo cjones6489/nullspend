@@ -167,7 +167,7 @@ export const POST = withRequestContext(async (request: Request) => {
     userId,
     entityType: input.entityType,
     entityId: input.entityId,
-  }).catch(() => {});
+  }).catch((err) => console.error("[budgets] Proxy cache sync failed:", err));
 
   return NextResponse.json(
     budgetResponseSchema.parse({

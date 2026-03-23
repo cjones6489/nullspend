@@ -103,7 +103,7 @@ export async function PATCH(
       userId,
       entityType: "api_key",
       entityId: id,
-    }).catch(() => {});
+    }).catch((err) => console.error("[keys] Proxy cache sync failed:", err));
 
     console.info(
       `[NullSpend] API key updated: userId=${userId}, keyId=${updated.id}`,
