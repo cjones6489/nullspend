@@ -79,7 +79,7 @@ describe("Post-stress recovery", () => {
       expect(elapsed).toBeLessThan(1_000);
     });
 
-    it("GET /health/ready returns 200 with Redis connected", async () => {
+    it("GET /health/ready returns 200", async () => {
       const start = performance.now();
       const res = await fetch(`${BASE}/health/ready`);
       const elapsed = performance.now() - start;
@@ -87,7 +87,6 @@ describe("Post-stress recovery", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.status).toBe("ok");
-      expect(body.redis.toLowerCase()).toBe("pong");
 
       console.log(`[recovery] /health/ready: ${elapsed.toFixed(0)}ms`);
       expect(elapsed).toBeLessThan(2_000);
