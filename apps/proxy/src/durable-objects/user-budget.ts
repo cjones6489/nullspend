@@ -147,16 +147,14 @@ export function parseThresholds(raw: string | null): number[] {
 // ── Durable Object ──────────────────────────────────────────────────
 
 export class UserBudgetDO extends DurableObject {
-  private budgets = new Map<string, BudgetRow>();
-
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       this.initSchema();
-      this.loadBudgets();
-      console.log(
-        `[UserBudgetDO] initialized, ${this.budgets.size} budgets loaded`,
-      );
+      const count = this.ctx.storage.sql.exec<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM budgets",
+      ).toArray()[0]?.cnt ?? 0;
+      console.log(`[UserBudgetDO] initialized, ${count} budgets loaded`);
     });
   }
 
@@ -232,16 +230,6 @@ export class UserBudgetDO extends DurableObject {
       try { this.ctx.storage.sql.exec("ALTER TABLE budgets ADD COLUMN session_limit INTEGER"); } catch { /* already exists */ }
       try { this.ctx.storage.sql.exec("ALTER TABLE reservations ADD COLUMN session_id TEXT"); } catch { /* already exists */ }
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (4)");
-    }
-  }
-
-  private loadBudgets(): void {
-    this.budgets.clear();
-    const rows = this.ctx.storage.sql.exec<BudgetRow>(
-      "SELECT entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start, velocity_limit, velocity_window, velocity_cooldown, threshold_percentages, session_limit FROM budgets",
-    );
-    for (const row of rows) {
-      this.budgets.set(`${row.entity_type}:${row.entity_id}`, row);
     }
   }
 
@@ -587,7 +575,6 @@ export class UserBudgetDO extends DurableObject {
     }
 
     // Update in-memory cache
-    this.loadBudgets();
 
     // Schedule alarm for reservation expiry (session cleanup piggybacks on the same alarm)
     if (reserved) {
@@ -630,16 +617,25 @@ export class UserBudgetDO extends DurableObject {
         const [entityType, entityId] = parseEntityKey(key);
 
         if (actualCostMicrodollars > 0) {
-          this.ctx.storage.sql.exec(
+          const rows = this.ctx.storage.sql.exec<{ spend: number }>(
             `UPDATE budgets SET
               spend = spend + ?,
               reserved = MAX(0, reserved - ?)
-             WHERE entity_type = ? AND entity_id = ?`,
+             WHERE entity_type = ? AND entity_id = ?
+             RETURNING spend`,
             actualCostMicrodollars,
             row.amount,
             entityType,
             entityId,
-          );
+          ).toArray();
+          if (rows.length > 0) {
+            spends[key] = rows[0].spend;
+          } else {
+            budgetsMissing.push(key);
+            console.warn(
+              `[UserBudgetDO] reconcile: budget missing for entity=${key}, cost=${actualCostMicrodollars} untracked`,
+            );
+          }
         } else {
           this.ctx.storage.sql.exec(
             `UPDATE budgets SET
@@ -649,22 +645,19 @@ export class UserBudgetDO extends DurableObject {
             entityType,
             entityId,
           );
-        }
-
-        const updated = this.ctx.storage.sql
-          .exec<{ spend: number }>(
+          const rows = this.ctx.storage.sql.exec<{ spend: number }>(
             "SELECT spend FROM budgets WHERE entity_type = ? AND entity_id = ?",
             entityType,
             entityId,
-          )
-          .toArray()[0];
-        if (updated) {
-          spends[key] = updated.spend;
-        } else {
-          budgetsMissing.push(key);
-          console.warn(
-            `[UserBudgetDO] reconcile: budget missing for entity=${key}, cost=${actualCostMicrodollars} untracked`,
-          );
+          ).toArray();
+          if (rows.length > 0) {
+            spends[key] = rows[0].spend;
+          } else {
+            budgetsMissing.push(key);
+            console.warn(
+              `[UserBudgetDO] reconcile: budget missing for entity=${key}, cost=${actualCostMicrodollars} untracked`,
+            );
+          }
         }
       }
 
@@ -687,7 +680,6 @@ export class UserBudgetDO extends DurableObject {
       );
     });
 
-    this.loadBudgets();
     const result: ReconcileResult = { status: "reconciled", spends };
     if (budgetsMissing.length > 0) {
       result.budgetsMissing = budgetsMissing;
@@ -718,8 +710,11 @@ export class UserBudgetDO extends DurableObject {
     thresholdPercentages: number[] = [...DEFAULT_THRESHOLDS],
     sessionLimit: number | null = null,
   ): Promise<boolean> {
-    const key = `${entityType}:${entityId}`;
-    const existed = this.budgets.has(key);
+    // Check if entity already exists (for return value)
+    const existed = this.ctx.storage.sql.exec<{ cnt: number }>(
+      "SELECT COUNT(*) as cnt FROM budgets WHERE entity_type = ? AND entity_id = ?",
+      entityType, entityId,
+    ).toArray()[0]?.cnt > 0;
 
     this.ctx.storage.transactionSync(() => {
       // Single UPSERT with all fields — avoids separate UPDATE statements
@@ -779,7 +774,6 @@ export class UserBudgetDO extends DurableObject {
       }
     });
 
-    this.loadBudgets();
     return !existed;
   }
 
@@ -825,7 +819,6 @@ export class UserBudgetDO extends DurableObject {
         entityKey,
       );
     });
-    this.loadBudgets();
   }
 
   /** Reset spend for a budget entity (called via internal invalidation endpoint). */
@@ -884,7 +877,6 @@ export class UserBudgetDO extends DurableObject {
       );
     });
 
-    this.loadBudgets();
   }
 
   /**
@@ -935,8 +927,7 @@ export class UserBudgetDO extends DurableObject {
         }
       });
 
-      this.loadBudgets();
-    }
+      }
 
     // Session cleanup: delete stale sessions (last_seen > 24h)
     const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
