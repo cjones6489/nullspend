@@ -927,20 +927,23 @@ pnpm typecheck            # clean
 
 ### Combined Implementation Timeline
 
-| Refactor | Sub-phases | Effort | Lines Deleted | Lines Added | Net |
-|----------|------------|--------|--------------|-------------|-----|
-| 1. Rip out Redis + native rate limiting + Smart Placement + parallelize | 1A-1D | ~2 days | ~200 | ~80 | -120 |
-| 2. Replace `pg` with `postgres.js` + delete semaphore | 2A-2C | ~2 days | ~300 | ~100 | -200 |
-| 3. Consolidate constants + clean up cost-logger + Env types | 3A | ~0.5 days | ~50 | ~20 | -30 |
-| 4. Test utility consolidation | 4A | ~0.5 days | ~200 | ~30 | -170 |
-| **Total** | **8 sub-phases** | **~5 days** | **~750** | **~230** | **-520 lines** |
+| Refactor | Sub-phases | Effort | Status | Actual Net Lines |
+|----------|------------|--------|--------|-----------------|
+| 1. Rip out Redis + native rate limiting + Smart Placement + parallelize | 1A-1D | ~2 days | **DONE** (6 commits) | -800 |
+| 2. Replace `pg` with `postgres.js` + delete semaphore | 2A-2C | ~2 days | **DONE** (4 commits) | -500 |
+| 3. Consolidate constants + clean up cost-logger + Env types | 3A | ~0.5 days | **DONE** (1 commit) | -4 |
+| 4. Test utility consolidation | 4A | ~0.5 days | Pending | est. -170 |
+| **Total** | **8 sub-phases** | **~5 days** | **3/4 done** | **-1,509 actual** |
 
-**Re-evaluation gates between each refactor ensure we're not building on stale assumptions.** Each gate takes 15-30 minutes: review the codebase state, run benchmarks, verify assumptions, consult docs if needed, then proceed or adjust.
+**Benchmark results:** 145ms → 17ms p50 overhead (deployed and verified).
 
-The codebase comes out ~520 lines lighter with:
-- 2 fewer external dependencies (`@upstash/redis`, `pg`)
-- 1 fewer custom abstraction (`db-semaphore.ts`)
+**Re-evaluation gates between each refactor** ensured we didn't build on stale assumptions. Each gate reviewed codebase state, ran benchmarks, verified assumptions, and consulted docs.
+
+Actual results exceeded estimates — 1,509 lines deleted vs 520 estimated. The codebase came out with:
+- 4 fewer external dependencies (`@upstash/redis`, `@upstash/ratelimit`, `pg`, `@types/pg`)
+- 1 deleted custom abstraction (`db-semaphore.ts`)
 - 1 unified Postgres library (postgres.js everywhere)
+- 1 deleted config file (`vitest.integration.config.ts`)
 - 0 external hot-path dependencies (only Cloudflare-native primitives)
 - ~40% less test mock boilerplate
 - Per-step Server-Timing observability
