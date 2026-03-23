@@ -59,5 +59,5 @@ export function getSql(connectionString: string): ReturnType<typeof postgres> {
  * Used by budget-spend, budget-do-lookup, and cost-logger for type-safe queries.
  */
 export function getDb(connectionString: string) {
-  return drizzle(getSql(connectionString));
+  return drizzle({ client: getSql(connectionString) });
 }
