@@ -1,15 +1,14 @@
 /**
  * Unit tests for the cost-logger module.
- * Covers isLocalConnection flag-based detection and logCostEvent behavior
- * in local dev mode (console fallback) and error resilience.
+ * Covers skipDbWrites behavior (console fallback) and error resilience.
  *
  * Important: The cost-logger module is designed to NEVER throw,
  * because it runs inside waitUntil() where unhandled rejections
  * could crash the Cloudflare Workers runtime.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-import { isLocalConnection } from "../lib/db.js";
+import { logCostEvent, logCostEventsBatch } from "../lib/cost-logger.js";
 
 function makeCostEvent(overrides: Record<string, unknown> = {}) {
   return {
@@ -29,65 +28,18 @@ function makeCostEvent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("isLocalConnection", () => {
-  const globals = globalThis as Record<string, unknown>;
-
-  afterEach(() => {
-    delete globals.__FORCE_DB_PERSIST;
-    delete globals.__SKIP_DB_PERSIST;
-  });
-
-  it("returns false by default (production: always persist)", () => {
-    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(false);
-    expect(isLocalConnection("postgresql://user:pass@localhost:5432/db")).toBe(false);
-    expect(isLocalConnection("postgresql://user:pass@db.supabase.co:5432/db")).toBe(false);
-  });
-
-  it("returns true when __SKIP_DB_PERSIST is set", () => {
-    globals.__SKIP_DB_PERSIST = true;
-    expect(isLocalConnection("postgresql://user:pass@db.supabase.co:5432/db")).toBe(true);
-    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(true);
-  });
-
-  it("returns false when __FORCE_DB_PERSIST is set (overrides skip)", () => {
-    globals.__FORCE_DB_PERSIST = true;
-    globals.__SKIP_DB_PERSIST = true;
-    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(false);
-  });
-
-  it("__FORCE_DB_PERSIST alone returns false", () => {
-    globals.__FORCE_DB_PERSIST = true;
-    expect(isLocalConnection("postgresql://user:pass@127.0.0.1:5432/db")).toBe(false);
-  });
-});
-
 describe("logCostEvent", () => {
-  let logCostEvent: typeof import("../lib/cost-logger.js").logCostEvent;
-  const globals = globalThis as Record<string, unknown>;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    globals.__SKIP_DB_PERSIST = true;
-    const mod = await import("../lib/cost-logger.js");
-    logCostEvent = mod.logCostEvent;
-  });
-
-  afterEach(() => {
-    delete globals.__FORCE_DB_PERSIST;
-    delete globals.__SKIP_DB_PERSIST;
-  });
-
-  it("does not throw when DB persistence is skipped", async () => {
+  it("does not throw when skipDbWrites is true", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await expect(
-      logCostEvent("postgresql://postgres:postgres@127.0.0.1:54322/postgres", makeCostEvent()),
+      logCostEvent("postgresql://postgres:postgres@127.0.0.1:54322/postgres", makeCostEvent(), { skipDbWrites: true }),
     ).resolves.toBeUndefined();
     consoleSpy.mockRestore();
   });
 
-  it("logs cost event to console when skipping DB", async () => {
+  it("logs cost event to console when skipDbWrites is true", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await logCostEvent("postgresql://postgres:postgres@localhost:5432/db", makeCostEvent());
+    await logCostEvent("postgresql://localhost:5432/db", makeCostEvent(), { skipDbWrites: true });
 
     expect(consoleSpy).toHaveBeenCalledTimes(1);
     const logArgs = consoleSpy.mock.calls[0];
@@ -104,11 +56,12 @@ describe("logCostEvent", () => {
     consoleSpy.mockRestore();
   });
 
-  it("includes durationMs in console log when skipping DB", async () => {
+  it("includes durationMs in console log when skipDbWrites is true", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await logCostEvent(
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      "postgresql://localhost:5432/db",
       makeCostEvent({ durationMs: 1234 }),
+      { skipDbWrites: true },
     );
 
     const loggedEvent = consoleSpy.mock.calls[0][1] as Record<string, unknown>;
@@ -116,33 +69,23 @@ describe("logCostEvent", () => {
     consoleSpy.mockRestore();
   });
 
-  it("does not attempt pg connection when skipping DB", async () => {
+  it("does not attempt DB connection when skipDbWrites is true", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await logCostEvent("postgresql://postgres:postgres@localhost:5432/db", makeCostEvent());
+    await logCostEvent("postgresql://localhost:5432/db", makeCostEvent(), { skipDbWrites: true });
 
     expect(errorSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
     errorSpy.mockRestore();
   });
 
-  it("does not throw for unreachable remote connection (graceful error handling)", async () => {
-    delete globals.__SKIP_DB_PERSIST;
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    await expect(
-      logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent()),
-    ).resolves.toBeUndefined();
-
-    errorSpy.mockRestore();
-  }, 15_000);
-
   it("handles missing durationMs gracefully", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await logCostEvent(
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      "postgresql://localhost:5432/db",
       makeCostEvent({ durationMs: undefined }),
+      { skipDbWrites: true },
     );
 
     const loggedEvent = consoleSpy.mock.calls[0][1] as Record<string, unknown>;
@@ -153,7 +96,7 @@ describe("logCostEvent", () => {
   it("handles zero-value cost event", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await logCostEvent(
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      "postgresql://localhost:5432/db",
       makeCostEvent({
         inputTokens: 0,
         outputTokens: 0,
@@ -161,6 +104,7 @@ describe("logCostEvent", () => {
         reasoningTokens: 0,
         costMicrodollars: 0,
       }),
+      { skipDbWrites: true },
     );
 
     const loggedEvent = consoleSpy.mock.calls[0][1] as Record<string, unknown>;
@@ -173,12 +117,13 @@ describe("logCostEvent", () => {
   it("handles very large token counts without overflow", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await logCostEvent(
-      "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      "postgresql://localhost:5432/db",
       makeCostEvent({
         inputTokens: 128_000,
         outputTokens: 16_384,
         costMicrodollars: 9_999_999,
       }),
+      { skipDbWrites: true },
     );
 
     const loggedEvent = consoleSpy.mock.calls[0][1] as Record<string, unknown>;
@@ -187,51 +132,46 @@ describe("logCostEvent", () => {
     expect(loggedEvent.costMicrodollars).toBe(9_999_999);
     consoleSpy.mockRestore();
   });
+
+  it("does not throw for unreachable remote connection (graceful error handling)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent()),
+    ).resolves.toBeUndefined();
+
+    errorSpy.mockRestore();
+  }, 15_000);
 });
 
 describe("logCostEventsBatch", () => {
-  let logCostEventsBatch: typeof import("../lib/cost-logger.js").logCostEventsBatch;
-  const globals = globalThis as Record<string, unknown>;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    globals.__SKIP_DB_PERSIST = true;
-    const mod = await import("../lib/cost-logger.js");
-    logCostEventsBatch = mod.logCostEventsBatch;
-  });
-
-  afterEach(() => {
-    delete globals.__FORCE_DB_PERSIST;
-    delete globals.__SKIP_DB_PERSIST;
-  });
-
   it("returns immediately for empty array", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await expect(
-      logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", []),
+      logCostEventsBatch("postgresql://localhost:5432/db", []),
     ).resolves.toBeUndefined();
     expect(consoleSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 
-  it("does not throw when DB persistence is skipped", async () => {
+  it("does not throw when skipDbWrites is true", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     await expect(
-      logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", [
+      logCostEventsBatch("postgresql://localhost:5432/db", [
         makeCostEvent(),
         makeCostEvent({ requestId: "req-2" }),
-      ]),
+      ], { skipDbWrites: true }),
     ).resolves.toBeUndefined();
     consoleSpy.mockRestore();
   });
 
-  it("logs each event to console when skipping DB", async () => {
+  it("logs each event to console when skipDbWrites is true", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", [
+    await logCostEventsBatch("postgresql://localhost:5432/db", [
       makeCostEvent({ requestId: "req-1", costMicrodollars: 100 }),
       makeCostEvent({ requestId: "req-2", costMicrodollars: 200 }),
       makeCostEvent({ requestId: "req-3", costMicrodollars: 300 }),
-    ]);
+    ], { skipDbWrites: true });
 
     expect(consoleSpy).toHaveBeenCalledTimes(3);
     expect((consoleSpy.mock.calls[0][1] as Record<string, unknown>).requestId).toBe("req-1");
@@ -242,16 +182,15 @@ describe("logCostEventsBatch", () => {
 
   it("handles single-element array", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    await logCostEventsBatch("postgresql://postgres:postgres@127.0.0.1:54322/postgres", [
+    await logCostEventsBatch("postgresql://localhost:5432/db", [
       makeCostEvent(),
-    ]);
+    ], { skipDbWrites: true });
 
     expect(consoleSpy).toHaveBeenCalledTimes(1);
     consoleSpy.mockRestore();
   });
 
   it("does not throw for unreachable remote connection (graceful error handling)", async () => {
-    delete globals.__SKIP_DB_PERSIST;
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(
@@ -260,127 +199,4 @@ describe("logCostEventsBatch", () => {
 
     errorSpy.mockRestore();
   }, 15_000);
-});
-
-describe("throwOnError option", () => {
-  const globals = globalThis as Record<string, unknown>;
-
-  afterEach(() => {
-    delete globals.__FORCE_DB_PERSIST;
-    delete globals.__SKIP_DB_PERSIST;
-  });
-
-  describe("logCostEvent", () => {
-    let logCostEvent: typeof import("../lib/cost-logger.js").logCostEvent;
-
-    beforeEach(async () => {
-      vi.resetModules();
-      delete globals.__SKIP_DB_PERSIST;
-      const mod = await import("../lib/cost-logger.js");
-      logCostEvent = mod.logCostEvent;
-    });
-
-    it("does not throw on pg error by default", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      await expect(
-        logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent()),
-      ).resolves.toBeUndefined();
-
-      errorSpy.mockRestore();
-    }, 15_000);
-
-    it("throws on pg error when throwOnError is true", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      await expect(
-        logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent(), { throwOnError: true }),
-      ).rejects.toThrow();
-
-      errorSpy.mockRestore();
-    }, 15_000);
-
-    it("emits pg_error metric but not semaphore_full when throwOnError re-throws a pg error", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const metricCalls: unknown[][] = [];
-      // We need to intercept emitMetric calls — they go to console.log as JSON
-      logSpy.mockImplementation((...args: unknown[]) => {
-        const first = args[0];
-        if (typeof first === "string" && first.includes('"_metric"')) {
-          metricCalls.push(args);
-        }
-      });
-
-      try {
-        await logCostEvent("postgresql://user:pass@192.0.2.1:5432/db", makeCostEvent(), { throwOnError: true });
-      } catch {
-        // expected
-      }
-
-      // Check that pg_error was emitted but semaphore_full was NOT
-      const metricStrings = metricCalls.map((c) => String(c[0]));
-      expect(metricStrings.some((s) => s.includes("pg_error"))).toBe(true);
-      expect(metricStrings.some((s) => s.includes("semaphore_full"))).toBe(false);
-
-      errorSpy.mockRestore();
-      logSpy.mockRestore();
-    }, 15_000);
-  });
-
-  describe("logCostEventsBatch", () => {
-    let logCostEventsBatch: typeof import("../lib/cost-logger.js").logCostEventsBatch;
-
-    beforeEach(async () => {
-      vi.resetModules();
-      delete globals.__SKIP_DB_PERSIST;
-      const mod = await import("../lib/cost-logger.js");
-      logCostEventsBatch = mod.logCostEventsBatch;
-    });
-
-    it("does not throw on pg error by default", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      await expect(
-        logCostEventsBatch("postgresql://user:pass@192.0.2.1:5432/db", [makeCostEvent()]),
-      ).resolves.toBeUndefined();
-
-      errorSpy.mockRestore();
-    }, 15_000);
-
-    it("throws on pg error when throwOnError is true", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      await expect(
-        logCostEventsBatch("postgresql://user:pass@192.0.2.1:5432/db", [makeCostEvent()], { throwOnError: true }),
-      ).rejects.toThrow();
-
-      errorSpy.mockRestore();
-    }, 15_000);
-
-    it("emits batch_pg_error metric but not batch_semaphore_full when throwOnError re-throws", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const metricCalls: unknown[][] = [];
-      logSpy.mockImplementation((...args: unknown[]) => {
-        const first = args[0];
-        if (typeof first === "string" && first.includes('"_metric"')) {
-          metricCalls.push(args);
-        }
-      });
-
-      try {
-        await logCostEventsBatch("postgresql://user:pass@192.0.2.1:5432/db", [makeCostEvent()], { throwOnError: true });
-      } catch {
-        // expected
-      }
-
-      const metricStrings = metricCalls.map((c) => String(c[0]));
-      expect(metricStrings.some((s) => s.includes("batch_pg_error"))).toBe(true);
-      expect(metricStrings.some((s) => s.includes("batch_semaphore_full"))).toBe(false);
-
-      errorSpy.mockRestore();
-      logSpy.mockRestore();
-    }, 15_000);
-  });
 });

@@ -1,3 +1,4 @@
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { mockReconcileBudget, mockEmitMetric } = vi.hoisted(() => ({
@@ -5,9 +6,7 @@ const { mockReconcileBudget, mockEmitMetric } = vi.hoisted(() => ({
   mockEmitMetric: vi.fn(),
 }));
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn(),
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 vi.mock("../lib/budget-orchestrator.js", () => ({
   reconcileBudget: (...args: unknown[]) => mockReconcileBudget(...args),

@@ -1,6 +1,6 @@
 import { sql, eq, and } from "drizzle-orm";
 import { budgets } from "@nullspend/db";
-import { getDb, isLocalConnection } from "./db.js";
+import { getDb } from "./db.js";
 
 /**
  * Atomically increment `spend_microdollars` on each budget entity in Postgres.
@@ -16,10 +16,11 @@ export async function updateBudgetSpend(
   connectionString: string,
   entities: { entityType: string; entityId: string }[],
   actualCostMicrodollars: number,
+  skipDbWrites = false,
 ): Promise<void> {
   if (actualCostMicrodollars <= 0 || entities.length === 0) return;
 
-  if (isLocalConnection(connectionString)) {
+  if (skipDbWrites) {
     console.log("[budget-spend] Local dev — spend update (not persisted):", {
       entities,
       actualCostMicrodollars,
@@ -61,10 +62,11 @@ export async function updateBudgetSpend(
 export async function resetBudgetPeriod(
   connectionString: string,
   resets: Array<{ entityType: string; entityId: string; newPeriodStart: number }>,
+  skipDbWrites = false,
 ): Promise<void> {
   if (resets.length === 0) return;
 
-  if (isLocalConnection(connectionString)) {
+  if (skipDbWrites) {
     console.log("[budget-spend] Local dev — period reset (not persisted):", { resets });
     return;
   }

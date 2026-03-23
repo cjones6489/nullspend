@@ -3,6 +3,7 @@
  * Tests the full request→route→response flow without hitting OpenAI,
  * covering body parsing, JSON validation, fail-closed behavior, body size limits, and routing logic.
  */
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
 beforeAll(() => {
@@ -20,14 +21,7 @@ beforeAll(() => {
   }
 });
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn((p: Promise<unknown>) => { p.catch(() => {}); }),
-  DurableObject: class DurableObject {
-    ctx: any;
-    env: any;
-    constructor(ctx: any, env: any) { this.ctx = ctx; this.env = env; }
-  },
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 const mockIpLimit = vi.fn().mockResolvedValue({ success: true });
 const mockKeyLimit = vi.fn().mockResolvedValue({ success: true });

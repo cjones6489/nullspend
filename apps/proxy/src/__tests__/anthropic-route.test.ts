@@ -1,3 +1,4 @@
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import type { RequestContext } from "../lib/context.js";
 
@@ -16,11 +17,7 @@ beforeAll(() => {
   }
 });
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn((promise: Promise<unknown>) => {
-    promise.catch(() => {});
-  }),
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 const { mockIsKnownModel, mockLogCostEvent } = vi.hoisted(() => {
   const mockIsKnownModel = vi.fn().mockReturnValue(true);

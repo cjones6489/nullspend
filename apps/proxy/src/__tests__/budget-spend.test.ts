@@ -22,13 +22,9 @@ const mockDrizzleDb = {
   }),
 };
 
-vi.mock("../lib/db.js", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("../lib/db.js")>();
-  return {
-    ...orig,
-    getDb: () => mockDrizzleDb,
-  };
-});
+vi.mock("../lib/db.js", () => ({
+  getDb: () => mockDrizzleDb,
+}));
 
 vi.mock("drizzle-orm", () => {
   const sqlTagFn = (..._args: unknown[]) => "sql-placeholder";
@@ -82,42 +78,28 @@ describe("updateBudgetSpend", () => {
     expect(mockDrizzleDb.update).not.toHaveBeenCalled();
   });
 
-  it("skips DB write when __SKIP_DB_PERSIST is set", async () => {
-    (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST = true;
+  it("skips DB write when skipDbWrites is true", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     await updateBudgetSpend(
       "postgresql://postgres:postgres@localhost:5432/postgres",
       [{ entityType: "api_key", entityId: "key-1" }],
       500_000,
+      true,
     );
     expect(mockDrizzleDb.update).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("[budget-spend]"),
       expect.anything(),
     );
-    delete (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST;
   });
 
-  it("does NOT skip DB write when __SKIP_DB_PERSIST is unset (even for localhost)", async () => {
+  it("writes to DB by default (skipDbWrites defaults to false)", async () => {
     await updateBudgetSpend(
       "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
       [{ entityType: "user", entityId: "user-1" }],
       100_000,
     );
     expect(mockDrizzleDb.transaction).toHaveBeenCalled();
-  });
-
-  it("force persists when __FORCE_DB_PERSIST overrides __SKIP_DB_PERSIST", async () => {
-    (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST = true;
-    (globalThis as Record<string, unknown>).__FORCE_DB_PERSIST = true;
-    await updateBudgetSpend(
-      "postgresql://postgres:postgres@abc123.hyperdrive.local:5432/postgres",
-      [{ entityType: "api_key", entityId: "key-1" }],
-      500_000,
-    );
-    expect(mockDrizzleDb.transaction).toHaveBeenCalled();
-    delete (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST;
-    delete (globalThis as Record<string, unknown>).__FORCE_DB_PERSIST;
   });
 
   it("calls Drizzle update for each entity", async () => {
@@ -205,13 +187,13 @@ describe("resetBudgetPeriod", () => {
     });
   });
 
-  it("skips on local connection", async () => {
-    (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST = true;
+  it("skips when skipDbWrites is true", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
 
     await resetBudgetPeriod(
       "postgresql://postgres:postgres@localhost:5432/postgres",
       [{ entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 }],
+      true,
     );
 
     expect(mockDrizzleDb.update).not.toHaveBeenCalled();
@@ -219,8 +201,6 @@ describe("resetBudgetPeriod", () => {
       expect.stringContaining("[budget-spend]"),
       expect.anything(),
     );
-
-    delete (globalThis as Record<string, unknown>).__SKIP_DB_PERSIST;
   });
 
   it("handles multiple resets in single call", async () => {

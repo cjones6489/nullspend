@@ -6,6 +6,7 @@ export interface RequestContext {
   body: Record<string, unknown>;
   auth: AuthResult;
   connectionString: string;
+  skipDbWrites: boolean;     // true in local dev without Hyperdrive (env: SKIP_DB_PERSIST)
   sessionId: string | null;     // from x-nullspend-session
   traceId: string;              // from traceparent / x-nullspend-trace-id / auto-generated
   tags: Record<string, string>; // from x-nullspend-tags

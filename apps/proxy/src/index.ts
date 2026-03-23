@@ -136,11 +136,9 @@ export default {
     _ctx: ExecutionContext,
   ): Promise<Response> {
     const requestStartMs = performance.now();
-    const globals = globalThis as Record<string, unknown>;
-    globals.__FORCE_DB_PERSIST =
-      (env as Record<string, unknown>).FORCE_DB_PERSIST === "true";
-    globals.__SKIP_DB_PERSIST =
-      (env as Record<string, unknown>).SKIP_DB_PERSIST === "true";
+    const forceDbPersist = (env as Record<string, unknown>).FORCE_DB_PERSIST === "true";
+    const skipDbPersist = (env as Record<string, unknown>).SKIP_DB_PERSIST === "true";
+    const skipDbWrites = !forceDbPersist && skipDbPersist;
 
     // Resolve trace ID early so it's available in the catch block for 500 responses
     const traceId = resolveTraceId(request);
@@ -218,6 +216,7 @@ export default {
         body: result.body,
         auth,
         connectionString,
+        skipDbWrites,
         sessionId: truncateSessionId(request.headers.get("x-nullspend-session")),
         traceId,
         tags,

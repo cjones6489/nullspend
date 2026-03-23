@@ -1,12 +1,11 @@
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { mockEnqueueReconciliation } = vi.hoisted(() => ({
   mockEnqueueReconciliation: vi.fn(),
 }));
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn(),
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 vi.mock("../lib/budget-do-client.js", () => ({
   doBudgetCheck: vi.fn(),

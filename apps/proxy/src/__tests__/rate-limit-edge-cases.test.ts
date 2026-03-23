@@ -1,3 +1,4 @@
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 beforeAll(() => {
@@ -15,16 +16,7 @@ beforeAll(() => {
   }
 });
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn((p: Promise<unknown>) => {
-    p.catch(() => {});
-  }),
-  DurableObject: class DurableObject {
-    ctx: any;
-    env: any;
-    constructor(ctx: any, env: any) { this.ctx = ctx; this.env = env; }
-  },
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 const mockAuthenticateRequest = vi.fn();
 vi.mock("../lib/auth.js", () => ({

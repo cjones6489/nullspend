@@ -11,6 +11,7 @@
  *   handleReconciliationQueue → reconcileBudget → doBudgetReconcile
  * with only the DO stub and `updateBudgetSpend` mocked.
  */
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -22,9 +23,7 @@ const { mockUpdateBudgetSpend, mockReconcileStub } = vi.hoisted(() => ({
   mockReconcileStub: vi.fn(),
 }));
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn(),
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 // Mock only the PG write — let everything else run for real
 vi.mock("../lib/budget-spend.js", () => ({

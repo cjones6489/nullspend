@@ -1,8 +1,7 @@
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("cloudflare:workers", () => ({
-  DurableObject: class {},
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 import { parseThresholds } from "../durable-objects/user-budget.js";
 

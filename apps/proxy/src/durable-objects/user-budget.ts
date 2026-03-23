@@ -733,14 +733,21 @@ export class UserBudgetDO extends DurableObject {
     const existed = this.budgets.has(key);
 
     this.ctx.storage.transactionSync(() => {
+      // Single UPSERT with all fields — avoids separate UPDATE statements
       this.ctx.storage.sql.exec(
         `INSERT INTO budgets
-         (entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start)
-         VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+         (entity_type, entity_id, max_budget, spend, reserved, policy, reset_interval, period_start,
+          velocity_limit, velocity_window, velocity_cooldown, threshold_percentages, session_limit)
+         VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(entity_type, entity_id) DO UPDATE SET
            max_budget = excluded.max_budget,
            policy = excluded.policy,
-           reset_interval = excluded.reset_interval`,
+           reset_interval = excluded.reset_interval,
+           velocity_limit = excluded.velocity_limit,
+           velocity_window = excluded.velocity_window,
+           velocity_cooldown = excluded.velocity_cooldown,
+           threshold_percentages = excluded.threshold_percentages,
+           session_limit = excluded.session_limit`,
         entityType,
         entityId,
         maxBudget,
@@ -748,27 +755,11 @@ export class UserBudgetDO extends DurableObject {
         policy,
         resetInterval,
         periodStart,
-      );
-
-      // Update velocity config on budgets table
-      this.ctx.storage.sql.exec(
-        `UPDATE budgets SET velocity_limit = ?, velocity_window = ?, velocity_cooldown = ?
-         WHERE entity_type = ? AND entity_id = ?`,
-        velocityLimit, velocityWindow, velocityCooldown, entityType, entityId,
-      );
-
-      // Update threshold percentages
-      this.ctx.storage.sql.exec(
-        `UPDATE budgets SET threshold_percentages = ?
-         WHERE entity_type = ? AND entity_id = ?`,
-        JSON.stringify(thresholdPercentages), entityType, entityId,
-      );
-
-      // Update session limit
-      this.ctx.storage.sql.exec(
-        `UPDATE budgets SET session_limit = ?
-         WHERE entity_type = ? AND entity_id = ?`,
-        sessionLimit, entityType, entityId,
+        velocityLimit,
+        velocityWindow,
+        velocityCooldown,
+        JSON.stringify(thresholdPercentages),
+        sessionLimit,
       );
 
       // Create/update velocity_state row

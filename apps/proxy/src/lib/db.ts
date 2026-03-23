@@ -16,20 +16,11 @@ import { drizzle } from "drizzle-orm/postgres-js";
  */
 
 /**
- * Check if DB writes should be skipped.
- * In local dev WITHOUT Hyperdrive, postgres socket errors crash
- * the workerd process. We skip writes unless __FORCE_DB_PERSIST is set.
- *
- * Hyperdrive rewrites connection strings to local-looking addresses
- * (127.0.0.1) in BOTH production and local dev, so hostname-based
- * detection is unreliable. Instead we use an explicit opt-out flag.
+ * DB write skipping is controlled by `ctx.skipDbWrites` (boolean) on
+ * RequestContext, computed once per request in index.ts from env vars
+ * (FORCE_DB_PERSIST / SKIP_DB_PERSIST). Callers check it directly —
+ * no shared utility function needed.
  */
-export function isLocalConnection(_connectionString: string): boolean {
-  const globals = globalThis as Record<string, unknown>;
-  if (globals.__FORCE_DB_PERSIST) return false;
-  if (globals.__SKIP_DB_PERSIST) return true;
-  return false;
-}
 
 /**
  * Create a postgres.js client for the current request context.

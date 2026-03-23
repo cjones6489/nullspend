@@ -1,3 +1,4 @@
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
 // crypto.subtle.timingSafeEqual is a CF Workers API; polyfill for Node.js tests
@@ -16,11 +17,7 @@ beforeAll(() => {
   }
 });
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn((promise: Promise<unknown>) => {
-    promise.catch(() => {});
-  }),
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 const mockLookupBudgetsForDO = vi.fn();
 vi.mock("../lib/budget-do-lookup.js", () => ({

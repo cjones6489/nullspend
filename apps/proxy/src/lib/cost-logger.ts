@@ -1,6 +1,6 @@
 import { costEvents, type NewCostEventRow } from "@nullspend/db";
 import { emitMetric } from "./metrics.js";
-import { getDb, isLocalConnection } from "./db.js";
+import { getDb } from "./db.js";
 
 /**
  * Persist a cost event to Postgres via Hyperdrive.
@@ -8,15 +8,15 @@ import { getDb, isLocalConnection } from "./db.js";
  * for type-safe inserts.
  * Never throws — this runs inside waitUntil().
  *
- * In local dev (localhost connection string), falls back to console
- * logging to avoid workerd crashes from unreachable Postgres.
+ * When skipDbWrites is true (local dev without Hyperdrive), falls back
+ * to console logging to avoid workerd crashes from unreachable Postgres.
  */
 export async function logCostEvent(
   connectionString: string,
   event: Omit<NewCostEventRow, "id" | "createdAt">,
-  options?: { throwOnError?: boolean },
+  options?: { throwOnError?: boolean; skipDbWrites?: boolean },
 ): Promise<void> {
-  if (isLocalConnection(connectionString)) {
+  if (options?.skipDbWrites) {
     console.log("[cost-logger] Local dev — cost event (not persisted):", {
       requestId: event.requestId,
       provider: event.provider,
@@ -54,11 +54,11 @@ export async function logCostEvent(
 export async function logCostEventsBatch(
   connectionString: string,
   events: Omit<NewCostEventRow, "id" | "createdAt">[],
-  options?: { throwOnError?: boolean },
+  options?: { throwOnError?: boolean; skipDbWrites?: boolean },
 ): Promise<void> {
   if (events.length === 0) return;
 
-  if (isLocalConnection(connectionString)) {
+  if (options?.skipDbWrites) {
     for (const event of events) {
       console.log("[cost-logger] Local dev — cost event (not persisted):", {
         requestId: event.requestId,

@@ -1,3 +1,4 @@
+import { cloudflareWorkersMock } from "./test-helpers.js";
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
 beforeAll(() => {
@@ -15,11 +16,7 @@ beforeAll(() => {
   }
 });
 
-vi.mock("cloudflare:workers", () => ({
-  waitUntil: vi.fn((promise: Promise<unknown>) => {
-    promise.catch(() => {});
-  }),
-}));
+vi.mock("cloudflare:workers", () => cloudflareWorkersMock());
 
 vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: vi.fn().mockReturnValue(true),
