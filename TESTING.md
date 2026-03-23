@@ -166,7 +166,6 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 **Infrastructure**
 | File | What it tests |
 |---|---|
-| `db-semaphore.test.ts` | Postgres connection concurrency limiter |
 | `cache-kv.test.ts` | KV-backed caching helpers |
 | `metrics.test.ts` | Structured metric emission |
 | `write-metric.test.ts` | AE `writeLatencyDataPoint` — fire-and-forget, missing binding, error resilience |

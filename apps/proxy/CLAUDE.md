@@ -76,7 +76,7 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/webhook-expiry.ts` — rotated secret expiry
 
 **Infrastructure**
-- `src/lib/db-semaphore.ts` — Postgres connection concurrency limiter (MAX_CONCURRENT=5)
+- `src/lib/db.ts` — Shared postgres.js pool (max:5, prepare:false, fetch_types:false)
 - `src/lib/cache-kv.ts` — KV-backed caching helpers
 - `src/routes/metrics.ts` — `GET /health/metrics` — AE SQL API query, KV caching (90s), negative caching (30s), JSON + Prometheus content negotiation
 - `src/lib/write-metric.ts` — `writeLatencyDataPoint` — fire-and-forget AE data point write per request
