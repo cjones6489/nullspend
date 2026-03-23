@@ -70,7 +70,8 @@ export async function getModelBreakdown(userId: string, periodDays: number, opti
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.provider, costEvents.model)
-    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(100);
 }
 
 export async function getProviderBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
@@ -88,7 +89,8 @@ export async function getProviderBreakdown(userId: string, periodDays: number, o
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.provider)
-    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(25);
 }
 
 export async function getKeyBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
@@ -107,7 +109,8 @@ export async function getKeyBreakdown(userId: string, periodDays: number, option
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.apiKeyId, apiKeys.name)
-    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(100);
 }
 
 export async function getSourceBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
@@ -125,7 +128,8 @@ export async function getSourceBreakdown(userId: string, periodDays: number, opt
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.source)
-    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(25);
 }
 
 export async function getToolBreakdown(userId: string, periodDays: number, options?: AggregateOptions) {
@@ -145,7 +149,8 @@ export async function getToolBreakdown(userId: string, periodDays: number, optio
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(and(baseConditions(userId, cutoff, options), or(eq(costEvents.eventType, "tool"), eq(costEvents.provider, "mcp"))))
     .groupBy(costEvents.model)
-    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`));
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(100);
 }
 
 export async function getCostBreakdownTotals(userId: string, periodDays: number, options?: AggregateOptions) {

@@ -84,7 +84,9 @@ export class CostReporter {
 
     // Auto-flush when batch size reached
     if (this.queue.length >= this.batchSize) {
-      this.flush().catch(() => {});
+      this.flush().catch((err) => {
+        if (typeof console !== "undefined") console.error("[CostReporter] Auto-flush failed:", err);
+      });
     }
   }
 
@@ -167,7 +169,9 @@ export class CostReporter {
         return;
       }
       // flush() reschedules in its finally block
-      this.flush().catch(() => {});
+      this.flush().catch((err) => {
+        if (typeof console !== "undefined") console.error("[CostReporter] Auto-flush failed:", err);
+      });
     }, this.flushIntervalMs);
 
     // Unref the timer so it doesn't keep the process alive.

@@ -79,75 +79,63 @@ export const POST = withRequestContext(async (request: Request) => {
 
   const db = getDb();
 
-  // Tier-based budget count enforcement
-  const existingForEntity = await db
-    .select({ id: budgets.id })
-    .from(budgets)
-    .where(
-      and(
-        eq(budgets.entityType, input.entityType),
-        eq(budgets.entityId, input.entityId),
-      ),
-    );
+  // Tier-based budget count enforcement + insert in a single transaction
+  // to prevent race conditions where concurrent requests both pass the count check.
+  const [budget] = await db.transaction(async (tx) => {
+    const existingForEntity = await tx
+      .select({ id: budgets.id })
+      .from(budgets)
+      .where(
+        and(
+          eq(budgets.entityType, input.entityType),
+          eq(budgets.entityId, input.entityId),
+        ),
+      );
 
-  if (existingForEntity.length === 0) {
-    const maxBudgets = TIERS[tier].maxBudgets;
+    if (existingForEntity.length === 0) {
+      const maxBudgets = TIERS[tier].maxBudgets;
 
-    if (maxBudgets !== Infinity) {
-      const userKeys = await db
-        .select({ id: apiKeys.id })
-        .from(apiKeys)
-        .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)));
-      const keyIds = userKeys.map((k) => k.id);
+      if (maxBudgets !== Infinity) {
+        const userKeys = await tx
+          .select({ id: apiKeys.id })
+          .from(apiKeys)
+          .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)));
+        const keyIds = userKeys.map((k) => k.id);
 
-      const allBudgets = await db
-        .select({ id: budgets.id })
-        .from(budgets)
-        .where(
-          keyIds.length > 0
-            ? or(
-                and(
+        const allBudgets = await tx
+          .select({ id: budgets.id })
+          .from(budgets)
+          .where(
+            keyIds.length > 0
+              ? or(
+                  and(
+                    eq(budgets.entityType, "user"),
+                    eq(budgets.entityId, userId),
+                  ),
+                  and(
+                    eq(budgets.entityType, "api_key"),
+                    inArray(budgets.entityId, keyIds),
+                  ),
+                )
+              : and(
                   eq(budgets.entityType, "user"),
                   eq(budgets.entityId, userId),
                 ),
-                and(
-                  eq(budgets.entityType, "api_key"),
-                  inArray(budgets.entityId, keyIds),
-                ),
-              )
-            : and(
-                eq(budgets.entityType, "user"),
-                eq(budgets.entityId, userId),
-              ),
-        );
+          );
 
-      if (allBudgets.length >= maxBudgets) {
-        throw new ForbiddenError(
-          "Free tier is limited to 1 budget. Upgrade to Pro for unlimited budgets.",
-        );
+        if (allBudgets.length >= maxBudgets) {
+          throw new ForbiddenError(
+            "Free tier is limited to 1 budget. Upgrade to Pro for unlimited budgets.",
+          );
+        }
       }
     }
-  }
 
-  const [budget] = await db
-    .insert(budgets)
-    .values({
-      entityType: input.entityType,
-      entityId: input.entityId,
-      maxBudgetMicrodollars: input.maxBudgetMicrodollars,
-      resetInterval: input.resetInterval ?? null,
-      ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
-      ...(input.thresholdPercentages != null && { thresholdPercentages: input.thresholdPercentages }),
-      ...(input.velocityLimitMicrodollars !== undefined && { velocityLimitMicrodollars: input.velocityLimitMicrodollars }),
-      ...(input.velocityWindowSeconds != null && { velocityWindowSeconds: input.velocityWindowSeconds }),
-      ...(input.velocityCooldownSeconds != null && { velocityCooldownSeconds: input.velocityCooldownSeconds }),
-      // Reset window/cooldown to defaults when velocity limit is explicitly removed
-      ...(input.velocityLimitMicrodollars === null && { velocityWindowSeconds: 60, velocityCooldownSeconds: 60 }),
-      ...(input.sessionLimitMicrodollars !== undefined && { sessionLimitMicrodollars: input.sessionLimitMicrodollars }),
-    })
-    .onConflictDoUpdate({
-      target: [budgets.entityType, budgets.entityId],
-      set: {
+    return tx
+      .insert(budgets)
+      .values({
+        entityType: input.entityType,
+        entityId: input.entityId,
         maxBudgetMicrodollars: input.maxBudgetMicrodollars,
         resetInterval: input.resetInterval ?? null,
         ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
@@ -157,10 +145,24 @@ export const POST = withRequestContext(async (request: Request) => {
         ...(input.velocityCooldownSeconds != null && { velocityCooldownSeconds: input.velocityCooldownSeconds }),
         ...(input.velocityLimitMicrodollars === null && { velocityWindowSeconds: 60, velocityCooldownSeconds: 60 }),
         ...(input.sessionLimitMicrodollars !== undefined && { sessionLimitMicrodollars: input.sessionLimitMicrodollars }),
-        updatedAt: sql`NOW()`,
-      },
-    })
-    .returning();
+      })
+      .onConflictDoUpdate({
+        target: [budgets.entityType, budgets.entityId],
+        set: {
+          maxBudgetMicrodollars: input.maxBudgetMicrodollars,
+          resetInterval: input.resetInterval ?? null,
+          ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
+          ...(input.thresholdPercentages != null && { thresholdPercentages: input.thresholdPercentages }),
+          ...(input.velocityLimitMicrodollars !== undefined && { velocityLimitMicrodollars: input.velocityLimitMicrodollars }),
+          ...(input.velocityWindowSeconds != null && { velocityWindowSeconds: input.velocityWindowSeconds }),
+          ...(input.velocityCooldownSeconds != null && { velocityCooldownSeconds: input.velocityCooldownSeconds }),
+          ...(input.velocityLimitMicrodollars === null && { velocityWindowSeconds: 60, velocityCooldownSeconds: 60 }),
+          ...(input.sessionLimitMicrodollars !== undefined && { sessionLimitMicrodollars: input.sessionLimitMicrodollars }),
+          updatedAt: sql`NOW()`,
+        },
+      })
+      .returning();
+  });
 
   invalidateProxyCache({
     action: "sync",

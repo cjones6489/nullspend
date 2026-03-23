@@ -264,9 +264,11 @@ describe("POST /api/budgets — proxy invalidation", () => {
     const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
     const mockFrom = vi.fn(() => ({ where: mockWhere }));
     const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
     mockedGetDb.mockReturnValue({
       select: mockSelect,
       insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
     } as unknown as ReturnType<typeof getDb>);
 
     const request = new Request("http://localhost/api/budgets", {
@@ -302,9 +304,11 @@ describe("POST /api/budgets — proxy invalidation", () => {
     const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
     const mockFrom = vi.fn(() => ({ where: mockWhere }));
     const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
     mockedGetDb.mockReturnValue({
       select: mockSelect,
       insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
     } as unknown as ReturnType<typeof getDb>);
 
     const request = new Request("http://localhost/api/budgets", {
@@ -344,9 +348,11 @@ describe("POST /api/budgets — proxy invalidation", () => {
     const mockWhere = vi.fn().mockResolvedValue([budgetRow]); // existingForEntity returns 1 row
     const mockFrom = vi.fn(() => ({ where: mockWhere }));
     const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
     mockedGetDb.mockReturnValue({
       select: mockSelect,
       insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
     } as unknown as ReturnType<typeof getDb>);
 
     const request = new Request("http://localhost/api/budgets", {
