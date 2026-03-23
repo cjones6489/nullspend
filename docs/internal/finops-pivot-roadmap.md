@@ -189,16 +189,16 @@ receipts, or unified LLM + tool metering designed for autonomous agents.
 │  LLM Proxy             │    │  MCP Cost Proxy          │
 │  (Cloudflare Workers)  │    │  (stdio / HTTP)          │
 │  Stream → tee → log    │    │  Intercept tools/call    │
-│  Budget check (Redis)  │    │  Track cost + duration   │
+│  Budget check (DO)     │    │  Track cost + duration   │
 │  Cost calc per provider│    │  Budget enforcement      │
 └────────┬───────────────┘    └────────┬─────────────────┘
          │                             │
          ▼                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                    Shared Infrastructure                      │
-│  Upstash Redis — atomic budget state (Lua scripts)           │
+│  Durable Objects — budget enforcement (SQLite state)         │
 │  Supabase Postgres — ledger, config, budgets, auth           │
-│  (Future: ClickHouse for analytics at scale)                 │
+│  Cloudflare KV — webhook endpoint caching                    │
 └──────────────────────────────┬───────────────────────────────┘
                                │
                                ▼
@@ -569,7 +569,7 @@ features and priorities adapt.
 | Decision | Choice | Rationale |
 |---|---|---|
 | Proxy runtime | Cloudflare Workers | <1ms cold start, 100MB body limit, waitUntil, passThroughOnException. Vercel's 5MB limit is disqualifying. |
-| Budget state store | Upstash Redis | REST-based (works from CF Workers), atomic Lua scripts, no TCP required |
+| Budget state store | Durable Objects (SQLite) | Co-located with Worker, race-condition-resistant, ~17ms p50 overhead |
 | Cost precision | Microdollars (integers) | Avoids floating point errors in financial calculations |
 | Launch providers | OpenAI + Anthropic only | Covers vast majority of agent developers. Add others post-launch based on demand. |
 | Auth model | BYOK (pass-through) first | Provider keys never stored. Lowest friction. Vault mode is post-launch. |

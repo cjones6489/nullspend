@@ -10,7 +10,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:do": "vitest run --config vitest.do.config.mts",
     "test:stress": "vitest run --config vitest.stress.config.ts"
   },

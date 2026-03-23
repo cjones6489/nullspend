@@ -26,13 +26,13 @@ cd apps/proxy && npx vitest run smoke-anthropic.test.ts # Anthropic core
 
 Every test in this tier uses mocked dependencies and runs in <15 seconds total.
 
-### Tier 2 — Integration Tests (real Redis)
+### Tier 2 — Integration Tests
 
-`apps/proxy/src/__tests__/budget-lua-integration.test.ts` runs real Lua scripts against a live Upstash Redis instance. Requires `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` env vars.
+Currently empty — the Redis-based Lua integration tests were removed when budget enforcement moved to Durable Objects.
 
 ### Tier 3 — Smoke Tests (live deployed worker + real APIs)
 
-The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and make real API calls to OpenAI/Anthropic. They require API keys and a deployed proxy. These are NOT run in CI.
+The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and make real API calls to OpenAI/Anthropic. They require API keys and a deployed proxy. These are NOT run in CI.
 
 ### Tier 4 — CI Pipeline
 
@@ -42,7 +42,7 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-68 files, ~1,161 tests. All mock `cloudflare:workers`, `@upstash/redis/cloudflare`, and external dependencies.
+69 files, ~1,199 tests. All mock `cloudflare:workers` and external dependencies.
 
 ### Naming Convention
 
@@ -95,11 +95,10 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 |---|---|
 | `budget.test.ts` | Lua scripts: checkAndReserve, reconcile, populateCache |
 | `budget-edge-cases.test.ts` | Attribution nulls, zero estimates, 429 body structure, sensitive data |
-| `budget-lookup.test.ts` | `lookupBudgets` — Redis cache + Postgres fallback |
+| `budget-lookup.test.ts` | `lookupBudgets` — DO lookup + Postgres fallback |
 | `budget-spend.test.ts` | `updateBudgetSpend` — Postgres atomic increment, error handling |
 | `budget-streaming.test.ts` | Streaming responses with budget reservation lifecycle |
-| `budget-reconcile-failures.test.ts` | Partial failures: Redis/Postgres divergence, TTL expiry, zero cost |
-| `budget-lua-integration.test.ts` | **Real Redis** — Lua script correctness against live Upstash |
+| `budget-reconcile-failures.test.ts` | Partial failures: DO/Postgres divergence, TTL expiry, zero cost |
 | `velocity-limits.test.ts` | Velocity limit enforcement: sliding window, circuit breaker, recovery, edge cases |
 | `velocity-webhook-recovery.test.ts` | `velocity.recovered` webhook builder + route dispatch (OpenAI, MCP, multi-entity) |
 | `velocity-state-internal.test.ts` | `GET /internal/budget/velocity-state` — auth, validation, happy path, DO error |
@@ -145,7 +144,7 @@ The 24 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `webhook-thresholds.test.ts` | `detectThresholdCrossings` — default thresholds, custom thresholds, empty/single, mixed entities, backward compat |
 | `webhook-dispatch.test.ts` | Endpoint dispatch with HMAC signing, retry, error handling, thin event dispatch + headers |
 | `webhook-signer.test.ts` | HMAC-SHA256 signature generation and verification |
-| `webhook-cache.test.ts` | Redis-cached endpoint lookup, invalidation, `payloadMode` DB mapping + null fallback |
+| `webhook-cache.test.ts` | KV-cached endpoint lookup, invalidation, `payloadMode` DB mapping + null fallback |
 | `webhook-expiry.test.ts` | Rotated secret expiry logic |
 
 **Tags & Attribution**
@@ -293,8 +292,7 @@ Co-located with source files. 890 tests across 80 files.
 1. Place in `apps/proxy/src/__tests__/`
 2. Follow the naming convention: `{module}.test.ts`, add `-edge-cases` or `-all-models` suffix as needed
 3. Mock `cloudflare:workers` with `vi.mock("cloudflare:workers", ...)`
-4. Mock `@upstash/redis/cloudflare` for Redis
-5. Polyfill `crypto.subtle.timingSafeEqual` in `beforeAll`
+4. Polyfill `crypto.subtle.timingSafeEqual` in `beforeAll`
 6. Use `.js` extensions in imports (ESM requirement)
 
 ### Dashboard tests

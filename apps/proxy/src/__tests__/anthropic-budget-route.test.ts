@@ -254,7 +254,7 @@ describe("Anthropic budget enforcement", () => {
   });
 
   it("budget lookup failure returns 503 budget_unavailable", async () => {
-    mockCheckBudget.mockRejectedValue(new Error("Redis connection failed"));
+    mockCheckBudget.mockRejectedValue(new Error("Budget service unavailable"));
 
     const body = {
       model: "claude-sonnet-4-20250514",
