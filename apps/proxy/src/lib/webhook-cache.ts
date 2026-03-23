@@ -1,4 +1,3 @@
-import type { Redis } from "@upstash/redis/cloudflare";
 import { Client } from "pg";
 import { withDbConnection } from "./db-semaphore.js";
 import {
@@ -10,13 +9,11 @@ import {
 
 export type { CachedWebhookEndpoint } from "./cache-kv.js";
 
-const CACHE_KEY_PREFIX = "webhooks:user:";
-const CACHE_TTL_SECONDS = 300; // 5 minutes
 const CONNECTION_TIMEOUT_MS = 5_000;
 
 /**
  * Full endpoint data including signing secret.
- * Returned from DB queries; never stored in Redis.
+ * Returned from DB queries; never stored in cache.
  */
 export interface WebhookEndpointWithSecret extends CachedWebhookEndpoint {
   signingSecret: string;
@@ -28,56 +25,19 @@ export interface WebhookEndpointWithSecret extends CachedWebhookEndpoint {
 
 /**
  * Get active webhook endpoints for a user (metadata only, no secrets).
- * When `kv` is provided, uses Workers KV; otherwise falls back to Redis.
+ * Uses Workers KV cache with DB fallback.
  * Fail-open: returns [] on error.
  */
 export async function getWebhookEndpoints(
-  redis: Redis,
   connectionString: string,
   userId: string,
-  kv?: KVNamespace | null,
+  kv: KVNamespace,
 ): Promise<CachedWebhookEndpoint[]> {
-  // KV path — when kv binding is available
-  if (kv) {
-    try {
-      const kvCached = await getCachedWebhookEndpoints(kv, userId);
-      if (kvCached) return kvCached;
-    } catch (err) {
-      console.error("[webhook-cache:kv] read error:", err);
-      // Fail-open: fall through to DB query
-    }
-
-    let endpoints: WebhookEndpointWithSecret[];
-    try {
-      endpoints = await withDbConnection(() => queryActiveEndpoints(connectionString, userId));
-    } catch (err) {
-      console.error("[webhook-cache:kv] DB query error:", err);
-      return []; // Fail-open
-    }
-
-    const metadata: CachedWebhookEndpoint[] = endpoints.map(({ id, url, eventTypes }) => ({
-      id,
-      url,
-      eventTypes,
-    }));
-
-    try {
-      await setCachedWebhookEndpoints(kv, userId, metadata);
-    } catch (err) {
-      console.error("[webhook-cache:kv] write error:", err);
-    }
-
-    return metadata;
-  }
-
-  // Redis path — fallback when kv is null/undefined
-  const cacheKey = `${CACHE_KEY_PREFIX}${userId}`;
-
   try {
-    const cached = await redis.get<CachedWebhookEndpoint[]>(cacheKey);
-    if (cached) return cached;
+    const kvCached = await getCachedWebhookEndpoints(kv, userId);
+    if (kvCached) return kvCached;
   } catch (err) {
-    console.error("[webhook-cache] Redis read error:", err);
+    console.error("[webhook-cache:kv] read error:", err);
     // Fail-open: fall through to DB query
   }
 
@@ -85,11 +45,10 @@ export async function getWebhookEndpoints(
   try {
     endpoints = await withDbConnection(() => queryActiveEndpoints(connectionString, userId));
   } catch (err) {
-    console.error("[webhook-cache] DB query error:", err);
+    console.error("[webhook-cache:kv] DB query error:", err);
     return []; // Fail-open
   }
 
-  // Cache metadata only — strip secrets before writing to Redis
   const metadata: CachedWebhookEndpoint[] = endpoints.map(({ id, url, eventTypes }) => ({
     id,
     url,
@@ -97,9 +56,9 @@ export async function getWebhookEndpoints(
   }));
 
   try {
-    await redis.set(cacheKey, JSON.stringify(metadata), { ex: CACHE_TTL_SECONDS });
+    await setCachedWebhookEndpoints(kv, userId, metadata);
   } catch (err) {
-    console.error("[webhook-cache] Redis write error:", err);
+    console.error("[webhook-cache:kv] write error:", err);
   }
 
   return metadata;
@@ -125,26 +84,15 @@ export async function getWebhookEndpointsWithSecrets(
 /**
  * Invalidate the webhook endpoint cache for a user.
  * Called from dashboard API on create/update/delete.
- * When `kv` is provided, invalidates both KV and Redis (belt-and-suspenders).
  */
 export async function invalidateWebhookCache(
-  redis: Redis,
   userId: string,
-  kv?: KVNamespace | null,
+  kv: KVNamespace,
 ): Promise<void> {
-  if (kv) {
-    try {
-      await invalidateWebhookEndpoints(kv, userId);
-    } catch (err) {
-      console.error("[webhook-cache:kv] invalidation error:", err);
-    }
-  }
-
-  const cacheKey = `${CACHE_KEY_PREFIX}${userId}`;
   try {
-    await redis.del(cacheKey);
+    await invalidateWebhookEndpoints(kv, userId);
   } catch (err) {
-    console.error("[webhook-cache] Cache invalidation error:", err);
+    console.error("[webhook-cache:kv] invalidation error:", err);
   }
 }
 

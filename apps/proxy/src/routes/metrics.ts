@@ -9,7 +9,7 @@
  *   Accept: text/plain       → Prometheus exposition format
  *
  * Note: `overhead_ms` = total - upstream (wall clock). This includes
- * I/O from auth, budget check, and Redis — not just CPU time.
+ * I/O from auth and budget check — not just CPU time.
  */
 
 import { emitMetric } from "../lib/metrics.js";

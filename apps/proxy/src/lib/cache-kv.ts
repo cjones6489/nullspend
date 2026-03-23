@@ -9,7 +9,7 @@ export interface CachedWebhookEndpoint {
 }
 
 // KV minimum expirationTtl is 60 seconds (CF enforced)
-const WEBHOOK_TTL = 300; // 5 minutes — matches Redis TTL
+const WEBHOOK_TTL = 300; // 5 minutes
 
 export async function getCachedWebhookEndpoints(
   kv: KVNamespace,

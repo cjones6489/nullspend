@@ -58,10 +58,10 @@ export async function handleMcpBudgetCheck(
     const outcome = await checkBudget(env, ctx, parsed.estimateMicrodollars);
 
     if (outcome.status === "denied" && outcome.velocityDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               const event = buildVelocityExceededPayload({
@@ -100,10 +100,10 @@ export async function handleMcpBudgetCheck(
 
     // Session limit denial
     if (outcome.status === "denied" && outcome.sessionLimitDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               const event = buildSessionLimitExceededPayload({
@@ -141,10 +141,10 @@ export async function handleMcpBudgetCheck(
 
     // Tag budget denial
     if (outcome.status === "denied" && outcome.tagBudgetDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               const event = buildTagBudgetExceededPayload({
@@ -197,10 +197,10 @@ export async function handleMcpBudgetCheck(
     }
 
     // Velocity recovery webhook (fires on approved requests where circuit breaker just cleared)
-    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
       waitUntil((async () => {
         try {
-          const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+          const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
           if (cached.length > 0) {
             const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
             for (const recovered of outcome.velocityRecovered!) {
@@ -368,35 +368,32 @@ export async function handleMcpEvents(
       // Phase 4: Webhook dispatch (one per cost event per endpoint, single secrets fetch)
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         try {
-          const redis = ctx.redis;
-          if (redis) {
-            const cached = await getWebhookEndpoints(redis, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              for (const row of costEventRows) {
-                for (const ep of endpoints) {
-                  if ((ep.payloadMode ?? "full") === "thin") {
-                    await ctx.webhookDispatcher!.dispatch(ep, buildThinCostEventPayload(row.requestId, row.provider, ep.apiVersion));
-                  } else {
-                    await ctx.webhookDispatcher!.dispatch(ep, buildCostEventPayload({ ...row, createdAt: new Date().toISOString() }, ep.apiVersion));
-                  }
+          const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+          if (cached.length > 0) {
+            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+            for (const row of costEventRows) {
+              for (const ep of endpoints) {
+                if ((ep.payloadMode ?? "full") === "thin") {
+                  await ctx.webhookDispatcher!.dispatch(ep, buildThinCostEventPayload(row.requestId, row.provider, ep.apiVersion));
+                } else {
+                  await ctx.webhookDispatcher!.dispatch(ep, buildCostEventPayload({ ...row, createdAt: new Date().toISOString() }, ep.apiVersion));
                 }
               }
-
-              // Threshold detection (aligned with OpenAI/Anthropic routes)
-              if (budgetEntities.length > 0) {
-                const epVersion = endpoints[0]?.apiVersion ?? ctx.auth.apiVersion;
-                const totalCost = costEventRows.reduce((sum, r) => sum + r.costMicrodollars, 0);
-                if (totalCost > 0) {
-                  const thresholdEvents = detectThresholdCrossings(budgetEntities, totalCost, costEventRows[0].requestId, epVersion);
-                  for (const te of thresholdEvents) {
-                    await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, te);
-                  }
-                }
-              }
-
-              expireRotatedSecrets(ctx.connectionString, endpoints).catch(() => {});
             }
+
+            // Threshold detection (aligned with OpenAI/Anthropic routes)
+            if (budgetEntities.length > 0) {
+              const epVersion = endpoints[0]?.apiVersion ?? ctx.auth.apiVersion;
+              const totalCost = costEventRows.reduce((sum, r) => sum + r.costMicrodollars, 0);
+              if (totalCost > 0) {
+                const thresholdEvents = detectThresholdCrossings(budgetEntities, totalCost, costEventRows[0].requestId, epVersion);
+                for (const te of thresholdEvents) {
+                  await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, te);
+                }
+              }
+            }
+
+            expireRotatedSecrets(ctx.connectionString, endpoints).catch(() => {});
           }
         } catch (err) {
           console.error("[mcp-events] Webhook dispatch failed:", err);

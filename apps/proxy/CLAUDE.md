@@ -21,7 +21,6 @@ pnpm deploy           # Deploy to Cloudflare
 
 - Tests live in `src/__tests__/` directory
 - Mock `cloudflare:workers` with `vi.mock("cloudflare:workers", ...)`
-- Mock `@upstash/redis/cloudflare` for Redis
 - Polyfill `crypto.subtle.timingSafeEqual` in `beforeAll`
 - `makeEnv()` helper returns typed `Env` with test values
 - `makeCtx()` helper returns mock `ExecutionContext`
@@ -73,7 +72,7 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/webhook-thresholds.ts` — `detectThresholdCrossings` (per-entity configurable thresholds)
 - `src/lib/webhook-dispatch.ts` — endpoint dispatch with HMAC signing
 - `src/lib/webhook-signer.ts` — HMAC-SHA256 signature generation
-- `src/lib/webhook-cache.ts` — Redis-cached endpoint lookup
+- `src/lib/webhook-cache.ts` — KV-cached endpoint lookup
 - `src/lib/webhook-expiry.ts` — rotated secret expiry
 
 **Infrastructure**

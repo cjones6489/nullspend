@@ -1,5 +1,3 @@
-import { Redis } from "@upstash/redis/cloudflare";
-import { Ratelimit } from "@upstash/ratelimit";
 import { handleChatCompletions } from "./routes/openai.js";
 import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
@@ -22,8 +20,6 @@ import type { CostEventMessage } from "./lib/cost-event-queue.js";
 export { UserBudgetDO } from "./durable-objects/user-budget.js";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
-const DEFAULT_RATE_LIMIT = 120;
-const DEFAULT_KEY_RATE_LIMIT = 600;
 
 const routes = new Map<string, RouteHandler>();
 routes.set("/v1/chat/completions", handleChatCompletions);
@@ -31,65 +27,44 @@ routes.set("/v1/messages", handleAnthropicMessages);
 routes.set("/v1/mcp/budget/check", handleMcpBudgetCheck);
 routes.set("/v1/mcp/events", handleMcpEvents);
 
+/**
+ * Rate limiting via Cloudflare native bindings.
+ * Counters are on the same machine as the Worker — ~0ms overhead.
+ * Limits are configured in wrangler.jsonc (per-IP: 120/min, per-key: 600/min).
+ */
 async function applyRateLimit(
   request: Request,
   env: Env,
 ): Promise<Response | null> {
   const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
-  try {
-    const redis = Redis.fromEnv(env);
-    const rateLimit =
-      Number((env as Record<string, unknown>).PROXY_RATE_LIMIT) ||
-      DEFAULT_RATE_LIMIT;
 
-    // Per-IP rate limit
-    const ipLimiter = new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(rateLimit, "1 m"),
-      prefix: "nullspend:proxy:rl:ip",
-    });
-    const ipResult = await ipLimiter.limit(clientIp);
-    if (!ipResult.success) {
-      return rateLimitResponse(ipResult);
+  try {
+    // Per-IP rate limit (abuse/DDoS protection)
+    const { success: ipOk } = await env.IP_RATE_LIMITER.limit({ key: clientIp });
+    if (!ipOk) {
+      return Response.json(
+        { error: { code: "rate_limited", message: "Too many requests", details: null } },
+        { status: 429, headers: { "Retry-After": "60" } },
+      );
     }
 
-    // Per-key rate limit
+    // Per-key rate limit (runaway agent protection)
     const rateLimitKey = request.headers.get("x-nullspend-key");
     if (rateLimitKey && rateLimitKey.length <= 128) {
-      const keyRateLimit =
-        Number((env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT) ||
-        DEFAULT_KEY_RATE_LIMIT;
-      const keyLimiter = new Ratelimit({
-        redis,
-        limiter: Ratelimit.slidingWindow(keyRateLimit, "1 m"),
-        prefix: "nullspend:proxy:rl:key",
-      });
-      const keyResult = await keyLimiter.limit(rateLimitKey);
-      if (!keyResult.success) {
-        return rateLimitResponse(keyResult);
+      const { success: keyOk } = await env.KEY_RATE_LIMITER.limit({ key: rateLimitKey });
+      if (!keyOk) {
+        return Response.json(
+          { error: { code: "rate_limited", message: "Too many requests", details: null } },
+          { status: 429 },
+        );
       }
     }
   } catch (err) {
+    // Fail-open: if rate limiter binding is unavailable, allow the request
     console.error("[proxy] Rate limiter error:", err);
   }
-  return null;
-}
 
-function rateLimitResponse(result: { limit: number; remaining: number; reset: number }): Response {
-  return Response.json(
-    { error: { code: "rate_limited", message: "Too many requests", details: null } },
-    {
-      status: 429,
-      headers: {
-        "X-RateLimit-Limit": String(result.limit),
-        "X-RateLimit-Remaining": String(result.remaining),
-        "X-RateLimit-Reset": String(result.reset),
-        "Retry-After": String(
-          Math.ceil((result.reset - Date.now()) / 1000),
-        ),
-      },
-    },
-  );
+  return null;
 }
 
 async function parseRequestBody(
@@ -183,16 +158,7 @@ export default {
       }
 
       if (url.pathname === "/health/ready") {
-        try {
-          const redis = Redis.fromEnv(env);
-          const pong = await redis.ping();
-          return Response.json({ status: "ok", redis: pong });
-        } catch {
-          return Response.json(
-            { status: "error", redis: "unreachable" },
-            { status: 503 },
-          );
-        }
+        return Response.json({ status: "ok", service: "nullspend-proxy" });
       }
 
       // Internal endpoints — separate auth pipeline (shared secret, not API key)
@@ -246,7 +212,6 @@ export default {
       const ctx: RequestContext = {
         body: result.body,
         auth,
-        redis: auth.hasWebhooks ? Redis.fromEnv(env) : null,
         connectionString,
         sessionId: truncateSessionId(request.headers.get("x-nullspend-session")),
         traceId,

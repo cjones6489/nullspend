@@ -1,5 +1,4 @@
 import { waitUntil } from "cloudflare:workers";
-import type { Redis } from "@upstash/redis/cloudflare";
 import type { RequestContext } from "../lib/context.js";
 import { errorResponse } from "../lib/errors.js";
 import { buildUpstreamHeaders, buildClientHeaders, appendTimingHeaders } from "../lib/headers.js";
@@ -80,10 +79,10 @@ export async function handleChatCompletions(
 
     // Velocity denial — separate from budget exhaustion
     if (outcome.status === "denied" && outcome.velocityDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               const event = buildVelocityExceededPayload({
@@ -124,10 +123,10 @@ export async function handleChatCompletions(
 
     // Session limit denial
     if (outcome.status === "denied" && outcome.sessionLimitDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               const event = buildSessionLimitExceededPayload({
@@ -170,10 +169,10 @@ export async function handleChatCompletions(
 
     // Tag budget denial
     if (outcome.status === "denied" && outcome.tagBudgetDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               const event = buildTagBudgetExceededPayload({
@@ -217,10 +216,10 @@ export async function handleChatCompletions(
     }
 
     if (outcome.status === "denied") {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
               const event = buildBudgetExceededPayload({
@@ -248,10 +247,10 @@ export async function handleChatCompletions(
     budgetEntities = outcome.budgetEntities;
 
     // Velocity recovery webhook (fires on approved requests where circuit breaker just cleared)
-    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks && ctx.redis) {
+    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
       waitUntil((async () => {
         try {
-          const cached = await getWebhookEndpoints(ctx.redis!, ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+          const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
           if (cached.length > 0) {
             const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
             for (const recovered of outcome.velocityRecovered!) {
@@ -333,7 +332,6 @@ export async function handleChatCompletions(
         startTime,
         env,
         attribution,
-        ctx.redis,
         reservationId,
         budgetEntities,
         ctx.connectionString,
@@ -351,7 +349,6 @@ export async function handleChatCompletions(
       startTime,
       env,
       attribution,
-      ctx.redis,
       reservationId,
       budgetEntities,
       ctx.connectionString,
@@ -393,7 +390,6 @@ function handleStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
-  redis: Redis | null,
   reservationId: string | null,
   budgetEntities: BudgetEntity[],
   connectionString: string,
@@ -495,8 +491,8 @@ function handleStreaming(
         // --- Webhook dispatch (nested try/catch — costEvent must stay in scope,
         //     but errors here must NOT trigger the outer catch's reconciliation fallback) ---
         try {
-          if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && redis) {
-            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId, env.CACHE_KV);
+          if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
+            const cached = await getWebhookEndpoints(connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
               const webhookData = {
@@ -564,7 +560,6 @@ async function handleNonStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
-  redis: Redis | null,
   reservationId: string | null,
   budgetEntities: BudgetEntity[],
   connectionString: string,
@@ -619,10 +614,10 @@ async function handleNonStreaming(
       }
 
       // Webhook dispatch (separate waitUntil — independent of log/reconcile)
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks && redis) {
+      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         waitUntil((async () => {
           try {
-            const cached = await getWebhookEndpoints(redis, connectionString, ctx.auth.userId, env.CACHE_KV);
+            const cached = await getWebhookEndpoints(connectionString, ctx.auth.userId, env.CACHE_KV);
             if (cached.length > 0) {
               const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
               const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString(), source: "proxy" as const };
