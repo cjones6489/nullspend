@@ -614,7 +614,7 @@ export class UserBudgetDO extends DurableObject {
 
   /**
    * Settle a reservation after actual cost is known.
-   * Skips spend update when actualCost is 0 (matches Redis behavior).
+   * Skips spend update when actualCost is 0.
    */
   async reconcile(
     reservationId: string,
@@ -909,7 +909,7 @@ export class UserBudgetDO extends DurableObject {
 
   /**
    * Alarm handler: clean up expired reservations.
-   * Replaces Redis TTL-based reservation expiry.
+   * Cleans up expired reservations and stale session spend entries.
    */
   async alarm(): Promise<void> {
     const now = Date.now();
