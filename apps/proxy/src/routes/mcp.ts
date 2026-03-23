@@ -191,6 +191,7 @@ export async function handleMcpBudgetCheck(
         remaining: outcome.remaining,
         traceId: ctx.traceId,
       }, {
+        status: 429,
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,

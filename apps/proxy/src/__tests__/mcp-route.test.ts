@@ -283,7 +283,7 @@ describe("handleMcpBudgetCheck", () => {
       estimateMicrodollars: 100000,
     }));
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(429);
     const json = await response.json();
     expect(json.allowed).toBe(false);
     expect(json.denied).toBe(true);

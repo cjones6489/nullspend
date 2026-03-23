@@ -1,23 +1,17 @@
-import { getResilienceRedis } from "@/lib/resilience/redis";
-
-const CACHE_KEY_PREFIX = "webhooks:user:";
-
 /**
- * Invalidate the webhook endpoint cache in Redis for a given user.
+ * Invalidate the webhook endpoint cache for a given user.
  * Called from dashboard API routes after create/update/delete.
- * Fire-and-forget: logs errors but never throws.
  *
- * Note: Workers KV cache has its own 5-minute TTL and can't be invalidated
- * from the dashboard without a Cloudflare API call. The Redis invalidation
- * is sufficient: when the proxy's Redis cache misses, it queries DB and
- * re-populates both Redis and KV with fresh data.
+ * The proxy uses Workers KV for webhook endpoint caching (5-minute TTL).
+ * Active invalidation from the dashboard would require a Cloudflare KV API
+ * call or a proxy internal endpoint — deferred until needed.
+ *
+ * For now, this is a no-op: KV entries expire naturally within 5 minutes.
+ * This is acceptable with zero users. When active invalidation is needed,
+ * add a proxy internal endpoint that calls invalidateWebhookEndpoints()
+ * on the CACHE_KV binding.
  */
-export async function invalidateWebhookCacheForUser(userId: string): Promise<void> {
-  const redis = getResilienceRedis();
-  if (!redis) return;
-  try {
-    await redis.del(`${CACHE_KEY_PREFIX}${userId}`);
-  } catch (err) {
-    console.error("[webhook-cache] Dashboard invalidation failed:", err);
-  }
+export async function invalidateWebhookCacheForUser(_userId: string): Promise<void> {
+  // No-op: KV TTL handles expiry (5 minutes).
+  // TODO: Add active KV invalidation via proxy internal endpoint when needed.
 }

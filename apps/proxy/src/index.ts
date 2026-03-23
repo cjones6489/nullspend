@@ -153,6 +153,10 @@ export default {
         return Response.json({ status: "ok", service: "nullspend-proxy" });
       }
 
+      if (url.pathname === "/health/ready") {
+        return Response.json({ status: "ok", service: "nullspend-proxy" });
+      }
+
       if (url.pathname === "/health/metrics") {
         return handleMetrics(request, env);
       }
