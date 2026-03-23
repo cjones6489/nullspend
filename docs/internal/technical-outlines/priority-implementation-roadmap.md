@@ -1,7 +1,7 @@
 # NullSpend Priority Implementation Roadmap
 
 **Created:** 2026-03-20
-**Last updated:** 2026-03-21 (tag budget enforcement Plan 1 shipped)
+**Last updated:** 2026-03-22 (MCP tool cost Part 1 shipped)
 **Purpose:** Forward-looking architecture, infrastructure, and feature roadmap for NullSpend. Derived from the post-audit deep research and competitive analysis. Prioritized by impact on platform positioning as the best financial infrastructure for AI agents.
 
 **Predecessor:** [`nullspend-prelaunch-design-audit.md`](nullspend-prelaunch-design-audit.md) — completed 2026-03-19 (8/8 items shipped). Contains detailed implementation notes, design decisions, and three-pass audit findings for all completed items.
@@ -455,6 +455,67 @@ Tag budget management UI, tag-spend analytics, and `__untagged__` visibility.
 
 Email `secret-scanning@github.com` with the regex `ns_(live|test)_sk_[a-f0-9]{32}`. Free service that protects users from accidentally committing keys to public repos.
 
+### 2.6 MCP Tool Cost — Zero-Until-Priced + Suggested Prices — ✅ Done
+**Shipped:** 2026-03-22 | **Source:** [Proxy Latency Research](../research/proxy-latency-optimization.md) — MCP tool pricing competitive analysis
+
+MCP tools now default to $0.00 (unpriced) instead of fabricating costs from annotation tiers. No competitor (LiteLLM, LangSmith, AgentOps) auto-prices tools correctly — the honest default is $0. Annotation tiers become suggestions the user can accept or override.
+
+**What was built:**
+- Migration: `suggested_cost` column on `tool_costs`, `cost_microdollars` default changed to 0, backfill from annotations
+- `estimateToolCost` → `suggestToolCost` (annotations-only, for UI suggestions — never auto-applied)
+- `CostTracker.estimateCost` → `resolveToolCost` (returns $0 for unpriced tools, checks overrides + registry)
+- Discovery payload: `tierCost: 0` + `suggestedCost` from annotations
+- Discover endpoint: stores `suggestedCost`, updates on re-discovery
+- DELETE route: resets to unpriced (UPDATE to cost=0, source=discovered) instead of hard-delete — preserves metadata
+- Dashboard: "Unpriced" amber badge for $0 discovered tools, suggested cost display with "Accept" button, "Reset to Unpriced" label
+- Source filter label: "Default" → "Discovered"
+- Zero-cost tools still logged as cost events (`reportEvent` runs regardless). Budget checks skip for $0 (`if (costEstimate > 0)` gate) — correct since nothing to enforce.
+
+### 2.7 MCP Tool Cost — Retroactive Backfill (Part 2)
+**Effort:** ~4-6h | **Source:** Part 1 dependency note (2026-03-22)
+
+When a user prices a previously-unpriced tool (or changes an existing price), recalculate historical cost events and budget spend. This closes the gap where $0 cost events were logged before the user set a real price.
+
+**What to build:**
+- On tool cost upsert (POST /api/tool-costs), if `costMicrodollars` changed and old cost was 0:
+  - Query `cost_events` matching `(userId, serverName, toolName)` where `cost_microdollars = 0` and `source = 'mcp'`
+  - Batch UPDATE `cost_microdollars` to new price
+  - Recalculate affected budget spend totals (sum delta across events, atomically update budget `current_spend`)
+- On tool cost upsert where old cost > 0 and new cost differs (reprice):
+  - Same pattern but delta = `(new - old) * event_count`
+- Dashboard: show "X events will be repriced" confirmation dialog before saving
+- Guard: cap backfill to last 30 days (prevents unbounded queries on high-volume tools)
+- Emit `tool_cost.repriced` webhook with `{ toolName, serverName, oldCost, newCost, eventsUpdated, spendDelta }`
+
+**Design decisions to resolve:**
+- Should repricing update DO budget state, or only Postgres? (DO state is ephemeral — alarm resets it from Postgres, so Postgres-only may be sufficient)
+- Should repricing be async (queue) or synchronous? High-volume tools could have thousands of events
+- Should we add a `repriced_at` timestamp or `_ns_repriced: true` tag to backfilled events for auditability?
+
+**Test plan:**
+- Unit: backfill query correctness (date range, source filter, userId scoping)
+- Unit: budget spend recalculation (delta math, atomic update)
+- Unit: reprice from $0 → $0.01, from $0.01 → $0.05, from $0.05 → $0
+- Edge: no matching events (new tool, never called)
+- Edge: tool with 10K+ events (verify batching/pagination)
+- Integration: price tool → verify cost events updated → verify budget spend reflects new total
+
+### 2.8 MCP Tool Cost — Bulk Pricing UI (Part 3)
+**Effort:** ~3-4h | **Source:** DX improvement for users with many MCP tools
+
+Users with 50+ discovered tools need a faster way to price them than clicking each one individually.
+
+**What to build:**
+- "Accept All Suggestions" button on tool costs page — batch-applies `suggestedCost` to all unpriced tools in one API call
+- Bulk select + set price: checkbox column, "Set price for selected" action
+- Import/export: CSV download of `(serverName, toolName, costMicrodollars, suggestedCost)`, CSV upload to batch-upsert prices
+- `POST /api/tool-costs/bulk` endpoint: array of `{ serverName, toolName, costMicrodollars }`, validates + upserts in transaction
+- Dashboard: progress indicator for bulk operations
+
+**Explicitly deferred from Part 3:**
+- Pricing templates/presets (e.g., "price all Tavily tools at $0.001")
+- Per-server default pricing (apply one price to all tools on a server)
+
 ---
 
 ## Priority 3 — Lower Impact / Design Now, Ship Later
@@ -555,7 +616,7 @@ Items evaluated and rejected based on the architecture review. See [Architecture
 
 ## Roadmap Summary
 
-Last updated: 2026-03-21 (tag budget enforcement Plan 1 shipped)
+Last updated: 2026-03-22 (MCP tool cost Part 1 shipped)
 
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
@@ -576,6 +637,9 @@ Last updated: 2026-03-21 (tag budget enforcement Plan 1 shipped)
 | **P2** | Tag-based budgets — Plan 1: enforcement (DO + proxy + webhook) | **Done** (2026-03-21) | ~4-6h | Multi-entity research (2026-03-21) |
 | **P2** | Tag-based budgets — Plan 2: default tags on API keys + merge | Not started | ~2-3h | Multi-entity research (2026-03-21) |
 | **P2** | Tag-based budgets — Plan 3: analytics groupBy + CRUD API + dashboard | Not started | ~4-6h | Multi-entity research (2026-03-21) |
+| **P2** | MCP tool cost — Part 1: zero-until-priced + suggested prices | **Done** (2026-03-22) | ~2-3h | Competitive analysis (2026-03-22) |
+| **P2** | MCP tool cost — Part 2: retroactive backfill on reprice | Not started | ~4-6h | Part 1 dependency (2026-03-22) |
+| **P2** | MCP tool cost — Part 3: bulk pricing UI | Not started | ~3-4h | DX improvement (2026-03-22) |
 | **P2** | GitHub Secret Scanning registration | Not started | External | Audit Section 2 |
 | **P3** | First-class agent entities | Not started | ~1-2 days | Multi-entity research (2026-03-21) |
 | **P3** | AI SDK middleware adapter | Not started | ~2-3 days | Architecture Review |

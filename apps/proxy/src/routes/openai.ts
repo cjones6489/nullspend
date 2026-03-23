@@ -16,11 +16,7 @@ import { isAllowedUpstream } from "../lib/upstream-allowlist.js";
 import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { writeLatencyDataPoint } from "../lib/write-metric.js";
-import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildThinCostEventPayload, buildBudgetExceededPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, buildTagBudgetExceededPayload, CURRENT_API_VERSION } from "../lib/webhook-events.js";
-import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
-import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
-import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
+import { handleBudgetDenials, dispatchVelocityRecoveryWebhooks, dispatchCostEventWebhooks, type Attribution, type EnrichmentFields } from "./shared.js";
 
 export async function handleChatCompletions(
   request: Request,
@@ -79,198 +75,13 @@ export async function handleChatCompletions(
     const outcome = await checkBudget(env, ctx, estimate);
     if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
-    // Velocity denial — separate from budget exhaustion
-    if (outcome.status === "denied" && outcome.velocityDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              const event = buildVelocityExceededPayload({
-                budgetEntityType: outcome.deniedEntityType ?? "unknown",
-                budgetEntityId: outcome.deniedEntityId ?? "unknown",
-                velocityLimitMicrodollars: outcome.velocityDetails?.limitMicrodollars ?? 0,
-                velocityWindowSeconds: outcome.velocityDetails?.windowSeconds ?? 60,
-                velocityCurrentMicrodollars: outcome.velocityDetails?.currentMicrodollars ?? 0,
-                cooldownSeconds: outcome.retryAfterSeconds ?? 60,
-                model: requestModel,
-                provider: "openai",
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          } catch (err) {
-            console.error("[openai-route] Velocity webhook dispatch failed:", err);
-          }
-        })());
-      }
-      return new Response(
-        JSON.stringify({
-          error: {
-            code: "velocity_exceeded",
-            message: "Request blocked: spending rate exceeds velocity limit. Retry after cooldown.",
-            details: outcome.velocityDetails ?? null,
-          },
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": String(outcome.retryAfterSeconds ?? 60),
-            "X-NullSpend-Trace-Id": ctx.traceId,
-          },
-        },
-      );
-    }
-
-    // Session limit denial
-    if (outcome.status === "denied" && outcome.sessionLimitDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              const event = buildSessionLimitExceededPayload({
-                budgetEntityType: outcome.deniedEntityType ?? "unknown",
-                budgetEntityId: outcome.deniedEntityId ?? "unknown",
-                sessionId: outcome.sessionId ?? "unknown",
-                sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
-                sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
-                model: requestModel,
-                provider: "openai",
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          } catch (err) {
-            console.error("[openai-route] Session limit webhook dispatch failed:", err);
-          }
-        })());
-      }
-      return new Response(
-        JSON.stringify({
-          error: {
-            code: "session_limit_exceeded",
-            message: "Request blocked: session spend exceeds session limit. Start a new session.",
-            details: {
-              session_id: outcome.sessionId ?? null,
-              session_spend_microdollars: outcome.sessionSpend ?? 0,
-              session_limit_microdollars: outcome.sessionLimit ?? 0,
-            },
-          },
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "X-NullSpend-Trace-Id": ctx.traceId,
-          },
-        },
-      );
-    }
-
-    // Tag budget denial
-    if (outcome.status === "denied" && outcome.tagBudgetDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              const event = buildTagBudgetExceededPayload({
-                tagKey: outcome.tagKey ?? "unknown",
-                tagValue: outcome.tagValue ?? "unknown",
-                budgetEntityId: outcome.deniedEntityId ?? "unknown",
-                budgetLimitMicrodollars: outcome.maxBudget ?? 0,
-                budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
-                estimatedRequestCostMicrodollars: estimate,
-                model: requestModel,
-                provider: "openai",
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          } catch (err) {
-            console.error("[openai-route] Tag budget webhook dispatch failed:", err);
-          }
-        })());
-      }
-      return new Response(
-        JSON.stringify({
-          error: {
-            code: "tag_budget_exceeded",
-            message: "Request blocked: estimated cost exceeds tag budget limit.",
-            details: {
-              tag_key: outcome.tagKey ?? null,
-              tag_value: outcome.tagValue ?? null,
-              budget_limit_microdollars: outcome.maxBudget ?? 0,
-              budget_spend_microdollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
-            },
-          },
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "X-NullSpend-Trace-Id": ctx.traceId,
-          },
-        },
-      );
-    }
-
-    if (outcome.status === "denied") {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              const event = buildBudgetExceededPayload({
-                budgetEntityType: outcome.deniedEntityType ?? budgetEntities[0]?.entityType ?? "unknown",
-                budgetEntityId: outcome.deniedEntityId ?? budgetEntities[0]?.entityId ?? "unknown",
-                budgetLimitMicrodollars: outcome.maxBudget ?? 0,
-                budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
-                estimatedRequestCostMicrodollars: estimate,
-                model: requestModel,
-                provider: "openai",
-              });
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          } catch (err) {
-            console.error("[openai-route] Budget webhook dispatch failed:", err);
-          }
-        })());
-      }
-      const budgetDeniedResp = errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
-      budgetDeniedResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
-      return budgetDeniedResp;
-    }
+    const denialResponse = handleBudgetDenials(outcome, ctx, env, "openai", requestModel, estimate, budgetEntities);
+    if (denialResponse) return denialResponse;
 
     reservationId = outcome.reservationId;
     budgetEntities = outcome.budgetEntities;
 
-    // Velocity recovery webhook (fires on approved requests where circuit breaker just cleared)
-    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-      waitUntil((async () => {
-        try {
-          const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-          if (cached.length > 0) {
-            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-            for (const recovered of outcome.velocityRecovered!) {
-              const event = buildVelocityRecoveredPayload({
-                budgetEntityType: recovered.entityType,
-                budgetEntityId: recovered.entityId,
-                velocityLimitMicrodollars: recovered.velocityLimitMicrodollars,
-                velocityWindowSeconds: recovered.velocityWindowSeconds,
-                velocityCooldownSeconds: recovered.velocityCooldownSeconds,
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          }
-        } catch (err) {
-          console.error("[openai-route] Velocity recovery webhook dispatch failed:", err);
-        }
-      })());
-    }
+    dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "openai");
   } catch {
     const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
     budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
@@ -374,15 +185,6 @@ export async function handleChatCompletions(
   }
 }
 
-type Attribution = { userId: string | null; apiKeyId: string | null; actionId: string | null };
-
-interface EnrichmentFields {
-  upstreamDurationMs: number;
-  sessionId: string | null;
-  traceId: string;
-  toolDefinitionTokens: number;
-  tags: Record<string, string>;
-}
 
 function handleStreaming(
   upstreamResponse: Response,
@@ -490,38 +292,8 @@ function handleStreaming(
           );
         }
 
-        // --- Webhook dispatch (nested try/catch — costEvent must stay in scope,
-        //     but errors here must NOT trigger the outer catch's reconciliation fallback) ---
         try {
-          if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-            const cached = await getWebhookEndpoints(connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
-              const webhookData = {
-                ...costEvent,
-                ...enrichment,
-                toolCallsRequested: result.toolCalls,
-                createdAt: new Date().toISOString(),
-                source: "proxy" as const,
-              };
-              for (const ep of endpoints) {
-                if ((ep.payloadMode ?? "full") === "thin") {
-                  await ctx.webhookDispatcher.dispatch(ep, buildThinCostEventPayload(webhookData.requestId, webhookData.provider, ep.apiVersion));
-                } else {
-                  await ctx.webhookDispatcher.dispatch(ep, buildCostEventPayload(webhookData, ep.apiVersion));
-                }
-              }
-
-              if (budgetEntities.length > 0) {
-                const epVersion = endpoints[0]?.apiVersion ?? CURRENT_API_VERSION;
-                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId, epVersion);
-                for (const te of thresholdEvents) {
-                  await dispatchToEndpoints(ctx.webhookDispatcher, endpoints, te);
-                }
-              }
-              expireRotatedSecrets(connectionString, endpoints).catch(() => {});
-            }
-          }
+          await dispatchCostEventWebhooks(ctx, env, "openai", costEvent, enrichment, budgetEntities, result.toolCalls);
         } catch (err) {
           console.error("[openai-route] Webhook dispatch failed:", err);
         }
@@ -616,35 +388,7 @@ async function handleNonStreaming(
       }
 
       // Webhook dispatch (separate waitUntil — independent of log/reconcile)
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ctx.auth.userId);
-              const webhookData = { ...costEvent, ...enrichment, toolCallsRequested, createdAt: new Date().toISOString(), source: "proxy" as const };
-              for (const ep of endpoints) {
-                if ((ep.payloadMode ?? "full") === "thin") {
-                  await ctx.webhookDispatcher!.dispatch(ep, buildThinCostEventPayload(webhookData.requestId, webhookData.provider, ep.apiVersion));
-                } else {
-                  await ctx.webhookDispatcher!.dispatch(ep, buildCostEventPayload(webhookData, ep.apiVersion));
-                }
-              }
-
-              if (budgetEntities.length > 0) {
-                const epVersion = endpoints[0]?.apiVersion ?? CURRENT_API_VERSION;
-                const thresholdEvents = detectThresholdCrossings(budgetEntities, costEvent.costMicrodollars, requestId, epVersion);
-                for (const te of thresholdEvents) {
-                  await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, te);
-                }
-              }
-              expireRotatedSecrets(connectionString, endpoints).catch(() => {});
-            }
-          } catch (err) {
-            console.error("[openai-route] Webhook dispatch failed:", err);
-          }
-        })());
-      }
+      waitUntil(dispatchCostEventWebhooks(ctx, env, "openai", costEvent, enrichment, budgetEntities, toolCallsRequested));
     } else if (reservationId) {
       // No usage in parsed response — reconcile with 0
       waitUntil(

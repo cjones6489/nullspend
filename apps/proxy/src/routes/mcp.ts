@@ -5,11 +5,12 @@ import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.j
 import { logCostEventsBatchQueued, getCostEventQueue } from "../lib/cost-event-queue.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildThinCostEventPayload, buildVelocityExceededPayload, buildVelocityRecoveredPayload, buildSessionLimitExceededPayload, buildTagBudgetExceededPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildThinCostEventPayload, buildVelocityExceededPayload, buildSessionLimitExceededPayload, buildTagBudgetExceededPayload } from "../lib/webhook-events.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 import { UUID_RE } from "../lib/validation.js";
+import { dispatchDenialWebhook, dispatchVelocityRecoveryWebhooks } from "./shared.js";
 
 // ---------------------------------------------------------------------------
 // POST /v1/mcp/budget/check
@@ -60,29 +61,18 @@ export async function handleMcpBudgetCheck(
     if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
     if (outcome.status === "denied" && outcome.velocityDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              const event = buildVelocityExceededPayload({
-                budgetEntityType: outcome.deniedEntityType ?? "unknown",
-                budgetEntityId: outcome.deniedEntityId ?? "unknown",
-                velocityLimitMicrodollars: outcome.velocityDetails?.limitMicrodollars ?? 0,
-                velocityWindowSeconds: outcome.velocityDetails?.windowSeconds ?? 60,
-                velocityCurrentMicrodollars: outcome.velocityDetails?.currentMicrodollars ?? 0,
-                cooldownSeconds: outcome.retryAfterSeconds ?? 60,
-                model: `${parsed.serverName}/${parsed.toolName}`,
-                provider: "mcp",
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          } catch (err) {
-            console.error("[mcp-route] Velocity webhook dispatch failed:", err);
-          }
-        })());
-      }
+      dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
+        buildVelocityExceededPayload({
+          budgetEntityType: outcome.deniedEntityType ?? "unknown",
+          budgetEntityId: outcome.deniedEntityId ?? "unknown",
+          velocityLimitMicrodollars: outcome.velocityDetails?.limitMicrodollars ?? 0,
+          velocityWindowSeconds: outcome.velocityDetails?.windowSeconds ?? 60,
+          velocityCurrentMicrodollars: outcome.velocityDetails?.currentMicrodollars ?? 0,
+          cooldownSeconds: outcome.retryAfterSeconds ?? 60,
+          model: `${parsed.serverName}/${parsed.toolName}`,
+          provider: "mcp",
+        }, ctx.auth.apiVersion),
+      );
       return Response.json({
         allowed: false,
         denied: true,
@@ -102,28 +92,17 @@ export async function handleMcpBudgetCheck(
 
     // Session limit denial
     if (outcome.status === "denied" && outcome.sessionLimitDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              const event = buildSessionLimitExceededPayload({
-                budgetEntityType: outcome.deniedEntityType ?? "unknown",
-                budgetEntityId: outcome.deniedEntityId ?? "unknown",
-                sessionId: outcome.sessionId ?? "unknown",
-                sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
-                sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
-                model: `${parsed.serverName}/${parsed.toolName}`,
-                provider: "mcp",
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          } catch (err) {
-            console.error("[mcp-route] Session limit webhook dispatch failed:", err);
-          }
-        })());
-      }
+      dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
+        buildSessionLimitExceededPayload({
+          budgetEntityType: outcome.deniedEntityType ?? "unknown",
+          budgetEntityId: outcome.deniedEntityId ?? "unknown",
+          sessionId: outcome.sessionId ?? "unknown",
+          sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
+          sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
+          model: `${parsed.serverName}/${parsed.toolName}`,
+          provider: "mcp",
+        }, ctx.auth.apiVersion),
+      );
       return Response.json({
         allowed: false,
         denied: true,
@@ -143,29 +122,18 @@ export async function handleMcpBudgetCheck(
 
     // Tag budget denial
     if (outcome.status === "denied" && outcome.tagBudgetDenied) {
-      if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-        waitUntil((async () => {
-          try {
-            const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-            if (cached.length > 0) {
-              const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-              const event = buildTagBudgetExceededPayload({
-                tagKey: outcome.tagKey ?? "unknown",
-                tagValue: outcome.tagValue ?? "unknown",
-                budgetEntityId: outcome.deniedEntityId ?? "unknown",
-                budgetLimitMicrodollars: outcome.maxBudget ?? 0,
-                budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
-                estimatedRequestCostMicrodollars: parsed.estimateMicrodollars,
-                model: `${parsed.serverName}/${parsed.toolName}`,
-                provider: "mcp",
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          } catch (err) {
-            console.error("[mcp-route] Tag budget webhook dispatch failed:", err);
-          }
-        })());
-      }
+      dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
+        buildTagBudgetExceededPayload({
+          tagKey: outcome.tagKey ?? "unknown",
+          tagValue: outcome.tagValue ?? "unknown",
+          budgetEntityId: outcome.deniedEntityId ?? "unknown",
+          budgetLimitMicrodollars: outcome.maxBudget ?? 0,
+          budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+          estimatedRequestCostMicrodollars: parsed.estimateMicrodollars,
+          model: `${parsed.serverName}/${parsed.toolName}`,
+          provider: "mcp",
+        }, ctx.auth.apiVersion),
+      );
       return Response.json({
         allowed: false,
         denied: true,
@@ -199,29 +167,7 @@ export async function handleMcpBudgetCheck(
       });
     }
 
-    // Velocity recovery webhook (fires on approved requests where circuit breaker just cleared)
-    if (outcome.velocityRecovered?.length && ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
-      waitUntil((async () => {
-        try {
-          const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
-          if (cached.length > 0) {
-            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
-            for (const recovered of outcome.velocityRecovered!) {
-              const event = buildVelocityRecoveredPayload({
-                budgetEntityType: recovered.entityType,
-                budgetEntityId: recovered.entityId,
-                velocityLimitMicrodollars: recovered.velocityLimitMicrodollars,
-                velocityWindowSeconds: recovered.velocityWindowSeconds,
-                velocityCooldownSeconds: recovered.velocityCooldownSeconds,
-              }, ctx.auth.apiVersion);
-              await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
-            }
-          }
-        } catch (err) {
-          console.error("[mcp-route] Velocity recovery webhook dispatch failed:", err);
-        }
-      })());
-    }
+    dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "mcp");
 
     return Response.json({
       allowed: true,
