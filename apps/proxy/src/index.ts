@@ -75,7 +75,7 @@ async function applyRateLimit(
 
 async function parseRequestBody(
   request: Request,
-): Promise<{ body: Record<string, unknown>; bodyByteLength: number; error?: undefined } | { body?: undefined; bodyByteLength?: undefined; error: Response }> {
+): Promise<{ body: Record<string, unknown>; bodyText: string; bodyByteLength: number; error?: undefined } | { body?: undefined; bodyText?: undefined; bodyByteLength?: undefined; error: Response }> {
   const contentLength = request.headers.get("content-length");
   if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
     return {
@@ -103,7 +103,7 @@ async function parseRequestBody(
         error: errorResponse("bad_request", "Request body must be a JSON object", 400),
       };
     }
-    return { body: parsed, bodyByteLength: bodyText.length };
+    return { body: parsed, bodyText, bodyByteLength: bodyText.length };
   } catch {
     return {
       error: errorResponse("bad_request", "Invalid JSON body", 400),
@@ -237,6 +237,7 @@ export default {
 
       const ctx: RequestContext = {
         body: result.body,
+        bodyText: result.bodyText,
         bodyByteLength: result.bodyByteLength,
         auth,
         connectionString,

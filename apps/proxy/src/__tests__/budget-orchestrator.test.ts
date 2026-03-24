@@ -32,6 +32,7 @@ import type { RequestContext } from "../lib/context.js";
 function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
   return {
     body: {},
+    bodyText: "{}",
     auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
     connectionString: "postgres://test",
     sessionId: null,

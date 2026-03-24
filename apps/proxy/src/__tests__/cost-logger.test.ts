@@ -21,7 +21,7 @@ function makeCostEvent(overrides: Record<string, unknown> = {}) {
     reasoningTokens: 0,
     costMicrodollars: 150,
     durationMs: 250,
-    userId: null,
+    userId: "user-test",
     apiKeyId: null,
     actionId: null,
     ...overrides,

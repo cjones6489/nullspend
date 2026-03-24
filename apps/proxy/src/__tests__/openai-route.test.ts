@@ -108,6 +108,7 @@ function makeCtx(
 ): RequestContext {
   return {
     body,
+    bodyText: JSON.stringify(body),
     auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} },
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -133,25 +134,28 @@ describe("handleChatCompletions", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns 400 for unknown models", async () => {
+  it("passes through unknown models with $0 cost (no hard reject)", async () => {
     mockIsKnownModel.mockReturnValueOnce(false);
-    const request = makeRequest({ model: "unknown-model", messages: [] });
-    const res = await handleChatCompletions(request, makeEnv(), makeCtx({
-      model: "unknown-model",
-      messages: [],
-    }));
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error.code).toBe("invalid_model");
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ model: "unknown-model", choices: [], usage: { prompt_tokens: 5, completion_tokens: 2 } }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-request-id": "req-unknown" },
+      }),
+    );
+    const body = { model: "unknown-model", messages: [{ role: "user", content: "hi" }] };
+    const res = await handleChatCompletions(makeRequest(body), makeEnv(), makeCtx(body));
+    expect(res.status).toBe(200);
   });
 
-  it("includes X-NullSpend-Trace-Id on error responses", async () => {
-    mockIsKnownModel.mockReturnValueOnce(false);
-    const request = makeRequest({ model: "unknown-model", messages: [] });
-    const res = await handleChatCompletions(request, makeEnv(), makeCtx({
-      model: "unknown-model",
-      messages: [],
-    }));
+  it("includes X-NullSpend-Trace-Id on upstream error responses", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "bad" } }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const body = { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] };
+    const res = await handleChatCompletions(makeRequest(body), makeEnv(), makeCtx(body));
     expect(res.headers.get("X-NullSpend-Trace-Id")).toBe("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
   });
 
@@ -782,7 +786,6 @@ describe("handleChatCompletions", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(mockIsKnownModel).not.toHaveBeenCalled();
       await res.text();
     });
 
@@ -886,8 +889,14 @@ describe("handleChatCompletions", () => {
       expect(capturedHeaders!.get("x-nullspend-upstream")).toBeNull();
     });
 
-    it("still rejects unknown models when no upstream header is set", async () => {
+    it("passes through unknown models without upstream header (no hard reject)", async () => {
       mockIsKnownModel.mockReturnValueOnce(false);
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ model: "unknown-model", choices: [], usage: { prompt_tokens: 5, completion_tokens: 2 } }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-request-id": "req-pass" },
+        }),
+      );
 
       const body = { model: "unknown-model", messages: [{ role: "user", content: "hi" }] };
       const res = await handleChatCompletions(
@@ -896,9 +905,7 @@ describe("handleChatCompletions", () => {
         makeCtx(body),
       );
 
-      expect(res.status).toBe(400);
-      const json = await res.json();
-      expect(json.error.code).toBe("invalid_model");
+      expect(res.status).toBe(200);
     });
   });
 

@@ -38,10 +38,9 @@ export async function handleAnthropicMessages(
     actionId: stripNsPrefix("ns_act_", request.headers.get("x-nullspend-action-id")),
   };
 
-  if (!isKnownModel("anthropic", requestModel)) {
-    const resp = errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
-    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
-    return resp;
+  const isUnpricedModel = !isKnownModel("anthropic", requestModel);
+  if (isUnpricedModel) {
+    emitMetric("unknown_model", { provider: "anthropic", model: requestModel });
   }
 
   const toolDefinitionTokens = Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0
@@ -86,7 +85,7 @@ export async function handleAnthropicMessages(
       {
         method: "POST",
         headers: upstreamHeaders,
-        body: JSON.stringify(ctx.body),
+        body: ctx.bodyText,
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       },
     );
@@ -104,6 +103,7 @@ export async function handleAnthropicMessages(
     if (typeof ctx.body.max_tokens === "number") metadataTags._ns_max_tokens = String(ctx.body.max_tokens);
     if (typeof ctx.body.temperature === "number") metadataTags._ns_temperature = String(ctx.body.temperature);
     if (Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0) metadataTags._ns_tool_count = String(ctx.body.tools.length);
+    if (isUnpricedModel) metadataTags._ns_unpriced = "true";
 
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,

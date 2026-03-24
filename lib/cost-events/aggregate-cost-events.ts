@@ -12,7 +12,7 @@ const NOT_ESTIMATED = sql`NOT (${costEvents.tags} @> '{"_ns_estimated":"true"}':
 
 function baseConditions(userId: string, cutoffDate: Date, options?: AggregateOptions) {
   const conditions = [
-    or(eq(costEvents.userId, userId), eq(apiKeys.userId, userId)),
+    eq(costEvents.userId, userId),
     gte(costEvents.createdAt, cutoffDate),
   ];
   if (options?.excludeEstimated) {
@@ -40,7 +40,6 @@ export async function getDailySpend(userId: string, periodDays: number, options?
         sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(dateExpr)
     .orderBy(dateExpr);
@@ -67,7 +66,6 @@ export async function getModelBreakdown(userId: string, periodDays: number, opti
         sql`cast(coalesce(sum(${costEvents.reasoningTokens}), 0) as bigint)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.provider, costEvents.model)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
@@ -86,7 +84,6 @@ export async function getProviderBreakdown(userId: string, periodDays: number, o
       requestCount: sql`cast(count(*) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.provider)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
@@ -125,7 +122,6 @@ export async function getSourceBreakdown(userId: string, periodDays: number, opt
       requestCount: sql`cast(count(*) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options))
     .groupBy(costEvents.source)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
@@ -146,7 +142,6 @@ export async function getToolBreakdown(userId: string, periodDays: number, optio
         sql`cast(coalesce(avg(${costEvents.durationMs}), 0) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(and(baseConditions(userId, cutoff, options), or(eq(costEvents.eventType, "tool"), eq(costEvents.provider, "mcp"))))
     .groupBy(costEvents.model)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
@@ -165,7 +160,6 @@ export async function getCostBreakdownTotals(userId: string, periodDays: number,
       reasoningCost: sql`cast(coalesce(sum((${costEvents.costBreakdown}->>'reasoning')::numeric), 0) as bigint)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options));
 
   return row ?? { inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 };
@@ -183,7 +177,6 @@ export async function getTraceBreakdown(userId: string, periodDays: number, opti
       requestCount: sql`cast(count(*) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(and(baseConditions(userId, cutoff, options), sql`${costEvents.traceId} IS NOT NULL`))
     .groupBy(costEvents.traceId)
     .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
@@ -201,7 +194,6 @@ export async function getTotals(userId: string, periodDays: number, options?: Ag
       totalRequests: sql`cast(count(*) as int)`.mapWith(Number),
     })
     .from(costEvents)
-    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
     .where(baseConditions(userId, cutoff, options));
 
   return row ?? { totalCostMicrodollars: 0, totalRequests: 0 };

@@ -134,16 +134,16 @@ describe("handleCostEventDlq", () => {
     expect(msg.ack).toHaveBeenCalledTimes(1);
   });
 
-  it("handles null userId in metric", async () => {
+  it("handles userId in metric", async () => {
     mockLogCostEvent.mockResolvedValue(undefined);
 
-    const msg = makeMessage(makeCostEventMessage({ userId: null }));
+    const msg = makeMessage(makeCostEventMessage({ userId: "user-dlq" }));
     const batch = makeBatch([msg]);
 
     await handleCostEventDlq(batch, makeEnv());
 
     expect(mockEmitMetric).toHaveBeenCalledWith("cost_event_dlq", expect.objectContaining({
-      userId: "unknown",
+      userId: "user-dlq",
     }));
   });
 

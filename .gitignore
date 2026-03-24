@@ -19,4 +19,5 @@ worker-configuration.d.ts
 
 .cursor/mcp.json
 .mcp.json
+.claude/settings.local.json
 validation-tests/

@@ -48,10 +48,9 @@ export async function handleChatCompletions(
     resolvedUpstream = upstreamHeader.replace(/\/+$/, "");
   }
 
-  if (!upstreamHeader && !isKnownModel("openai", requestModel)) {
-    const resp = errorResponse("invalid_model", `Model "${requestModel}" is not in the allowed model list`, 400);
-    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
-    return resp;
+  const isUnpricedModel = !isKnownModel("openai", requestModel);
+  if (isUnpricedModel) {
+    emitMetric("unknown_model", { provider: "openai", model: requestModel });
   }
 
   const toolDefinitionTokens = Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0
@@ -100,7 +99,7 @@ export async function handleChatCompletions(
     const upstreamResponse = await fetch(`${resolvedUpstream}/v1/chat/completions`, {
       method: "POST",
       headers: upstreamHeaders,
-      body: JSON.stringify(ctx.body),
+      body: isStreaming ? JSON.stringify(ctx.body) : ctx.bodyText,
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     const upstreamDurationMs = Math.round(performance.now() - startTime);
@@ -118,6 +117,7 @@ export async function handleChatCompletions(
     if (typeof maxTokens === "number") metadataTags._ns_max_tokens = String(maxTokens);
     if (typeof ctx.body.temperature === "number") metadataTags._ns_temperature = String(ctx.body.temperature);
     if (Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0) metadataTags._ns_tool_count = String(ctx.body.tools.length);
+    if (isUnpricedModel) metadataTags._ns_unpriced = "true";
 
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,

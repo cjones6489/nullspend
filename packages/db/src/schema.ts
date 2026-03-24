@@ -128,7 +128,7 @@ export const costEvents = pgTable("cost_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   requestId: text("request_id").notNull(),
   apiKeyId: uuid("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
-  userId: text("user_id"),
+  userId: text("user_id").notNull(),
   orgId: text("org_id"),
   parentRequestId: text("parent_request_id"),
   provider: text("provider").notNull(),

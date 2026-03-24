@@ -4,6 +4,7 @@ import type { StepTiming } from "./headers.js";
 
 export interface RequestContext {
   body: Record<string, unknown>;
+  bodyText: string;                // original request body text (avoids re-serialize for upstream fetch)
   bodyByteLength: number;          // original request body size (avoids re-stringify for estimation)
   auth: AuthResult;
   connectionString: string;
