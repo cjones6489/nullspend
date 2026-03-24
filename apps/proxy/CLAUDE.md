@@ -33,6 +33,7 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/routes/anthropic.ts` — Anthropic messages handler
 - `src/routes/mcp.ts` — MCP budget check + cost event ingestion
 - `src/routes/internal.ts` — internal budget invalidation/sync endpoint
+- `src/routes/shared.ts` — shared budget denial handling, webhook dispatch helpers (used by all routes)
 
 **Auth & Context**
 - `src/lib/auth.ts` — API key auth (delegates to `api-key-auth.ts`)
@@ -68,7 +69,7 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/upstream-allowlist.ts` — allowed upstream host validation
 
 **Webhooks**
-- `src/lib/webhook-events.ts` — event payload builders (13 event types)
+- `src/lib/webhook-events.ts` — event payload builders (15 event types)
 - `src/lib/webhook-thresholds.ts` — `detectThresholdCrossings` (per-entity configurable thresholds)
 - `src/lib/webhook-dispatch.ts` — dispatcher interface + Queue-based enqueue
 - `src/lib/webhook-queue.ts` — webhook queue message type + enqueue helper
@@ -79,7 +80,8 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/webhook-expiry.ts` — rotated secret expiry
 
 **Infrastructure**
-- `src/lib/db.ts` — Shared postgres.js pool (max:5, prepare:false, fetch_types:false)
+- `src/lib/db.ts` — Per-request postgres.js instance (max:1, prepare:false, fetch_types:false) — I/O context isolation
+- `src/lib/timing-safe-equal.ts` — Constant-time string comparison (shared by internal auth + webhook signer)
 - `src/lib/cache-kv.ts` — KV-backed caching helpers
 - `src/routes/metrics.ts` — `GET /health/metrics` — AE SQL API query, KV caching (90s), negative caching (30s), JSON + Prometheus content negotiation
 - `src/lib/write-metric.ts` — `writeLatencyDataPoint` — fire-and-forget AE data point write per request

@@ -42,7 +42,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-68 files, ~1,185 tests. All mock `cloudflare:workers` and external dependencies.
+70 files, ~1,182 tests. All mock `cloudflare:workers` and external dependencies.
 
 ### Naming Convention
 
