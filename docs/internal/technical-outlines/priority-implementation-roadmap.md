@@ -1,7 +1,7 @@
 # NullSpend Priority Implementation Roadmap
 
 **Created:** 2026-03-20
-**Last updated:** 2026-03-22 (MCP tool cost Part 1 shipped)
+**Last updated:** 2026-03-24 (telemetry Phase 1-4, hasBudgets, schema future-proofing, unknown model fallback)
 **Purpose:** Forward-looking architecture, infrastructure, and feature roadmap for NullSpend. Derived from the post-audit deep research and competitive analysis. Prioritized by impact on platform positioning as the best financial infrastructure for AI agents.
 
 **Predecessor:** [`nullspend-prelaunch-design-audit.md`](nullspend-prelaunch-design-audit.md) — completed 2026-03-19 (8/8 items shipped). Contains detailed implementation notes, design decisions, and three-pass audit findings for all completed items.
@@ -660,3 +660,54 @@ Last updated: 2026-03-22 (MCP tool cost Part 1 shipped)
 | **—** | Multi-region DO replication | Not started | TBD | Audit Section 13 |
 
 **P1 total:** ~10h | **P2 total:** ~2.5 days (includes 2.0a split: ~30min + ~2-3h) | **P3 total:** ~2-3 weeks
+
+---
+
+## Completed (2026-03-24 Session)
+
+| Item | Shipped | Notes |
+|---|---|---|
+| `hasBudgets` auth flag | 2026-03-24 | EXISTS subquery on budgets table, 17ms → 2-3ms for tracking-only users |
+| Telemetry Phase 1-4 | 2026-03-24 | Full observability stack — see `docs/internal/telemetry-roadmap.md` |
+| Budget unique constraint fix | 2026-03-24 | `(user_id, entity_type, entity_id)`, user_id NOT NULL |
+| Future-proofing columns | 2026-03-24 | `org_id` on 3 tables, `parent_request_id` on cost_events |
+| cost_events.userId NOT NULL | 2026-03-24 | Aggregation queries simplified, leftJoin eliminated from 7/8 functions |
+| Raw body passthrough | 2026-03-24 | Avoid re-serialize for non-streaming requests |
+| Unknown model fallback | 2026-03-24 | No hard 400 reject, pass-through with `_ns_unpriced` tag |
+
+---
+
+## Deferred: Dynamic Pricing Updates (KV-backed)
+
+**Status:** Researched 2026-03-24, deferred until paying users exist.
+**Trigger to revisit:** When a pricing change is missed beyond the provider's notice period due to deploy friction.
+
+### Problem
+`pricing-data.json` is baked into the Worker bundle at build time. ~18 pricing/model events per year (~1 every 3 weeks) require a redeploy. With the unknown model fallback shipped, new models no longer cause hard failures — they pass through at $0 with `_ns_unpriced` tag.
+
+### Industry context
+- **Helicone** (YC W23): fully static, baked-in pricing. Updates require code change + deploy.
+- **LiteLLM**: baked-in default + optional 6-hour auto-sync from GitHub JSON.
+- **Portkey**: fully dynamic, 24-hour refresh from their API.
+- **OpenRouter**: daily ISR rebuild.
+- **No competitor does real-time pricing sync.** The fastest cycle is daily.
+- **Providers give 14+ days notice** on pricing changes (OpenAI ToS).
+
+### Recommended approach when needed: Option A (KV override layer)
+
+**How it works:**
+1. `pricing-data.json` stays baked in (zero-latency default, KV outage = no impact)
+2. Proxy checks KV for a `pricing-overrides` key containing a partial model→pricing map
+3. Dashboard endpoint to push pricing patches to KV
+4. `getModelPricing()` stays synchronous — override merge happens in the proxy layer above the cost-engine
+5. ~2-3 days engineering effort, strictly additive, no API changes
+
+**Why NOT Option B (pricing entirely in KV):**
+- Cloudflare Workers prohibit I/O at module scope — can't read KV during initialization
+- First request to cold isolate must do inline KV read (~5-80ms) before pricing anything
+- `getModelPricing()` and `isKnownModel()` must become async — ripples through ~70 test files
+- KV outage = total pricing failure without a baked-in fallback (which recreates two sources of truth)
+- ~1-2 weeks engineering effort vs ~2-3 days for Option A
+
+### Preparatory step (zero cost)
+Add `lastUpdated` field to `pricing-data.json` and a CI check that warns if older than 30 days.
