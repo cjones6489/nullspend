@@ -9,6 +9,7 @@ import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import { mergeTags } from "./lib/tags.js";
 import { resolveTraceId } from "./lib/trace-context.js";
+import { emitMetric } from "./lib/metrics.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
 import { handleReconciliationQueue } from "./queue-handler.js";
 import { handleDlqQueue, DLQ_QUEUE_NAME } from "./dlq-handler.js";
@@ -45,6 +46,7 @@ async function applyRateLimit(
     // Per-IP rate limit (abuse/DDoS protection)
     const { success: ipOk } = await env.IP_RATE_LIMITER.limit({ key: clientIp });
     if (!ipOk) {
+      emitMetric("request_error", { status: 429, reason: "ip_rate_limited" });
       return Response.json(
         { error: { code: "rate_limited", message: "Too many requests", details: null } },
         { status: 429, headers: { "Retry-After": "60" } },
@@ -56,6 +58,7 @@ async function applyRateLimit(
     if (rateLimitKey && rateLimitKey.length <= 128) {
       const { success: keyOk } = await env.KEY_RATE_LIMITER.limit({ key: rateLimitKey });
       if (!keyOk) {
+        emitMetric("request_error", { status: 429, reason: "key_rate_limited" });
         return Response.json(
           { error: { code: "rate_limited", message: "Too many requests", details: null } },
           { status: 429, headers: { "Retry-After": "60" } },
@@ -175,6 +178,7 @@ export default {
       // Route lookup
       const handler = request.method === "POST" ? routes.get(url.pathname) : undefined;
       if (!handler) {
+        emitMetric("request_error", { status: 404, reason: "not_found" });
         if (url.pathname.startsWith("/v1/")) {
           const resp = errorResponse("not_found", "This endpoint is not yet supported", 404);
           resp.headers.set("X-NullSpend-Trace-Id", traceId);
@@ -199,6 +203,7 @@ export default {
         return rateLimitResult;
       }
       if (!auth) {
+        emitMetric("request_error", { status: 401, reason: "unauthorized" });
         const resp = errorResponse("unauthorized", "Invalid or missing authentication header", 401);
         resp.headers.set("X-NullSpend-Trace-Id", traceId);
         return resp;
@@ -209,6 +214,7 @@ export default {
       const result = await parseRequestBody(request);
       const bodyParseMs = Math.round(performance.now() - bodyStartMs);
       if (result.error) {
+        emitMetric("request_error", { status: result.error.status, reason: "bad_request" });
         result.error.headers.set("X-NullSpend-Trace-Id", traceId);
         return result.error;
       }
@@ -251,6 +257,7 @@ export default {
       return response;
     } catch (err) {
       console.error("[proxy] Unhandled error:", { traceId, err });
+      emitMetric("request_error", { status: 500, reason: "internal_error" });
       const resp = errorResponse("internal_error", "Internal server error", 500);
       resp.headers.set("X-NullSpend-Trace-Id", traceId);
       return resp;

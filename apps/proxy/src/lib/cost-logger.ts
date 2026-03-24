@@ -40,7 +40,8 @@ export async function logCostEvent(
         input_tokens, output_tokens, cached_input_tokens, reasoning_tokens,
         cost_microdollars, duration_ms, action_id, event_type,
         tool_name, tool_server, tool_calls_requested, tool_definition_tokens,
-        upstream_duration_ms, session_id, trace_id, source, cost_breakdown, tags
+        upstream_duration_ms, session_id, trace_id, source, cost_breakdown, tags,
+        budget_status, stop_reason, estimated_cost_microdollars
       ) VALUES (
         ${event.requestId}, ${event.apiKeyId ?? null}, ${event.userId ?? null},
         ${event.provider}, ${event.model},
@@ -54,7 +55,9 @@ export async function logCostEvent(
         ${event.upstreamDurationMs ?? null}, ${event.sessionId ?? null},
         ${event.traceId ?? null}, ${event.source ?? "proxy"},
         ${event.costBreakdown ? JSON.stringify(event.costBreakdown) : null},
-        ${event.tags ? JSON.stringify(event.tags) : "{}"}
+        ${event.tags ? JSON.stringify(event.tags) : "{}"},
+        ${event.budgetStatus ?? null}, ${event.stopReason ?? null},
+        ${event.estimatedCostMicrodollars ?? null}
       )
       ON CONFLICT (request_id, provider) DO NOTHING
     `;
@@ -127,6 +130,9 @@ export async function logCostEventsBatch(
           source: e.source ?? "proxy",
           cost_breakdown: e.costBreakdown ? JSON.stringify(e.costBreakdown) : null,
           tags: e.tags ? JSON.stringify(e.tags) : "{}",
+          budget_status: e.budgetStatus ?? null,
+          stop_reason: e.stopReason ?? null,
+          estimated_cost_microdollars: e.estimatedCostMicrodollars ?? null,
         }))
       )}
       ON CONFLICT (request_id, provider) DO NOTHING

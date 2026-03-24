@@ -843,4 +843,32 @@ describe("Anthropic SSE parser", () => {
       expect(result.model).toBe("claude-sonnet-4-5-20250929");
     });
   });
+
+  describe("firstChunkMs", () => {
+    it("captures firstChunkMs on the first chunk", async () => {
+      const stream = makeStream([
+        'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-5-20250929","content":[],"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}\n\n',
+        'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hi"}}\n\n',
+        'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}\n\n',
+        'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+      ]);
+
+      const { readable, resultPromise } = createAnthropicSSEParser(stream);
+      await drainStream(readable);
+      const result = await resultPromise;
+
+      expect(result.firstChunkMs).toBeTypeOf("number");
+      expect(result.firstChunkMs).toBeGreaterThan(0);
+    });
+
+    it("firstChunkMs is null when stream has no chunks", async () => {
+      const stream = makeStream([]);
+
+      const { readable, resultPromise } = createAnthropicSSEParser(stream);
+      await drainStream(readable);
+      const result = await resultPromise;
+
+      expect(result.firstChunkMs).toBeNull();
+    });
+  });
 });

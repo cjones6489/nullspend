@@ -6,6 +6,7 @@ export interface AuthResult {
   userId: string;
   keyId: string;
   hasWebhooks: boolean;
+  hasBudgets: boolean;
   apiVersion: string;
   defaultTags: Record<string, string>;
 }
@@ -28,6 +29,7 @@ export async function authenticateRequest(
     userId: identity.userId,
     keyId: identity.keyId,
     hasWebhooks: identity.hasWebhooks,
+    hasBudgets: identity.hasBudgets,
     apiVersion: identity.apiVersion,
     defaultTags: identity.defaultTags,
   };

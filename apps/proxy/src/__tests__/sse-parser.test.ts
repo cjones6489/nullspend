@@ -252,4 +252,98 @@ describe("SSE parser", () => {
 
     expect(result!.model).toBe("gpt-4o-2024-11-20");
   });
+
+  it("extracts finish_reason from final streaming chunk", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result!.finishReason).toBe("stop");
+  });
+
+  it("extracts finish_reason=tool_calls", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"tool_calls":[{"id":"call_1","function":{"name":"get_weather"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":10,"completion_tokens":5}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result!.finishReason).toBe("tool_calls");
+  });
+
+  it("finishReason is null when stream has no finish_reason", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hi"}}]}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result!.finishReason).toBeNull();
+  });
+
+  it("finishReason is null on cancelled stream", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hi"}}]}\n\n',
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    // Cancel the stream instead of draining it
+    await readable.cancel();
+    const result = await resultPromise;
+
+    expect(result!.finishReason).toBeNull();
+    expect(result!.cancelled).toBe(true);
+  });
+
+  it("firstChunkMs is set on the first chunk and not overwritten", async () => {
+    const stream = makeStream([
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hi"}}]}\n\n',
+      'data: {"id":"chatcmpl-1","model":"gpt-4o","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result!.firstChunkMs).toBeTypeOf("number");
+    expect(result!.firstChunkMs).toBeGreaterThan(0);
+  });
+
+  it("firstChunkMs is null when stream has no chunks (empty body)", async () => {
+    const stream = makeStream([]);
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await drainStream(readable);
+    const result = await resultPromise;
+
+    expect(result!.firstChunkMs).toBeNull();
+  });
+
+  it("firstChunkMs is null when cancelled before any chunks arrive", async () => {
+    // Use a stream that never pushes chunks
+    const stream = new ReadableStream<Uint8Array>({
+      start() { /* never enqueue — simulates cancel before data */ },
+      cancel() { /* no-op */ },
+    });
+
+    const { readable, resultPromise } = createSSEParser(stream);
+    await readable.cancel();
+    const result = await resultPromise;
+
+    expect(result!.firstChunkMs).toBeNull();
+    expect(result!.cancelled).toBe(true);
+  });
 });

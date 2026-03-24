@@ -66,6 +66,7 @@ export interface StepTiming {
   preFlightMs?: number;   // parallel: rate limit + auth
   bodyParseMs?: number;   // sequential: JSON parse
   budgetCheckMs?: number; // sequential: DO RPC
+  ttfbMs?: number;        // time-to-first-byte from upstream (streaming only)
 }
 
 /**
@@ -89,6 +90,7 @@ export function appendTimingHeaders(
   if (steps?.preFlightMs != null) parts.push(`preflight;dur=${steps.preFlightMs};desc="Auth + rate limit"`);
   if (steps?.bodyParseMs != null) parts.push(`body;dur=${steps.bodyParseMs};desc="Body parse"`);
   if (steps?.budgetCheckMs != null) parts.push(`budget;dur=${steps.budgetCheckMs};desc="Budget check"`);
+  if (steps?.ttfbMs != null) parts.push(`ttfb;dur=${steps.ttfbMs};desc="Time to first byte"`);
   parts.push(`overhead;dur=${overheadMs};desc="Proxy overhead"`);
   parts.push(`upstream;dur=${upstreamDurationMs};desc="Provider latency"`);
   parts.push(`total;dur=${totalMs};desc="Total"`);

@@ -16,8 +16,8 @@ describe("writeLatencyDataPoint", () => {
 
     expect(writeDataPoint).toHaveBeenCalledOnce();
     expect(writeDataPoint).toHaveBeenCalledWith({
-      blobs: ["openai", "gpt-4o", "stream", "200"],
-      doubles: [8, 1200, 1208],
+      blobs: ["openai", "gpt-4o", "stream", "200", ""],
+      doubles: [8, 1200, 1208, 0],
       indexes: ["openai"],
     });
   });
@@ -30,7 +30,7 @@ describe("writeLatencyDataPoint", () => {
 
     expect(writeDataPoint).toHaveBeenCalledWith(
       expect.objectContaining({
-        blobs: ["anthropic", "claude-3-haiku-20240307", "json", "200"],
+        blobs: ["anthropic", "claude-3-haiku-20240307", "json", "200", ""],
       }),
     );
   });
@@ -65,7 +65,7 @@ describe("writeLatencyDataPoint", () => {
 
     expect(writeDataPoint).toHaveBeenCalledWith(
       expect.objectContaining({
-        doubles: [0, 0, 0],
+        doubles: [0, 0, 0, 0],
       }),
     );
   });
@@ -78,7 +78,47 @@ describe("writeLatencyDataPoint", () => {
 
     expect(writeDataPoint).toHaveBeenCalledWith(
       expect.objectContaining({
-        blobs: ["openai", "gpt-4o", "json", "429"],
+        blobs: ["openai", "gpt-4o", "json", "429", ""],
+      }),
+    );
+  });
+
+  it("includes ttfbMs as fourth double when provided", () => {
+    const writeDataPoint = vi.fn();
+    const env = makeEnv({ writeDataPoint });
+
+    writeLatencyDataPoint(env, "openai", "gpt-4o", true, 200, 8, 1200, 1208, 350, "user-123");
+
+    expect(writeDataPoint).toHaveBeenCalledWith({
+      blobs: ["openai", "gpt-4o", "stream", "200", "user-123"],
+      doubles: [8, 1200, 1208, 350],
+      indexes: ["openai"],
+    });
+  });
+
+  it("defaults userId to empty string when only ttfbMs provided", () => {
+    const writeDataPoint = vi.fn();
+    const env = makeEnv({ writeDataPoint });
+
+    writeLatencyDataPoint(env, "openai", "gpt-4o", true, 200, 8, 1200, 1208, 350);
+
+    expect(writeDataPoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blobs: ["openai", "gpt-4o", "stream", "200", ""],
+        doubles: [8, 1200, 1208, 350],
+      }),
+    );
+  });
+
+  it("defaults ttfbMs to 0 when not provided", () => {
+    const writeDataPoint = vi.fn();
+    const env = makeEnv({ writeDataPoint });
+
+    writeLatencyDataPoint(env, "openai", "gpt-4o", false, 200, 5, 800, 805);
+
+    expect(writeDataPoint).toHaveBeenCalledWith(
+      expect.objectContaining({
+        doubles: [5, 800, 805, 0],
       }),
     );
   });

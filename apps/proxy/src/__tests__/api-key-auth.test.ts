@@ -26,7 +26,7 @@ const TEST_USER_ID = "user-abc-123";
 const TEST_KEY_ID = "550e8400-e29b-41d4-a716-446655440000";
 const TEST_CONNECTION_STRING = "postgresql://postgres:postgres@db.example.com:5432/postgres";
 
-const validRow = { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: {} };
+const validRow = { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: {} };
 
 describe("hashApiKey", () => {
   it("produces the same hex output as Node.js crypto.createHash('sha256')", async () => {
@@ -69,7 +69,7 @@ describe("authenticateApiKey", () => {
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
 
-    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
+    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockSql).toHaveBeenCalledTimes(1);
   });
 
@@ -77,7 +77,7 @@ describe("authenticateApiKey", () => {
     mockSql.mockResolvedValueOnce([validRow]);
 
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
+    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockSql).toHaveBeenCalledTimes(1);
 
     // Second call — cache hit, no DB call
@@ -149,7 +149,7 @@ describe("authenticateApiKey", () => {
 
     for (let i = 0; i < 257; i++) {
       mockSql.mockResolvedValueOnce([
-        { id: `key-${i}`, user_id: `user-${i}`, has_webhooks: false, api_version: "2026-04-01", default_tags: {} },
+        { id: `key-${i}`, user_id: `user-${i}`, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: {} },
       ]);
       await authenticateApiKey(`ns_live_sk_key_${i}`, TEST_CONNECTION_STRING);
     }
@@ -158,15 +158,15 @@ describe("authenticateApiKey", () => {
 
     // key_0 was evicted — looking it up should require a new DB call
     mockSql.mockResolvedValueOnce([
-      { id: "key-0", user_id: "user-0", has_webhooks: false, api_version: "2026-04-01", default_tags: {} },
+      { id: "key-0", user_id: "user-0", has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: {} },
     ]);
     const result = await authenticateApiKey("ns_live_sk_key_0", TEST_CONNECTION_STRING);
-    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
+    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockSql).toHaveBeenCalledTimes(258);
 
     // key_2 should still be cached
     const result2 = await authenticateApiKey("ns_live_sk_key_2", TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
+    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockSql).toHaveBeenCalledTimes(258); // No additional DB call
 
     vi.restoreAllMocks();
@@ -184,7 +184,7 @@ describe("authenticateApiKey", () => {
 
     // Second call — retries DB (not negative-cached), succeeds
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, apiVersion: "2026-04-01", defaultTags: {} });
+    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} });
     expect(mockSql).toHaveBeenCalledTimes(2); // Both calls hit DB
     vi.restoreAllMocks();
   });
@@ -252,7 +252,7 @@ describe("authenticateApiKey defaultTags", () => {
 
   it("returns defaultTags from DB query", async () => {
     mockSql.mockResolvedValueOnce([
-      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: { project: "openclaw", team: "backend" } },
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: { project: "openclaw", team: "backend" } },
     ]);
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -261,7 +261,7 @@ describe("authenticateApiKey defaultTags", () => {
 
   it("returns empty defaultTags when default_tags column is null", async () => {
     mockSql.mockResolvedValueOnce([
-      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: null },
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: null },
     ]);
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -270,7 +270,7 @@ describe("authenticateApiKey defaultTags", () => {
 
   it("returns empty defaultTags when default_tags is not an object", async () => {
     mockSql.mockResolvedValueOnce([
-      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: "not-an-object" },
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: "not-an-object" },
     ]);
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -279,7 +279,7 @@ describe("authenticateApiKey defaultTags", () => {
 
   it("returns empty defaultTags when default_tags is a JSONB array", async () => {
     mockSql.mockResolvedValueOnce([
-      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: ["a", "b"] },
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: ["a", "b"] },
     ]);
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -288,7 +288,7 @@ describe("authenticateApiKey defaultTags", () => {
 
   it("defaultTags are cached in positive cache entry", async () => {
     mockSql.mockResolvedValueOnce([
-      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, api_version: "2026-04-01", default_tags: { env: "prod" } },
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: { env: "prod" } },
     ]);
 
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -296,6 +296,49 @@ describe("authenticateApiKey defaultTags", () => {
 
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
     expect(result2!.defaultTags).toEqual({ env: "prod" });
+    expect(mockSql).toHaveBeenCalledTimes(1); // Only one DB call
+  });
+});
+
+describe("authenticateApiKey hasBudgets", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    _resetCaches();
+  });
+
+  afterEach(() => {
+    _resetCaches();
+  });
+
+  it("returns hasBudgets=true when has_budgets is true in DB row", async () => {
+    mockSql.mockResolvedValueOnce([
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: true, api_version: "2026-04-01", default_tags: {} },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.hasBudgets).toBe(true);
+  });
+
+  it("returns hasBudgets=false when has_budgets is false in DB row", async () => {
+    mockSql.mockResolvedValueOnce([
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: false, api_version: "2026-04-01", default_tags: {} },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.hasBudgets).toBe(false);
+  });
+
+  it("hasBudgets is cached in positive cache entry", async () => {
+    mockSql.mockResolvedValueOnce([
+      { id: TEST_KEY_ID, user_id: TEST_USER_ID, has_webhooks: false, has_budgets: true, api_version: "2026-04-01", default_tags: {} },
+    ]);
+
+    const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result1!.hasBudgets).toBe(true);
+
+    const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result2!.hasBudgets).toBe(true);
     expect(mockSql).toHaveBeenCalledTimes(1); // Only one DB call
   });
 });

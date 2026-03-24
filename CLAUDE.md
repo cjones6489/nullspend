@@ -63,7 +63,7 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 
 ## Testing
 
-See @TESTING.md for the full test map (~160 files, ~2,800+ tests across 4 tiers). Key points:
+See @TESTING.md for the full test map (~168 files, ~2,800+ tests across 4 tiers). Key points:
 
 - Proxy tests: `apps/proxy/src/__tests__/` — naming convention: `{module}.test.ts`, `-edge-cases.test.ts`, `-all-models.test.ts`
 - Dashboard tests: co-located with source files

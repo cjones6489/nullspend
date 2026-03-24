@@ -3,8 +3,8 @@
  * Fire-and-forget — zero hot-path overhead, never throws.
  *
  * Data point layout:
- *   blobs:   [provider, model, streamOrJson, statusCode]
- *   doubles: [overheadMs, upstreamMs, totalMs]
+ *   blobs:   [provider, model, streamOrJson, statusCode, userId]
+ *   doubles: [overheadMs, upstreamMs, totalMs, ttfbMs]
  *   indexes: [provider]  (sampling key)
  */
 export function writeLatencyDataPoint(
@@ -16,6 +16,8 @@ export function writeLatencyDataPoint(
   overheadMs: number,
   upstreamMs: number,
   totalMs: number,
+  ttfbMs?: number,
+  userId?: string,
 ): void {
   try {
     const metrics = (env as Record<string, unknown>).METRICS as
@@ -24,8 +26,8 @@ export function writeLatencyDataPoint(
     if (!metrics) return;
 
     metrics.writeDataPoint({
-      blobs: [provider, model, streaming ? "stream" : "json", String(statusCode)],
-      doubles: [overheadMs, upstreamMs, totalMs],
+      blobs: [provider, model, streaming ? "stream" : "json", String(statusCode), userId ?? ""],
+      doubles: [overheadMs, upstreamMs, totalMs, ttfbMs ?? 0],
       indexes: [provider],
     });
   } catch {

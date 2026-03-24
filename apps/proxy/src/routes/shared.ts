@@ -16,6 +16,7 @@ import {
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
+import { emitMetric } from "../lib/metrics.js";
 
 export type Provider = "openai" | "anthropic" | "mcp";
 
@@ -27,6 +28,8 @@ export interface EnrichmentFields {
   traceId: string;
   toolDefinitionTokens: number;
   tags: Record<string, string>;
+  budgetStatus: "skipped" | "approved" | "denied";
+  estimatedCostMicrodollars: number;
 }
 
 interface BudgetCheckOutcome {
@@ -71,6 +74,14 @@ export function handleBudgetDenials(
   budgetEntities: BudgetEntity[],
 ): Response | null {
   const logPrefix = `[${provider}-route]`;
+
+  if (outcome.status === "denied") {
+    const reason = outcome.velocityDenied ? "velocity_exceeded"
+      : outcome.sessionLimitDenied ? "session_limit_exceeded"
+      : outcome.tagBudgetDenied ? "tag_budget_exceeded"
+      : "budget_exceeded";
+    emitMetric("budget_denied", { reason, provider, entityType: outcome.deniedEntityType ?? "unknown" });
+  }
 
   // Velocity denial
   if (outcome.status === "denied" && outcome.velocityDenied) {

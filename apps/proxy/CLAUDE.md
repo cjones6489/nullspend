@@ -103,3 +103,21 @@ Cost events are enqueued to Cloudflare Queues via `logCostEventQueued()` / `logC
 Non-streaming: parse JSON response for `usage` field.
 Streaming: SSE parser accumulates chunks, extracts final `usage` from `[DONE]`-adjacent message.
 Cancelled streams: when the client aborts mid-stream, the SSE parser resolves with `cancelled: true` and no usage. The route writes an estimated cost event (tokens=0, cost=pre-request estimate) tagged with `_ns_estimated: "true"` and `_ns_cancelled: "true"` in the JSONB `tags` column, then reconciles the budget reservation with the estimate. The cost event write is try/catch-wrapped so failures cannot block budget reconciliation.
+
+## Telemetry
+
+Cost events include enrichment fields populated per-request:
+- `budget_status` — `skipped` (no budgets / hasBudgets flag), `approved`, or `denied`
+- `stop_reason` — provider finish/stop reason (`stop`, `max_tokens`, `end_turn`, `tool_calls`, etc.)
+- `estimated_cost_microdollars` — pre-request budget estimate for accuracy analysis
+
+SSE parsers capture `firstChunkMs` (time of first upstream chunk) for TTFB tracking.
+
+AE data points include 4 doubles: `[overheadMs, upstreamMs, totalMs, ttfbMs]`. The `/health/metrics` endpoint exposes p50/p95/p99 for all four.
+
+Anthropic cost events include cache split tags: `_ns_cache_write_tokens`, `_ns_cache_read_tokens`.
+Provider rate limit proximity captured in tags: `_ns_ratelimit_remaining_requests`, `_ns_ratelimit_remaining_tokens`.
+
+Error classification: `emitMetric("request_error", { status, reason })` on all error paths in `index.ts`. `emitMetric("budget_denied", { reason, provider, entityType })` on all denial paths in `shared.ts` and `mcp.ts`.
+
+Auth includes `hasBudgets` flag (EXISTS subquery on budgets table). When false, budget orchestrator skips DO RPC entirely — 17ms → 2-3ms overhead for tracking-only users.

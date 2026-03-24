@@ -10,6 +10,7 @@ import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 import { UUID_RE } from "../lib/validation.js";
+import { emitMetric } from "../lib/metrics.js";
 import { dispatchDenialWebhook, dispatchVelocityRecoveryWebhooks } from "./shared.js";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,14 @@ export async function handleMcpBudgetCheck(
     const budgetStartMs = performance.now();
     const outcome = await checkBudget(env, ctx, parsed.estimateMicrodollars);
     if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
+
+    if (outcome.status === "denied") {
+      const reason = outcome.velocityDenied ? "velocity_exceeded"
+        : outcome.sessionLimitDenied ? "session_limit_exceeded"
+        : outcome.tagBudgetDenied ? "tag_budget_exceeded"
+        : "budget_exceeded";
+      emitMetric("budget_denied", { reason, provider: "mcp", entityType: outcome.deniedEntityType ?? "unknown" });
+    }
 
     if (outcome.status === "denied" && outcome.velocityDenied) {
       dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>

@@ -69,12 +69,14 @@ export async function handleChatCompletions(
 
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
+  let budgetStatus: "skipped" | "approved" | "denied" = "skipped";
 
   try {
     const budgetStartMs = performance.now();
     const outcome = await checkBudget(env, ctx, estimate);
     if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
+    budgetStatus = outcome.status;
     const denialResponse = handleBudgetDenials(outcome, ctx, env, "openai", requestModel, estimate, budgetEntities);
     if (denialResponse) return denialResponse;
 
@@ -103,12 +105,21 @@ export async function handleChatCompletions(
     });
     const upstreamDurationMs = Math.round(performance.now() - startTime);
 
+    // Capture provider rate limit proximity in tags for analytics
+    const rateLimitTags: Record<string, string> = {};
+    const rlRemReqs = upstreamResponse.headers.get("x-ratelimit-remaining-requests");
+    const rlRemToks = upstreamResponse.headers.get("x-ratelimit-remaining-tokens");
+    if (rlRemReqs) rateLimitTags._ns_ratelimit_remaining_requests = rlRemReqs;
+    if (rlRemToks) rateLimitTags._ns_ratelimit_remaining_tokens = rlRemToks;
+
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,
       sessionId: ctx.sessionId,
       traceId: ctx.traceId,
       toolDefinitionTokens,
-      tags: ctx.tags,
+      tags: { ...ctx.tags, ...rateLimitTags },
+      budgetStatus,
+      estimatedCostMicrodollars: estimate,
     };
 
     if (!upstreamResponse.ok) {
@@ -122,7 +133,7 @@ export async function handleChatCompletions(
       clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
       const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs, ctx.stepTiming);
       emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
-      writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs);
+      writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs, undefined, ctx.auth.userId);
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "openai");
       clientHeaders.set("content-type", "application/json");
       return new Response(sanitizedBody, {
@@ -137,6 +148,7 @@ export async function handleChatCompletions(
     clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
 
     if (isStreaming) {
+      if (ctx.stepTiming) ctx.stepTiming.ttfbMs = upstreamDurationMs;
       return handleStreaming(
         upstreamResponse,
         clientHeaders,
@@ -173,7 +185,7 @@ export async function handleChatCompletions(
     const failTotalMs = Math.round(performance.now() - ctx.requestStartMs);
     const failUpstreamMs = Math.round(performance.now() - startTime);
     const failOverheadMs = Math.max(0, failTotalMs - failUpstreamMs);
-    writeLatencyDataPoint(env, "openai", requestModel, isStreaming, 502, failOverheadMs, failUpstreamMs, failTotalMs);
+    writeLatencyDataPoint(env, "openai", requestModel, isStreaming, 502, failOverheadMs, failUpstreamMs, failTotalMs, undefined, ctx.auth.userId);
 
     // Fix 11: clean up reservation on fetch timeout or unexpected error
     if (reservationId) {
@@ -244,6 +256,7 @@ function handleStreaming(
                 ...enrichment,
                 tags: { ...enrichment.tags, _ns_estimated: "true", _ns_cancelled: "true" },
                 toolCallsRequested: result.toolCalls,
+                stopReason: null,
                 source: "proxy" as const,
                 eventType: "llm" as const,
               });
@@ -276,12 +289,14 @@ function handleStreaming(
         // Write AE data point at stream completion with full duration
         const streamTotalMs = Math.round(performance.now() - ctx.requestStartMs);
         const streamOverheadMs = Math.max(0, streamTotalMs - durationMs);
-        writeLatencyDataPoint(env, "openai", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs);
+        const ttfbMs = result.firstChunkMs != null ? Math.round(result.firstChunkMs - startTime) : undefined;
+        writeLatencyDataPoint(env, "openai", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs, ttfbMs, ctx.auth.userId);
 
         await logCostEventQueued(getCostEventQueue(env), connectionString, {
           ...costEvent,
           ...enrichment,
           toolCallsRequested: result.toolCalls,
+          stopReason: result.finishReason,
           source: "proxy" as const,
         });
 
@@ -351,6 +366,8 @@ async function handleNonStreaming(
     const responseModel = parsed.model ?? null;
     const usage = parsed.usage;
 
+    const finishReason: string | null = parsed.choices?.[0]?.finish_reason ?? null;
+
     let toolCallsRequested: { name: string; id: string }[] | null = null;
     try {
       toolCallsRequested = parsed.choices?.[0]?.message?.tool_calls?.map(
@@ -375,6 +392,7 @@ async function handleNonStreaming(
         ...costEvent,
         ...enrichment,
         toolCallsRequested,
+        stopReason: finishReason,
         source: "proxy" as const,
       }));
 
@@ -407,7 +425,7 @@ async function handleNonStreaming(
 
   const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs, ctx.stepTiming);
   emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: false });
-  writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs);
+  writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs, undefined, ctx.auth.userId);
 
   return new Response(responseText, {
     status: upstreamResponse.status,

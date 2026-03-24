@@ -5,6 +5,7 @@ export interface ApiKeyIdentity {
   userId: string;
   keyId: string;
   hasWebhooks: boolean;
+  hasBudgets: boolean;
   apiVersion: string;
   defaultTags: Record<string, string>;
 }
@@ -73,7 +74,11 @@ async function lookupKeyInDb(
       EXISTS(
         SELECT 1 FROM webhook_endpoints w
         WHERE w.user_id = k.user_id AND w.enabled = true
-      ) AS has_webhooks
+      ) AS has_webhooks,
+      EXISTS(
+        SELECT 1 FROM budgets b
+        WHERE b.user_id = k.user_id
+      ) AS has_budgets
     FROM api_keys k
     WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
   `;
@@ -87,6 +92,7 @@ async function lookupKeyInDb(
     userId: row.user_id as string,
     keyId: row.id as string,
     hasWebhooks: row.has_webhooks === true,
+    hasBudgets: row.has_budgets === true,
     apiVersion: row.api_version as string,
     defaultTags: (typeof row.default_tags === "object" && row.default_tags !== null && !Array.isArray(row.default_tags))
       ? row.default_tags as Record<string, string>

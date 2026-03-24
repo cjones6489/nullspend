@@ -10,6 +10,7 @@ export interface AnthropicSSEResult {
   stopReason: string | null;
   toolCalls: { name: string; id: string }[] | null;
   cancelled: boolean;
+  firstChunkMs: number | null;
 }
 
 /**
@@ -40,6 +41,7 @@ export function createAnthropicSSEParser(
   let capturedModel: string | null = null;
   let capturedStopReason: string | null = null;
   let capturedToolCalls: { name: string; id: string }[] | null = null;
+  let firstChunkMs: number | null = null;
   let resolved = false;
 
   let currentEventType: string | null = null;
@@ -63,11 +65,13 @@ export function createAnthropicSSEParser(
       stopReason: capturedStopReason,
       toolCalls: capturedToolCalls,
       cancelled: wasCancelled,
+      firstChunkMs,
     };
   }
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
+      if (firstChunkMs === null) firstChunkMs = performance.now();
       controller.enqueue(chunk);
 
       const text = decoder.decode(chunk, { stream: true });

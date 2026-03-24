@@ -147,6 +147,9 @@ export const costEvents = pgTable("cost_events", {
   source: text("source").$type<CostEventSource>().notNull().default("proxy"),
   costBreakdown: jsonb("cost_breakdown").$type<{ input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null>(),
   tags: jsonb("tags").$type<Record<string, string>>().notNull().default(sql`'{}'`),
+  budgetStatus: text("budget_status").$type<"skipped" | "approved" | "denied">(),
+  stopReason: text("stop_reason"),
+  estimatedCostMicrodollars: bigint("estimated_cost_microdollars", { mode: "number" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("cost_events_request_id_provider_idx").on(table.requestId, table.provider),
@@ -157,6 +160,7 @@ export const costEvents = pgTable("cost_events", {
   index("cost_events_event_type_idx").on(table.eventType),
   index("cost_events_session_id_idx").on(table.sessionId),
   index("cost_events_trace_id_idx").on(table.traceId).where(sql`trace_id IS NOT NULL`),
+  index("cost_events_tags_idx").using("gin", table.tags),
 ]);
 
 export type CostEventRow = typeof costEvents.$inferSelect;

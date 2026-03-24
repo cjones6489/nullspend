@@ -55,12 +55,14 @@ export async function handleAnthropicMessages(
 
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
+  let budgetStatus: "skipped" | "approved" | "denied" = "skipped";
 
   try {
     const budgetStartMs = performance.now();
     const outcome = await checkBudget(env, ctx, estimate);
     if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
+    budgetStatus = outcome.status;
     const denialResponse = handleBudgetDenials(outcome, ctx, env, "anthropic", requestModel, estimate, budgetEntities);
     if (denialResponse) return denialResponse;
 
@@ -90,12 +92,21 @@ export async function handleAnthropicMessages(
     );
     const upstreamDurationMs = Math.round(performance.now() - startTime);
 
+    // Capture provider rate limit proximity in tags for analytics
+    const rateLimitTags: Record<string, string> = {};
+    const rlRemReqs = upstreamResponse.headers.get("anthropic-ratelimit-requests-remaining");
+    const rlRemToks = upstreamResponse.headers.get("anthropic-ratelimit-tokens-remaining");
+    if (rlRemReqs) rateLimitTags._ns_ratelimit_remaining_requests = rlRemReqs;
+    if (rlRemToks) rateLimitTags._ns_ratelimit_remaining_tokens = rlRemToks;
+
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,
       sessionId: ctx.sessionId,
       traceId: ctx.traceId,
       toolDefinitionTokens,
-      tags: ctx.tags,
+      tags: { ...ctx.tags, ...rateLimitTags },
+      budgetStatus,
+      estimatedCostMicrodollars: estimate,
     };
 
     if (!upstreamResponse.ok) {
@@ -108,7 +119,7 @@ export async function handleAnthropicMessages(
       clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
       const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs, ctx.stepTiming);
       emitMetric("proxy_latency", { provider: "anthropic", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
-      writeLatencyDataPoint(env, "anthropic", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs);
+      writeLatencyDataPoint(env, "anthropic", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs, undefined, ctx.auth.userId);
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "anthropic");
       clientHeaders.set("content-type", "application/json");
       return new Response(sanitizedBody, {
@@ -123,6 +134,7 @@ export async function handleAnthropicMessages(
     clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
 
     if (isStreaming) {
+      if (ctx.stepTiming) ctx.stepTiming.ttfbMs = upstreamDurationMs;
       return handleStreaming(
         upstreamResponse,
         clientHeaders,
@@ -159,7 +171,7 @@ export async function handleAnthropicMessages(
     const failTotalMs = Math.round(performance.now() - ctx.requestStartMs);
     const failUpstreamMs = Math.round(performance.now() - startTime);
     const failOverheadMs = Math.max(0, failTotalMs - failUpstreamMs);
-    writeLatencyDataPoint(env, "anthropic", requestModel, isStreaming, 502, failOverheadMs, failUpstreamMs, failTotalMs);
+    writeLatencyDataPoint(env, "anthropic", requestModel, isStreaming, 502, failOverheadMs, failUpstreamMs, failTotalMs, undefined, ctx.auth.userId);
 
     if (reservationId) {
       waitUntil(
@@ -228,6 +240,7 @@ function handleStreaming(
                 ...enrichment,
                 tags: { ...enrichment.tags, _ns_estimated: "true", _ns_cancelled: "true" },
                 toolCallsRequested: result.toolCalls,
+                stopReason: null,
                 source: "proxy" as const,
                 eventType: "llm" as const,
               });
@@ -261,12 +274,24 @@ function handleStreaming(
         // Write AE data point at stream completion with full duration
         const streamTotalMs = Math.round(performance.now() - ctx.requestStartMs);
         const streamOverheadMs = Math.max(0, streamTotalMs - durationMs);
-        writeLatencyDataPoint(env, "anthropic", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs);
+        const ttfbMs = result.firstChunkMs != null ? Math.round(result.firstChunkMs - startTime) : undefined;
+        writeLatencyDataPoint(env, "anthropic", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs, ttfbMs, ctx.auth.userId);
+
+        // Capture cache read/write split in tags for analytics
+        const cacheTags: Record<string, string> = {};
+        if (result.usage?.cache_creation_input_tokens != null) {
+          cacheTags._ns_cache_write_tokens = String(result.usage.cache_creation_input_tokens);
+        }
+        if (result.usage?.cache_read_input_tokens != null) {
+          cacheTags._ns_cache_read_tokens = String(result.usage.cache_read_input_tokens);
+        }
 
         await logCostEventQueued(getCostEventQueue(env), connectionString, {
           ...costEvent,
           ...enrichment,
+          tags: { ...enrichment.tags, ...cacheTags },
           toolCallsRequested: result.toolCalls,
+          stopReason: result.stopReason,
           source: "proxy" as const,
         });
 
@@ -337,6 +362,8 @@ async function handleNonStreaming(
     const responseModel: string | null = parsed.model ?? null;
     const usage = parsed.usage;
 
+    const stopReason: string | null = parsed.stop_reason ?? null;
+
     let toolCallsRequested: { name: string; id: string }[] | null = null;
     try {
       if (Array.isArray(parsed.content)) {
@@ -367,10 +394,21 @@ async function handleNonStreaming(
         attribution,
       );
 
+      // Capture cache read/write split in tags for analytics
+      const cacheTags: Record<string, string> = {};
+      if (usage.cache_creation_input_tokens != null) {
+        cacheTags._ns_cache_write_tokens = String(usage.cache_creation_input_tokens);
+      }
+      if (usage.cache_read_input_tokens != null) {
+        cacheTags._ns_cache_read_tokens = String(usage.cache_read_input_tokens);
+      }
+
       waitUntil(logCostEventQueued(getCostEventQueue(env), connectionString, {
         ...costEvent,
         ...enrichment,
+        tags: { ...enrichment.tags, ...cacheTags },
         toolCallsRequested,
+        stopReason,
         source: "proxy" as const,
       }));
 
@@ -402,7 +440,7 @@ async function handleNonStreaming(
 
   const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs, ctx.stepTiming);
   emitMetric("proxy_latency", { provider: "anthropic", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: false });
-  writeLatencyDataPoint(env, "anthropic", requestModel, false, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs);
+  writeLatencyDataPoint(env, "anthropic", requestModel, false, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs, undefined, ctx.auth.userId);
 
   return new Response(responseText, {
     status: upstreamResponse.status,

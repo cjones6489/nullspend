@@ -4,6 +4,7 @@ import type { BudgetEntity } from "./budget-do-lookup.js";
 import { doBudgetCheck, doBudgetReconcile } from "./budget-do-client.js";
 import { resetBudgetPeriod } from "./budget-spend.js";
 import { enqueueReconciliation } from "./reconciliation-queue.js";
+import { emitMetric } from "./metrics.js";
 
 interface BudgetCheckOutcome {
   status: "approved" | "denied" | "skipped";
@@ -47,6 +48,10 @@ export async function checkBudget(
   ctx: RequestContext,
   estimateMicrodollars: number,
 ): Promise<BudgetCheckOutcome> {
+  if (!ctx.auth.hasBudgets) {
+    emitMetric("budget_check_skipped", { userId: ctx.auth.userId });
+    return { status: "skipped", reservationId: null, budgetEntities: [] };
+  }
   return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.auth.userId, estimateMicrodollars, ctx.sessionId, ctx.tags);
 }
 

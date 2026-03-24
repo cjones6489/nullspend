@@ -19,10 +19,16 @@ function makeEnv(overrides: Record<string, unknown> = {}): Env {
   } as unknown as Env;
 }
 
-function makeRequest(accept?: string): Request {
+function makeRequest(accept?: string, queryParams?: Record<string, string>): Request {
   const headers: Record<string, string> = {};
   if (accept) headers["accept"] = accept;
-  return new Request("http://localhost/health/metrics", { headers });
+  const url = new URL("http://localhost/health/metrics");
+  if (queryParams) {
+    for (const [k, v] of Object.entries(queryParams)) {
+      url.searchParams.set(k, v);
+    }
+  }
+  return new Request(url.toString(), { headers });
 }
 
 // Matches real AE response: Float64 as numbers, UInt64 as strings
@@ -92,7 +98,7 @@ describe("handleMetrics", () => {
       expect(body.overhead_ms.p99).toBe(23);
       expect(body.request_count).toBe(1847);
       expect(body.window_seconds).toBe(300);
-      expect(body.measured_at).toBeTruthy();
+      expect(body.measured_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
     it("caches the AE result in KV", async () => {
@@ -745,6 +751,156 @@ describe("handleMetrics", () => {
       const queryError = metricCalls.find((s) => s.includes("ae_query_error"));
       expect(queryError).toBeTruthy();
       expect(JSON.parse(queryError!).status).toBe(500);
+    });
+  });
+
+  describe("TTFB metrics", () => {
+    it("backfills ttfb_ms for cached entries without it", async () => {
+      const cached = {
+        overhead_ms: { p50: 5, p95: 12, p99: 23 },
+        upstream_ms: { p50: 800, p95: 1200, p99: 2500 },
+        total_ms: { p50: 805, p95: 1213, p99: 2523 },
+        request_count: 100,
+        window_seconds: 300,
+        measured_at: "2026-03-20T14:00:00Z",
+        // No ttfb_ms — simulates old cached data
+      };
+      mockKvStore.set("metrics:proxy_latency", JSON.stringify(cached));
+
+      const res = await handleMetrics(makeRequest("application/json"), makeEnv());
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.ttfb_ms).toEqual({ p50: 0, p95: 0, p99: 0 });
+    });
+
+    it("returns ttfb_ms from cached entry when present", async () => {
+      const cached = {
+        overhead_ms: { p50: 5, p95: 12, p99: 23 },
+        upstream_ms: { p50: 800, p95: 1200, p99: 2500 },
+        total_ms: { p50: 805, p95: 1213, p99: 2523 },
+        ttfb_ms: { p50: 250, p95: 600, p99: 900 },
+        request_count: 100,
+        window_seconds: 300,
+        measured_at: "2026-03-20T14:00:00Z",
+      };
+      mockKvStore.set("metrics:proxy_latency", JSON.stringify(cached));
+
+      const res = await handleMetrics(makeRequest("application/json"), makeEnv());
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.ttfb_ms).toEqual({ p50: 250, p95: 600, p99: 900 });
+    });
+
+    it("includes TTFB in Prometheus format when ttfb_ms is present", async () => {
+      const cached = {
+        overhead_ms: { p50: 5, p95: 12, p99: 23 },
+        upstream_ms: { p50: 800, p95: 1200, p99: 2500 },
+        total_ms: { p50: 805, p95: 1213, p99: 2523 },
+        ttfb_ms: { p50: 250, p95: 600, p99: 900 },
+        request_count: 100,
+        window_seconds: 300,
+        measured_at: "2026-03-20T14:00:00Z",
+      };
+      mockKvStore.set("metrics:proxy_latency", JSON.stringify(cached));
+
+      const res = await handleMetrics(makeRequest("text/plain"), makeEnv());
+
+      const text = await res.text();
+      expect(text).toContain("# HELP nullspend_ttfb_ms");
+      expect(text).toContain('nullspend_ttfb_ms{quantile="0.5"} 250');
+      expect(text).toContain('nullspend_ttfb_ms{quantile="0.95"} 600');
+      expect(text).toContain('nullspend_ttfb_ms{quantile="0.99"} 900');
+    });
+  });
+
+  describe("query param filters", () => {
+    it("uses filter-specific cache key for ?provider=openai", async () => {
+      const cached = {
+        overhead_ms: { p50: 3, p95: 8, p99: 15 },
+        upstream_ms: { p50: 600, p95: 900, p99: 1800 },
+        total_ms: { p50: 603, p95: 908, p99: 1815 },
+        ttfb_ms: { p50: 200, p95: 400, p99: 700 },
+        request_count: 50,
+        window_seconds: 300,
+        measured_at: "2026-03-24T12:00:00Z",
+      };
+      mockKvStore.set("metrics:proxy_latency:p=openai:m=", JSON.stringify(cached));
+
+      const res = await handleMetrics(
+        makeRequest("application/json", { provider: "openai" }),
+        makeEnv(),
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.request_count).toBe(50);
+    });
+
+    it("uses separate cache key for ?provider=openai&model=gpt-4o", async () => {
+      const cached = {
+        overhead_ms: { p50: 2, p95: 5, p99: 10 },
+        upstream_ms: { p50: 500, p95: 800, p99: 1500 },
+        total_ms: { p50: 502, p95: 805, p99: 1510 },
+        ttfb_ms: { p50: 150, p95: 300, p99: 500 },
+        request_count: 25,
+        window_seconds: 300,
+        measured_at: "2026-03-24T12:00:00Z",
+      };
+      mockKvStore.set("metrics:proxy_latency:p=openai:m=gpt-4o", JSON.stringify(cached));
+
+      const res = await handleMetrics(
+        makeRequest("application/json", { provider: "openai", model: "gpt-4o" }),
+        makeEnv(),
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.request_count).toBe(25);
+    });
+
+    it("rejects filter values with special characters (SQL injection prevention)", async () => {
+      const res = await handleMetrics(
+        makeRequest("application/json", { provider: "openai'; DROP TABLE--" }),
+        makeEnv(),
+      );
+
+      expect(res.status).toBe(400);
+      const body = await res.json() as { error: { code: string } };
+      expect(body.error.code).toBe("bad_request");
+    });
+
+    it("rejects filter values with backslash", async () => {
+      const res = await handleMetrics(
+        makeRequest("application/json", { provider: "openai\\" }),
+        makeEnv(),
+      );
+
+      expect(res.status).toBe(400);
+    });
+
+    it("ignores empty filter values", async () => {
+      // ?provider= (empty) should behave like no filter
+      const cached = {
+        overhead_ms: { p50: 5, p95: 12, p99: 23 },
+        upstream_ms: { p50: 800, p95: 1200, p99: 2500 },
+        total_ms: { p50: 805, p95: 1213, p99: 2523 },
+        ttfb_ms: { p50: 0, p95: 0, p99: 0 },
+        request_count: 100,
+        window_seconds: 300,
+        measured_at: "2026-03-24T12:00:00Z",
+      };
+      mockKvStore.set("metrics:proxy_latency", JSON.stringify(cached));
+
+      const res = await handleMetrics(
+        makeRequest("application/json", { provider: "" }),
+        makeEnv(),
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body.request_count).toBe(100);
     });
   });
 });

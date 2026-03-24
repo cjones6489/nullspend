@@ -1,8 +1,10 @@
 export interface SSEResult {
   usage: OpenAIUsage | null;
   model: string | null;
+  finishReason: string | null;
   toolCalls: { name: string; id: string }[] | null;
   cancelled: boolean;
+  firstChunkMs: number | null;
 }
 
 export interface OpenAIUsage {
@@ -30,13 +32,16 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
 
   let capturedUsage: OpenAIUsage | null = null;
   let capturedModel: string | null = null;
+  let capturedFinishReason: string | null = null;
   let capturedToolCalls: { name: string; id: string }[] | null = null;
+  let firstChunkMs: number | null = null;
   let lineBuffer = "";
   const decoder = new TextDecoder("utf-8", { fatal: false });
   const MAX_LINE_LENGTH = 65_536; // 64KB — safety valve for malformed streams
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
+      if (firstChunkMs === null) firstChunkMs = performance.now();
       controller.enqueue(chunk);
 
       const text = decoder.decode(chunk, { stream: true });
@@ -68,8 +73,10 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
       resolveResult({
         usage: capturedUsage,
         model: capturedModel,
+        finishReason: capturedFinishReason,
         toolCalls: capturedToolCalls,
         cancelled: false,
+        firstChunkMs,
       });
     },
 
@@ -77,8 +84,10 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
       resolveResult({
         usage: capturedUsage,
         model: capturedModel,
+        finishReason: capturedFinishReason,
         toolCalls: capturedToolCalls,
         cancelled: true,
+        firstChunkMs,
       });
     },
   });
@@ -108,6 +117,11 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
 
       if (parsed.usage && typeof parsed.usage === "object") {
         capturedUsage = parsed.usage;
+      }
+
+      const finishReason = parsed.choices?.[0]?.finish_reason ?? parsed.choices?.[0]?.delta?.finish_reason;
+      if (finishReason && typeof finishReason === "string") {
+        capturedFinishReason = finishReason;
       }
 
       const deltaToolCalls = parsed.choices?.[0]?.delta?.tool_calls;

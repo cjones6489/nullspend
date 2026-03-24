@@ -23,6 +23,7 @@ interface LatencyMetrics {
   overhead_ms: { p50: number; p95: number; p99: number };
   upstream_ms: { p50: number; p95: number; p99: number };
   total_ms: { p50: number; p95: number; p99: number };
+  ttfb_ms: { p50: number; p95: number; p99: number };
   request_count: number;
   window_seconds: number;
   measured_at: string;
@@ -33,11 +34,33 @@ export async function handleMetrics(
   env: Env,
 ): Promise<Response> {
   const kv = env.CACHE_KV;
+  const url = new URL(request.url);
+  const rawProvider = url.searchParams.get("provider")?.trim() || undefined;
+  const rawModel = url.searchParams.get("model")?.trim() || undefined;
+
+  // Allowlist: only alphanumeric, dots, hyphens, underscores — prevents SQL injection in AE query
+  const SAFE_FILTER = /^[a-zA-Z0-9._-]+$/;
+  const filterProvider = rawProvider && SAFE_FILTER.test(rawProvider) ? rawProvider : undefined;
+  const filterModel = rawModel && SAFE_FILTER.test(rawModel) ? rawModel : undefined;
+
+  if ((rawProvider && !filterProvider) || (rawModel && !filterModel)) {
+    return new Response(
+      JSON.stringify({ error: { code: "bad_request", message: "Filter values must be alphanumeric (a-z, 0-9, dots, hyphens, underscores only).", details: null } }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Build filter-specific cache key with unambiguous separators
+  const cacheKey = filterProvider || filterModel
+    ? `${CACHE_KEY}:p=${filterProvider ?? ""}:m=${filterModel ?? ""}`
+    : CACHE_KEY;
 
   // 1. Check KV cache
   try {
-    const cached = await kv.get(CACHE_KEY, "json") as LatencyMetrics | null;
+    const cached = await kv.get(cacheKey, "json") as LatencyMetrics | null;
     if (cached) {
+      // Backfill ttfb_ms for cached entries from before Phase 2 deployment
+      if (!cached.ttfb_ms) cached.ttfb_ms = { p50: 0, p95: 0, p99: 0 };
       emitMetric("ae_cache", { hit: true });
       return formatResponse(request, cached);
     }
@@ -57,6 +80,7 @@ export async function handleMetrics(
       overhead_ms: { p50: 0, p95: 0, p99: 0 },
       upstream_ms: { p50: 0, p95: 0, p99: 0 },
       total_ms: { p50: 0, p95: 0, p99: 0 },
+      ttfb_ms: { p50: 0, p95: 0, p99: 0 },
       request_count: 0,
       window_seconds: QUERY_WINDOW_MINUTES * 60,
       measured_at: new Date().toISOString(),
@@ -65,6 +89,11 @@ export async function handleMetrics(
   }
 
   try {
+    // Build optional WHERE filters for provider/model (values already validated by SAFE_FILTER allowlist)
+    const filters = [`timestamp > NOW() - INTERVAL '${QUERY_WINDOW_MINUTES}' MINUTE`];
+    if (filterProvider) filters.push(`blob1 = '${filterProvider}'`);
+    if (filterModel) filters.push(`blob2 = '${filterModel}'`);
+
     const sql = `
       SELECT
         quantileExactWeighted(0.5)(double1, _sample_interval) AS p50_overhead,
@@ -76,9 +105,12 @@ export async function handleMetrics(
         quantileExactWeighted(0.5)(double3, _sample_interval) AS p50_total,
         quantileExactWeighted(0.95)(double3, _sample_interval) AS p95_total,
         quantileExactWeighted(0.99)(double3, _sample_interval) AS p99_total,
+        quantileExactWeighted(0.5)(double4, _sample_interval) AS p50_ttfb,
+        quantileExactWeighted(0.95)(double4, _sample_interval) AS p95_ttfb,
+        quantileExactWeighted(0.99)(double4, _sample_interval) AS p99_ttfb,
         SUM(_sample_interval) AS request_count
       FROM proxy_latency
-      WHERE timestamp > NOW() - INTERVAL '${QUERY_WINDOW_MINUTES}' MINUTE
+      WHERE ${filters.join(" AND ")}
       FORMAT JSON
     `;
 
@@ -106,7 +138,7 @@ export async function handleMetrics(
       // Skip for auth errors (401/403) — keep them loud so operators notice.
       if (res.status !== 401 && res.status !== 403) {
         try {
-          await cacheError(kv, res.status);
+          await cacheError(kv, cacheKey, res.status);
         } catch (cacheErr) {
           console.warn("[metrics] Negative-cache write failed:", cacheErr);
         }
@@ -148,6 +180,11 @@ export async function handleMetrics(
         p95: safe(row?.p95_total),
         p99: safe(row?.p99_total),
       },
+      ttfb_ms: {
+        p50: safe(row?.p50_ttfb),
+        p95: safe(row?.p95_ttfb),
+        p99: safe(row?.p99_ttfb),
+      },
       request_count: safe(row?.request_count),
       window_seconds: QUERY_WINDOW_MINUTES * 60,
       measured_at: new Date().toISOString(),
@@ -155,7 +192,7 @@ export async function handleMetrics(
 
     // 3. Write to KV cache (best-effort — don't discard AE result on cache failure)
     try {
-      await kv.put(CACHE_KEY, JSON.stringify(metrics), { expirationTtl: CACHE_TTL_SECONDS });
+      await kv.put(cacheKey, JSON.stringify(metrics), { expirationTtl: CACHE_TTL_SECONDS });
     } catch (err) {
       console.error("[metrics] KV cache write failed:", err);
       emitMetric("ae_cache_write_error", { error: String(err) });
@@ -169,7 +206,7 @@ export async function handleMetrics(
 
     // Negative-cache to prevent thundering herd on persistent failures
     try {
-      await cacheError(kv, 0);
+      await cacheError(kv, cacheKey, 0);
     } catch (cacheErr) {
       console.warn("[metrics] Negative-cache write failed:", cacheErr);
     }
@@ -185,17 +222,18 @@ export async function handleMetrics(
  * Negative-cache: write a sentinel to KV so subsequent requests don't
  * hammer a failing AE API. Short TTL (30s) so recovery is quick.
  */
-async function cacheError(kv: KVNamespace, upstreamStatus: number): Promise<void> {
+async function cacheError(kv: KVNamespace, key: string, upstreamStatus: number): Promise<void> {
   const sentinel: LatencyMetrics = {
     overhead_ms: { p50: 0, p95: 0, p99: 0 },
     upstream_ms: { p50: 0, p95: 0, p99: 0 },
     total_ms: { p50: 0, p95: 0, p99: 0 },
+    ttfb_ms: { p50: 0, p95: 0, p99: 0 },
     request_count: 0,
     window_seconds: QUERY_WINDOW_MINUTES * 60,
     measured_at: new Date().toISOString(),
   };
   console.warn(`[metrics] Negative-caching empty metrics for ${ERROR_CACHE_TTL_SECONDS}s (upstream_status=${upstreamStatus})`);
-  await kv.put(CACHE_KEY, JSON.stringify(sentinel), { expirationTtl: ERROR_CACHE_TTL_SECONDS });
+  await kv.put(key, JSON.stringify(sentinel), { expirationTtl: ERROR_CACHE_TTL_SECONDS });
 }
 
 function formatResponse(request: Request, metrics: LatencyMetrics): Response {
@@ -243,6 +281,16 @@ function toPrometheus(m: LatencyMetrics): string {
   lines.push(`nullspend_total_latency_ms{quantile="0.99"} ${m.total_ms.p99}`);
   lines.push(`nullspend_total_latency_ms_count ${m.request_count}`);
   lines.push("");
+
+  if (m.ttfb_ms) {
+    lines.push("# HELP nullspend_ttfb_ms Time to first byte from upstream in milliseconds");
+    lines.push("# TYPE nullspend_ttfb_ms summary");
+    lines.push(`nullspend_ttfb_ms{quantile="0.5"} ${m.ttfb_ms.p50}`);
+    lines.push(`nullspend_ttfb_ms{quantile="0.95"} ${m.ttfb_ms.p95}`);
+    lines.push(`nullspend_ttfb_ms{quantile="0.99"} ${m.ttfb_ms.p99}`);
+    lines.push(`nullspend_ttfb_ms_count ${m.request_count}`);
+    lines.push("");
+  }
 
   return lines.join("\n") + "\n";
 }
