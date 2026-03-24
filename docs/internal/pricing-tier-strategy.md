@@ -36,7 +36,7 @@ Free users should experience the full value proposition — cost tracking, budge
 
 ### Pro — $49/mo
 
-**Positioning:** Unlimited budgets and deeper analytics for production.
+**Positioning:** Unlimited budgets and deeper analytics for production. The growth tier for solo developers and small startups.
 
 | Limit | Value | Rationale |
 |---|---|---|
@@ -48,35 +48,26 @@ Free users should experience the full value proposition — cost tracking, budge
 | Velocity limits | Unlimited | Included in all budgets. |
 | Session limits | Unlimited | Included. |
 | Tag budgets | Unlimited | Included. |
-| Team members | 1 (personal org) | Multi-user is Team plan. |
+| Team members | Up to 5 | Small team collaboration. Full org management (roles, SSO) requires Enterprise. |
 | Priority support | Yes | Email support with faster response. |
 
-### Team — $199/mo
+### Enterprise — Custom pricing
 
-**Positioning:** Multi-user access and advanced controls for teams.
+**Positioning:** For organizations with teams, roles, SSO, and dedicated support. "Contact us" — no self-serve checkout.
 
 | Limit | Value | Rationale |
 |---|---|---|
-| Proxied spend | $250K/mo (soft cap) | Enterprise-scale. |
+| Proxied spend | Unlimited | |
 | Budgets | Unlimited | |
 | API keys | Unlimited | |
-| Webhook endpoints | 50 | |
-| Data retention | 1 year (365 days) | Annual review, compliance needs. |
-| Team members | Unlimited | Primary Team plan feature. |
-| Roles | Owner, Admin, Member | Org management. |
-| Team budgets | Yes | Shared budgets across team members. |
-| Advanced analytics | Yes | Cross-agent comparison, team spend dashboards. |
+| Webhook endpoints | Unlimited | |
+| Data retention | Custom (unlimited available) | Compliance, annual review. |
+| Team members | Unlimited | Full org management. |
+| Roles | Owner, Admin, Member (custom roles available) | |
+| SSO/SAML | Yes | Enterprise requirement. |
+| Dedicated support | Yes | SLA-backed. |
 
-### Enterprise — Custom
-
-**Positioning:** Deferred. Build when an enterprise customer asks.
-
-- Unlimited everything
-- SSO/SAML
-- Custom roles + permissions
-- Dedicated support
-- Custom data retention
-- SLA
+**Note:** The old "Team" tier at $199 was removed. The tier structure is now Free → Pro → Enterprise. Multi-user features (org/team management, roles, invitations) are Enterprise-only. Pro allows up to 5 team members for small startups, but full org management (roles, SSO, audit log) requires Enterprise.
 
 ---
 

@@ -15,19 +15,19 @@ describe("getTierForUser", () => {
 
   it("returns the tier when status is active", () => {
     expect(getTierForUser({ tier: "pro", status: "active" })).toBe("pro");
-    expect(getTierForUser({ tier: "team", status: "active" })).toBe("team");
+    expect(getTierForUser({ tier: "enterprise", status: "active" })).toBe("enterprise");
   });
 
   it("returns the tier when status is past_due (grace period)", () => {
     expect(getTierForUser({ tier: "pro", status: "past_due" })).toBe("pro");
-    expect(getTierForUser({ tier: "team", status: "past_due" })).toBe("team");
+    expect(getTierForUser({ tier: "enterprise", status: "past_due" })).toBe("enterprise");
   });
 });
 
 describe("tierFromPriceId", () => {
   beforeEach(() => {
     vi.stubEnv("STRIPE_PRO_PRICE_ID", "price_pro_test");
-    vi.stubEnv("STRIPE_TEAM_PRICE_ID", "price_team_test");
+    vi.stubEnv("STRIPE_ENTERPRISE_PRICE_ID", "price_enterprise_test");
   });
 
   afterEach(() => {
@@ -38,8 +38,8 @@ describe("tierFromPriceId", () => {
     expect(tierFromPriceId("price_pro_test")).toBe("pro");
   });
 
-  it("returns 'team' for the team price ID", () => {
-    expect(tierFromPriceId("price_team_test")).toBe("team");
+  it("returns 'enterprise' for the enterprise price ID", () => {
+    expect(tierFromPriceId("price_enterprise_test")).toBe("enterprise");
   });
 
   it("returns null for an unrecognized price ID", () => {
@@ -54,7 +54,7 @@ describe("tierFromPriceId", () => {
 describe("isValidPriceId", () => {
   beforeEach(() => {
     vi.stubEnv("STRIPE_PRO_PRICE_ID", "price_pro_test");
-    vi.stubEnv("STRIPE_TEAM_PRICE_ID", "price_team_test");
+    vi.stubEnv("STRIPE_ENTERPRISE_PRICE_ID", "price_enterprise_test");
   });
 
   afterEach(() => {
@@ -63,7 +63,7 @@ describe("isValidPriceId", () => {
 
   it("returns true for valid price IDs", () => {
     expect(isValidPriceId("price_pro_test")).toBe(true);
-    expect(isValidPriceId("price_team_test")).toBe(true);
+    expect(isValidPriceId("price_enterprise_test")).toBe(true);
   });
 
   it("returns false for invalid price IDs", () => {
@@ -83,7 +83,7 @@ describe("TIERS", () => {
 
   it("has unlimited budgets for paid tiers", () => {
     expect(TIERS.pro.maxBudgets).toBe(Infinity);
-    expect(TIERS.team.maxBudgets).toBe(Infinity);
+    expect(TIERS.enterprise.maxBudgets).toBe(Infinity);
   });
 
   it("has increasing spend caps", () => {
@@ -91,7 +91,7 @@ describe("TIERS", () => {
       TIERS.pro.spendCapMicrodollars,
     );
     expect(TIERS.pro.spendCapMicrodollars).toBeLessThan(
-      TIERS.team.spendCapMicrodollars,
+      TIERS.enterprise.spendCapMicrodollars as number,
     );
   });
 });

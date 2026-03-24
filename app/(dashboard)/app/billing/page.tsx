@@ -142,7 +142,7 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Upgrade cards (Free users only) */}
+      {/* Upgrade card (Free users only) */}
       {!isPaid && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <PricingCard
@@ -150,11 +150,26 @@ export default function BillingPage() {
             onUpgrade={(priceId) => checkout.mutate(priceId)}
             isPending={checkout.isPending}
           />
-          <PricingCard
-            tier="team"
-            onUpgrade={(priceId) => checkout.mutate(priceId)}
-            isPending={checkout.isPending}
-          />
+          <div className="flex flex-col rounded-lg border border-border/30 bg-background p-5">
+            <div className="mb-4">
+              <p className="text-base font-semibold text-foreground">Enterprise</p>
+              <p className="mt-1 text-sm text-muted-foreground">Custom pricing</p>
+            </div>
+            <ul className="mb-5 flex-1 space-y-2">
+              {["Unlimited spend", "Unlimited budgets", "Custom retention", "Team members & roles", "SSO & SAML", "Dedicated support"].map((f) => (
+                <li key={f} className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                  <Check className="h-3.5 w-3.5 text-primary" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <a
+              href="mailto:support@nullspend.com"
+              className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              Contact Us
+            </a>
+          </div>
         </div>
       )}
     </div>
@@ -166,19 +181,18 @@ function PricingCard({
   onUpgrade,
   isPending,
 }: {
-  tier: "pro" | "team";
+  tier: "pro";
   onUpgrade: (priceId: string) => void;
   isPending: boolean;
 }) {
   const config = TIERS[tier];
-  const priceIdEnvKey =
-    tier === "pro" ? "STRIPE_PRO_PRICE_ID" : "STRIPE_TEAM_PRICE_ID";
 
   const features = [
     `${formatMicrodollars(config.spendCapMicrodollars)} spend cap`,
     "Unlimited budgets",
     `${config.retentionDays}-day data retention`,
-    tier === "team" ? "Team management" : "Priority support",
+    "Up to 5 team members",
+    "Priority support",
   ];
 
   return (
@@ -207,13 +221,10 @@ function PricingCard({
       </ul>
       <Button
         onClick={() => {
-          const priceId =
-            tier === "pro"
-              ? process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID
-              : process.env.NEXT_PUBLIC_STRIPE_TEAM_PRICE_ID;
+          const priceId = process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID;
           if (!priceId) {
             toast.error(
-              `${priceIdEnvKey} is not configured. Contact support.`,
+              "STRIPE_PRO_PRICE_ID is not configured. Contact support.",
             );
             return;
           }

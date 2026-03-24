@@ -5,6 +5,7 @@ export const TIERS = {
     maxBudgets: 3,
     maxApiKeys: 10,
     maxWebhookEndpoints: 2,
+    maxTeamMembers: 1,
     retentionDays: 30,
     price: 0,
   },
@@ -14,17 +15,19 @@ export const TIERS = {
     maxBudgets: Infinity,
     maxApiKeys: Infinity,
     maxWebhookEndpoints: 25,
+    maxTeamMembers: 5,
     retentionDays: 90,
     price: 49,
   },
-  team: {
-    label: "Team",
-    spendCapMicrodollars: 250_000_000_000, // $250,000
+  enterprise: {
+    label: "Enterprise",
+    spendCapMicrodollars: Infinity,
     maxBudgets: Infinity,
     maxApiKeys: Infinity,
-    maxWebhookEndpoints: 50,
-    retentionDays: 365,
-    price: 199,
+    maxWebhookEndpoints: Infinity,
+    maxTeamMembers: Infinity,
+    retentionDays: Infinity,
+    price: null, // custom pricing
   },
 } as const;
 
@@ -43,7 +46,7 @@ export function getTierForUser(
 
 export function tierFromPriceId(priceId: string): Tier | null {
   if (priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
-  if (priceId === process.env.STRIPE_TEAM_PRICE_ID) return "team";
+  if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) return "enterprise";
   return null;
 }
 

@@ -46,18 +46,18 @@ const tiers: Tier[] = [
     highlighted: true,
   },
   {
-    name: "Team",
-    price: "$199",
-    description: "Multi-user access and advanced controls for teams.",
+    name: "Enterprise",
+    price: "Custom",
+    description: "For organizations with advanced needs.",
     features: [
-      "Up to $250K/mo proxied spend",
+      "Unlimited proxied spend",
       "Unlimited budgets",
-      "1 year data retention",
-      "Multi-user access & roles",
-      "50 webhook endpoints",
-      "Team budgets & analytics",
+      "Custom data retention",
+      "Unlimited team members & roles",
+      "SSO & SAML",
+      "Dedicated support",
     ],
-    cta: "Get Started",
+    cta: "Contact Us",
   },
 ];
 
