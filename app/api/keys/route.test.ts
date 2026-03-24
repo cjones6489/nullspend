@@ -196,7 +196,7 @@ describe("POST /api/keys", () => {
 
   it("returns 409 when max keys per user reached", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
-    mockSelectCount.mockResolvedValue([{ value: 5 }]); // free tier limit
+    mockSelectCount.mockResolvedValue([{ value: 10 }]); // free tier limit
 
     const req = new Request("http://localhost/api/keys", {
       method: "POST",
@@ -209,7 +209,7 @@ describe("POST /api/keys", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error.code).toBe("limit_exceeded");
-    expect(body.error.message).toContain("5");
+    expect(body.error.message).toContain("10");
     expect(body.error.message).toContain("Free");
   });
 

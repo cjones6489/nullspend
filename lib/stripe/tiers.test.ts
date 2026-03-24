@@ -74,9 +74,11 @@ describe("isValidPriceId", () => {
 
 describe("TIERS", () => {
   it("has correct structure for free tier", () => {
-    expect(TIERS.free.maxBudgets).toBe(1);
+    expect(TIERS.free.maxBudgets).toBe(3);
     expect(TIERS.free.price).toBe(0);
-    expect(TIERS.free.retentionDays).toBe(7);
+    expect(TIERS.free.retentionDays).toBe(30);
+    expect(TIERS.free.maxApiKeys).toBe(10);
+    expect(TIERS.free.maxWebhookEndpoints).toBe(2);
   });
 
   it("has unlimited budgets for paid tiers", () => {

@@ -1,29 +1,29 @@
 export const TIERS = {
   free: {
     label: "Free",
-    spendCapMicrodollars: 1_000_000_000, // $1,000
-    maxBudgets: 1,
-    maxApiKeys: 5,
+    spendCapMicrodollars: 5_000_000_000, // $5,000 (soft cap — warn, don't block)
+    maxBudgets: 3,
+    maxApiKeys: 10,
     maxWebhookEndpoints: 2,
-    retentionDays: 7,
+    retentionDays: 30,
     price: 0,
   },
   pro: {
     label: "Pro",
     spendCapMicrodollars: 50_000_000_000, // $50,000
     maxBudgets: Infinity,
-    maxApiKeys: 50,
+    maxApiKeys: Infinity,
     maxWebhookEndpoints: 25,
-    retentionDays: 30,
+    retentionDays: 90,
     price: 49,
   },
   team: {
     label: "Team",
     spendCapMicrodollars: 250_000_000_000, // $250,000
     maxBudgets: Infinity,
-    maxApiKeys: 100,
+    maxApiKeys: Infinity,
     maxWebhookEndpoints: 50,
-    retentionDays: 90,
+    retentionDays: 365,
     price: 199,
   },
 } as const;

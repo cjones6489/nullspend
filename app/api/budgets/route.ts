@@ -126,7 +126,7 @@ export const POST = withRequestContext(async (request: Request) => {
 
         if (allBudgets.length >= maxBudgets) {
           throw new ForbiddenError(
-            "Free tier is limited to 1 budget. Upgrade to Pro for unlimited budgets.",
+            `${TIERS[tier].label} plan is limited to ${maxBudgets} budget${maxBudgets === 1 ? "" : "s"}. Upgrade for unlimited budgets.`,
           );
         }
       }
