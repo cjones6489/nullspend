@@ -37,7 +37,7 @@ Each key can have:
 
 Revoke keys in the dashboard or via `DELETE /api/keys/:id`. Revocation is a soft delete (`revoked_at` timestamp).
 
-**Propagation delay: up to 30 seconds.** The proxy caches valid keys with a 30-second TTL, so a revoked key may continue to authenticate for up to 30 seconds after revocation.
+**Propagation delay: up to 120 seconds.** The proxy caches valid keys with a 120-second TTL (with ±10s jitter), so a revoked key may continue to authenticate for up to ~130 seconds after revocation. Use the dashboard's invalidation endpoint for immediate revocation.
 
 ---
 
@@ -47,7 +47,7 @@ When a request arrives at the proxy:
 
 1. Read the `x-nullspend-key` header
 2. SHA-256 hash the raw key
-3. Check the **positive cache** (256 entries, 30s TTL) — if found and not expired, return the cached identity
+3. Check the **positive cache** (256 entries, 120s TTL ±10s jitter) — if found and not expired, return the cached identity
 4. Check the **negative cache** (2,048 entries, 30s TTL) — if found and not expired, reject immediately
 5. If both miss, query the database: `WHERE key_hash = $1 AND revoked_at IS NULL`
 6. The DB query also checks for enabled webhooks (`has_webhooks` flag) and loads key-level settings

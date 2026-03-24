@@ -32,7 +32,7 @@ npm run build
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `NULLSPEND_URL` | Yes | — | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
-| `NULLSPEND_API_KEY` | Yes | — | API key (`ns_live_sk_...` or `ns_test_sk_...`) |
+| `NULLSPEND_API_KEY` | Yes | — | API key (`ns_live_sk_...`) |
 | `UPSTREAM_COMMAND` | Yes | — | Command to start the upstream MCP server |
 | `UPSTREAM_ARGS` | No | `[]` | JSON array of arguments for the upstream command |
 | `UPSTREAM_ENV` | No | `{}` | JSON object of additional env vars for the upstream process |

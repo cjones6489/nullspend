@@ -39,7 +39,7 @@ const options = withNullSpend({
 
 | Option | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `apiKey` | `string` | Yes | — | NullSpend API key (`ns_live_sk_...` or `ns_test_sk_...`) |
+| `apiKey` | `string` | Yes | — | NullSpend API key (`ns_live_sk_...`) |
 | `budgetSessionId` | `string` | No | — | Session ID for per-conversation budget enforcement |
 | `tags` | `Record<string, string>` | No | — | Key-value tags for cost attribution |
 | `traceId` | `string` | No | — | 32-char lowercase hex trace ID for request correlation |

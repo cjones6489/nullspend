@@ -4,7 +4,7 @@ Practical patterns for reliable webhook consumption. These expand on the quick t
 
 ## 1. Return 2xx Fast
 
-Proxy-side webhooks are delivered via QStash with a **5-second timeout**. Dashboard-side webhooks are fire-and-forget — if your handler is slow, the event is lost.
+Proxy-side webhooks are delivered via Cloudflare Queues with a **30-second timeout**. Dashboard-side webhooks are fire-and-forget — if your handler is slow, the event is lost.
 
 **Pattern:** Accept the event, enqueue it for processing, and return `200` immediately.
 
@@ -46,7 +46,7 @@ Always verify the `X-NullSpend-Signature` header before trusting the payload. Se
 
 ## 3. Deduplicate by Event ID
 
-Every webhook event has a unique `id` field (format: `evt_` + UUID). QStash retries can deliver the same event multiple times. Use the event ID as an idempotency key.
+Every webhook event has a unique `id` field (format: `evt_` + UUID). Queue retries can deliver the same event multiple times. Use the event ID as an idempotency key.
 
 **TypeScript (Redis):**
 
@@ -128,7 +128,7 @@ Filtering at the endpoint level is more efficient than filtering in your handler
 
 ## 8. Monitor for Failures
 
-**Proxy-side:** Events that fail all 5 QStash retry attempts land in QStash's dead-letter queue (DLQ). Check it periodically — events in the DLQ are not automatically retried.
+**Proxy-side:** Events that fail all retry attempts land in the Cloudflare Queue dead-letter queue (DLQ). Failed deliveries are logged with a `webhook_delivery_failed` metric.
 
 **Dashboard-side:** No DLQ. Failed deliveries are logged server-side but not retried or stored. If you need reliable delivery for `action.*` events, build a polling fallback against the actions API.
 

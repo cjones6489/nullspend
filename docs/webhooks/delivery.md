@@ -8,27 +8,27 @@ NullSpend has two independent systems that dispatch webhooks, depending on where
 
 | Path | Events | Transport | Retries |
 |---|---|---|---|
-| **Proxy-side** | `cost_event.created`, all budget events, `velocity.*`, `session.*`, `tag_budget.*`, `request.blocked` | QStash | 5 retries, exponential backoff |
+| **Proxy-side** | `cost_event.created`, all budget events, `velocity.*`, `session.*`, `tag_budget.*`, `request.blocked` | Cloudflare Queues | Exponential backoff (10s to 1hr) |
 | **Dashboard-side** | `action.*`, `test.ping`, dashboard-originated `cost_event.created` | Direct HTTP POST | None (fire-and-forget) |
 
 Both paths sign payloads identically — your verification code works the same regardless of which path delivered the event.
 
 ## Proxy-Side Delivery
 
-Events from the proxy worker are delivered via [QStash](https://upstash.com/docs/qstash), Upstash's managed message queue.
+Events from the proxy worker are delivered via [Cloudflare Queues](https://developers.cloudflare.com/queues/).
 
 **How it works:**
 
-1. The proxy builds the event payload and signs it with your endpoint's signing secret
-2. The signed event is published to QStash with your endpoint URL as the destination
-3. QStash delivers the HTTP POST to your endpoint
-4. If your endpoint returns a non-2xx response or doesn't respond within 5 seconds, QStash retries
+1. The proxy enqueues a thin message (userId, endpointId, event) to the webhook queue
+2. The queue consumer fetches the endpoint's signing secret from the database
+3. The payload is signed with a fresh timestamp and delivered via HTTP POST
+4. If your endpoint returns a non-2xx response or doesn't respond within 30 seconds, the message is retried
 
 **Retry behavior:**
 
-- **5 retry attempts** with exponential backoff
-- Your endpoint must return a **2xx** status code within **5 seconds**
-- After all retries are exhausted, the event goes to QStash's dead-letter queue (DLQ)
+- **Exponential backoff** — 10s, 20s, 40s, ... up to 1 hour max delay
+- **2xx** = success (acked), **429 or 5xx** = transient failure (retried), **4xx** (non-429) = permanent failure (acked, not retried)
+- After all retries are exhausted, the event goes to the dead-letter queue (DLQ)
 
 **Event type filtering:** Each endpoint can subscribe to specific event types. If an endpoint's `eventTypes` array is empty, it receives all events. If it lists specific types, only matching events are dispatched.
 
@@ -94,7 +94,7 @@ Webhook delivery is **fail-open** — errors are logged but never block the oper
 - A failed webhook dispatch never blocks or delays an API response
 - If the endpoint lookup fails (cache miss + DB error), the event is silently dropped
 
-**QStash DLQ:** On the proxy side, events that fail all 5 retry attempts land in QStash's dead-letter queue. These are not automatically retried — check QStash's dashboard for failed deliveries.
+**Webhook DLQ:** On the proxy side, events that fail all retry attempts land in the Cloudflare Queue dead-letter queue. Failed deliveries are logged with a `webhook_delivery_failed` metric and always acked to prevent infinite retries.
 
 **Dashboard side:** No DLQ. Failed deliveries are logged server-side but not retried or stored.
 
@@ -120,7 +120,7 @@ The dashboard queries the database directly for each dispatch — no caching lay
 - **Deduplicate by event ID.** Use the `X-NullSpend-Webhook-Id` header (same as `event.id`) to skip duplicate deliveries from retries.
 - **Don't rely on ordering.** Events may arrive out of order, especially with retries. Use `created_at` to determine sequence.
 - **Use thin mode for high volume.** If you process hundreds of cost events per minute, thin mode reduces bandwidth and latency. Fetch full details on demand.
-- **Monitor for DLQ entries.** If your endpoint has persistent failures, events accumulate in QStash's DLQ. Check it periodically.
+- **Monitor for DLQ entries.** If your endpoint has persistent failures, events accumulate in the dead-letter queue. Check delivery logs periodically.
 
 For expanded best practices with code examples, see [Best Practices](best-practices.md).
 

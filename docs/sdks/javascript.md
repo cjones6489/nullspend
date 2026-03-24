@@ -35,7 +35,7 @@ The `NullSpend` constructor accepts a `NullSpendConfig` object:
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `baseUrl` | `string` | **required** | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
-| `apiKey` | `string` | **required** | API key (`ns_live_sk_...` or `ns_test_sk_...`) |
+| `apiKey` | `string` | **required** | API key (`ns_live_sk_...`) |
 | `apiVersion` | `string` | `"2026-04-01"` | API version sent via `NullSpend-Version` header |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | Custom fetch implementation |
 | `requestTimeoutMs` | `number` | `30000` | Per-request timeout in ms. Set to `0` to disable |

@@ -81,7 +81,7 @@ const options = withNullSpend({
 ## Troubleshooting
 
 **401 Unauthorized**
-Your NullSpend API key is missing or invalid. Verify the key in Settings. The key must start with `ns_live_sk_` or `ns_test_sk_`.
+Your NullSpend API key is missing or invalid. Verify the key in Settings. The key must start with `ns_live_sk_`.
 
 **Costs don't appear in the dashboard**
 Cost logging is asynchronous. Wait a few seconds and refresh. If costs still don't appear, verify that `ANTHROPIC_BASE_URL` is set to `https://proxy.nullspend.com` in the subprocess environment — `withNullSpend` sets this automatically.

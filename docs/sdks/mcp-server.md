@@ -19,7 +19,7 @@ Set environment variables before starting the server:
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `NULLSPEND_URL` | Yes | — | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
-| `NULLSPEND_API_KEY` | Yes | — | API key (`ns_live_sk_...` or `ns_test_sk_...`) |
+| `NULLSPEND_API_KEY` | Yes | — | API key (`ns_live_sk_...`) |
 | `NULLSPEND_AGENT_ID` | No | `"mcp-agent"` | Default agent ID for actions created by this server |
 
 ## Tools
