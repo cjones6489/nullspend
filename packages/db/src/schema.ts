@@ -39,6 +39,7 @@ export type ActionStatus = (typeof ACTION_STATUSES)[number];
 export const apiKeys = pgTable("api_keys", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
+  orgId: text("org_id"),
   name: text("name").notNull(),
   keyHash: text("key_hash").notNull(),
   keyPrefix: text("key_prefix").notNull(),
@@ -110,12 +111,13 @@ export const budgets = pgTable("budgets", {
   velocityWindowSeconds: integer("velocity_window_seconds").default(60),
   velocityCooldownSeconds: integer("velocity_cooldown_seconds").default(60),
   sessionLimitMicrodollars: bigint("session_limit_microdollars", { mode: "number" }),
-  userId: text("user_id"),
+  userId: text("user_id").notNull(),
+  orgId: text("org_id"),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
-  uniqueIndex("budgets_entity_type_entity_id_idx").on(table.entityType, table.entityId),
+  uniqueIndex("budgets_user_entity_idx").on(table.userId, table.entityType, table.entityId),
   index("budgets_user_id_idx").on(table.userId),
 ]);
 
@@ -127,6 +129,8 @@ export const costEvents = pgTable("cost_events", {
   requestId: text("request_id").notNull(),
   apiKeyId: uuid("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
   userId: text("user_id"),
+  orgId: text("org_id"),
+  parentRequestId: text("parent_request_id"),
   provider: text("provider").notNull(),
   model: text("model").notNull(),
   inputTokens: integer("input_tokens").notNull(),

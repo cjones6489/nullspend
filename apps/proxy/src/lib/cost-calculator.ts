@@ -21,6 +21,7 @@ export function calculateOpenAICost(
   requestId: string,
   durationMs: number,
   attribution?: { userId: string | null; apiKeyId: string | null; actionId: string | null },
+  toolDefinitionTokens?: number,
 ): CostEventInsert {
   const promptTokens = Math.max(0, Number(usage.prompt_tokens) || 0);
   const completionTokens = Math.max(0, Number(usage.completion_tokens) || 0);
@@ -59,13 +60,18 @@ export function calculateOpenAICost(
       else if (input >= cached) adjInput += residual;
       else adjCached += residual;
     }
-    const bd: { input: number; output: number; cached: number; reasoning?: number } = {
+    const bd: { input: number; output: number; cached: number; reasoning?: number; toolDefinition?: number } = {
       input: adjInput, output: adjOutput, cached: adjCached,
     };
 
     // Reasoning is a SUBSET of output cost (already counted in output), stored for informational display
     if (reasoningTokens > 0) {
       bd.reasoning = Math.round(costComponent(reasoningTokens, pricing.outputPerMTok));
+    }
+
+    // Tool definition is a SUBSET of input cost (already counted in prompt_tokens), stored for attribution
+    if (toolDefinitionTokens && toolDefinitionTokens > 0) {
+      bd.toolDefinition = Math.round(costComponent(toolDefinitionTokens, pricing.inputPerMTok));
     }
 
     costBreakdown = bd;

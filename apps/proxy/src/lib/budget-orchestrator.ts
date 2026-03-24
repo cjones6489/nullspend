@@ -156,6 +156,8 @@ async function checkBudgetDO(
   const checkResult = await doBudgetCheck(env, userId, keyId, estimateMicrodollars, sessionId, tagEntityIds);
 
   if (!checkResult.hasBudgets) {
+    // Auth cache said hasBudgets=true (we got here), but DO says false — stale cache
+    emitMetric("budget_cache_stale", { userId });
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
 

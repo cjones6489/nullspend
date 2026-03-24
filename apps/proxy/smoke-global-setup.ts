@@ -13,14 +13,15 @@ import postgres from "postgres";
 export async function setup() {
   const dbUrl = process.env.DATABASE_URL;
   const keyId = process.env.NULLSPEND_SMOKE_KEY_ID;
-  if (!dbUrl || !keyId) return;
+  const userId = process.env.NULLSPEND_SMOKE_USER_ID;
+  if (!dbUrl || !keyId || !userId) return;
 
   const sql = postgres(dbUrl, { max: 1, idle_timeout: 5 });
   try {
     await sql`
-      INSERT INTO budgets (entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES ('api_key', ${keyId}, 1000000000000, 0, 'strict_block')
-      ON CONFLICT (entity_type, entity_id)
+      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, 'api_key', ${keyId}, 1000000000000, 0, 'strict_block')
+      ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = 1000000000000,
                     spend_microdollars = 0,
                     updated_at = NOW()

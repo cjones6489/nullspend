@@ -55,12 +55,13 @@ describe("invalidateProxyCache", () => {
     expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
 
     const body = JSON.parse(init?.body as string);
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       action: "remove",
       userId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
+    expect(typeof body.sentAt).toBe("number");
   });
 
   it("no-ops when PROXY_INTERNAL_URL is missing", async () => {

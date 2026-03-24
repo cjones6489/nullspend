@@ -112,12 +112,19 @@ export async function handleChatCompletions(
     if (rlRemReqs) rateLimitTags._ns_ratelimit_remaining_requests = rlRemReqs;
     if (rlRemToks) rateLimitTags._ns_ratelimit_remaining_tokens = rlRemToks;
 
+    // Capture request metadata in tags for analytics
+    const metadataTags: Record<string, string> = {};
+    const maxTokens = ctx.body.max_completion_tokens ?? ctx.body.max_tokens;
+    if (typeof maxTokens === "number") metadataTags._ns_max_tokens = String(maxTokens);
+    if (typeof ctx.body.temperature === "number") metadataTags._ns_temperature = String(ctx.body.temperature);
+    if (Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0) metadataTags._ns_tool_count = String(ctx.body.tools.length);
+
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,
       sessionId: ctx.sessionId,
       traceId: ctx.traceId,
       toolDefinitionTokens,
-      tags: { ...ctx.tags, ...rateLimitTags },
+      tags: { ...ctx.tags, ...rateLimitTags, ...metadataTags },
       budgetStatus,
       estimatedCostMicrodollars: estimate,
     };
@@ -284,6 +291,7 @@ function handleStreaming(
           requestId,
           durationMs,
           attribution,
+          enrichment.toolDefinitionTokens,
         );
 
         // Write AE data point at stream completion with full duration
@@ -386,6 +394,7 @@ async function handleNonStreaming(
         requestId,
         upstreamDurationWithBody,
         attribution,
+        enrichment.toolDefinitionTokens,
       );
 
       waitUntil(logCostEventQueued(getCostEventQueue(env), connectionString, {

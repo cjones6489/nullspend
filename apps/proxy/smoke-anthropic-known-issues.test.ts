@@ -40,9 +40,9 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
     trackUser(userId);
 
     await sql`
-      INSERT INTO budgets (entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES ('user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
-      ON CONFLICT (entity_type, entity_id)
+      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
+      ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = ${spendMicrodollars},
                     updated_at = NOW()

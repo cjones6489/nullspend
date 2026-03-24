@@ -81,9 +81,9 @@ describe("End-to-end session limit enforcement", () => {
 
     // 2. Upsert into Postgres with desired session_limit
     await sql`
-      INSERT INTO budgets (entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
-      VALUES ('user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', ${sessionLimitMicrodollars})
-      ON CONFLICT (entity_type, entity_id)
+      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
+      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', ${sessionLimitMicrodollars})
+      ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = 0,
                     session_limit_microdollars = ${sessionLimitMicrodollars},
@@ -106,9 +106,9 @@ describe("End-to-end session limit enforcement", () => {
     try { await invalidateBudget(userId, "user", userId); } catch { /* may not exist */ }
 
     await sql`
-      INSERT INTO budgets (entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
-      VALUES ('user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', NULL)
-      ON CONFLICT (entity_type, entity_id)
+      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
+      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', NULL)
+      ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = 0,
                     session_limit_microdollars = NULL,

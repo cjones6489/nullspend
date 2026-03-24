@@ -87,6 +87,7 @@ export const POST = withRequestContext(async (request: Request) => {
       .from(budgets)
       .where(
         and(
+          eq(budgets.userId, userId),
           eq(budgets.entityType, input.entityType),
           eq(budgets.entityId, input.entityId),
         ),
@@ -134,6 +135,7 @@ export const POST = withRequestContext(async (request: Request) => {
     return tx
       .insert(budgets)
       .values({
+        userId,
         entityType: input.entityType,
         entityId: input.entityId,
         maxBudgetMicrodollars: input.maxBudgetMicrodollars,
@@ -147,7 +149,7 @@ export const POST = withRequestContext(async (request: Request) => {
         ...(input.sessionLimitMicrodollars !== undefined && { sessionLimitMicrodollars: input.sessionLimitMicrodollars }),
       })
       .onConflictDoUpdate({
-        target: [budgets.entityType, budgets.entityId],
+        target: [budgets.userId, budgets.entityType, budgets.entityId],
         set: {
           maxBudgetMicrodollars: input.maxBudgetMicrodollars,
           resetInterval: input.resetInterval ?? null,

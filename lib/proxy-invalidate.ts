@@ -30,7 +30,7 @@ export async function invalidateProxyCache(params: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${secret}`,
         },
-        body: JSON.stringify(params),
+        body: JSON.stringify({ ...params, sentAt: Date.now() }),
         signal: AbortSignal.timeout(5_000),
       });
       if (res.ok) {

@@ -64,6 +64,7 @@ async function main() {
 
   const seedBudgets = [
     {
+      userId,
       entityType: "user",
       entityId: userId,
       maxBudgetMicrodollars: 50_000_000,
@@ -73,6 +74,7 @@ async function main() {
       label: "User account — healthy (30%)",
     },
     {
+      userId,
       entityType: "api_key",
       entityId: keys[1].id,
       maxBudgetMicrodollars: 20_000_000,
@@ -82,6 +84,7 @@ async function main() {
       label: `API key "${keys[1].name}" — warning (75%)`,
     },
     {
+      userId,
       entityType: "api_key",
       entityId: keys[2].id,
       maxBudgetMicrodollars: 100_000_000,
@@ -98,7 +101,7 @@ async function main() {
       .insert(budgets)
       .values(values)
       .onConflictDoUpdate({
-        target: [budgets.entityType, budgets.entityId],
+        target: [budgets.userId, budgets.entityType, budgets.entityId],
         set: {
           maxBudgetMicrodollars: values.maxBudgetMicrodollars,
           spendMicrodollars: values.spendMicrodollars,

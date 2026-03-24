@@ -10,6 +10,7 @@ interface InvalidationBody {
   userId: string;
   entityType: string;
   entityId: string;
+  sentAt?: number;
 }
 
 const MAX_FIELD_LENGTH = 256;
@@ -32,6 +33,7 @@ function parseBody(raw: unknown): InvalidationBody | null {
     userId: obj.userId.trim(),
     entityType: obj.entityType.trim(),
     entityId: obj.entityId.trim(),
+    ...(typeof obj.sentAt === "number" && { sentAt: obj.sentAt }),
   };
 }
 
@@ -112,6 +114,10 @@ export async function handleBudgetInvalidation(
     }
 
     invalidateAuthCacheForUser(body.userId);
+
+    if (body.sentAt) {
+      emitMetric("budget_sync_latency_ms", { ms: Math.max(0, Date.now() - body.sentAt), action: body.action });
+    }
 
     emitMetric("budget_invalidation", {
       action: body.action,

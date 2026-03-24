@@ -121,3 +121,9 @@ Provider rate limit proximity captured in tags: `_ns_ratelimit_remaining_request
 Error classification: `emitMetric("request_error", { status, reason })` on all error paths in `index.ts`. `emitMetric("budget_denied", { reason, provider, entityType })` on all denial paths in `shared.ts` and `mcp.ts`.
 
 Auth includes `hasBudgets` flag (EXISTS subquery on budgets table). When false, budget orchestrator skips DO RPC entirely — 17ms → 2-3ms overhead for tracking-only users.
+
+Budget sync latency: dashboard sends `sentAt` timestamp on invalidation calls, proxy emits `budget_sync_latency_ms` metric.
+Stale-cache detection: `budget_cache_stale` metric when auth's `hasBudgets` disagrees with DO state.
+Request metadata tags: `_ns_max_tokens`, `_ns_temperature`, `_ns_tool_count` captured per request.
+Long-context detection: `_ns_long_context: "true"` tag on Anthropic requests >200k total input tokens.
+`costBreakdown.toolDefinition`: tool definition cost (subset of input cost) included in breakdown for both providers.

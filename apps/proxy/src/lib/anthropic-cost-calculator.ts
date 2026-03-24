@@ -29,6 +29,7 @@ export function calculateAnthropicCost(
     apiKeyId: string | null;
     actionId: string | null;
   },
+  toolDefinitionTokens?: number,
 ): CostEventInsert {
   const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
   const outputTokens = Math.max(0, Number(usage.output_tokens) || 0);
@@ -99,7 +100,16 @@ export function calculateAnthropicCost(
       else if (input >= cached) adjInput += residual;
       else adjCached += residual;
     }
-    costBreakdown = { input: adjInput, output: adjOutput, cached: adjCached };
+    const bd: { input: number; output: number; cached: number; toolDefinition?: number } = {
+      input: adjInput, output: adjOutput, cached: adjCached,
+    };
+
+    // Tool definition is a SUBSET of input cost (already counted in input_tokens), stored for attribution
+    if (toolDefinitionTokens && toolDefinitionTokens > 0) {
+      bd.toolDefinition = Math.round(costComponent(toolDefinitionTokens, inputRate));
+    }
+
+    costBreakdown = bd;
   }
 
   return {

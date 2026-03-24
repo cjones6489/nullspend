@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-23
 **Updated:** 2026-03-24 (Phase 1+2 shipped, architectural audit, data flow gaps, platform readiness assessment)
-**Status:** Phase 1+2 Complete, Phase 3+4 Planned
+**Status:** All 4 Phases Complete (partitioning deferred until 1M+ rows)
 **Author:** Claude (from gap analysis with @cjone)
 
 ---
@@ -387,7 +387,7 @@ These are not bugs or missing features — they're inherent limitations of the c
 
 ---
 
-### Phase 4: Advanced Observability (Low gaps + architectural prep, enables optimization and scale)
+### Phase 4: Advanced Observability (Low gaps + architectural prep, enables optimization and scale) — SHIPPED 2026-03-24
 
 **Goal:** Answer "how can users optimize their usage?" and prepare for scale.
 

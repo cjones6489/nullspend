@@ -99,12 +99,18 @@ export async function handleAnthropicMessages(
     if (rlRemReqs) rateLimitTags._ns_ratelimit_remaining_requests = rlRemReqs;
     if (rlRemToks) rateLimitTags._ns_ratelimit_remaining_tokens = rlRemToks;
 
+    // Capture request metadata in tags for analytics
+    const metadataTags: Record<string, string> = {};
+    if (typeof ctx.body.max_tokens === "number") metadataTags._ns_max_tokens = String(ctx.body.max_tokens);
+    if (typeof ctx.body.temperature === "number") metadataTags._ns_temperature = String(ctx.body.temperature);
+    if (Array.isArray(ctx.body.tools) && ctx.body.tools.length > 0) metadataTags._ns_tool_count = String(ctx.body.tools.length);
+
     const enrichment: EnrichmentFields = {
       upstreamDurationMs,
       sessionId: ctx.sessionId,
       traceId: ctx.traceId,
       toolDefinitionTokens,
-      tags: { ...ctx.tags, ...rateLimitTags },
+      tags: { ...ctx.tags, ...rateLimitTags, ...metadataTags },
       budgetStatus,
       estimatedCostMicrodollars: estimate,
     };
@@ -269,6 +275,7 @@ function handleStreaming(
           requestId,
           durationMs,
           attribution,
+          enrichment.toolDefinitionTokens,
         );
 
         // Write AE data point at stream completion with full duration
@@ -277,13 +284,19 @@ function handleStreaming(
         const ttfbMs = result.firstChunkMs != null ? Math.round(result.firstChunkMs - startTime) : undefined;
         writeLatencyDataPoint(env, "anthropic", requestModel, true, 200, streamOverheadMs, durationMs, streamTotalMs, ttfbMs, ctx.auth.userId);
 
-        // Capture cache read/write split in tags for analytics
+        // Capture cache read/write split and long-context detection in tags for analytics
         const cacheTags: Record<string, string> = {};
         if (result.usage?.cache_creation_input_tokens != null) {
           cacheTags._ns_cache_write_tokens = String(result.usage.cache_creation_input_tokens);
         }
         if (result.usage?.cache_read_input_tokens != null) {
           cacheTags._ns_cache_read_tokens = String(result.usage.cache_read_input_tokens);
+        }
+        const totalInput = (result.usage?.input_tokens ?? 0)
+          + (result.usage?.cache_creation_input_tokens ?? 0)
+          + (result.usage?.cache_read_input_tokens ?? 0);
+        if (totalInput > 200_000) {
+          cacheTags._ns_long_context = "true";
         }
 
         await logCostEventQueued(getCostEventQueue(env), connectionString, {
@@ -392,15 +405,22 @@ async function handleNonStreaming(
         requestId,
         upstreamDurationWithBody,
         attribution,
+        enrichment.toolDefinitionTokens,
       );
 
-      // Capture cache read/write split in tags for analytics
+      // Capture cache read/write split and long-context detection in tags for analytics
       const cacheTags: Record<string, string> = {};
       if (usage.cache_creation_input_tokens != null) {
         cacheTags._ns_cache_write_tokens = String(usage.cache_creation_input_tokens);
       }
       if (usage.cache_read_input_tokens != null) {
         cacheTags._ns_cache_read_tokens = String(usage.cache_read_input_tokens);
+      }
+      const totalInput = (usage.input_tokens ?? 0)
+        + (usage.cache_creation_input_tokens ?? 0)
+        + (usage.cache_read_input_tokens ?? 0);
+      if (totalInput > 200_000) {
+        cacheTags._ns_long_context = "true";
       }
 
       waitUntil(logCostEventQueued(getCostEventQueue(env), connectionString, {

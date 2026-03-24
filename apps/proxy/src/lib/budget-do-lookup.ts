@@ -91,7 +91,7 @@ export async function lookupBudgetsForDO(
                velocity_limit_microdollars, velocity_window_seconds, velocity_cooldown_seconds,
                threshold_percentages, session_limit_microdollars
         FROM budgets
-        WHERE entity_type = ${entity.type} AND entity_id = ${entity.id}
+        WHERE user_id = ${userId} AND entity_type = ${entity.type} AND entity_id = ${entity.id}
       `;
 
       if (rows.length > 0) {
