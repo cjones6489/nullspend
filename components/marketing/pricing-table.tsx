@@ -35,6 +35,7 @@ const tiers: Tier[] = [
     price: "$49",
     description: "Unlimited budgets and deeper analytics for production.",
     features: [
+      "Up to 5 team members",
       "Up to $50K/mo proxied spend",
       "Unlimited budgets",
       "90 day data retention",
