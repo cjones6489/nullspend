@@ -191,7 +191,7 @@ function PricingCard({
     `${formatMicrodollars(config.spendCapMicrodollars)} spend cap`,
     "Unlimited budgets",
     `${config.retentionDays}-day data retention`,
-    "Up to 5 team members",
+    "Unlimited team members",
     "Priority support",
   ];
 

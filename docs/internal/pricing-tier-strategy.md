@@ -48,7 +48,7 @@ Free users should experience the full value proposition — cost tracking, budge
 | Velocity limits | Unlimited | Included in all budgets. |
 | Session limits | Unlimited | Included. |
 | Tag budgets | Unlimited | Included. |
-| Team members | Up to 5 | Small team collaboration. Full org management (roles, SSO) requires Enterprise. |
+| Team members | Unlimited | Team members are free — more integration = higher switching costs. Full org management (roles, SSO) requires Enterprise. |
 | Priority support | Yes | Email support with faster response. |
 
 ### Enterprise — Custom pricing

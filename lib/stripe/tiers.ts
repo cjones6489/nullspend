@@ -15,7 +15,7 @@ export const TIERS = {
     maxBudgets: Infinity,
     maxApiKeys: Infinity,
     maxWebhookEndpoints: 25,
-    maxTeamMembers: 5,
+    maxTeamMembers: Infinity,
     retentionDays: 90,
     price: 49,
   },
