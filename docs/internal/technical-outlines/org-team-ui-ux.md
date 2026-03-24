@@ -3,7 +3,8 @@
 **Created:** 2026-03-24
 **Status:** Research Complete, Implementation Not Started
 **Author:** Claude (from research with @cjone)
-**Backend companion:** [`org-team-architecture.md`](org-team-architecture.md) — schema, API routes, proxy changes, implementation phases
+**Backend companion:** [`org-team-architecture.md`](org-team-architecture.md) — schema, API routes, proxy changes, data model
+**Implementation plan:** [`org-team-implementation-plan.md`](org-team-implementation-plan.md) — unified phased guide with sub-phases, checklists, review gates, effort estimates
 
 ---
 
@@ -363,110 +364,15 @@ Simpler utilities (inline, not standalone component files):
 
 ## Implementation Phases
 
-See the **unified phase guide** below. Frontend and backend work is interleaved — frontend tasks have hard dependencies on backend steps within the same phase.
+See [`org-team-implementation-plan.md`](org-team-implementation-plan.md) for the full unified phase guide with sub-phases, checklists, review gates, and effort estimates. The plan covers both backend and frontend work interleaved, with explicit dependencies between them.
 
-### Unified Phase Guide (Backend + Frontend Combined)
-
-#### Phase 0: Schema Prep + Settings Restructure (~1 day)
-
-**Backend:**
-- Add `org_id uuid` to remaining 5 tables + `created_by text` to 3 tables (migration)
-- Move per-user limits into tier definitions (`lib/stripe/tiers.ts`)
-- Add `org` to `PREFIX_MAP` (`lib/ids/prefixed-id.ts`)
-
-**Frontend (can start independently — no backend dependency):**
-- Install `Avatar`, `AlertDialog`, `Tooltip` from shadcn registry
-- Split monolithic settings page into sub-pages:
-  - Create `app/(dashboard)/app/settings/layout.tsx` with `<SettingsNav>`
-  - Extract API keys into `settings/api-keys/page.tsx`
-  - Move webhooks into `settings/webhooks/page.tsx`
-  - Move Slack into `settings/integrations/page.tsx`
-  - Create `settings/general/page.tsx` (placeholder — org profile later)
-  - Create `settings/billing/page.tsx` (link to existing billing or embed)
-- Add loading skeletons for each new settings page (follow `KeysSkeleton` pattern)
-
-#### Phase 1: Org Tables + Foundation (~2-3 days)
-
-**Backend (do first):**
-- Create `organizations`, `org_memberships`, `org_invitations` tables
-- Migrate existing `org_id` columns from `text` to `uuid`
-- Implement `ensurePersonalOrg()` lazy-init in `lib/auth/session.ts`
-- Extend `resolveSessionContext()` to return `{ userId, orgId, role }`
-- Add Zod validation schemas for orgs (`lib/validations/orgs.ts`)
-- Populate `created_by` on new writes in API routes
-
-**Frontend (after backend Steps 1.1-1.4):**
-- Build `<OrgSwitcher>` component — reads personal org from `resolveSessionContext()`
-- Add org switcher to sidebar header (replace Shield icon row)
-- Implement `ns-active-org` cookie server action for org switching
-- Build utility components: `OrgAvatar`, `RoleBadge`, `PlanBadge` (inline)
-- No visible behavior change for users — personal org only
-
-#### Phase 2: Org-Scoped Dashboard (~4-6 days)
-
-**Backend (do first):**
-- Proxy auth: add `orgId` to `ApiKeyIdentity`, `AuthResult`, auth SQL
-- Proxy cost-logger: add `org_id` to INSERT statements
-- Proxy DO: key by `orgId` instead of `userId` (6 call sites)
-- Dashboard queries: switch 42+ routes from `userId` to `orgId`
-- Add `FEATURE_TIERS` map to `lib/stripe/tiers.ts`
-- Make `org_id` NOT NULL on all tables (migration)
-- Update ~80 proxy test files with `orgId`
-
-**Frontend (after backend query migration):**
-- All TanStack Query hooks now pass `orgId` instead of `userId`
-- Build `<FeatureGate>` component (consumes `FEATURE_TIERS`)
-- Build `<UpgradeCard>` (reuse existing `PricingCard` patterns from billing page)
-- Add upgrade CTAs at feature limits (budgets, webhooks, velocity)
-- Home page banner: "Working with a team? [Create an Organization]"
-- No visible behavior change for solo users (personal org = same data)
-
-#### Phase 3: Team Features (~5-7 days)
-
-**Backend:**
-- Org CRUD API routes (`/api/orgs/...`)
-- Invitation API routes (`/api/orgs/[orgId]/invitations/...`)
-- Accept invitation route (`/api/invite/accept`)
-- Email sending (Resend/SendGrid) for invitation emails
-- `lib/auth/invitation.ts` — token generation, hashing, verification
-
-**Frontend:**
-- Settings > Members page (`/app/settings/members`):
-  - `<InviteForm>` — email + role + invite button
-  - `<MemberTable>` — active members with avatar, role, actions
-  - `<PendingInvitesTable>` — pending/expired invitations
-  - Empty states for both tables (follow existing patterns)
-  - Loading skeletons
-- Invitation acceptance page (`/invite/[token]`):
-  - Outside dashboard layout (minimal, centered card)
-  - States: valid/logged-in, valid/not-logged-in, expired, already-member
-  - Error states: network failure, race condition
-- Create Organization dialog (from org switcher)
-- Org switcher now shows multiple orgs
-- Settings > General page: org profile editing (name, avatar)
-
-#### Phase 4: Role Enforcement + Billing (~4-6 days)
-
-**Backend:**
-- Permission middleware (`lib/auth/permissions.ts`)
-- Apply `requireRole()` checks to all dashboard API routes
-- Billing migration: `subscriptions.user_id` → `org_id`
-- Stripe Customer per org
-- `getTierForOrg(orgId)` replaces `getTierForUser(userId)`
-
-**Frontend:**
-- `useOrgRole()` hook for role-based UI rendering
-- Hide admin actions from members (invite, budget management, key revocation)
-- Billing section restricted to owners
-- Upgrade flow: personal → team org (create new org + select plan)
-- Settings > General: danger zone (delete org — owner only)
-
-#### Phase 5: Enterprise (demand-driven)
-- Viewer + Billing roles
-- Custom roles + permissions
-- SSO/SAML per org
-- Domain-verified auto-join
-- Audit log
+**Summary:**
+- Phase 0: Schema prep + settings restructure (~1 day)
+- Phase 1: Org tables + foundation (~2-3 days)
+- Phase 2: Org-scoped dashboard (~4-6 days)
+- Phase 3: Team features + invitations (~5-7 days)
+- Phase 4: Role enforcement + billing migration (~4-6 days)
+- Phase 5: Enterprise (demand-driven)
 
 ---
 

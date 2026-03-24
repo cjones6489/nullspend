@@ -5,6 +5,7 @@
 **Status:** Research Complete, Implementation Not Started
 **Author:** Claude (from research + brainstorm with @cjone)
 **Frontend companion:** [`org-team-ui-ux.md`](org-team-ui-ux.md) — routing, org switcher, settings layout, member management, invitation flow, tier-gated features, component inventory
+**Implementation plan:** [`org-team-implementation-plan.md`](org-team-implementation-plan.md) — unified phased guide with sub-phases, checklists, review gates, effort estimates
 
 ---
 
