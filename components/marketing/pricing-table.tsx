@@ -45,18 +45,18 @@ const tiers: Tier[] = [
     highlighted: true,
   },
   {
-    name: "Team",
-    price: "$199",
-    description: "Advanced controls for larger teams.",
+    name: "Enterprise",
+    price: "Custom",
+    description: "For organizations with advanced needs.",
     features: [
-      "Up to $250K/mo proxied spend",
+      "Unlimited proxied spend",
       "Unlimited budgets",
-      "90 day data retention",
+      "Unlimited data retention",
       "Multi-user access",
-      "Team budgets",
-      "Advanced analytics",
+      "SSO & SAML",
+      "Dedicated support",
     ],
-    cta: "Get Started",
+    cta: "Contact for details",
   },
 ];
 
@@ -92,7 +92,9 @@ export function PricingTable() {
               <h3 className="text-lg font-medium">{tier.name}</h3>
               <div className="mt-2 flex items-baseline gap-1">
                 <span className="text-3xl font-bold">{tier.price}</span>
-                <span className="text-sm text-muted-foreground">/mo</span>
+                {tier.price !== "Custom" && (
+                  <span className="text-sm text-muted-foreground">/mo</span>
+                )}
               </div>
               <p className="mt-2 text-[13px] text-muted-foreground">
                 {tier.description}
