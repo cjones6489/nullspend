@@ -39,7 +39,7 @@ export type ActionStatus = (typeof ACTION_STATUSES)[number];
 export const apiKeys = pgTable("api_keys", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
-  orgId: text("org_id"),
+  orgId: uuid("org_id"),
   name: text("name").notNull(),
   keyHash: text("key_hash").notNull(),
   keyPrefix: text("key_prefix").notNull(),
@@ -60,6 +60,7 @@ export type NewApiKeyRow = typeof apiKeys.$inferInsert;
 export const actions = pgTable("actions", {
   id: uuid("id").defaultRandom().primaryKey(),
   ownerUserId: text("owner_user_id").notNull(),
+  orgId: uuid("org_id"),
   agentId: text("agent_id").notNull(),
   actionType: text("action_type").$type<ActionType>().notNull(),
   status: text("status").$type<ActionStatus>().notNull().default("pending"),
@@ -88,6 +89,7 @@ export type NewActionRow = typeof actions.$inferInsert;
 export const slackConfigs = pgTable("slack_configs", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull().unique(),
+  orgId: uuid("org_id"),
   webhookUrl: text("webhook_url").notNull(),
   channelName: text("channel_name"),
   slackUserId: text("slack_user_id"),
@@ -112,7 +114,7 @@ export const budgets = pgTable("budgets", {
   velocityCooldownSeconds: integer("velocity_cooldown_seconds").default(60),
   sessionLimitMicrodollars: bigint("session_limit_microdollars", { mode: "number" }),
   userId: text("user_id").notNull(),
-  orgId: text("org_id"),
+  orgId: uuid("org_id"),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -129,7 +131,7 @@ export const costEvents = pgTable("cost_events", {
   requestId: text("request_id").notNull(),
   apiKeyId: uuid("api_key_id").references(() => apiKeys.id, { onDelete: "set null" }),
   userId: text("user_id").notNull(),
-  orgId: text("org_id"),
+  orgId: uuid("org_id"),
   parentRequestId: text("parent_request_id"),
   provider: text("provider").notNull(),
   model: text("model").notNull(),
@@ -173,6 +175,7 @@ export type NewCostEventRow = typeof costEvents.$inferInsert;
 export const subscriptions = pgTable("subscriptions", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull().unique(),
+  orgId: uuid("org_id"),
   stripeCustomerId: text("stripe_customer_id").notNull(),
   stripeSubscriptionId: text("stripe_subscription_id").notNull(),
   tier: text("tier").notNull(),
@@ -199,6 +202,7 @@ export type ToolCostSource = (typeof TOOL_COST_SOURCES)[number];
 export const toolCosts = pgTable("tool_costs", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
+  orgId: uuid("org_id"),
   serverName: text("server_name").notNull(),
   toolName: text("tool_name").notNull(),
   costMicrodollars: bigint("cost_microdollars", { mode: "number" }).notNull().default(0),
@@ -220,6 +224,7 @@ export type NewToolCostRow = typeof toolCosts.$inferInsert;
 export const webhookEndpoints = pgTable("webhook_endpoints", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
+  orgId: uuid("org_id"),
   url: text("url").notNull(),
   description: text("description"),
   signingSecret: text("signing_secret").notNull(),

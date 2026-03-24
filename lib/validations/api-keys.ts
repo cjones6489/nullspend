@@ -2,7 +2,8 @@ import { z } from "zod";
 
 import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
 
-export const MAX_KEYS_PER_USER = 20;
+/** UI display hint — actual limit enforced per-tier in the route handler. */
+export const MAX_KEYS_PER_USER = 100;
 
 const tagKeySchema = z.string().regex(/^[a-zA-Z0-9_-]+$/, "Tag keys must be alphanumeric, underscore, or hyphen.").max(64);
 const tagValueSchema = z.string().max(256).refine(s => !s.includes("\0"), "Values must not contain null bytes.");

@@ -9,9 +9,10 @@ import { handleRouteError, readJsonBody } from "@/lib/utils/http";
 import {
   createWebhookInputSchema,
   webhookRecordSchema,
-  MAX_WEBHOOK_ENDPOINTS_PER_USER,
 } from "@/lib/validations/webhooks";
 import { invalidateWebhookCacheForUser } from "@/lib/webhooks/invalidate-cache";
+import { TIERS, getTierForUser } from "@/lib/stripe/tiers";
+import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 
 export async function GET() {
   try {
@@ -61,9 +62,13 @@ export async function POST(request: Request) {
       .from(webhookEndpoints)
       .where(eq(webhookEndpoints.userId, userId));
 
-    if (endpointCount >= MAX_WEBHOOK_ENDPOINTS_PER_USER) {
+    const subscription = await getSubscriptionByUserId(userId);
+    const tier = getTierForUser(subscription);
+    const maxEndpoints = TIERS[tier].maxWebhookEndpoints;
+
+    if (endpointCount >= maxEndpoints) {
       return NextResponse.json(
-        { error: { code: "limit_exceeded", message: `Maximum of ${MAX_WEBHOOK_ENDPOINTS_PER_USER} webhook endpoints allowed.`, details: null } },
+        { error: { code: "limit_exceeded", message: `Maximum of ${maxEndpoints} webhook endpoints allowed on the ${TIERS[tier].label} plan.`, details: null } },
         { status: 409 },
       );
     }

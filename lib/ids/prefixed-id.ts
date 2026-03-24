@@ -9,6 +9,7 @@ const PREFIX_MAP = {
   del: "ns_del_",
   usr: "ns_usr_",
   tc: "ns_tc_",
+  org: "ns_org_",
 } as const;
 
 type IdType = keyof typeof PREFIX_MAP;

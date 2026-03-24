@@ -3,6 +3,8 @@ export const TIERS = {
     label: "Free",
     spendCapMicrodollars: 1_000_000_000, // $1,000
     maxBudgets: 1,
+    maxApiKeys: 5,
+    maxWebhookEndpoints: 2,
     retentionDays: 7,
     price: 0,
   },
@@ -10,6 +12,8 @@ export const TIERS = {
     label: "Pro",
     spendCapMicrodollars: 50_000_000_000, // $50,000
     maxBudgets: Infinity,
+    maxApiKeys: 50,
+    maxWebhookEndpoints: 25,
     retentionDays: 30,
     price: 49,
   },
@@ -17,6 +21,8 @@ export const TIERS = {
     label: "Team",
     spendCapMicrodollars: 250_000_000_000, // $250,000
     maxBudgets: Infinity,
+    maxApiKeys: 100,
+    maxWebhookEndpoints: 50,
     retentionDays: 90,
     price: 199,
   },

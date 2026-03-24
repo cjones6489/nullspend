@@ -8,6 +8,10 @@ vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
 }));
 
+vi.mock("@/lib/stripe/subscription", () => ({
+  getSubscriptionByUserId: vi.fn().mockResolvedValue(null),
+}));
+
 const mockSelectList = vi.fn();
 const mockSelectCount = vi.fn().mockResolvedValue([{ value: 0 }]);
 const mockInsertReturning = vi.fn();
@@ -192,7 +196,7 @@ describe("POST /api/keys", () => {
 
   it("returns 409 when max keys per user reached", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
-    mockSelectCount.mockResolvedValue([{ value: 20 }]);
+    mockSelectCount.mockResolvedValue([{ value: 5 }]); // free tier limit
 
     const req = new Request("http://localhost/api/keys", {
       method: "POST",
@@ -205,7 +209,8 @@ describe("POST /api/keys", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error.code).toBe("limit_exceeded");
-    expect(body.error.message).toContain("20");
+    expect(body.error.message).toContain("5");
+    expect(body.error.message).toContain("Free");
   });
 
   it("returns 400 for missing name", async () => {

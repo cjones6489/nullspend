@@ -7,6 +7,10 @@ vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
 }));
 
+vi.mock("@/lib/stripe/subscription", () => ({
+  getSubscriptionByUserId: vi.fn().mockResolvedValue(null),
+}));
+
 const mockSelectList = vi.fn();
 const mockSelectCount = vi.fn().mockResolvedValue([{ value: 0 }]);
 const mockInsertReturning = vi.fn();
@@ -115,12 +119,12 @@ describe("POST /api/webhooks", () => {
 
   it("returns 409 when max endpoints reached", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
-    mockSelectCount.mockResolvedValue([{ value: 10 }]);
+    mockSelectCount.mockResolvedValue([{ value: 2 }]); // free tier limit
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: "https://hooks.example.com/11th" }),
+      body: JSON.stringify({ url: "https://hooks.example.com/3rd" }),
     });
 
     const res = await POST(req);
@@ -128,7 +132,8 @@ describe("POST /api/webhooks", () => {
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error.code).toBe("limit_exceeded");
-    expect(body.error.message).toContain("10");
+    expect(body.error.message).toContain("2");
+    expect(body.error.message).toContain("Free");
   });
 
   it("returns 400 for non-HTTPS URL", async () => {
