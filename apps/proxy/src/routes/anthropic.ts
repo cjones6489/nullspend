@@ -113,6 +113,7 @@ export async function handleAnthropicMessages(
       tags: { ...ctx.tags, ...rateLimitTags, ...metadataTags },
       budgetStatus,
       estimatedCostMicrodollars: estimate,
+      orgId: ctx.auth.orgId,
     };
 
     if (!upstreamResponse.ok) {

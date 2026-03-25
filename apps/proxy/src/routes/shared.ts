@@ -30,6 +30,7 @@ export interface EnrichmentFields {
   tags: Record<string, string>;
   budgetStatus: "skipped" | "approved" | "denied";
   estimatedCostMicrodollars: number;
+  orgId: string | null;
 }
 
 interface BudgetCheckOutcome {

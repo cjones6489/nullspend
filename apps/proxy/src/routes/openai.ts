@@ -127,6 +127,7 @@ export async function handleChatCompletions(
       tags: { ...ctx.tags, ...rateLimitTags, ...metadataTags },
       budgetStatus,
       estimatedCostMicrodollars: estimate,
+      orgId: ctx.auth.orgId,
     };
 
     if (!upstreamResponse.ok) {

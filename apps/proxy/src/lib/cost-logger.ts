@@ -36,14 +36,14 @@ export async function logCostEvent(
     const sql = getSql(connectionString);
     await sql`
       INSERT INTO cost_events (
-        request_id, api_key_id, user_id, provider, model,
+        request_id, api_key_id, user_id, org_id, provider, model,
         input_tokens, output_tokens, cached_input_tokens, reasoning_tokens,
         cost_microdollars, duration_ms, action_id, event_type,
         tool_name, tool_server, tool_calls_requested, tool_definition_tokens,
         upstream_duration_ms, session_id, trace_id, source, cost_breakdown, tags,
         budget_status, stop_reason, estimated_cost_microdollars
       ) VALUES (
-        ${event.requestId}, ${event.apiKeyId ?? null}, ${event.userId ?? null},
+        ${event.requestId}, ${event.apiKeyId ?? null}, ${event.userId ?? null}, ${event.orgId ?? null},
         ${event.provider}, ${event.model},
         ${event.inputTokens}, ${event.outputTokens},
         ${event.cachedInputTokens ?? 0}, ${event.reasoningTokens ?? 0},
@@ -110,6 +110,7 @@ export async function logCostEventsBatch(
           request_id: e.requestId,
           api_key_id: e.apiKeyId ?? null,
           user_id: e.userId ?? null,
+          org_id: e.orgId ?? null,
           provider: e.provider,
           model: e.model,
           input_tokens: e.inputTokens,
