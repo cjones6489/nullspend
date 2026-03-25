@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { useSession } from "@/lib/queries/session";
 import { useOrgs, useCreateOrg, useSwitchOrg } from "@/lib/queries/orgs";
+import { fromExternalIdOfType } from "@/lib/ids/prefixed-id";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +54,7 @@ export function OrgSwitcher() {
 
   function handleSwitch(orgId: string) {
     // Strip prefix — the raw UUID from orgsData.id is already prefixed by orgRecordSchema
-    const rawId = orgId.startsWith("ns_org_") ? orgId.slice(7) : orgId;
+    const rawId = fromExternalIdOfType("org", orgId);
     switchOrg.mutate(rawId, {
       onSuccess: () => {
         router.refresh();

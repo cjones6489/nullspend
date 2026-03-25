@@ -19,7 +19,7 @@ interface MemberRecord {
 interface InvitationRecord {
   id: string;
   email: string;
-  role: string;
+  role: OrgRole;
   status: string;
   invitedBy: string;
   tokenPrefix: string;

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { resolveSessionContext, setActiveOrgCookie } from "@/lib/auth/session";
 import { assertOrgMember } from "@/lib/auth/org-authorization";
-import { handleRouteError, readJsonBody } from "@/lib/utils/http";
+import { readJsonBody } from "@/lib/utils/http";
 import { withRequestContext } from "@/lib/observability";
 import type { OrgRole } from "@/lib/validations/orgs";
 

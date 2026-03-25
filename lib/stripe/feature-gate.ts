@@ -60,6 +60,3 @@ export function assertAmountBelowCap(
     );
   }
 }
-
-// Re-export for consumers that import from this module
-export { SpendCapExceededError } from "@/lib/utils/http";

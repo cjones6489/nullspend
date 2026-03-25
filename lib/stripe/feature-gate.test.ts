@@ -4,10 +4,9 @@ import {
   resolveUserTier,
   assertCountBelowLimit,
   assertAmountBelowCap,
-  SpendCapExceededError,
   type OrgTierInfo,
 } from "@/lib/stripe/feature-gate";
-import { LimitExceededError } from "@/lib/utils/http";
+import { LimitExceededError, SpendCapExceededError } from "@/lib/utils/http";
 
 vi.mock("@/lib/stripe/subscription", () => ({
   getSubscriptionByUserId: vi.fn(),
