@@ -79,6 +79,7 @@ describe("TIERS", () => {
     expect(TIERS.free.retentionDays).toBe(30);
     expect(TIERS.free.maxApiKeys).toBe(10);
     expect(TIERS.free.maxWebhookEndpoints).toBe(2);
+    expect(TIERS.free.maxTeamMembers).toBe(3);
   });
 
   it("has unlimited budgets for paid tiers", () => {

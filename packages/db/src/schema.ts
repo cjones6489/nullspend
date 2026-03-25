@@ -296,7 +296,7 @@ export const orgMemberships = pgTable("org_memberships", {
   id: uuid("id").defaultRandom().primaryKey(),
   orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull(),
-  role: text("role").$type<"owner" | "admin" | "member">().notNull().default("member"),
+  role: text("role").$type<"owner" | "admin" | "member" | "viewer">().notNull().default("member"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -311,7 +311,7 @@ export const orgInvitations = pgTable("org_invitations", {
   id: uuid("id").defaultRandom().primaryKey(),
   orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
-  role: text("role").$type<"owner" | "admin" | "member">().notNull().default("member"),
+  role: text("role").$type<"owner" | "admin" | "member" | "viewer">().notNull().default("member"),
   invitedBy: text("invited_by").notNull(),
   tokenHash: text("token_hash").notNull().unique(),
   tokenPrefix: text("token_prefix").notNull(),

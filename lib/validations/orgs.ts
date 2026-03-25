@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
 
-export const ORG_ROLES = ["owner", "admin", "member"] as const;
+export const ORG_ROLES = ["owner", "admin", "member", "viewer"] as const;
 export type OrgRole = (typeof ORG_ROLES)[number];
 
 const slugSchema = z
@@ -34,15 +34,18 @@ export const updateOrgSchema = z.object({
   slug: slugSchema.optional(),
 });
 
-export const ASSIGNABLE_ROLES = ["admin", "member"] as const;
+export const ASSIGNABLE_ROLES = ["admin", "member", "viewer"] as const;
+
+/** Roles that count toward the maxTeamMembers limit. Viewers are free seats. */
+export const SEAT_COUNTED_ROLES: readonly OrgRole[] = ["owner", "admin", "member"];
 
 export const inviteMemberSchema = z.object({
   email: z.string().email("A valid email is required."),
-  role: z.enum(ASSIGNABLE_ROLES, { message: "Role must be admin or member. Owner must be transferred explicitly." }),
+  role: z.enum(ASSIGNABLE_ROLES, { message: "Role must be admin, member, or viewer. Owner must be transferred explicitly." }),
 });
 
 export const changeRoleSchema = z.object({
-  role: z.enum(ASSIGNABLE_ROLES, { message: "Role must be admin or member. Owner must be transferred explicitly." }),
+  role: z.enum(ASSIGNABLE_ROLES, { message: "Role must be admin, member, or viewer. Owner must be transferred explicitly." }),
 });
 
 export const orgIdParamsSchema = z.object({
