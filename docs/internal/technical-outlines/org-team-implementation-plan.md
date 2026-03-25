@@ -310,47 +310,69 @@ Items moved to Phase 3:
 
 ### Increment 3: Dashboard Query Migration (~2-3 days)
 
-**Mechanical but wide-reaching — 22 route files.**
+**Mechanical but wide-reaching — 22 route files. Backfill FIRST, then switch queries.**
 
-- [ ] Backfill existing rows: migration to set `org_id` from personal org for all existing data
+**Step 1: Backfill existing rows (do first, before any query changes)**
+- [ ] Write backfill migration SQL:
+  - For each distinct `user_id` that doesn't have a personal org: create one (INSERT into organizations + org_memberships)
+  - UPDATE `api_keys` SET `org_id` = personal org id WHERE `org_id IS NULL`
+  - UPDATE `budgets` SET `org_id` = personal org id WHERE `org_id IS NULL`
+  - UPDATE `cost_events` SET `org_id` = personal org id WHERE `org_id IS NULL`
+  - UPDATE `webhook_endpoints` SET `org_id` = personal org id WHERE `org_id IS NULL`
+  - UPDATE `tool_costs` SET `org_id` = personal org id WHERE `org_id IS NULL`
+  - UPDATE `actions` SET `org_id` = personal org id WHERE `org_id IS NULL`
+  - UPDATE `slack_configs` SET `org_id` = personal org id WHERE `org_id IS NULL`
+  - UPDATE `subscriptions` SET `org_id` = personal org id WHERE `org_id IS NULL`
+- [ ] Verify: `SELECT COUNT(*) FROM cost_events WHERE org_id IS NULL` returns 0 (repeat for all tables)
+
+**Step 2: Switch aggregation queries**
 - [ ] `lib/cost-events/aggregate-cost-events.ts`: `baseConditions` uses `eq(costEvents.orgId, orgId)` (8 functions)
-- [ ] Migrate dashboard routes batch by batch:
-  - Batch 1 (high-traffic): `budgets/route.ts`, `keys/route.ts`, `cost-events/route.ts`, `webhooks/route.ts` — GET handlers switch from `resolveSessionUserId` to `resolveSessionContext`, queries by `orgId`
-  - Batch 2 (analytics): `cost-events/summary/route.ts`, `activity`, `analytics` pages
-  - Batch 3 (actions): `actions/route.ts` and sub-routes
-  - Batch 4 (settings): `tool-costs/route.ts`, `slack/config/route.ts`, `velocity-status/route.ts`
-  - Batch 5 (billing): `stripe/checkout/route.ts`, `stripe/portal/route.ts`, `stripe/subscription/route.ts`
-- [ ] Update remaining routes that insert without `orgId` (tool-costs, slack-config, actions)
-- [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body
-- [ ] Update dashboard tests
+  - `getDailySpend`, `getModelBreakdown`, `getProviderBreakdown`, `getKeyBreakdown`, `getSourceBreakdown`, `getToolBreakdown`, `getCostBreakdownTotals`, `getTraceBreakdown`, `getTotals`
 
-### Increment 4: Feature Gating + NOT NULL (~1 day)
+**Step 3: Migrate dashboard routes (batched by domain)**
+- [ ] Batch 1 (resources): `budgets/route.ts`, `keys/route.ts`, `cost-events/route.ts`, `webhooks/route.ts`
+  - GET handlers: `resolveSessionUserId` → `resolveSessionContext`, queries by `orgId`
+  - POST handlers already use `resolveSessionContext` from Phase 1
+- [ ] Batch 2 (analytics): `cost-events/summary/route.ts`, `cost-events/[id]/route.ts`
+- [ ] Batch 3 (actions): `actions/route.ts`, `actions/[id]/route.ts` and sub-routes
+  - Note: `ownerUserId` stays as `userId` (action creator attribution)
+  - Org scoping: add `WHERE org_id = orgId` alongside existing `ownerUserId` filters
+- [ ] Batch 4 (settings): `tool-costs/route.ts`, `tool-costs/[id]/route.ts`, `slack/config/route.ts`, `slack/test/route.ts`, `velocity-status/route.ts`
+  - Also add `orgId` to INSERT values for tool-costs and slack-config
+- [ ] Batch 5 (billing): `stripe/checkout/route.ts`, `stripe/portal/route.ts`, `stripe/subscription/route.ts`, `stripe/subscription/sync/route.ts`
+  - **Keep `userId` for subscription queries** — billing stays per-user until Phase 4
+  - Switch only to `resolveSessionContext` for the auth call (gets both userId and orgId)
 
-- [ ] Add `FEATURE_TIERS` map to `lib/stripe/tiers.ts`:
-  ```typescript
-  export const FEATURE_TIERS = {
-    team_members: "enterprise",
-    sso_saml: "enterprise",
-    custom_roles: "enterprise",
-    audit_log: "enterprise",
-  } as const;
-  ```
-  (Note: all enforcement features are free on all tiers per pricing strategy. Only Enterprise-specific org features are gated.)
-- [ ] Build `<FeatureGate>` component (banner/card/hidden modes)
-- [ ] Build `<UpgradeCard>` component (reuse existing PricingCard patterns from billing page)
-- [ ] Add upgrade CTAs where relevant (Members page → Enterprise, SSO → Enterprise)
+**Step 4: Update remaining infrastructure**
+- [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body (read from `resolveSessionContext`)
+- [ ] Update dashboard tests for routes that changed
+
+### ~~Increment 4: Feature Gating~~ — MOVED TO PHASE 3
+
+**Decision (Phase 2 arch review):** No features to gate until team orgs exist. `FEATURE_TIERS` map, `<FeatureGate>` component, and `<UpgradeCard>` component deferred to Phase 3 where they wrap actual features (Members page, org creation, invitations). Building gate UI for features that don't exist is premature abstraction.
+
+Items moved to Phase 3:
+- `FEATURE_TIERS` map in `lib/stripe/tiers.ts`
+- `<FeatureGate>` component (banner/card/hidden modes)
+- `<UpgradeCard>` component
+- Upgrade CTAs on gated pages
+
+### Increment 4: Make `org_id` NOT NULL + Indexes (~30 min)
+
 - [ ] Verify all existing rows have `org_id` populated (SQL count check per table)
 - [ ] Migration: `ALTER TABLE ... ALTER COLUMN org_id SET NOT NULL` on all 8 tables
 - [ ] Add indexes: `CREATE INDEX ... ON ... (org_id, ...)` to match query patterns
+- [ ] Verify typecheck and all tests pass
 
 ### Phase 2 Review Gate
 
 Before proceeding to Phase 3, verify:
-- [ ] Every proxy request flows `orgId` through auth → context → cost event → budget check
-- [ ] Every dashboard query scopes by `org_id`, not `user_id`
-- [ ] Budget enforcement works (run smoke tests against live worker)
-- [ ] `org_id` is NOT NULL on all tables
-- [ ] Feature gating shows Enterprise CTA on gated features
+- [ ] Proxy auth returns `orgId` on every request
+- [ ] Proxy cost events include `org_id`
+- [ ] Every dashboard query scopes by `org_id` (except billing — stays `userId` until Phase 4)
+- [ ] Budget enforcement still works (DO keying unchanged — uses `userId`)
+- [ ] `org_id` is NOT NULL on all 8 tables
+- [ ] Zero rows with NULL `org_id` in any table
 - [ ] All tests pass (929+ root, 1208+ proxy, typecheck clean)
 - [ ] **Re-read Phase 3 plan** — do assumptions still hold?
 
@@ -519,17 +541,19 @@ Before proceeding to Phase 4, verify:
 | **Phase 1 total** | **~2 hours** | Phase 0 |
 | Increment 1: Proxy auth orgId | ~1 hour | Phase 1 |
 | Increment 2: Proxy cost-logger | ~30 min | Increment 1 |
-| ~~Increment 3: Proxy DO keying + cache~~ | ~~moved~~ | Moved to Phase 3 |
+| ~~Proxy DO keying + cache~~ | ~~moved~~ | Moved to Phase 3 |
 | Increment 3: Dashboard query migration | ~2-3 days | Phase 1, Increment 1 |
-| Increment 4: Feature gating + NOT NULL | ~1 day | Increment 3 |
-| **Phase 2 total** | **~3-4 days** | Phase 1 |
+| ~~Feature gating~~ | ~~moved~~ | Moved to Phase 3 |
+| Increment 4: org_id NOT NULL + indexes | ~30 min | Increment 3 |
+| **Phase 2 total** | **~3 days** | Phase 1 |
 | 3a: Proxy DO keying for team orgs | ~2-3 hours | Phase 2 |
+| 3a.5: Feature gating (FeatureGate, UpgradeCard, FEATURE_TIERS) | ~1 day | Phase 2 |
 | 3b: Org CRUD API | ~1 day | Phase 2 |
 | 3c: Invitation backend | ~1 day | Phase 3b |
 | 3d: Member management UI | ~1-2 days | Phase 3b, 3c |
 | 3e: Invitation acceptance page | ~1 day | Phase 3c |
 | 3f: Create org + multi-org switcher | ~1 day | Phase 3b |
-| **Phase 3 total** | **~6-8 days** | Phase 2 |
+| **Phase 3 total** | **~7-9 days** | Phase 2 |
 | 4a: Permission middleware | ~1 day | Phase 3 |
 | 4b: Frontend role enforcement | ~1 day | Phase 4a |
 | 4c: Billing migration | ~2-3 days | Phase 4a |
@@ -548,4 +572,4 @@ Before proceeding to Phase 4, verify:
 | 2026-03-24 | Phase 0 completed — all 4 sub-phases shipped + pricing tier restructure (Free/Pro/Enterprise) |
 | 2026-03-24 | Phase 1 completed — 3 increments shipped, audited 3 times, all findings resolved |
 | 2026-03-24 | Phase 2 arch review: broken into 5 increments. Verified 22 dashboard routes, 16 proxy test files, 6 DO call sites need updating. Feature gating scoped to Enterprise-only features per pricing strategy. |
-| 2026-03-24 | Phase 2 arch review (cont): DO keying change moved to Phase 3 — personal orgs keep idFromName(userId), team orgs get idFromName(orgId) when created. Phase 2 reduced from ~4-6 days to ~3-4 days. Phase 3 grows by ~2-3 hours. |
+| 2026-03-24 | Phase 2 arch review (cont): DO keying moved to Phase 3 (personal orgs keep userId DOs). Feature gating moved to Phase 3 (no features to gate yet). Phase 2 reduced to ~3 days (4 increments). Backfill-first strategy for dashboard migration. Billing routes keep userId until Phase 4. |
