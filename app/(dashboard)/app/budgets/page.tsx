@@ -388,84 +388,86 @@ function BudgetRow({
           )}
         </div>
       </TableCell>
-      <TableCell>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            aria-label={`Actions for budget "${entityName}"`}
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEditClick}>
-              <Pencil className="mr-2 h-3.5 w-3.5" />
-              Edit Budget
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setResetOpen(true)}>
-              <RotateCcw className="mr-2 h-3.5 w-3.5" />
-              Reset Spend
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={() => setDeleteOpen(true)}
+      {canManage && (
+        <TableCell>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label={`Actions for budget "${entityName}"`}
             >
-              <Trash2 className="mr-2 h-3.5 w-3.5" />
-              Delete Budget
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-          <DialogContent>
-            <DialogTitle>Reset budget spend?</DialogTitle>
-            <DialogDescription>
-              This will reset the current spend for &ldquo;{entityName}&rdquo; to
-              $0.00. This cannot be undone.
-            </DialogDescription>
-            <DialogFooter>
-              <DialogClose
-                className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
-                disabled={resetBudget.isPending}
-              >
-                Cancel
-              </DialogClose>
-              <Button
-                size="sm"
-                onClick={handleReset}
-                disabled={resetBudget.isPending}
-              >
-                {resetBudget.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Resetting...</> : "Reset Spend"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <DialogContent>
-            <DialogTitle>Delete budget?</DialogTitle>
-            <DialogDescription>
-              This will permanently remove the budget for &ldquo;{entityName}&rdquo;.
-              Spending will no longer be tracked against a limit.
-            </DialogDescription>
-            <DialogFooter>
-              <DialogClose
-                className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
-                disabled={deleteBudget.isPending}
-              >
-                Cancel
-              </DialogClose>
-              <Button
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEditClick}>
+                <Pencil className="mr-2 h-3.5 w-3.5" />
+                Edit Budget
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setResetOpen(true)}>
+                <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                Reset Spend
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 variant="destructive"
-                size="sm"
-                onClick={handleDelete}
-                disabled={deleteBudget.isPending}
+                onClick={() => setDeleteOpen(true)}
               >
-                {deleteBudget.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Deleting...</> : "Delete Budget"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </TableCell>
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                Delete Budget
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+            <DialogContent>
+              <DialogTitle>Reset budget spend?</DialogTitle>
+              <DialogDescription>
+                This will reset the current spend for &ldquo;{entityName}&rdquo; to
+                $0.00. This cannot be undone.
+              </DialogDescription>
+              <DialogFooter>
+                <DialogClose
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
+                  disabled={resetBudget.isPending}
+                >
+                  Cancel
+                </DialogClose>
+                <Button
+                  size="sm"
+                  onClick={handleReset}
+                  disabled={resetBudget.isPending}
+                >
+                  {resetBudget.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Resetting...</> : "Reset Spend"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <DialogContent>
+              <DialogTitle>Delete budget?</DialogTitle>
+              <DialogDescription>
+                This will permanently remove the budget for &ldquo;{entityName}&rdquo;.
+                Spending will no longer be tracked against a limit.
+              </DialogDescription>
+              <DialogFooter>
+                <DialogClose
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
+                  disabled={deleteBudget.isPending}
+                >
+                  Cancel
+                </DialogClose>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={deleteBudget.isPending}
+                >
+                  {deleteBudget.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Deleting...</> : "Delete Budget"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </TableCell>
+      )}
     </TableRow>
   );
 }
