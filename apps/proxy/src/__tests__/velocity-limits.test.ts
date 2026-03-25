@@ -197,7 +197,7 @@ function makeCtx(
   return {
     body,
     bodyText: JSON.stringify(body),
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
@@ -513,7 +513,7 @@ describe("OpenAI route — velocity denial", () => {
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(defaultBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
       webhookDispatcher: mockDispatcher as any,
     });
 
@@ -621,7 +621,7 @@ describe("Anthropic route — velocity denial", () => {
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(anthropicBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
       webhookDispatcher: mockDispatcher as any,
     });
 
@@ -1140,7 +1140,7 @@ describe("Velocity limits — edge cases", () => {
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(defaultBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
       webhookDispatcher: mockDispatcher as any,
     });
 
@@ -1176,7 +1176,7 @@ describe("Velocity limits — edge cases", () => {
 
     const mockDispatcher = { dispatch: vi.fn().mockResolvedValue(undefined) };
     const ctx = makeCtx(defaultBody, {
-      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
       webhookDispatcher: mockDispatcher as any,
     });
 

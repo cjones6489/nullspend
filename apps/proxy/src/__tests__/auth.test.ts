@@ -19,6 +19,7 @@ describe("authenticateRequest", () => {
       keyId: "key-1",
       hasWebhooks: false,
       hasBudgets: false,
+      orgId: null,
       apiVersion: "2026-04-01",
       defaultTags: { project: "alpha" },
     });
@@ -33,6 +34,7 @@ describe("authenticateRequest", () => {
       keyId: "key-1",
       hasWebhooks: false,
       hasBudgets: false,
+      orgId: null,
       apiVersion: "2026-04-01",
       defaultTags: { project: "alpha" },
     });

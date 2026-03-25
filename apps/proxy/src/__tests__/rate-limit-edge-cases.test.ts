@@ -90,6 +90,7 @@ describe("per-key rate limiting edge cases", () => {
       keyId: "key-1",
       hasWebhooks: false,
       hasBudgets: false,
+      orgId: null,
       apiVersion: "2026-04-01",
       defaultTags: {},
     });

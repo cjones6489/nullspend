@@ -97,6 +97,7 @@ describe("Worker entry point routing", () => {
       keyId: "key-1",
       hasWebhooks: false,
       hasBudgets: false,
+      orgId: null,
       apiVersion: "2026-04-01", defaultTags: {},
     });
   });
@@ -365,6 +366,7 @@ describe("Worker entry point routing", () => {
         keyId: "key-1",
         hasWebhooks: false,
         hasBudgets: false,
+        orgId: null,
         apiVersion: "2026-04-01",
         defaultTags: { project: "openclaw" },
       });
@@ -420,6 +422,7 @@ describe("Worker entry point routing", () => {
         keyId: "key-1",
         hasWebhooks: false,
         hasBudgets: false,
+        orgId: null,
         apiVersion: "2026-04-01",
         defaultTags: { project: "openclaw", team: "backend" },
       });

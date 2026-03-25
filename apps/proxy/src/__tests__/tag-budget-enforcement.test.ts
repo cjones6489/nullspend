@@ -195,7 +195,7 @@ function makeCtx(
   return {
     body,
     bodyText: JSON.stringify(body),
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
     connectionString: "postgresql://test",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
@@ -294,7 +294,7 @@ describe("Tag Budget Enforcement", () => {
       const env = makeEnv();
       const ctx = makeCtx(defaultBody, {
         tags: { project: "openclaw" },
-        auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+        auth: { userId: "user-1", keyId: "key-1", hasWebhooks: true, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
         webhookDispatcher: mockDispatcher as any,
       });
       await handleChatCompletions(makeRequest(defaultBody), env, ctx);

@@ -33,7 +33,7 @@ function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
   return {
     body: {},
     bodyText: "{}",
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
     connectionString: "postgres://test",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
@@ -144,7 +144,7 @@ describe("checkBudget — DO-first mode", () => {
   });
 
   it("skipped when no userId", async () => {
-    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasWebhooks: false, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} } });
+    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } });
 
     const result = await checkBudget(makeEnv(), ctx, 5_000_000);
 
@@ -234,7 +234,7 @@ describe("checkBudget — DO-first mode", () => {
       hasBudgets: false,
     });
 
-    const ctx = makeCtx({ auth: { userId: "user-1", keyId: null, hasWebhooks: false, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} } });
+    const ctx = makeCtx({ auth: { userId: "user-1", keyId: null, hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } });
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
@@ -440,7 +440,7 @@ describe("checkBudget — hasBudgets auth flag", () => {
   });
 
   it("skips DO RPC when auth.hasBudgets is false", async () => {
-    const ctx = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} } });
+    const ctx = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } });
     const result = await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(result.status).toBe("skipped");
@@ -457,7 +457,7 @@ describe("checkBudget — hasBudgets auth flag", () => {
       checkedEntities: [checkedEntity],
     });
 
-    const ctx = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, apiVersion: "2026-04-01", defaultTags: {} } });
+    const ctx = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } });
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(mockDoBudgetCheck).toHaveBeenCalled();
@@ -466,7 +466,7 @@ describe("checkBudget — hasBudgets auth flag", () => {
   it("emits budget_check_skipped metric when hasBudgets is false", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const ctx = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: false, apiVersion: "2026-04-01", defaultTags: {} } });
+    const ctx = makeCtx({ auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } });
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     const metricCall = logSpy.mock.calls.find(([msg]) => {

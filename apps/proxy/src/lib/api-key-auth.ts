@@ -3,6 +3,7 @@ import { toHex } from "./hex.js";
 
 export interface ApiKeyIdentity {
   userId: string;
+  orgId: string | null;
   keyId: string;
   hasWebhooks: boolean;
   hasBudgets: boolean;
@@ -70,7 +71,7 @@ async function lookupKeyInDb(
   const sql = getSql(connectionString);
 
   const rows = await sql`
-    SELECT k.id, k.user_id, k.api_version, k.default_tags,
+    SELECT k.id, k.user_id, k.org_id, k.api_version, k.default_tags,
       EXISTS(
         SELECT 1 FROM webhook_endpoints w
         WHERE w.user_id = k.user_id AND w.enabled = true
@@ -90,6 +91,7 @@ async function lookupKeyInDb(
   const row = rows[0];
   return {
     userId: row.user_id as string,
+    orgId: (row.org_id as string) ?? null,
     keyId: row.id as string,
     hasWebhooks: row.has_webhooks === true,
     hasBudgets: row.has_budgets === true,
