@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionContext } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { LimitExceededError } from "@/lib/utils/http";
 import { GET, POST } from "./route";
@@ -94,7 +93,7 @@ vi.mock("@/lib/utils/http", async (importOriginal) => {
   };
 });
 
-import { readJsonBody, readRouteParams } from "@/lib/utils/http";
+import { readJsonBody } from "@/lib/utils/http";
 
 function makeContext(orgId: string) {
   return { params: Promise.resolve({ orgId }) };

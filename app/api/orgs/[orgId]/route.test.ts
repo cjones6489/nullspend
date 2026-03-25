@@ -62,7 +62,7 @@ vi.mock("@/lib/utils/http", async (importOriginal) => {
   };
 });
 
-import { readJsonBody, readRouteParams } from "@/lib/utils/http";
+import { readJsonBody } from "@/lib/utils/http";
 
 function makeContext(orgId: string) {
   return { params: Promise.resolve({ orgId }) };

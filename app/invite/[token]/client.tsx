@@ -102,7 +102,7 @@ export function InviteAcceptClient({
             <CardHeader>
               <CardTitle className="text-base">Accept invitation</CardTitle>
               <CardDescription>
-                You've been invited to join an organization on NullSpend.
+                You&apos;ve been invited to join an organization on NullSpend.
               </CardDescription>
             </CardHeader>
             <CardFooter>

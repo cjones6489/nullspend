@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionContext, setActiveOrgCookie } from "@/lib/auth/session";
+import { setActiveOrgCookie } from "@/lib/auth/session";
 import { hashInviteToken } from "@/lib/auth/invitation";
 import { getDb } from "@/lib/db/client";
 import { POST } from "./route";

@@ -123,11 +123,9 @@ describe("POST /api/orgs", () => {
   function setupTransactionDb(createdOrg: Record<string, unknown>) {
     const mockInsertReturning = vi.fn().mockResolvedValue([createdOrg]);
     const mockInsertValues = vi.fn(() => ({ returning: mockInsertReturning }));
-    const mockInsert = vi.fn(() => ({ values: mockInsertValues }));
 
     // The second insert (orgMemberships) has no returning()
     const mockMembershipValues = vi.fn().mockResolvedValue(undefined);
-    const mockMembershipInsert = vi.fn(() => ({ values: mockMembershipValues }));
 
     // First call = organizations insert (has .returning()), second = memberships insert
     let insertCallCount = 0;

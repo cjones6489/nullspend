@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { resolveSessionContext, setActiveOrgCookie } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { orgInvitations, orgMemberships } from "@nullspend/db";
-import { handleRouteError, readJsonBody } from "@/lib/utils/http";
+import { readJsonBody } from "@/lib/utils/http";
 import { acceptInviteSchema } from "@/lib/validations/orgs";
 import { hashInviteToken } from "@/lib/auth/invitation";
 import { withRequestContext } from "@/lib/observability";
