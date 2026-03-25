@@ -12,15 +12,19 @@ export const GET = withRequestContext(async (request: Request) => {
   const authResult = await authenticateApiKey(request);
   if (authResult instanceof Response) return authResult;
 
-  const { userId, keyId, rateLimit } = authResult;
+  const { userId, orgId, keyId, rateLimit } = authResult;
   const db = getDb();
 
-  const condition = keyId
+  const entityCondition = keyId
     ? or(
         and(eq(budgets.entityType, "user"), eq(budgets.entityId, userId)),
         and(eq(budgets.entityType, "api_key"), eq(budgets.entityId, keyId)),
       )
     : and(eq(budgets.entityType, "user"), eq(budgets.entityId, userId));
+
+  const condition = orgId
+    ? and(eq(budgets.orgId, orgId), entityCondition)
+    : entityCondition;
 
   const rows = await db.select().from(budgets).where(condition);
 

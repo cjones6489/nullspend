@@ -1,24 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
   getSubscriptionByUserId: vi.fn(),
 }));
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 import { GET } from "./route";
 
-const mockedResolveSession = vi.mocked(resolveSessionUserId);
+const mockedResolveSession = vi.mocked(resolveSessionContext);
 const mockedGetSubscription = vi.mocked(getSubscriptionByUserId);
 
 describe("GET /api/stripe/subscription", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedResolveSession.mockResolvedValue("user-123");
+    mockedResolveSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
   });
 
   afterEach(() => {

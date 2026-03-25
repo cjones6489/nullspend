@@ -13,7 +13,7 @@ vi.mock("@/lib/auth/with-api-key-auth", () => ({
 }));
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(() => "user-1"),
+  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
 vi.mock("@/lib/cost-events/ingest", () => ({
@@ -80,6 +80,7 @@ describe("POST /api/cost-events", () => {
   it("returns 201 with id for valid single event", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -102,6 +103,7 @@ describe("POST /api/cost-events", () => {
   it("returns 200 for deduplicated event", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -129,6 +131,7 @@ describe("POST /api/cost-events", () => {
   it("passes Idempotency-Key header to insertCostEvent", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -142,7 +145,7 @@ describe("POST /api/cost-events", () => {
 
     expect(mockedInsertCostEvent).toHaveBeenCalledWith(
       VALID_EVENT,
-      { userId: "user-1", apiKeyId: "key-1" },
+      { userId: "user-1", orgId: "org-test-1", apiKeyId: "key-1" },
       "ns_abc",
     );
   });
@@ -150,6 +153,7 @@ describe("POST /api/cost-events", () => {
   it("dispatches webhook on new event", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -163,7 +167,7 @@ describe("POST /api/cost-events", () => {
 
     // Allow fire-and-forget promise to resolve
     await new Promise((r) => setTimeout(r, 10));
-    expect(mockedFetchWebhookEndpoints).toHaveBeenCalledWith("user-1");
+    expect(mockedFetchWebhookEndpoints).toHaveBeenCalledWith("org-test-1");
     expect(mockedDispatchCostEventToEndpoints).toHaveBeenCalledWith(
       expect.any(Array),
       expect.objectContaining({ source: "api" }),
@@ -173,6 +177,7 @@ describe("POST /api/cost-events", () => {
   it("does not dispatch webhook on deduplicated event", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -190,6 +195,7 @@ describe("POST /api/cost-events", () => {
   it("wraps handler with idempotency middleware", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -234,7 +240,7 @@ describe("GET /api/cost-events", () => {
 
     expect(mockedListCostEvents).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: "user-1",
+        orgId: "org-test-1",
       }),
     );
     const callArgs = mockedListCostEvents.mock.calls[0][0];
@@ -251,7 +257,7 @@ describe("GET /api/cost-events", () => {
 
     expect(mockedListCostEvents).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: "user-1",
+        orgId: "org-test-1",
         requestId: "req-123",
       }),
     );

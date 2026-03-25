@@ -66,6 +66,7 @@ describe("createAction", () => {
         payload: { url: "https://example.com" },
       },
       "owner-1",
+      "org-test-1",
     );
 
     expect(result.id).toBe("action-1");
@@ -90,6 +91,7 @@ describe("createAction", () => {
         expiresInSeconds: 0,
       },
       "owner-1",
+      "org-test-1",
     );
 
     expect(result.expiresAt).toBeNull();
@@ -112,6 +114,7 @@ describe("createAction", () => {
         metadata: { environment: "production", sourceFramework: "langchain" },
       },
       "owner-1",
+      "org-test-1",
     );
 
     expect(result.id).toBe("action-1");

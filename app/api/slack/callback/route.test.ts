@@ -35,6 +35,7 @@ const ACTION_ID = "550e8400-e29b-41d4-a716-446655440000";
 const dbAction = {
   id: ACTION_ID,
   ownerUserId: "user-123",
+  orgId: "org-test-1",
   actionType: "send_email",
   agentId: "demo-agent",
 };
@@ -212,7 +213,7 @@ describe("POST /api/slack/callback", () => {
     expect(mockedApproveAction).toHaveBeenCalledWith(
       ACTION_ID,
       { approvedBy: "jtorrance" },
-      "user-123",
+      "org-test-1",
     );
     expect(json.replace_original).toBe(true);
     expect(json.text).toContain("approved");
@@ -231,7 +232,7 @@ describe("POST /api/slack/callback", () => {
     expect(mockedApproveAction).toHaveBeenCalledWith(
       ACTION_ID,
       { approvedBy: "Jack Torrance" },
-      "user-123",
+      "org-test-1",
     );
     const json = await res.json();
     expect(json.text).toContain("approved");
@@ -250,7 +251,7 @@ describe("POST /api/slack/callback", () => {
     expect(mockedApproveAction).toHaveBeenCalledWith(
       ACTION_ID,
       { approvedBy: "U1234" },
-      "user-123",
+      "org-test-1",
     );
   });
 
@@ -269,7 +270,7 @@ describe("POST /api/slack/callback", () => {
     expect(mockedRejectAction).toHaveBeenCalledWith(
       ACTION_ID,
       { rejectedBy: "jtorrance" },
-      "user-123",
+      "org-test-1",
     );
     expect(json.replace_original).toBe(true);
     expect(json.text).toContain("rejected");

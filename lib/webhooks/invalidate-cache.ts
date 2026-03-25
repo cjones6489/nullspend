@@ -11,7 +11,7 @@
  * add a proxy internal endpoint that calls invalidateWebhookEndpoints()
  * on the CACHE_KV binding.
  */
-export async function invalidateWebhookCacheForUser(_userId: string): Promise<void> {
+export async function invalidateWebhookCacheForUser(_orgId: string): Promise<void> {
   // No-op: KV TTL handles expiry (5 minutes).
   // TODO: Add active KV invalidation via proxy internal endpoint when needed.
 }

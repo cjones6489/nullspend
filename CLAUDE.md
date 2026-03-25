@@ -47,7 +47,9 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 - RLS is enabled on all tables but Drizzle bypasses it (direct connection) — RLS protects PostgREST only
 - `anon` role has zero privileges on application tables
 - API keys: SHA-256 hashed before storage, timing-safe comparison on lookup
-- Auth: session-based (`resolveSessionUserId`) for dashboard, API key (`assertApiKeyWithIdentity`) for agents
+- Auth: session-based (`resolveSessionContext`) for dashboard, API key (`authenticateApiKey`) for agents
+- Data isolation: all dashboard queries scope by `orgId` (from `resolveSessionContext` or `authenticateApiKey`). `userId` is only used for Stripe subscriptions, budget entity ownership verification, and audit logging.
+- Dual-auth routes use `assertApiKeyOrSession` which returns `{ userId, orgId }` — orgId is guaranteed non-null (null orgId returns 403)
 - Error responses: `{ error: { code: "machine_code", message: "Human readable text.", details: null } }` — consistent across dashboard and proxy
 - HTTP status semantics: 401 = identity unknown, 403 = identity known but unauthorized
 

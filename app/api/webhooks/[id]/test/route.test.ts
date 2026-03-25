@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 const mockSelectEndpoint = vi.fn();
@@ -23,7 +23,7 @@ vi.mock("@/lib/webhooks/signer", () => ({
   signPayload: vi.fn().mockReturnValue("t=1000,v1=abc123"),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 const VALID_UUID = "00000000-0000-4000-a000-000000000001";
 const VALID_ID = `ns_wh_${VALID_UUID}`;
@@ -41,7 +41,7 @@ describe("POST /api/webhooks/:id/test", () => {
   });
 
   it("sends a test webhook and returns success", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockSelectEndpoint.mockResolvedValue([
       {
         id: VALID_UUID,
@@ -87,7 +87,7 @@ describe("POST /api/webhooks/:id/test", () => {
   });
 
   it("returns 404 for non-owned endpoint", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockSelectEndpoint.mockResolvedValue([]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID + "/test", {
@@ -100,7 +100,7 @@ describe("POST /api/webhooks/:id/test", () => {
   });
 
   it("returns success=false when target URL is unreachable", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockSelectEndpoint.mockResolvedValue([
       {
         id: VALID_UUID,
@@ -125,7 +125,7 @@ describe("POST /api/webhooks/:id/test", () => {
   });
 
   it("returns success=false for non-2xx response", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockSelectEndpoint.mockResolvedValue([
       {
         id: VALID_UUID,

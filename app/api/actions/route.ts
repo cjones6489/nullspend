@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createAction } from "@/lib/actions/create-action";
 import { listActions } from "@/lib/actions/list-actions";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { withRequestContext } from "@/lib/observability";
 import { withIdempotency } from "@/lib/resilience/idempotency";
@@ -16,7 +16,7 @@ import {
 import { readJsonBody } from "@/lib/utils/http";
 
 export const GET = withRequestContext(async (request: Request) => {
-  const ownerUserId = await resolveSessionUserId();
+  const { orgId } = await resolveSessionContext();
   const url = new URL(request.url);
   const query = listActionsQuerySchema.parse({
     status: url.searchParams.get("status") ?? undefined,
@@ -24,7 +24,7 @@ export const GET = withRequestContext(async (request: Request) => {
     limit: url.searchParams.get("limit") ?? undefined,
     cursor: url.searchParams.get("cursor") ?? undefined,
   });
-  const result = await listActions({ ...query, ownerUserId });
+  const result = await listActions({ ...query, orgId });
 
   return NextResponse.json(listActionsResponseSchema.parse(result));
 });
@@ -36,11 +36,13 @@ export const POST = withRequestContext(async (request: Request) => {
     const ownerUserId = authResult.userId;
     const body = await readJsonBody(request);
     const input = createActionInputSchema.parse(body);
-    const action = await createAction(input, ownerUserId);
+    const action = await createAction(input, ownerUserId, authResult.orgId ?? null);
 
-    sendSlackNotification(action, ownerUserId).catch((err) => {
-      console.error("[NullSpend] Slack notification failed:", err);
-    });
+    if (authResult.orgId) {
+      sendSlackNotification(action, authResult.orgId).catch((err) => {
+        console.error("[NullSpend] Slack notification failed:", err);
+      });
+    }
 
     return applyRateLimitHeaders(
       NextResponse.json(

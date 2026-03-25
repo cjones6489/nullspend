@@ -17,6 +17,7 @@ function pickMetadataField(
 export async function createAction(
   input: CreateActionInput,
   ownerUserId: string,
+  orgId: string | null,
 ): Promise<RawActionRecord> {
   const db = getDb();
   const expiresAt = computeExpiresAt(input.expiresInSeconds);
@@ -25,6 +26,7 @@ export async function createAction(
     .insert(actions)
     .values({
       ownerUserId,
+      orgId,
       agentId: input.agentId,
       actionType: input.actionType,
       status: "pending",

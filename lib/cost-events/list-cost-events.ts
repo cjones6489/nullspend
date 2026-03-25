@@ -5,7 +5,7 @@ import { getDb } from "@/lib/db/client";
 import { apiKeys, costEvents, type CostEventSource } from "@nullspend/db";
 
 interface ListCostEventsOptions {
-  userId: string;
+  orgId: string;
   limit: number;
   cursor?: { createdAt: string; id: string };
   requestId?: string;
@@ -20,7 +20,7 @@ interface ListCostEventsOptions {
 export async function listCostEvents(options: ListCostEventsOptions) {
   const db = getDb();
   const conditions = [
-    eq(costEvents.userId, options.userId),
+    eq(costEvents.orgId, options.orgId),
   ];
 
   if (options.requestId) {

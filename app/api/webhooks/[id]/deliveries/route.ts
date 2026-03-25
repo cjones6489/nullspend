@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, desc } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { webhookEndpoints, webhookDeliveries } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
@@ -15,7 +15,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
 
@@ -28,7 +28,7 @@ export async function GET(
       .where(
         and(
           eq(webhookEndpoints.id, id),
-          eq(webhookEndpoints.userId, userId),
+          eq(webhookEndpoints.orgId, orgId),
         ),
       );
 

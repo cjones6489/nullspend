@@ -13,7 +13,7 @@ import type { ActionStatus } from "@/lib/utils/status";
 
 export async function resolveAction(
   actionId: string,
-  ownerUserId: string,
+  orgId: string,
   targetStatus: ActionStatus,
   setFields: { approvedBy: string } | { rejectedBy: string },
 ) {
@@ -27,7 +27,7 @@ export async function resolveAction(
         expiresAt: actions.expiresAt,
       })
       .from(actions)
-      .where(and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)))
+      .where(and(eq(actions.id, actionId), eq(actions.orgId, orgId)))
       .limit(1)
       .for("update");
 
@@ -42,7 +42,7 @@ export async function resolveAction(
         .where(
           and(
             eq(actions.id, actionId),
-            eq(actions.ownerUserId, ownerUserId),
+            eq(actions.orgId, orgId),
             eq(actions.status, "pending"),
           ),
         );
@@ -62,7 +62,7 @@ export async function resolveAction(
       .where(
         and(
           eq(actions.id, actionId),
-          eq(actions.ownerUserId, ownerUserId),
+          eq(actions.orgId, orgId),
           eq(actions.status, existingAction.status),
         ),
       )

@@ -26,13 +26,14 @@ export const POST = withRequestContext(async (request: Request) => {
 
     const result = await insertCostEventsBatch(events, {
       userId: authResult.userId,
+      orgId: authResult.orgId,
       apiKeyId: authResult.keyId,
     });
 
     // Fire-and-forget webhook dispatch for actually-inserted rows
-    if (result.inserted > 0) {
+    if (result.inserted > 0 && authResult.orgId) {
       const dispatchAll = async () => {
-        const endpoints = await fetchWebhookEndpoints(authResult.userId);
+        const endpoints = await fetchWebhookEndpoints(authResult.orgId!);
         if (endpoints.length === 0) return;
 
         for (const row of result.rows) {

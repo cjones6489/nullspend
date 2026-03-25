@@ -41,6 +41,7 @@ export const costEventBatchInputSchema = z.object({
 
 interface InsertContext {
   userId: string;
+  orgId: string | null;
   apiKeyId: string | null;
 }
 
@@ -62,6 +63,7 @@ function buildInsertValues(input: CostEventInput, requestId: string, ctx: Insert
     requestId,
     apiKeyId: ctx.apiKeyId,
     userId: ctx.userId,
+    orgId: ctx.orgId,
     provider: input.provider,
     model: input.model,
     inputTokens: input.inputTokens,

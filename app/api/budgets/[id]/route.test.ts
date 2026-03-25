@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { DELETE, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 vi.mock("@/lib/db/client", () => ({
@@ -17,7 +17,7 @@ vi.mock("@/lib/proxy-invalidate", () => ({
   invalidateProxyCache: vi.fn().mockResolvedValue(undefined),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 function makeContext(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -29,7 +29,7 @@ describe("DELETE /api/budgets/[id]", () => {
   });
 
   it("returns 400 for raw UUID (not prefixed)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/budgets/00000000-0000-4000-a000-000000000001", {
       method: "DELETE",
@@ -40,7 +40,7 @@ describe("DELETE /api/budgets/[id]", () => {
   });
 
   it("returns 400 for invalid prefixed ID", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/budgets/not-valid", {
       method: "DELETE",
@@ -51,7 +51,7 @@ describe("DELETE /api/budgets/[id]", () => {
   });
 
   it("returns 400 for wrong prefix type", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/budgets/ns_act_00000000-0000-4000-a000-000000000001", {
       method: "DELETE",
@@ -68,7 +68,7 @@ describe("POST /api/budgets/[id] (reset)", () => {
   });
 
   it("returns 400 for raw UUID (not prefixed)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/budgets/00000000-0000-4000-a000-000000000001", {
       method: "POST",
@@ -79,7 +79,7 @@ describe("POST /api/budgets/[id] (reset)", () => {
   });
 
   it("returns 400 for wrong prefix type", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/budgets/ns_key_00000000-0000-4000-a000-000000000001", {
       method: "POST",

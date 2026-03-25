@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phase 1 Complete, Phase 2 Ready
+**Status:** Phase 2 Increments 1-3 Complete, Increment 4 Ready
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -279,22 +279,18 @@ Before proceeding to Phase 2, verify:
 - Cost logger INSERT missing `org_id`
 - `ApiKeyIdentity` missing `orgId`
 
-### Increment 1: Proxy Auth — Add `orgId` (~1 hour)
+### Increment 1: Proxy Auth — Add `orgId` — COMPLETE (2026-03-24)
 
-- [ ] `apps/proxy/src/lib/api-key-auth.ts`:
-  - Add `orgId: string` to `ApiKeyIdentity`
-  - Add `k.org_id` to auth SQL SELECT
-  - Map `row.org_id as string` to result
-- [ ] `apps/proxy/src/lib/auth.ts`: add `orgId: string` to `AuthResult`, pass through
-- [ ] `apps/proxy/src/lib/context.ts`: `RequestContext` inherits from `AuthResult` (automatic)
-- [ ] Update 16 proxy test `makeCtx` helpers with `orgId`
-- [ ] Verify `pnpm proxy:test` and typecheck pass
+- [x] `apps/proxy/src/lib/api-key-auth.ts`: `orgId: string | null` in `ApiKeyIdentity`, `k.org_id` in auth SQL
+- [x] `apps/proxy/src/lib/auth.ts`: `orgId: string | null` in `AuthResult`, passed through
+- [x] Updated 16 proxy test `makeCtx` helpers
+- [x] `pnpm proxy:test` — 1210 tests passing
 
-### Increment 2: Proxy Cost-Logger (~30 min)
+### Increment 2: Proxy Cost-Logger — COMPLETE (2026-03-24)
 
-- [ ] `apps/proxy/src/lib/cost-logger.ts`: add `org_id` to single INSERT column list + VALUES
-- [ ] Batch INSERT: add `org_id: e.orgId ?? null` to column map
-- [ ] Verify cost events are written with `org_id`
+- [x] `apps/proxy/src/lib/cost-logger.ts`: `org_id` in single + batch INSERT
+- [x] `EnrichmentFields` includes `orgId: string | null`
+- [x] OpenAI, Anthropic, MCP routes all pass `orgId: ctx.auth.orgId` in enrichment
 
 ### ~~Increment 3: Proxy DO Keying + Cache~~ — MOVED TO PHASE 3
 
@@ -308,44 +304,34 @@ Items moved to Phase 3:
 - `webhook-cache.ts`: cache key by `orgId`
 - Proxy test updates for DO/webhook mocks
 
-### Increment 3: Dashboard Query Migration (~2-3 days)
+### Increment 3: Dashboard Query Migration — COMPLETE (2026-03-24)
 
-**Mechanical but wide-reaching — 22 route files. Backfill FIRST, then switch queries.**
+**Backfill:** 124 personal orgs created, all rows across 8 tables backfilled with `org_id`. 3 orphan actions (null `owner_user_id`) remain — handled in Increment 4 NOT NULL migration.
 
-**Step 1: Backfill existing rows (do first, before any query changes)**
-- [ ] Write backfill migration SQL:
-  - For each distinct `user_id` that doesn't have a personal org: create one (INSERT into organizations + org_memberships)
-  - UPDATE `api_keys` SET `org_id` = personal org id WHERE `org_id IS NULL`
-  - UPDATE `budgets` SET `org_id` = personal org id WHERE `org_id IS NULL`
-  - UPDATE `cost_events` SET `org_id` = personal org id WHERE `org_id IS NULL`
-  - UPDATE `webhook_endpoints` SET `org_id` = personal org id WHERE `org_id IS NULL`
-  - UPDATE `tool_costs` SET `org_id` = personal org id WHERE `org_id IS NULL`
-  - UPDATE `actions` SET `org_id` = personal org id WHERE `org_id IS NULL`
-  - UPDATE `slack_configs` SET `org_id` = personal org id WHERE `org_id IS NULL`
-  - UPDATE `subscriptions` SET `org_id` = personal org id WHERE `org_id IS NULL`
-- [ ] Verify: `SELECT COUNT(*) FROM cost_events WHERE org_id IS NULL` returns 0 (repeat for all tables)
+**Route migration (27 routes migrated):**
+- [x] All GET/POST/PATCH/DELETE handlers switched from `resolveSessionUserId` to `resolveSessionContext`
+- [x] All data-scoping queries switched from `eq(table.userId, userId)` to `eq(table.orgId, orgId)`
+- [x] Aggregation functions (9) use `orgId` parameter
+- [x] `listCostEvents`, `listActions`, `getAction`, `getCostEventsByActionId` — all use `orgId`
+- [x] `approveAction`, `rejectAction`, `resolveAction`, `expireAction`, `bulkExpireActions`, `markResult` — all use `orgId`
+- [x] `fetchWebhookEndpoints`, `dispatchWebhookEvent` — query by `orgId`
+- [x] `sendSlackNotification`, `sendSlackTestNotification` — query by `orgId`
+- [x] `assertApiKeyOrSession` returns `DualAuthResult { userId: string, orgId: string }` (non-nullable orgId; null returns 403)
+- [x] `ApiKeyIdentity` and `ApiKeyAuthContext` include `orgId: string | null`
+- [x] `insertCostEvent`/`insertCostEventsBatch` write `orgId` via `InsertContext`
+- [x] `createAction` accepts and writes `orgId`
+- [x] `tool-costs/discover` writes `orgId` on INSERT and updates it on conflict
+- [x] `slack/config` upsert updates `orgId` on conflict
+- [x] `budgets/status` filters by `orgId` when available
+- [x] Billing routes (Stripe) keep `userId` for subscription queries — per-user until Phase 4
+- [x] Budget entity ownership verification keeps `userId` (intentional — verifies user owns the API key)
 
-**Step 2: Switch aggregation queries**
-- [ ] `lib/cost-events/aggregate-cost-events.ts`: `baseConditions` uses `eq(costEvents.orgId, orgId)` (8 functions)
-  - `getDailySpend`, `getModelBreakdown`, `getProviderBreakdown`, `getKeyBreakdown`, `getSourceBreakdown`, `getToolBreakdown`, `getCostBreakdownTotals`, `getTraceBreakdown`, `getTotals`
+**Known Phase 3 items (not in scope):**
+- Proxy webhook cache keyed by `userId` (works for personal orgs)
+- DO keying by `userId` (works for personal orgs)
+- Dev fallback API keys have null orgId — 3 dual-auth routes return 403 (session auth works for all routes)
 
-**Step 3: Migrate dashboard routes (batched by domain)**
-- [ ] Batch 1 (resources): `budgets/route.ts`, `keys/route.ts`, `cost-events/route.ts`, `webhooks/route.ts`
-  - GET handlers: `resolveSessionUserId` → `resolveSessionContext`, queries by `orgId`
-  - POST handlers already use `resolveSessionContext` from Phase 1
-- [ ] Batch 2 (analytics): `cost-events/summary/route.ts`, `cost-events/[id]/route.ts`
-- [ ] Batch 3 (actions): `actions/route.ts`, `actions/[id]/route.ts` and sub-routes
-  - Note: `ownerUserId` stays as `userId` (action creator attribution)
-  - Org scoping: add `WHERE org_id = orgId` alongside existing `ownerUserId` filters
-- [ ] Batch 4 (settings): `tool-costs/route.ts`, `tool-costs/[id]/route.ts`, `slack/config/route.ts`, `slack/test/route.ts`, `velocity-status/route.ts`
-  - Also add `orgId` to INSERT values for tool-costs and slack-config
-- [ ] Batch 5 (billing): `stripe/checkout/route.ts`, `stripe/portal/route.ts`, `stripe/subscription/route.ts`, `stripe/subscription/sync/route.ts`
-  - **Keep `userId` for subscription queries** — billing stays per-user until Phase 4
-  - Switch only to `resolveSessionContext` for the auth call (gets both userId and orgId)
-
-**Step 4: Update remaining infrastructure**
-- [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body (read from `resolveSessionContext`)
-- [ ] Update dashboard tests for routes that changed
+**Test results:** 929 root tests + 1210 proxy tests = 2139 total, 0 TypeScript errors, 0 migration lint errors
 
 ### ~~Increment 4: Feature Gating~~ — MOVED TO PHASE 3
 

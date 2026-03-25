@@ -6,7 +6,7 @@ import { apiKeys, costEvents } from "@nullspend/db";
 
 export async function getCostEventsByActionId(
   actionId: string,
-  userId: string,
+  orgId: string,
 ) {
   const db = getDb();
 
@@ -34,7 +34,7 @@ export async function getCostEventsByActionId(
     .where(
       and(
         eq(costEvents.actionId, actionId),
-        eq(costEvents.userId, userId),
+        eq(costEvents.orgId, orgId),
       ),
     )
     .orderBy(desc(costEvents.createdAt));

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { DELETE, PATCH } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 const mockUpdateReturning = vi.fn();
@@ -26,7 +26,7 @@ vi.mock("@/lib/proxy-invalidate", () => ({
   invalidateProxyCache: (...args: unknown[]) => mockInvalidateProxyCache(...args),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 const TEST_KEY_UUID = "00000000-0000-4000-a000-000000000011";
 const TEST_KEY_PREFIXED = `ns_key_${TEST_KEY_UUID}`;
@@ -42,7 +42,7 @@ describe("DELETE /api/keys/[id]", () => {
 
   it("revokes an API key", async () => {
     const now = new Date("2026-01-01");
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([
       { id: TEST_KEY_UUID, revokedAt: now },
     ]);
@@ -57,7 +57,7 @@ describe("DELETE /api/keys/[id]", () => {
   });
 
   it("returns 404 when key is not found or already revoked", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([]);
 
     const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, { method: "DELETE" });
@@ -68,7 +68,7 @@ describe("DELETE /api/keys/[id]", () => {
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
-    mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
+    mockedResolveSessionContext.mockRejectedValue(new AuthenticationRequiredError());
 
     const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, { method: "DELETE" });
     const res = await DELETE(req, makeContext(TEST_KEY_PREFIXED));
@@ -88,7 +88,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("updates defaultTags", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([{
       id: TEST_KEY_UUID,
       name: "My Key",
@@ -112,7 +112,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("updates name", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([{
       id: TEST_KEY_UUID,
       name: "New Name",
@@ -136,7 +136,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("returns 400 with empty body (no fields to update)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
       method: "PATCH",
@@ -149,7 +149,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("clears all defaults with defaultTags: {}", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([{
       id: TEST_KEY_UUID,
       name: "My Key",
@@ -173,7 +173,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("returns 404 for revoked key", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([]);
 
     const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
@@ -187,7 +187,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("triggers proxy cache invalidation", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([{
       id: TEST_KEY_UUID,
       name: "Updated",
@@ -214,7 +214,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("returns 400 when defaultTags exceeds 10 keys", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const tags: Record<string, string> = {};
     for (let i = 0; i < 11; i++) tags[`key${i}`] = `v${i}`;
@@ -230,7 +230,7 @@ describe("PATCH /api/keys/[id]", () => {
   });
 
   it("returns 400 when defaultTags has _ns_ prefix", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
       method: "PATCH",

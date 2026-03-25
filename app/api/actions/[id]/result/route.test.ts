@@ -27,6 +27,7 @@ describe("app/api/actions/[id]/result/route", () => {
   it("scopes result writes to the managed API key owner", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
+      orgId: "org-test-1",
       keyId: "key-123",
       apiVersion: "2026-04-01",
     });
@@ -56,7 +57,7 @@ describe("app/api/actions/[id]/result/route", () => {
     expect(mockedMarkResult).toHaveBeenCalledWith(
       "550e8400-e29b-41d4-a716-446655440000",
       { status: "executed", result: { ok: true } },
-      "user-123",
+      "org-test-1",
     );
     expect(response.status).toBe(200);
   });
@@ -64,6 +65,7 @@ describe("app/api/actions/[id]/result/route", () => {
   it("uses the dev actor only for env-key fallback result writes", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "dev-user",
+      orgId: "org-test-1",
       keyId: null,
       apiVersion: "2026-04-01",
     });
@@ -93,7 +95,7 @@ describe("app/api/actions/[id]/result/route", () => {
     expect(mockedMarkResult).toHaveBeenCalledWith(
       "550e8400-e29b-41d4-a716-446655440000",
       { status: "failed", errorMessage: "boom" },
-      "dev-user",
+      "org-test-1",
     );
   });
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
 import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { toolCosts } from "@nullspend/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
@@ -25,13 +25,12 @@ export async function GET(request: Request) {
   try {
     const authResult = await assertApiKeyOrSession(request);
     if (authResult instanceof Response) return authResult;
-    const userId = authResult;
     const db = getDb();
 
     const rows = await db
       .select()
       .from(toolCosts)
-      .where(eq(toolCosts.userId, userId));
+      .where(eq(toolCosts.orgId, authResult.orgId));
 
     const data = rows.map(toResponse);
 
@@ -43,7 +42,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const body = await readJsonBody(request);
     const input = upsertToolCostInputSchema.parse(body);
 
@@ -60,7 +59,7 @@ export async function POST(request: Request) {
       })
       .where(
         and(
-          eq(toolCosts.userId, userId),
+          eq(toolCosts.orgId, orgId),
           eq(toolCosts.serverName, input.serverName),
           eq(toolCosts.toolName, input.toolName),
         ),

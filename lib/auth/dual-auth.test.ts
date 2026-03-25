@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 
 vi.mock("@/lib/auth/with-api-key-auth", () => ({
   authenticateApiKey: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 // Preserve real API_KEY_HEADER constant so the test uses the actual value
@@ -20,35 +20,38 @@ vi.mock("@/lib/auth/api-key", async (importOriginal) => {
 import { assertApiKeyOrSession } from "./dual-auth";
 
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 describe("assertApiKeyOrSession", () => {
   afterEach(() => {
     vi.resetAllMocks();
   });
 
-  it("returns userId string for managed API key", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: "user-123", keyId: "key-456", apiVersion: "2026-04-01" });
+  it("returns DualAuthResult for managed API key", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-123", keyId: "key-456", apiVersion: "2026-04-01" });
 
     const request = new Request("http://localhost/api/actions", {
       headers: { "x-nullspend-key": "ns_live_sk_test0001" },
     });
     const result = await assertApiKeyOrSession(request);
 
-    expect(result).toBe("user-123");
+    expect(result).toEqual({ userId: "user-123", orgId: "org-123" });
     expect(mockedAuthenticateApiKey).toHaveBeenCalledWith(request);
-    expect(mockedResolveSessionUserId).not.toHaveBeenCalled();
+    expect(mockedResolveSessionContext).not.toHaveBeenCalled();
   });
 
-  it("returns userId string for dev fallback key", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user", keyId: null, apiVersion: "2026-04-01" });
+  it("returns 403 for API key without orgId (dev fallback)", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "dev-user", orgId: null, keyId: null, apiVersion: "2026-04-01" });
 
     const request = new Request("http://localhost/api/actions", {
       headers: { "x-nullspend-key": "env-secret" },
     });
     const result = await assertApiKeyOrSession(request);
 
-    expect(result).toBe("dev-user");
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(403);
+    const body = await (result as Response).json();
+    expect(body.error.code).toBe("configuration_error");
   });
 
   it("returns 429 Response when per-key rate limit exceeded", async () => {
@@ -68,14 +71,14 @@ describe("assertApiKeyOrSession", () => {
   });
 
   it("falls back to session auth when no API key header present", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("session-user-789");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "session-user-789", orgId: "org-789", role: "owner" });
 
     const request = new Request("http://localhost/api/actions");
     const result = await assertApiKeyOrSession(request);
 
-    expect(result).toBe("session-user-789");
+    expect(result).toEqual({ userId: "session-user-789", orgId: "org-789" });
     expect(mockedAuthenticateApiKey).not.toHaveBeenCalled();
-    expect(mockedResolveSessionUserId).toHaveBeenCalled();
+    expect(mockedResolveSessionContext).toHaveBeenCalled();
   });
 
   it("propagates ApiKeyError from authenticateApiKey", async () => {

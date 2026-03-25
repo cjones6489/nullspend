@@ -26,7 +26,7 @@ describe("app/api/actions/[id]/route", () => {
   });
 
   it("scopes action detail reads to the resolved owner", async () => {
-    mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1" });
     mockedGetAction.mockResolvedValue({
       id: "550e8400-e29b-41d4-a716-446655440000",
       agentId: "agent-1",
@@ -57,7 +57,7 @@ describe("app/api/actions/[id]/route", () => {
 
     expect(mockedGetAction).toHaveBeenCalledWith(
       "550e8400-e29b-41d4-a716-446655440000",
-      "user-123",
+      "org-test-1",
     );
     expect(response.status).toBe(200);
   });

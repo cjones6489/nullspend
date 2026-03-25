@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { generateRawKey, hashKey, extractPrefix } from "@/lib/auth/api-key";
 import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
   resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
@@ -53,7 +52,6 @@ vi.mock("@/lib/auth/api-key", async (importOriginal) => {
   };
 });
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 const mockedGenerateRawKey = vi.mocked(generateRawKey);
 const mockedHashKey = vi.mocked(hashKey);
 const mockedExtractPrefix = vi.mocked(extractPrefix);
@@ -64,7 +62,7 @@ describe("GET /api/keys", () => {
   });
 
   it("returns keys for authenticated user with cursor=null when no more pages", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectList.mockResolvedValue([
       {
         id: "00000000-0000-4000-a000-000000000011",
@@ -88,7 +86,7 @@ describe("GET /api/keys", () => {
   });
 
   it("returns defaultTags in key list response", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 0 }]);
     mockSelectList.mockResolvedValue([
       {
@@ -120,7 +118,7 @@ describe("GET /api/keys", () => {
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
-    mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
+    vi.mocked(resolveSessionContext).mockRejectedValueOnce(new AuthenticationRequiredError());
 
     const req = new Request("http://localhost/api/keys");
     const res = await GET(req);
@@ -135,7 +133,7 @@ describe("POST /api/keys", () => {
   });
 
   it("creates a new API key and returns prefix + raw key", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 0 }]);
     mockedGenerateRawKey.mockReturnValue("ns_live_sk_abcdef1234567890abcdef1234567890");
     mockedHashKey.mockReturnValue("hashed_key");
@@ -166,7 +164,7 @@ describe("POST /api/keys", () => {
   });
 
   it("creates key with defaultTags and returns them", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 0 }]);
     mockedGenerateRawKey.mockReturnValue("ns_live_sk_abcdef1234567890abcdef1234567890");
     mockedHashKey.mockReturnValue("hashed_key");
@@ -196,7 +194,7 @@ describe("POST /api/keys", () => {
   });
 
   it("returns 409 when max keys per user reached", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 10 }]); // free tier limit
 
     const req = new Request("http://localhost/api/keys", {
@@ -215,7 +213,7 @@ describe("POST /api/keys", () => {
   });
 
   it("returns 400 for missing name", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/keys", {
       method: "POST",
@@ -229,7 +227,7 @@ describe("POST /api/keys", () => {
   });
 
   it("returns 400 when defaultTags has >10 keys", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const tags: Record<string, string> = {};
     for (let i = 0; i < 11; i++) tags[`key${i}`] = `v${i}`;
@@ -245,7 +243,7 @@ describe("POST /api/keys", () => {
   });
 
   it("returns 400 when defaultTags has _ns_ prefix key", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/keys", {
       method: "POST",
@@ -258,7 +256,7 @@ describe("POST /api/keys", () => {
   });
 
   it("returns 400 when defaultTags has invalid key characters", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/keys", {
       method: "POST",

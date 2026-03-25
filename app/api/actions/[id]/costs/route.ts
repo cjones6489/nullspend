@@ -15,13 +15,12 @@ export async function GET(
   try {
     const authResult = await assertApiKeyOrSession(request);
     if (authResult instanceof Response) return authResult;
-    const ownerUserId = authResult;
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
 
-    await getAction(id, ownerUserId);
+    await getAction(id, authResult.orgId);
 
-    const costEvents = await getCostEventsByActionId(id, ownerUserId);
+    const costEvents = await getCostEventsByActionId(id, authResult.orgId);
     return NextResponse.json({ data: z.array(costEventRecordSchema).parse(costEvents) });
   } catch (error) {
     return handleRouteError(error);

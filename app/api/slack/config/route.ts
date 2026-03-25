@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { slackConfigs } from "@nullspend/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
@@ -27,13 +27,13 @@ function maskWebhookUrl(url: string): string {
 
 export async function GET() {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
     const db = getDb();
 
     const [config] = await db
       .select()
       .from(slackConfigs)
-      .where(eq(slackConfigs.userId, userId))
+      .where(eq(slackConfigs.orgId, orgId))
       .limit(1);
 
     if (!config) {
@@ -58,7 +58,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const body = await readJsonBody(request);
     const input = slackConfigInputSchema.parse(body);
 
@@ -68,6 +68,7 @@ export async function POST(request: Request) {
       .insert(slackConfigs)
       .values({
         userId,
+        orgId,
         webhookUrl: input.webhookUrl,
         channelName: input.channelName ?? null,
         slackUserId: input.slackUserId ?? null,
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       .onConflictDoUpdate({
         target: slackConfigs.userId,
         set: {
+          orgId,
           webhookUrl: input.webhookUrl,
           channelName: input.channelName ?? null,
           slackUserId: input.slackUserId ?? null,
@@ -102,12 +104,12 @@ export async function POST(request: Request) {
 
 export async function DELETE() {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
     const db = getDb();
 
     const [deleted] = await db
       .delete(slackConfigs)
-      .where(eq(slackConfigs.userId, userId))
+      .where(eq(slackConfigs.orgId, orgId))
       .returning({ id: slackConfigs.id });
 
     if (!deleted) {

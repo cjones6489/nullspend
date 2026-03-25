@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { GET, POST } from "./route";
 
@@ -10,7 +10,7 @@ vi.mock("@/lib/auth/dual-auth", () => ({
 }));
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 const mockSelect = vi.fn().mockReturnValue({
@@ -46,7 +46,7 @@ vi.mock("@/lib/validations/tool-costs", () => ({
 }));
 
 const mockedAssertApiKeyOrSession = vi.mocked(assertApiKeyOrSession);
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 describe("GET /api/tool-costs", () => {
   afterEach(() => {
@@ -54,7 +54,7 @@ describe("GET /api/tool-costs", () => {
   });
 
   it("returns tool costs for the authenticated user", async () => {
-    mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1" });
 
     const response = await GET(
       new Request("http://localhost/api/tool-costs", {
@@ -86,7 +86,7 @@ describe("GET /api/tool-costs", () => {
 
 describe("POST /api/tool-costs", () => {
   it("uses session auth (not API key auth)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockUpdate.mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
@@ -109,7 +109,7 @@ describe("POST /api/tool-costs", () => {
 
     // 404 because mock returns empty array (no matching tool)
     expect(response.status).toBe(404);
-    expect(mockedResolveSessionUserId).toHaveBeenCalled();
+    expect(mockedResolveSessionContext).toHaveBeenCalled();
     expect(mockedAssertApiKeyOrSession).not.toHaveBeenCalled();
   });
 });

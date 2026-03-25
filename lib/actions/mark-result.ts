@@ -12,7 +12,7 @@ import type { MarkResultInput } from "@/lib/validations/actions";
 export async function markResult(
   actionId: string,
   input: MarkResultInput,
-  ownerUserId: string,
+  orgId: string,
 ) {
   const db = getDb();
 
@@ -23,7 +23,7 @@ export async function markResult(
         status: actions.status,
       })
       .from(actions)
-      .where(and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)))
+      .where(and(eq(actions.id, actionId), eq(actions.orgId, orgId)))
       .limit(1)
       .for("update");
 
@@ -47,7 +47,7 @@ export async function markResult(
       .where(
         and(
           eq(actions.id, actionId),
-          eq(actions.ownerUserId, ownerUserId),
+          eq(actions.orgId, orgId),
           eq(actions.status, existingAction.status),
         ),
       )

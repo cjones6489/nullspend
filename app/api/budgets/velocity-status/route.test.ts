@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { GET } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn().mockResolvedValue("user-1"),
+  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const }),
 }));
 
 vi.mock("@/lib/observability/sentry", () => ({

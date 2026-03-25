@@ -51,7 +51,7 @@ describe("POST /api/tool-costs/discover", () => {
   });
 
   it("discovers tools for the authenticated user", async () => {
-    mockedAuthenticateApiKey.mockResolvedValue({ userId: "user-123", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAuthenticateApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
 
     const response = await POST(
       new Request("http://localhost/api/tool-costs/discover", {

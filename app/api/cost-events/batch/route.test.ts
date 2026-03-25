@@ -94,6 +94,7 @@ describe("POST /api/cost-events/batch", () => {
   it("returns 201 with inserted count and ids", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -128,6 +129,7 @@ describe("POST /api/cost-events/batch", () => {
   it("passes correct context to insertCostEventsBatch", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-2",
+      orgId: "org-test-1",
       keyId: "key-2",
       apiVersion: "2026-04-01",
     });
@@ -142,13 +144,14 @@ describe("POST /api/cost-events/batch", () => {
 
     expect(mockedInsertCostEventsBatch).toHaveBeenCalledWith(
       events,
-      { userId: "user-2", apiKeyId: "key-2" },
+      { userId: "user-2", orgId: "org-test-1", apiKeyId: "key-2" },
     );
   });
 
   it("fetches endpoints once and dispatches for each inserted row", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -169,7 +172,7 @@ describe("POST /api/cost-events/batch", () => {
 
     // Endpoints fetched once (not per event)
     expect(mockedFetchWebhookEndpoints).toHaveBeenCalledTimes(1);
-    expect(mockedFetchWebhookEndpoints).toHaveBeenCalledWith("user-1");
+    expect(mockedFetchWebhookEndpoints).toHaveBeenCalledWith("org-test-1");
 
     // Dispatch called for each actually-inserted row
     expect(mockedDispatchCostEventToEndpoints).toHaveBeenCalledTimes(2);
@@ -184,6 +187,7 @@ describe("POST /api/cost-events/batch", () => {
   it("forwards traceId from inserted rows to webhook builder", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -207,6 +211,7 @@ describe("POST /api/cost-events/batch", () => {
   it("does not dispatch webhooks when no events inserted", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -225,6 +230,7 @@ describe("POST /api/cost-events/batch", () => {
   it("skips dispatch when no webhook endpoints configured", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -245,6 +251,7 @@ describe("POST /api/cost-events/batch", () => {
   it("wraps handler with idempotency middleware", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });

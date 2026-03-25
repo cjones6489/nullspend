@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq, isNull } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { apiKeys } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
@@ -13,7 +13,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
     const { id } = keyIdParamsSchema.parse(params);
 
@@ -26,7 +26,7 @@ export async function DELETE(
       .where(
         and(
           eq(apiKeys.id, id),
-          eq(apiKeys.userId, userId),
+          eq(apiKeys.orgId, orgId),
           isNull(apiKeys.revokedAt),
         ),
       )
@@ -59,7 +59,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
     const { id } = keyIdParamsSchema.parse(params);
     const body = await readJsonBody(request);
@@ -77,7 +77,7 @@ export async function PATCH(
       .where(
         and(
           eq(apiKeys.id, id),
-          eq(apiKeys.userId, userId),
+          eq(apiKeys.orgId, orgId),
           isNull(apiKeys.revokedAt),
         ),
       )

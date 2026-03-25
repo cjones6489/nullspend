@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/supabase", () => ({
@@ -22,14 +22,14 @@ vi.mock("@/lib/stripe/tiers", () => ({
   tierFromPriceId: vi.fn(),
 }));
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
 import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 import { isValidPriceId, tierFromPriceId } from "@/lib/stripe/tiers";
 import { POST } from "./route";
 
-const mockedResolveSession = vi.mocked(resolveSessionUserId);
+const mockedResolveSession = vi.mocked(resolveSessionContext);
 const mockedGetStripe = vi.mocked(getStripe);
 const mockedGetOrigin = vi.mocked(getOrigin);
 const mockedGetSubscription = vi.mocked(getSubscriptionByUserId);
@@ -51,7 +51,7 @@ describe("POST /api/stripe/checkout", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedResolveSession.mockResolvedValue("user-123");
+    mockedResolveSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedGetOrigin.mockReturnValue("http://localhost:3000");
     mockedIsValidPriceId.mockReturnValue(true);
     mockedTierFromPriceId.mockReturnValue("pro");

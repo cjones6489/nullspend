@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
@@ -13,7 +13,7 @@ type RouteParams = { params: Promise<{ id: string }> };
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const rawParams = await readRouteParams(params);
     const { id } = budgetIdParamsSchema.parse(rawParams);
     const db = getDb();
@@ -22,7 +22,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
       const rows = await tx
         .select()
         .from(budgets)
-        .where(eq(budgets.id, id))
+        .where(and(eq(budgets.id, id), eq(budgets.orgId, orgId)))
         .for("update");
 
       if (rows.length === 0) {
@@ -51,7 +51,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
  */
 export async function POST(_request: Request, { params }: RouteParams) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const rawParams = await readRouteParams(params);
     const { id } = budgetIdParamsSchema.parse(rawParams);
     const db = getDb();
@@ -60,7 +60,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
       const rows = await tx
         .select()
         .from(budgets)
-        .where(eq(budgets.id, id))
+        .where(and(eq(budgets.id, id), eq(budgets.orgId, orgId)))
         .for("update");
 
       if (rows.length === 0) {

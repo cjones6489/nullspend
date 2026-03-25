@@ -104,7 +104,7 @@ export async function POST(request: Request) {
   const decidedBy =
     payload.user.username ?? payload.user.name ?? payload.user.id;
 
-  let action: { id: string; ownerUserId: string | null; actionType: string; agentId: string } | undefined;
+  let action: { id: string; ownerUserId: string | null; orgId: string | null; actionType: string; agentId: string } | undefined;
 
   try {
     const db = getDb();
@@ -112,6 +112,7 @@ export async function POST(request: Request) {
       .select({
         id: actions.id,
         ownerUserId: actions.ownerUserId,
+        orgId: actions.orgId,
         actionType: actions.actionType,
         agentId: actions.agentId,
       })
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
     return errorMessage("Something went wrong processing this action.");
   }
 
-  if (!action || !action.ownerUserId) {
+  if (!action || !action.ownerUserId || !action.orgId) {
     return errorMessage("This action was not found.");
   }
 
@@ -132,7 +133,7 @@ export async function POST(request: Request) {
     const [ownerConfig] = await db2
       .select({ slackUserId: slackConfigs.slackUserId })
       .from(slackConfigs)
-      .where(eq(slackConfigs.userId, action.ownerUserId))
+      .where(eq(slackConfigs.orgId, action.orgId))
       .limit(1);
 
     if (ownerConfig?.slackUserId && ownerConfig.slackUserId !== payload.user.id) {
@@ -147,9 +148,9 @@ export async function POST(request: Request) {
 
   try {
     if (isApprove) {
-      await approveAction(actionId, { approvedBy: decidedBy }, action.ownerUserId);
+      await approveAction(actionId, { approvedBy: decidedBy }, action.orgId);
     } else {
-      await rejectAction(actionId, { rejectedBy: decidedBy }, action.ownerUserId);
+      await rejectAction(actionId, { rejectedBy: decidedBy }, action.orgId);
     }
 
     const decision = isApprove ? "approved" : "rejected";

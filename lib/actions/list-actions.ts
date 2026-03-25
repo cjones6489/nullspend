@@ -7,7 +7,7 @@ import { actions } from "@nullspend/db";
 import type { ActionStatus } from "@/lib/utils/status";
 
 interface ListActionsOptions {
-  ownerUserId: string;
+  orgId: string;
   status?: ActionStatus;
   statuses?: ActionStatus[];
   limit: number;
@@ -15,10 +15,10 @@ interface ListActionsOptions {
 }
 
 export async function listActions(options: ListActionsOptions) {
-  await bulkExpireActions(options.ownerUserId);
+  await bulkExpireActions(options.orgId);
 
   const db = getDb();
-  const conditions = [eq(actions.ownerUserId, options.ownerUserId)];
+  const conditions = [eq(actions.orgId, options.orgId)];
 
   if (options.statuses && options.statuses.length > 0) {
     conditions.push(inArray(actions.status, options.statuses));

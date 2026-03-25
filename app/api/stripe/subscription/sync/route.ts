@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getStripe } from "@/lib/stripe/client";
 import { upsertSubscription } from "@/lib/stripe/subscription";
 import { tierFromPriceId } from "@/lib/stripe/tiers";
@@ -10,7 +10,7 @@ import { syncInputSchema } from "@/lib/validations/subscription";
 
 export async function POST(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId } = await resolveSessionContext();
     const body = await readJsonBody(request);
     const { sessionId } = syncInputSchema.parse(body);
 

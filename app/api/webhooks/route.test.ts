@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
   resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
@@ -38,15 +37,13 @@ vi.mock("@/lib/db/client", () => ({
   })),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
-
 describe("GET /api/webhooks", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
   it("returns webhook endpoints for authenticated user", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectList.mockResolvedValue([
       {
         id: "00000000-0000-4000-a000-000000000001",
@@ -73,7 +70,7 @@ describe("GET /api/webhooks", () => {
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
-    mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
+    vi.mocked(resolveSessionContext).mockRejectedValueOnce(new AuthenticationRequiredError());
 
     const res = await GET();
 
@@ -87,7 +84,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("creates a webhook endpoint and returns signing secret once", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 0 }]);
     mockInsertReturning.mockResolvedValue([
       {
@@ -119,7 +116,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 409 when max endpoints reached", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 2 }]); // free tier limit
 
     const req = new Request("http://localhost/api/webhooks", {
@@ -138,7 +135,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for non-HTTPS URL", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -152,7 +149,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for private IP URL", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -166,7 +163,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for localhost URL", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -180,7 +177,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for IPv6 literal URL (SSRF bypass)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -194,7 +191,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for 0.0.0.0 URL (SSRF bypass)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -208,7 +205,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for 127.0.0.2 URL (loopback range)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -222,7 +219,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for link-local IP (169.254.x)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -236,7 +233,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("returns 400 for missing url", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -250,7 +247,7 @@ describe("POST /api/webhooks", () => {
   });
 
   it("accepts event types filter", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 0 }]);
     mockInsertReturning.mockResolvedValue([
       {

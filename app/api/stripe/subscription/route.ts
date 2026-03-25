@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 import { handleRouteError } from "@/lib/utils/http";
 
 export async function GET() {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId } = await resolveSessionContext();
     const row = await getSubscriptionByUserId(userId);
 
     if (!row) {

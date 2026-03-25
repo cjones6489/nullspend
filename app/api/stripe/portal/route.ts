@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
 import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 import { handleRouteError } from "@/lib/utils/http";
 
 export async function POST(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId } = await resolveSessionContext();
     const existing = await getSubscriptionByUserId(userId);
 
     if (!existing?.stripeCustomerId) {

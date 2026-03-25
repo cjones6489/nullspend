@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
 import { getDb } from "@/lib/db/client";
 import { fromExternalIdOfType } from "@/lib/ids/prefixed-id";
@@ -16,7 +16,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
 
     // Accept raw UUID or ns_evt_ prefixed ID
@@ -58,7 +58,7 @@ export async function GET(
       .where(
         and(
           eq(costEvents.id, id),
-          eq(costEvents.userId, userId),
+          eq(costEvents.orgId, orgId),
         ),
       )
       .limit(1);

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { count, eq, desc } from "drizzle-orm";
 
-import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { webhookEndpoints } from "@nullspend/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
@@ -16,7 +16,7 @@ import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 
 export async function GET() {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
     const db = getDb();
 
     const rows = await db
@@ -32,7 +32,7 @@ export async function GET() {
         updatedAt: webhookEndpoints.updatedAt,
       })
       .from(webhookEndpoints)
-      .where(eq(webhookEndpoints.userId, userId))
+      .where(eq(webhookEndpoints.orgId, orgId))
       .orderBy(desc(webhookEndpoints.createdAt));
 
     const data = rows.map((row) =>
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     const [{ value: endpointCount }] = await db
       .select({ value: count() })
       .from(webhookEndpoints)
-      .where(eq(webhookEndpoints.userId, userId));
+      .where(eq(webhookEndpoints.orgId, orgId));
 
     const subscription = await getSubscriptionByUserId(userId);
     const tier = getTierForUser(subscription);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { webhookEndpoints } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
@@ -17,7 +17,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
     const body = await readJsonBody(request);
@@ -45,7 +45,7 @@ export async function PATCH(
       .where(
         and(
           eq(webhookEndpoints.id, id),
-          eq(webhookEndpoints.userId, userId),
+          eq(webhookEndpoints.orgId, orgId),
         ),
       )
       .returning({
@@ -91,7 +91,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
 
@@ -102,7 +102,7 @@ export async function DELETE(
       .where(
         and(
           eq(webhookEndpoints.id, id),
-          eq(webhookEndpoints.userId, userId),
+          eq(webhookEndpoints.orgId, orgId),
         ),
       )
       .returning({ id: webhookEndpoints.id });

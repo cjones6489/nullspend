@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 const mockUpdateReturning = vi.fn();
@@ -25,7 +25,7 @@ vi.mock("@/lib/db/client", () => ({
   })),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 const RAW_UUID = "00000000-0000-4000-a000-000000000001";
 const VALID_ID = `ns_wh_${RAW_UUID}`;
@@ -40,7 +40,7 @@ describe("POST /api/webhooks/:id/rotate-secret", () => {
   });
 
   it("rotates the signing secret and returns new secret", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([{ id: RAW_UUID }]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID + "/rotate-secret", {
@@ -57,7 +57,7 @@ describe("POST /api/webhooks/:id/rotate-secret", () => {
   });
 
   it("passes SQL column reference for previousSigningSecret (atomic copy)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([{ id: RAW_UUID }]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID + "/rotate-secret", {
@@ -84,7 +84,7 @@ describe("POST /api/webhooks/:id/rotate-secret", () => {
   });
 
   it("returns 404 for non-owned endpoint", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID + "/rotate-secret", {
@@ -97,7 +97,7 @@ describe("POST /api/webhooks/:id/rotate-secret", () => {
   });
 
   it("returns 400 for invalid prefixed ID param", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/webhooks/not-a-uuid/rotate-secret", {
       method: "POST",

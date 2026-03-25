@@ -47,7 +47,7 @@ describe("POST /api/actions/[id]/approve", () => {
     expect(mockedApproveAction).toHaveBeenCalledWith(
       "00000000-0000-4000-a000-000000000001",
       { approvedBy: "user-1" },
-      "user-1",
+      "00000000-0000-4000-b000-000000000001",
     );
   });
 

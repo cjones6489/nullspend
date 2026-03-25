@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
 import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
@@ -10,7 +10,7 @@ import { checkoutInputSchema } from "@/lib/validations/subscription";
 
 export async function POST(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId } = await resolveSessionContext();
     const body = await readJsonBody(request);
     const input = checkoutInputSchema.parse(body);
 

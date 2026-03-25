@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe/client", () => ({
@@ -16,13 +16,13 @@ vi.mock("@/lib/stripe/tiers", () => ({
   tierFromPriceId: vi.fn(),
 }));
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getStripe } from "@/lib/stripe/client";
 import { upsertSubscription } from "@/lib/stripe/subscription";
 import { tierFromPriceId } from "@/lib/stripe/tiers";
 import { POST } from "./route";
 
-const mockedResolveSession = vi.mocked(resolveSessionUserId);
+const mockedResolveSession = vi.mocked(resolveSessionContext);
 const mockedGetStripe = vi.mocked(getStripe);
 const mockedUpsertSubscription = vi.mocked(upsertSubscription);
 const mockedTierFromPriceId = vi.mocked(tierFromPriceId);
@@ -40,7 +40,7 @@ describe("POST /api/stripe/subscription/sync", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedResolveSession.mockResolvedValue("user-123");
+    mockedResolveSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedTierFromPriceId.mockReturnValue("pro");
 
     mockSessionRetrieve = vi.fn();

@@ -45,13 +45,13 @@ async function postToWebhook(
 
 export async function sendSlackNotification(
   action: RawActionRecord,
-  ownerUserId: string,
+  orgId: string,
 ): Promise<void> {
   const db = getDb();
   const [config] = await db
     .select()
     .from(slackConfigs)
-    .where(eq(slackConfigs.userId, ownerUserId))
+    .where(eq(slackConfigs.orgId, orgId))
     .limit(1);
 
   if (!config || !config.isActive) {
@@ -64,13 +64,13 @@ export async function sendSlackNotification(
 }
 
 export async function sendSlackTestNotification(
-  ownerUserId: string,
+  orgId: string,
 ): Promise<void> {
   const db = getDb();
   const [config] = await db
     .select()
     .from(slackConfigs)
-    .where(eq(slackConfigs.userId, ownerUserId))
+    .where(eq(slackConfigs.orgId, orgId))
     .limit(1);
 
   if (!config) {

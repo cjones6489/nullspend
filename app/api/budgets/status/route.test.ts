@@ -71,6 +71,7 @@ describe("GET /api/budgets/status", () => {
   it("returns budget entities for authenticated key (user + api_key budgets)", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -97,6 +98,7 @@ describe("GET /api/budgets/status", () => {
   it("returns empty entities when no budgets exist", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -112,6 +114,7 @@ describe("GET /api/budgets/status", () => {
   it("maps maxBudgetMicrodollars to limitMicrodollars", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -130,6 +133,7 @@ describe("GET /api/budgets/status", () => {
   it("computes spendMicrodollars and remainingMicrodollars correctly", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -172,6 +176,7 @@ describe("GET /api/budgets/status", () => {
   it("queries only user budgets in dev-mode (keyId null) — no or() in WHERE", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: null,
       apiVersion: "2026-04-01",
     });
@@ -191,6 +196,7 @@ describe("GET /api/budgets/status", () => {
   it("clamps remainingMicrodollars to 0 when overspent", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -211,6 +217,7 @@ describe("GET /api/budgets/status", () => {
   it("serializes currentPeriodStart as ISO string; null when no reset interval", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -238,6 +245,7 @@ describe("GET /api/budgets/status", () => {
   it("includes thresholdPercentages in status response", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
     });
@@ -254,6 +262,7 @@ describe("GET /api/budgets/status", () => {
     const rateLimit = { limit: 100, remaining: 99, reset: 1710720000000 };
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
+      orgId: "org-test-1",
       keyId: "key-1",
       apiVersion: "2026-04-01",
       rateLimit,

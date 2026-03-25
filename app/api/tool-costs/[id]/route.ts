@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq, and, sql } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { toolCosts } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
@@ -18,7 +18,7 @@ class NotFoundError extends Error {
 
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const raw = await readRouteParams(params);
     const { id } = deleteRouteParamsSchema.parse(raw);
 
@@ -31,7 +31,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
         source: "discovered",
         updatedAt: sql`NOW()`,
       })
-      .where(and(eq(toolCosts.id, id), eq(toolCosts.userId, userId)))
+      .where(and(eq(toolCosts.id, id), eq(toolCosts.orgId, orgId)))
       .returning({ id: toolCosts.id, serverName: toolCosts.serverName, toolName: toolCosts.toolName });
 
     if (!reset) {

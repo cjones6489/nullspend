@@ -35,7 +35,7 @@ export function computeExpiresAt(
 
 export async function expireAction(
   actionId: string,
-  ownerUserId: string,
+  orgId: string,
 ): Promise<ActionRow | null> {
   const db = getDb();
 
@@ -48,7 +48,7 @@ export async function expireAction(
     .where(
       and(
         eq(actions.id, actionId),
-        eq(actions.ownerUserId, ownerUserId),
+        eq(actions.orgId, orgId),
         eq(actions.status, "pending"),
       ),
     )
@@ -57,7 +57,7 @@ export async function expireAction(
   return updated ?? null;
 }
 
-export async function bulkExpireActions(ownerUserId: string): Promise<void> {
+export async function bulkExpireActions(orgId: string): Promise<void> {
   const db = getDb();
 
   await db
@@ -68,7 +68,7 @@ export async function bulkExpireActions(ownerUserId: string): Promise<void> {
     })
     .where(
       and(
-        eq(actions.ownerUserId, ownerUserId),
+        eq(actions.orgId, orgId),
         eq(actions.status, "pending"),
         isNotNull(actions.expiresAt),
         lte(actions.expiresAt, sql`NOW()`),

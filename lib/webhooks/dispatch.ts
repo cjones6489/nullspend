@@ -42,11 +42,11 @@ const DISPATCH_TIMEOUT_MS = 5_000;
 const log = getLogger("webhook-dispatch");
 
 /**
- * Fetch all enabled webhook endpoints for a user.
+ * Fetch all enabled webhook endpoints for an organization.
  * Extracted so callers can query once and dispatch many events.
  */
 export async function fetchWebhookEndpoints(
-  userId: string,
+  orgId: string,
 ): Promise<WebhookEndpoint[]> {
   const db = getDb();
   return db
@@ -63,7 +63,7 @@ export async function fetchWebhookEndpoints(
     .from(webhookEndpoints)
     .where(
       and(
-        eq(webhookEndpoints.userId, userId),
+        eq(webhookEndpoints.orgId, orgId),
         eq(webhookEndpoints.enabled, true),
       ),
     );
@@ -152,15 +152,15 @@ export async function dispatchToEndpoints(
  * Fire-and-forget: logs errors but never throws.
  */
 export async function dispatchWebhookEvent(
-  userId: string,
+  orgId: string,
   event: WebhookEvent,
 ): Promise<void> {
   try {
-    const endpoints = await fetchWebhookEndpoints(userId);
+    const endpoints = await fetchWebhookEndpoints(orgId);
     await dispatchToEndpoints(endpoints, event);
   } catch (err) {
     log.error(
-      { err, userId },
+      { err, orgId },
       "Failed to load webhook endpoints for dispatch",
     );
   }

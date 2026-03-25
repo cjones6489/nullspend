@@ -21,12 +21,17 @@ export const POST = withRequestContext(async (
   return withIdempotency(request, async () => {
     const authResult = await authenticateApiKey(request);
     if (authResult instanceof Response) return authResult;
-    const ownerUserId = authResult.userId;
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
     const body = await readJsonBody(request);
     const input = markResultInputSchema.parse(body);
-    const action = await markResult(id, input, ownerUserId);
+    if (!authResult.orgId) {
+      return NextResponse.json(
+        { error: { code: "configuration_error", message: "API key is not associated with an organization.", details: null } },
+        { status: 403 },
+      );
+    }
+    const action = await markResult(id, input, authResult.orgId);
 
     return applyRateLimitHeaders(
       NextResponse.json(mutateActionResponseSchema.parse(action)),

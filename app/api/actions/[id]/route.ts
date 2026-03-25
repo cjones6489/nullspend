@@ -15,10 +15,9 @@ export const GET = withRequestContext(async (
 ) => {
   const authResult = await assertApiKeyOrSession(request);
   if (authResult instanceof Response) return authResult;
-  const ownerUserId = authResult;
   const params = await readRouteParams(context.params);
   const { id } = actionIdParamsSchema.parse(params);
-  const action = await getAction(id, ownerUserId);
+  const action = await getAction(id, authResult.orgId);
 
   return NextResponse.json(actionRecordSchema.parse(action));
 });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
-import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { LimitExceededError } from "@/lib/utils/http";
 import { getDb } from "@/lib/db/client";
@@ -19,27 +19,13 @@ import {
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
 export const GET = withRequestContext(async (_request: Request) => {
-  const userId = await resolveSessionUserId();
+  const { orgId } = await resolveSessionContext();
   const db = getDb();
-
-  const userKeys = await db
-    .select({ id: apiKeys.id })
-    .from(apiKeys)
-    .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)));
-
-  const keyIds = userKeys.map((k) => k.id);
 
   const rows = await db
     .select()
     .from(budgets)
-    .where(
-      keyIds.length > 0
-        ? or(
-            and(eq(budgets.entityType, "user"), eq(budgets.entityId, userId)),
-            and(eq(budgets.entityType, "api_key"), inArray(budgets.entityId, keyIds)),
-          )
-        : and(eq(budgets.entityType, "user"), eq(budgets.entityId, userId)),
-    );
+    .where(eq(budgets.orgId, orgId));
 
   const data = rows.map((row) => ({
     ...row,
@@ -88,7 +74,7 @@ export const POST = withRequestContext(async (request: Request) => {
       .from(budgets)
       .where(
         and(
-          eq(budgets.userId, userId),
+          eq(budgets.orgId, orgId),
           eq(budgets.entityType, input.entityType),
           eq(budgets.entityId, input.entityId),
         ),

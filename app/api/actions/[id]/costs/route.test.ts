@@ -40,7 +40,7 @@ describe("GET /api/actions/[id]/costs", () => {
   });
 
   it("returns cost events for a valid action owned by the user", async () => {
-    mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1" });
     mockedGetAction.mockResolvedValue({
       id: ACTION_UUID,
       agentId: "agent-1",
@@ -92,12 +92,12 @@ describe("GET /api/actions/[id]/costs", () => {
     expect(body.data[0].costMicrodollars).toBe(7250);
 
     expect(mockedAssertApiKeyOrSession).toHaveBeenCalled();
-    expect(mockedGetAction).toHaveBeenCalledWith(ACTION_UUID, "user-123");
-    expect(mockedGetCostEventsByActionId).toHaveBeenCalledWith(ACTION_UUID, "user-123");
+    expect(mockedGetAction).toHaveBeenCalledWith(ACTION_UUID, "org-test-1");
+    expect(mockedGetCostEventsByActionId).toHaveBeenCalledWith(ACTION_UUID, "org-test-1");
   });
 
   it("returns empty array when action has no cost events", async () => {
-    mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1" });
     mockedGetAction.mockResolvedValue({
       id: ACTION_UUID,
       agentId: "agent-1",
@@ -128,7 +128,7 @@ describe("GET /api/actions/[id]/costs", () => {
   });
 
   it("returns 404 when action does not belong to the user", async () => {
-    mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1" });
     mockedGetAction.mockRejectedValue(new ActionNotFoundError(ACTION_ID));
 
     const response = await GET(makeRequest(), makeContext());
@@ -150,7 +150,7 @@ describe("GET /api/actions/[id]/costs", () => {
   });
 
   it("returns 400 for invalid action ID format", async () => {
-    mockedAssertApiKeyOrSession.mockResolvedValue("user-123");
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1" });
 
     const response = await GET(
       new Request("http://localhost/api/actions/not-a-uuid/costs"),

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { costEventInputSchema, insertCostEvent } from "@/lib/cost-events/ingest";
 import { toExternalId } from "@/lib/ids/prefixed-id";
@@ -21,7 +21,7 @@ import {
 const log = getLogger("cost-events");
 
 export const GET = withRequestContext(async (request: Request) => {
-  const userId = await resolveSessionUserId();
+  const { orgId } = await resolveSessionContext();
   const url = new URL(request.url);
 
   // Parse tag.* query params for JSONB containment filtering
@@ -44,7 +44,7 @@ export const GET = withRequestContext(async (request: Request) => {
     traceId: url.searchParams.get("traceId") || undefined,
     tags: Object.keys(tags).length > 0 ? tags : undefined,
   });
-  const result = await listCostEvents({ ...query, userId });
+  const result = await listCostEvents({ ...query, orgId });
   const response = NextResponse.json(listCostEventsResponseSchema.parse(result));
   response.headers.set("NullSpend-Version", CURRENT_VERSION);
   return response;
@@ -62,6 +62,7 @@ export const POST = withRequestContext(async (request: Request) => {
 
     const result = await insertCostEvent(input, {
       userId: authResult.userId,
+      orgId: authResult.orgId,
       apiKeyId: authResult.keyId,
     }, idempotencyHeader);
 
@@ -85,12 +86,15 @@ export const POST = withRequestContext(async (request: Request) => {
         tags: input.tags,
         source: "api",
       };
-      (async () => {
-        const endpoints = await fetchWebhookEndpoints(authResult.userId);
-        await dispatchCostEventToEndpoints(endpoints, costEventData);
-      })().catch((err) => {
-        log.error({ err }, "Webhook dispatch failed for cost event");
-      });
+      if (authResult.orgId) {
+        const orgId = authResult.orgId;
+        (async () => {
+          const endpoints = await fetchWebhookEndpoints(orgId);
+          await dispatchCostEventToEndpoints(endpoints, costEventData);
+        })().catch((err) => {
+          log.error({ err }, "Webhook dispatch failed for cost event");
+        });
+      }
     }
 
     const status = result.deduplicated ? 200 : 201;

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import {
   getCostBreakdownTotals,
   getDailySpend,
@@ -15,7 +15,7 @@ import {
 import { GET } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
 vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
@@ -30,7 +30,7 @@ vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
   getTotals: vi.fn(),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 const mockedGetCostBreakdownTotals = vi.mocked(getCostBreakdownTotals);
 const mockedGetDailySpend = vi.mocked(getDailySpend);
 const mockedGetModelBreakdown = vi.mocked(getModelBreakdown);
@@ -42,6 +42,7 @@ const mockedGetTraceBreakdown = vi.mocked(getTraceBreakdown);
 const mockedGetTotals = vi.mocked(getTotals);
 
 const MOCK_USER_ID = "user-abc-123";
+const MOCK_ORG_ID = "org-mock-1";
 
 const mockDailyData = [
   { date: "2026-03-07", totalCostMicrodollars: 5_000_000 },
@@ -101,7 +102,7 @@ const mockCostBreakdown = {
 };
 
 function setupMocks() {
-  mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
+  mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: "org-mock-1", role: "owner" });
   mockedGetDailySpend.mockResolvedValue(mockDailyData);
   mockedGetModelBreakdown.mockResolvedValue(mockModelData);
   mockedGetProviderBreakdown.mockResolvedValue(mockProviderData);
@@ -149,10 +150,10 @@ describe("GET /api/cost-events/summary", () => {
     const req = new Request("http://localhost/api/cost-events/summary");
     await GET(req);
 
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
-    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
-    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
-    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30, undefined);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_ORG_ID, 30, undefined);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, undefined);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, undefined);
+    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_ORG_ID, 30, undefined);
   });
 
   it("parses 7d period correctly", async () => {
@@ -162,7 +163,7 @@ describe("GET /api/cost-events/summary", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 7, undefined);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_ORG_ID, 7, undefined);
     const body = await res.json();
     expect(body.totals.period).toBe("7d");
   });
@@ -174,7 +175,7 @@ describe("GET /api/cost-events/summary", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 90, undefined);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_ORG_ID, 90, undefined);
     const body = await res.json();
     expect(body.totals.period).toBe("90d");
   });
@@ -193,7 +194,7 @@ describe("GET /api/cost-events/summary", () => {
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
-    mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
+    mockedResolveSessionContext.mockRejectedValue(new AuthenticationRequiredError());
 
     const req = new Request("http://localhost/api/cost-events/summary");
     const res = await GET(req);
@@ -219,7 +220,7 @@ describe("GET /api/cost-events/summary", () => {
   });
 
   it("returns 200 with empty arrays when no data exists", async () => {
-    mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: "org-mock-1", role: "owner" });
     mockedGetDailySpend.mockResolvedValue([]);
     mockedGetModelBreakdown.mockResolvedValue([]);
     mockedGetProviderBreakdown.mockResolvedValue([]);
@@ -248,7 +249,7 @@ describe("GET /api/cost-events/summary", () => {
   });
 
   it("returns 500 when an aggregation function throws", async () => {
-    mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: "org-mock-1", role: "owner" });
     mockedGetDailySpend.mockRejectedValue(new Error("DB connection lost"));
     mockedGetModelBreakdown.mockResolvedValue([]);
     mockedGetProviderBreakdown.mockResolvedValue([]);
@@ -272,7 +273,7 @@ describe("GET /api/cost-events/summary", () => {
 
   it("passes the authenticated user ID to all aggregation functions", async () => {
     const customUserId = "custom-user-xyz";
-    mockedResolveSessionUserId.mockResolvedValue(customUserId);
+    mockedResolveSessionContext.mockResolvedValue({ userId: customUserId, orgId: "org-custom-1", role: "owner" });
     mockedGetDailySpend.mockResolvedValue([]);
     mockedGetModelBreakdown.mockResolvedValue([]);
     mockedGetProviderBreakdown.mockResolvedValue([]);
@@ -286,15 +287,15 @@ describe("GET /api/cost-events/summary", () => {
     const req = new Request("http://localhost/api/cost-events/summary?period=7d");
     await GET(req);
 
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetToolBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetSourceBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetTotals).toHaveBeenCalledWith(customUserId, 7, undefined);
-    expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith(customUserId, 7, undefined);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetToolBreakdown).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetSourceBreakdown).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetTotals).toHaveBeenCalledWith("org-custom-1", 7, undefined);
+    expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith("org-custom-1", 7, undefined);
   });
 
   it("passes excludeEstimated option when query param is true", async () => {
@@ -304,14 +305,14 @@ describe("GET /api/cost-events/summary", () => {
     await GET(req);
 
     const expectedOpts = { excludeEstimated: true };
-    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetToolBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetSourceBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
-    expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith(MOCK_USER_ID, 30, expectedOpts);
+    expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetModelBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetToolBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetSourceBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetTraceBreakdown).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
+    expect(mockedGetCostBreakdownTotals).toHaveBeenCalledWith(MOCK_ORG_ID, 30, expectedOpts);
   });
 });

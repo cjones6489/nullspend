@@ -4,9 +4,9 @@ import type { ApproveActionInput } from "@/lib/validations/actions";
 export async function approveAction(
   actionId: string,
   input: ApproveActionInput,
-  ownerUserId: string,
+  orgId: string,
 ) {
-  const result = await resolveAction(actionId, ownerUserId, "approved", {
+  const result = await resolveAction(actionId, orgId, "approved", {
     approvedBy: input.approvedBy,
   });
 

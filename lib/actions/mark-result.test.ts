@@ -59,7 +59,7 @@ describe("markResult", () => {
       { id: "action-1", status: "executing", executedAt: null },
     ]);
 
-    const result = await markResult("action-1", { status: "executing" }, "owner-1");
+    const result = await markResult("action-1", { status: "executing" }, "org-test-1");
 
     expect(result.id).toBe("action-1");
     expect(result.status).toBe("executing");
@@ -77,7 +77,7 @@ describe("markResult", () => {
     const result = await markResult(
       "action-1",
       { status: "executed", result: { output: "done" } },
-      "owner-1",
+      "org-test-1",
     );
 
     expect(result.status).toBe("executed");
@@ -96,7 +96,7 @@ describe("markResult", () => {
     const result = await markResult(
       "action-1",
       { status: "failed", errorMessage: "timeout" },
-      "owner-1",
+      "org-test-1",
     );
 
     expect(result.status).toBe("failed");
@@ -106,7 +106,7 @@ describe("markResult", () => {
     mockTxSelect.mockResolvedValue([]);
 
     await expect(
-      markResult("missing", { status: "executing" }, "owner-1"),
+      markResult("missing", { status: "executing" }, "org-test-1"),
     ).rejects.toThrow(ActionNotFoundError);
   });
 
@@ -116,7 +116,7 @@ describe("markResult", () => {
     ]);
 
     await expect(
-      markResult("action-1", { status: "executed" }, "owner-1"),
+      markResult("action-1", { status: "executed" }, "org-test-1"),
     ).rejects.toThrow(InvalidActionTransitionError);
   });
 
@@ -127,7 +127,7 @@ describe("markResult", () => {
     mockTxUpdate.mockResolvedValue([]);
 
     await expect(
-      markResult("action-1", { status: "executing" }, "owner-1"),
+      markResult("action-1", { status: "executing" }, "org-test-1"),
     ).rejects.toThrow(StaleActionError);
   });
 });

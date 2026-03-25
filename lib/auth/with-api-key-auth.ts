@@ -14,6 +14,7 @@ export interface RateLimitInfo {
 
 export interface ApiKeyAuthContext {
   userId: string;
+  orgId: string | null;
   keyId: string | null; // null for dev-mode env key
   apiVersion: string;
   rateLimit?: RateLimitInfo; // present when per-key rate limiting is active
@@ -24,6 +25,7 @@ export async function authenticateApiKey(
 ): Promise<ApiKeyAuthContext | Response> {
   const identity = await assertApiKeyWithIdentity(request);
   const userId = identity?.userId ?? resolveDevFallbackApiKeyUserId();
+  const orgId = identity?.orgId ?? null;
   const keyId = identity?.keyId ?? null;
 
   // Per-key rate limit (skip for dev-mode keys with no keyId)
@@ -51,7 +53,7 @@ export async function authenticateApiKey(
     setRequestUserId(userId);
     addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
     return {
-      userId, keyId,
+      userId, orgId, keyId,
       apiVersion: identity?.apiVersion ?? CURRENT_VERSION,
       rateLimit: result.limit != null
         ? { limit: result.limit, remaining: result.remaining ?? 0, reset: result.reset ?? 0 }
@@ -61,7 +63,7 @@ export async function authenticateApiKey(
 
   setRequestUserId(userId);
   addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
-  return { userId, keyId, apiVersion: identity?.apiVersion ?? CURRENT_VERSION };
+  return { userId, orgId, keyId, apiVersion: identity?.apiVersion ?? CURRENT_VERSION };
 }
 
 /** Set X-RateLimit-* headers on a response if rate limit info is available. */

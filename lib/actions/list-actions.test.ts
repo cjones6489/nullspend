@@ -22,7 +22,7 @@ const mockedGetDb = vi.mocked(getDb);
 function makeDbRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "a0000000-0000-4000-a000-000000000001",
-    ownerUserId: "user-123",
+    orgId: "user-123",
     agentId: "agent-1",
     actionType: "http_post",
     status: "executed",
@@ -59,7 +59,7 @@ describe("listActions", () => {
   it("calls bulkExpireActions before querying", async () => {
     mockLimit.mockReturnValue([]);
 
-    await listActions({ ownerUserId: "user-123", limit: 25 });
+    await listActions({ orgId: "user-123", limit: 25 });
 
     expect(mockedBulkExpire).toHaveBeenCalledWith("user-123");
     expect(mockedBulkExpire).toHaveBeenCalledBefore(mockSelect as ReturnType<typeof vi.fn>);
@@ -68,7 +68,7 @@ describe("listActions", () => {
   it("returns empty data with null cursor when no rows exist", async () => {
     mockLimit.mockReturnValue([]);
 
-    const result = await listActions({ ownerUserId: "user-123", limit: 25 });
+    const result = await listActions({ orgId: "user-123", limit: 25 });
 
     expect(result.data).toEqual([]);
     expect(result.cursor).toBeNull();
@@ -83,7 +83,7 @@ describe("listActions", () => {
     );
     mockLimit.mockReturnValue(rows);
 
-    const result = await listActions({ ownerUserId: "user-123", limit: 25 });
+    const result = await listActions({ orgId: "user-123", limit: 25 });
 
     expect(result.data).toHaveLength(25);
     expect(result.cursor).not.toBeNull();
@@ -94,7 +94,7 @@ describe("listActions", () => {
     const rows = [makeDbRow()];
     mockLimit.mockReturnValue(rows);
 
-    const result = await listActions({ ownerUserId: "user-123", limit: 25 });
+    const result = await listActions({ orgId: "user-123", limit: 25 });
 
     expect(result.data).toHaveLength(1);
     expect(result.cursor).toBeNull();
@@ -104,7 +104,7 @@ describe("listActions", () => {
     mockLimit.mockReturnValue([]);
 
     await listActions({
-      ownerUserId: "user-123",
+      orgId: "user-123",
       statuses: ["approved", "executed", "failed"],
       limit: 25,
     });
@@ -116,7 +116,7 @@ describe("listActions", () => {
     mockLimit.mockReturnValue([]);
 
     await listActions({
-      ownerUserId: "user-123",
+      orgId: "user-123",
       status: "pending",
       limit: 25,
     });
@@ -134,7 +134,7 @@ describe("listActions", () => {
     );
     mockLimit.mockReturnValue(rows);
 
-    const result = await listActions({ ownerUserId: "user-123", limit: 5 });
+    const result = await listActions({ orgId: "user-123", limit: 5 });
 
     expect(result.data).toHaveLength(5);
     expect(result.cursor).toEqual({
@@ -152,7 +152,7 @@ describe("listActions", () => {
     );
     mockLimit.mockReturnValue(rows);
 
-    const result = await listActions({ ownerUserId: "user-123", limit: 3 });
+    const result = await listActions({ orgId: "user-123", limit: 3 });
 
     expect(result.data).toHaveLength(3);
     expect(result.cursor).not.toBeNull();
@@ -167,7 +167,7 @@ describe("listActions", () => {
     );
     mockLimit.mockReturnValue(rows);
 
-    const result = await listActions({ ownerUserId: "user-123", limit: 3 });
+    const result = await listActions({ orgId: "user-123", limit: 3 });
 
     expect(result.data).toHaveLength(3);
     expect(result.cursor).toBeNull();
@@ -177,7 +177,7 @@ describe("listActions", () => {
     mockLimit.mockReturnValue([]);
 
     await listActions({
-      ownerUserId: "user-123",
+      orgId: "user-123",
       cursor: {
         createdAt: "2026-03-07T12:00:00.000Z",
         id: "a0000000-0000-4000-a000-000000000001",
@@ -192,7 +192,7 @@ describe("listActions", () => {
     mockLimit.mockReturnValue([]);
 
     await listActions({
-      ownerUserId: "user-123",
+      orgId: "user-123",
       status: "pending",
       statuses: ["approved", "executed"],
       limit: 25,
@@ -205,7 +205,7 @@ describe("listActions", () => {
     mockLimit.mockReturnValue([]);
 
     await listActions({
-      ownerUserId: "user-123",
+      orgId: "user-123",
       statuses: [],
       limit: 25,
     });
@@ -216,7 +216,7 @@ describe("listActions", () => {
   it("requests limit+1 rows from database for pagination detection", async () => {
     mockLimit.mockReturnValue([]);
 
-    await listActions({ ownerUserId: "user-123", limit: 10 });
+    await listActions({ orgId: "user-123", limit: 10 });
 
     expect(mockLimit).toHaveBeenCalledWith(11);
   });

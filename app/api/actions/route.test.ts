@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAction } from "@/lib/actions/create-action";
 import { listActions } from "@/lib/actions/list-actions";
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { sendSlackNotification } from "@/lib/slack/notify";
 import { GET, POST } from "@/app/api/actions/route";
 
@@ -24,7 +24,7 @@ vi.mock("@/lib/auth/with-api-key-auth", async (importOriginal) => {
 });
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 vi.mock("@/lib/slack/notify", () => ({
@@ -34,7 +34,7 @@ vi.mock("@/lib/slack/notify", () => ({
 const mockedCreateAction = vi.mocked(createAction);
 const mockedListActions = vi.mocked(listActions);
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 const mockedSendSlackNotification = vi.mocked(sendSlackNotification);
 
 function makeActionRecord(overrides: Record<string, unknown> = {}) {
@@ -73,6 +73,7 @@ describe("app/api/actions/route", () => {
   it("creates actions for the managed API key owner", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
+      orgId: "org-test-1",
       keyId: "key-123",
       apiVersion: "2026-04-01",
     });
@@ -96,18 +97,20 @@ describe("app/api/actions/route", () => {
     expect(mockedCreateAction).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: "agent-1" }),
       "user-123",
+      "org-test-1",
     );
     expect(response.status).toBe(201);
 
     expect(mockedSendSlackNotification).toHaveBeenCalledWith(
       expect.objectContaining({ id: "550e8400-e29b-41d4-a716-446655440000" }),
-      "user-123",
+      "org-test-1",
     );
   });
 
   it("uses the dev actor only for env-key fallback ownership", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "dev-user",
+      orgId: "org-test-1",
       keyId: null,
       apiVersion: "2026-04-01",
     });
@@ -131,12 +134,14 @@ describe("app/api/actions/route", () => {
     expect(mockedCreateAction).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: "agent-1" }),
       "dev-user",
+      "org-test-1",
     );
   });
 
   it("returns 201 even when Slack notification fails", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-123",
+      orgId: "org-test-1",
       keyId: "key-123",
       apiVersion: "2026-04-01",
     });
@@ -190,7 +195,7 @@ describe("app/api/actions/route", () => {
   });
 
   it("lists actions scoped to the resolved session user", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedListActions.mockResolvedValue({
       data: [],
       cursor: null,
@@ -206,7 +211,7 @@ describe("app/api/actions/route", () => {
     );
 
     expect(mockedListActions).toHaveBeenCalledWith({
-      ownerUserId: "user-123",
+      orgId: "org-test-1",
       status: "pending",
       limit: 25,
       cursor: { createdAt: "2026-03-07T12:00:00.000Z", id: "00000000-0000-4000-a000-000000000001" },
@@ -215,7 +220,7 @@ describe("app/api/actions/route", () => {
   });
 
   it("returns prefixed IDs in cursor for pagination round-trip", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedListActions.mockResolvedValue({
       data: [makeActionRecord()],
       cursor: {
@@ -239,7 +244,7 @@ describe("app/api/actions/route", () => {
   });
 
   it("passes statuses array to listActions when provided", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedListActions.mockResolvedValue({
       data: [],
       cursor: null,
@@ -252,7 +257,7 @@ describe("app/api/actions/route", () => {
     );
 
     expect(mockedListActions).toHaveBeenCalledWith({
-      ownerUserId: "user-123",
+      orgId: "org-test-1",
       statuses: ["approved", "executed", "failed"],
       limit: 50,
     });

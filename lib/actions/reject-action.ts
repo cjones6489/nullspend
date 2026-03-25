@@ -4,9 +4,9 @@ import type { RejectActionInput } from "@/lib/validations/actions";
 export async function rejectAction(
   actionId: string,
   input: RejectActionInput,
-  ownerUserId: string,
+  orgId: string,
 ) {
-  const result = await resolveAction(actionId, ownerUserId, "rejected", {
+  const result = await resolveAction(actionId, orgId, "rejected", {
     rejectedBy: input.rejectedBy,
   });
 

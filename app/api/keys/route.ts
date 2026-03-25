@@ -7,7 +7,7 @@ import {
   extractPrefix,
 } from "@/lib/auth/api-key";
 import { CURRENT_VERSION } from "@/lib/api-version";
-import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { apiKeys } from "@nullspend/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
@@ -22,7 +22,7 @@ import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
 
 export async function GET(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
     const url = new URL(request.url);
     const query = listApiKeysQuerySchema.parse({
       limit: url.searchParams.get("limit") ?? undefined,
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     });
 
     const db = getDb();
-    const conditions = [eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)];
+    const conditions = [eq(apiKeys.orgId, orgId), isNull(apiKeys.revokedAt)];
 
     if (query.cursor) {
       const cursorDate = new Date(query.cursor.createdAt);
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     const [{ value: activeKeyCount }] = await db
       .select({ value: count() })
       .from(apiKeys)
-      .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)));
+      .where(and(eq(apiKeys.orgId, orgId), isNull(apiKeys.revokedAt)));
 
     const subscription = await getSubscriptionByUserId(userId);
     const tier = getTierForUser(subscription);

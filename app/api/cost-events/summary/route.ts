@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import {
   getCostBreakdownTotals,
   getDailySpend,
@@ -21,7 +21,7 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
     const url = new URL(request.url);
     const { period, excludeEstimated: excludeEstimatedRaw } = costSummaryQuerySchema.parse({
       period: url.searchParams.get("period") ?? undefined,
@@ -31,15 +31,15 @@ export async function GET(request: Request) {
     const opts = excludeEstimatedRaw === "true" ? { excludeEstimated: true } : undefined;
 
     const [daily, models, providers, keys, tools, sources, traces, totals, costBreakdown] = await Promise.all([
-      getDailySpend(userId, periodDays, opts),
-      getModelBreakdown(userId, periodDays, opts),
-      getProviderBreakdown(userId, periodDays, opts),
-      getKeyBreakdown(userId, periodDays, opts),
-      getToolBreakdown(userId, periodDays, opts),
-      getSourceBreakdown(userId, periodDays, opts),
-      getTraceBreakdown(userId, periodDays, opts),
-      getTotals(userId, periodDays, opts),
-      getCostBreakdownTotals(userId, periodDays, opts),
+      getDailySpend(orgId, periodDays, opts),
+      getModelBreakdown(orgId, periodDays, opts),
+      getProviderBreakdown(orgId, periodDays, opts),
+      getKeyBreakdown(orgId, periodDays, opts),
+      getToolBreakdown(orgId, periodDays, opts),
+      getSourceBreakdown(orgId, periodDays, opts),
+      getTraceBreakdown(orgId, periodDays, opts),
+      getTotals(orgId, periodDays, opts),
+      getCostBreakdownTotals(orgId, periodDays, opts),
     ]);
 
     const response = costSummaryResponseSchema.parse({

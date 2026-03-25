@@ -1,12 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 import { GET, POST } from "@/app/api/budgets/route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
   resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
@@ -45,7 +44,6 @@ vi.mock("@/lib/utils/http", async (importOriginal) => {
 
 const mockedInvalidateProxyCache = vi.mocked(invalidateProxyCache);
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 const mockedGetDb = vi.mocked(getDb);
 
@@ -91,12 +89,10 @@ describe("GET /api/budgets", () => {
   });
 
   it("returns 200 with user budgets when user has no API keys", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
 
     const userBudget = makeBudgetRow();
-    mockWhere
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([userBudget]);
+    mockWhere.mockResolvedValueOnce([userBudget]);
 
     const response = await GET(makeRequest());
     expect(response.status).toBe(200);
@@ -106,7 +102,7 @@ describe("GET /api/budgets", () => {
   });
 
   it("returns 200 with both user and api_key budgets when keys exist", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
 
     const keyBudget = makeBudgetRow({
       id: "b0000000-0000-4000-a000-000000000002",
@@ -114,9 +110,7 @@ describe("GET /api/budgets", () => {
       entityId: "key-123",
     });
 
-    mockWhere
-      .mockResolvedValueOnce([{ id: "key-123" }])
-      .mockResolvedValueOnce([makeBudgetRow(), keyBudget]);
+    mockWhere.mockResolvedValueOnce([makeBudgetRow(), keyBudget]);
 
     const response = await GET(makeRequest());
     expect(response.status).toBe(200);
@@ -125,17 +119,16 @@ describe("GET /api/budgets", () => {
   });
 
   it("returns 401 when session is not authenticated", async () => {
-    mockedResolveSessionUserId.mockRejectedValue(new Error("Unauthorized"));
+    const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
+    mockedResolveSessionContext.mockRejectedValue(new AuthenticationRequiredError());
 
     const response = await GET(makeRequest());
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
   });
 
   it("serializes date fields to ISO strings", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
-    mockWhere
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([makeBudgetRow()]);
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    mockWhere.mockResolvedValueOnce([makeBudgetRow()]);
 
     const response = await GET(makeRequest());
     const json = await response.json();
@@ -144,10 +137,8 @@ describe("GET /api/budgets", () => {
   });
 
   it("returns null for currentPeriodStart when it is null", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
-    mockWhere
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([makeBudgetRow({ currentPeriodStart: null })]);
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    mockWhere.mockResolvedValueOnce([makeBudgetRow({ currentPeriodStart: null })]);
 
     const response = await GET(makeRequest());
     const json = await response.json();
@@ -155,10 +146,8 @@ describe("GET /api/budgets", () => {
   });
 
   it("returns empty data array when user has no budgets", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
-    mockWhere
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    mockWhere.mockResolvedValueOnce([]);
 
     const response = await GET(makeRequest());
     const json = await response.json();
@@ -166,10 +155,8 @@ describe("GET /api/budgets", () => {
   });
 
   it("serializes updatedAt to ISO string", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
-    mockWhere
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([makeBudgetRow()]);
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    mockWhere.mockResolvedValueOnce([makeBudgetRow()]);
 
     const response = await GET(makeRequest());
     const json = await response.json();
@@ -177,10 +164,8 @@ describe("GET /api/budgets", () => {
   });
 
   it("includes all budget fields in response", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
-    mockWhere
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([makeBudgetRow()]);
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    mockWhere.mockResolvedValueOnce([makeBudgetRow()]);
 
     const response = await GET(makeRequest());
     const json = await response.json();
@@ -198,10 +183,8 @@ describe("GET /api/budgets", () => {
   });
 
   it("response includes thresholdPercentages", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
-    mockWhere
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([makeBudgetRow({ thresholdPercentages: [25, 50, 75] })]);
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    mockWhere.mockResolvedValueOnce([makeBudgetRow({ thresholdPercentages: [25, 50, 75] })]);
 
     const response = await GET(makeRequest());
     const json = await response.json();
@@ -209,8 +192,8 @@ describe("GET /api/budgets", () => {
   });
 
   it("handles multiple api keys correctly", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-123");
-    const budgets = [
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    const budgetRows = [
       makeBudgetRow(),
       makeBudgetRow({
         id: "b0000000-0000-4000-a000-000000000002",
@@ -223,9 +206,7 @@ describe("GET /api/budgets", () => {
         entityId: "key-bbb",
       }),
     ];
-    mockWhere
-      .mockResolvedValueOnce([{ id: "key-aaa" }, { id: "key-bbb" }])
-      .mockResolvedValueOnce(budgets);
+    mockWhere.mockResolvedValueOnce(budgetRows);
 
     const response = await GET(makeRequest());
     const json = await response.json();
@@ -238,7 +219,6 @@ describe("POST /api/budgets — proxy invalidation", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedResolveSessionUserId.mockResolvedValue(TEST_USER_ID);
     mockedResolveSessionContext.mockResolvedValue({ userId: TEST_USER_ID, orgId: "org-test-1", role: "owner" });
   });
 

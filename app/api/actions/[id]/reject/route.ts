@@ -13,10 +13,10 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { userId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
-    const action = await rejectAction(id, { rejectedBy: userId }, userId);
+    const action = await rejectAction(id, { rejectedBy: userId }, orgId);
 
     return NextResponse.json(mutateActionResponseSchema.parse(action));
   } catch (error) {

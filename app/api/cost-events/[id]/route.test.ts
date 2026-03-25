@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthenticationRequiredError } from "@/lib/auth/errors";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { GET } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
 vi.mock("@/lib/db/client", () => ({
@@ -22,7 +22,7 @@ vi.mock("@/lib/observability", () => ({
   getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 const mockedGetDb = vi.mocked(getDb);
 
 const VALID_UUID = "a0000000-0000-4000-a000-000000000001";
@@ -79,7 +79,7 @@ describe("GET /api/cost-events/[id]", () => {
   });
 
   it("returns 200 for owned cost event", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     const row = makeCostEventRow();
     mockLimit.mockResolvedValue([row]);
 
@@ -109,7 +109,7 @@ describe("GET /api/cost-events/[id]", () => {
   });
 
   it("returns 404 for missing event", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockLimit.mockResolvedValue([]);
 
     const res = await GET(makeRequest(), makeContext(VALID_UUID));
@@ -123,7 +123,7 @@ describe("GET /api/cost-events/[id]", () => {
   it("returns 404 for another user's event (different userId on apiKey)", async () => {
     // The query joins on apiKeys.userId = sessionUserId,
     // so a different user's event simply returns no rows.
-    mockedResolveSessionUserId.mockResolvedValue("user-other");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-other", orgId: "org-other-1", role: "owner" });
     mockLimit.mockResolvedValue([]);
 
     const res = await GET(makeRequest(), makeContext(VALID_UUID));
@@ -134,7 +134,7 @@ describe("GET /api/cost-events/[id]", () => {
   });
 
   it("returns 401 when unauthenticated", async () => {
-    mockedResolveSessionUserId.mockRejectedValue(
+    mockedResolveSessionContext.mockRejectedValue(
       new AuthenticationRequiredError(),
     );
 
@@ -146,7 +146,7 @@ describe("GET /api/cost-events/[id]", () => {
   });
 
   it("returns 400 for invalid ID format", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
 
     const res = await GET(makeRequest(), makeContext("not-a-uuid"));
     expect(res.status).toBe(400);
@@ -157,7 +157,7 @@ describe("GET /api/cost-events/[id]", () => {
   });
 
   it("accepts ns_evt_ prefixed ID", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     const row = makeCostEventRow();
     mockLimit.mockResolvedValue([row]);
 
@@ -169,7 +169,7 @@ describe("GET /api/cost-events/[id]", () => {
   });
 
   it("response shape matches costEventRecordSchema", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     const row = makeCostEventRow();
     mockLimit.mockResolvedValue([row]);
 
@@ -204,7 +204,7 @@ describe("GET /api/cost-events/[id]", () => {
   });
 
   it("returns 200 for cost event with null apiKeyId (leftJoin includes it)", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     const row = makeCostEventRow({ apiKeyId: null, keyName: null });
     mockLimit.mockResolvedValue([row]);
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { withRequestContext } from "@/lib/observability";
 
 /**
@@ -16,7 +16,7 @@ import { withRequestContext } from "@/lib/observability";
  * - Returns { velocityState: [] } in local dev (no PROXY_INTERNAL_URL)
  */
 export const GET = withRequestContext(async (_request: Request) => {
-  const userId = await resolveSessionUserId();
+  const { userId } = await resolveSessionContext();
 
   const url = process.env.PROXY_INTERNAL_URL;
   const secret = process.env.PROXY_INTERNAL_SECRET;

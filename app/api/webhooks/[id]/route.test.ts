@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { PATCH, DELETE } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 const mockUpdateReturning = vi.fn();
@@ -27,7 +27,7 @@ vi.mock("@/lib/db/client", () => ({
   })),
 }));
 
-const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 
 const RAW_UUID = "00000000-0000-4000-a000-000000000001";
 const VALID_ID = `ns_wh_${RAW_UUID}`;
@@ -42,7 +42,7 @@ describe("PATCH /api/webhooks/:id", () => {
   });
 
   it("updates a webhook endpoint", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([
       {
         id: RAW_UUID,
@@ -73,7 +73,7 @@ describe("PATCH /api/webhooks/:id", () => {
   });
 
   it("returns 404 for non-owned endpoint", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockUpdateReturning.mockResolvedValue([]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID, {
@@ -88,7 +88,7 @@ describe("PATCH /api/webhooks/:id", () => {
   });
 
   it("returns 400 for empty update", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID, {
       method: "PATCH",
@@ -102,7 +102,7 @@ describe("PATCH /api/webhooks/:id", () => {
   });
 
   it("returns 400 for invalid prefixed ID param", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 
     const req = new Request("http://localhost/api/webhooks/not-a-uuid", {
       method: "PATCH",
@@ -122,7 +122,7 @@ describe("DELETE /api/webhooks/:id", () => {
   });
 
   it("deletes an owned webhook endpoint", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockDeleteReturning.mockResolvedValue([{ id: RAW_UUID }]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID, {
@@ -137,7 +137,7 @@ describe("DELETE /api/webhooks/:id", () => {
   });
 
   it("returns 404 for non-owned endpoint", async () => {
-    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
     mockDeleteReturning.mockResolvedValue([]);
 
     const req = new Request("http://localhost/api/webhooks/" + VALID_ID, {

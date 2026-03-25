@@ -1,19 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 
 import { DELETE, GET, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(),
 }));
 
-const mockedSession = vi.mocked(resolveSessionUserId);
+const mockedSession = vi.mocked(resolveSessionContext);
 const mockedGetDb = vi.mocked(getDb);
 
 const now = new Date("2026-03-07T12:00:00.000Z");
@@ -65,7 +65,7 @@ describe("GET /api/slack/config", () => {
   afterEach(() => vi.resetAllMocks());
 
   it("returns config when it exists", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockDbSelect(storedConfig);
 
     const res = await GET();
@@ -81,7 +81,7 @@ describe("GET /api/slack/config", () => {
   });
 
   it("returns null data when no config exists", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockDbSelect(undefined);
 
     const res = await GET();
@@ -103,7 +103,7 @@ describe("POST /api/slack/config", () => {
   afterEach(() => vi.resetAllMocks());
 
   it("upserts a valid config", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockDbInsert(storedConfig);
 
     const res = await POST(
@@ -123,7 +123,7 @@ describe("POST /api/slack/config", () => {
   });
 
   it("rejects an invalid webhook URL", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
 
     const res = await POST(
       new Request("http://localhost/api/slack/config", {
@@ -139,7 +139,7 @@ describe("POST /api/slack/config", () => {
   });
 
   it("rejects a non-URL string", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
 
     const res = await POST(
       new Request("http://localhost/api/slack/config", {
@@ -155,7 +155,7 @@ describe("POST /api/slack/config", () => {
   });
 
   it("rejects empty body", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
 
     const res = await POST(
       new Request("http://localhost/api/slack/config", {
@@ -169,7 +169,7 @@ describe("POST /api/slack/config", () => {
   });
 
   it("accepts isActive=false to disable notifications", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     const disabledConfig = { ...storedConfig, isActive: false };
     mockDbInsert(disabledConfig);
 
@@ -190,7 +190,7 @@ describe("POST /api/slack/config", () => {
   });
 
   it("defaults isActive to true when not provided", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockDbInsert(storedConfig);
 
     const res = await POST(
@@ -213,7 +213,7 @@ describe("DELETE /api/slack/config", () => {
   afterEach(() => vi.resetAllMocks());
 
   it("deletes an existing config", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockDbDelete({ id: storedConfig.id });
 
     const res = await DELETE();
@@ -224,7 +224,7 @@ describe("DELETE /api/slack/config", () => {
   });
 
   it("returns 404 when no config to delete", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockDbDelete(undefined);
 
     const res = await DELETE();

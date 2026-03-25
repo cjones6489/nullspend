@@ -20,8 +20,10 @@ export const POST = withRequestContext(async (request: Request) => {
 
     const db = getDb();
 
+    const orgId = authResult.orgId;
     const values = input.tools.map((t) => ({
       userId,
+      orgId,
       serverName: input.serverName,
       toolName: t.name,
       costMicrodollars: t.tierCost,
@@ -41,6 +43,7 @@ export const POST = withRequestContext(async (request: Request) => {
         .onConflictDoUpdate({
           target: [toolCosts.userId, toolCosts.serverName, toolCosts.toolName],
           set: {
+            orgId: sql`excluded.org_id`,
             annotations: sql`excluded.annotations`,
             description: sql`excluded.description`,
             suggestedCost: sql`excluded.suggested_cost`,
@@ -55,6 +58,7 @@ export const POST = withRequestContext(async (request: Request) => {
         .onConflictDoUpdate({
           target: [toolCosts.userId, toolCosts.serverName, toolCosts.toolName],
           set: {
+            orgId: sql`excluded.org_id`,
             costMicrodollars: sql`excluded.cost_microdollars`,
           },
           setWhere: sql`${toolCosts.source} != 'manual'`,

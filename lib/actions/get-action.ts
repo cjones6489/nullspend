@@ -6,12 +6,12 @@ import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
 import { actions } from "@nullspend/db";
 
-export async function getAction(actionId: string, ownerUserId: string) {
+export async function getAction(actionId: string, orgId: string) {
   const db = getDb();
   const [action] = await db
     .select()
     .from(actions)
-    .where(and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)))
+    .where(and(eq(actions.id, actionId), eq(actions.orgId, orgId)))
     .limit(1);
 
   if (!action) {
@@ -19,7 +19,7 @@ export async function getAction(actionId: string, ownerUserId: string) {
   }
 
   if (isActionExpired(action)) {
-    const updated = await expireAction(actionId, ownerUserId);
+    const updated = await expireAction(actionId, orgId);
     if (updated) {
       return serializeAction(updated);
     }
@@ -28,7 +28,7 @@ export async function getAction(actionId: string, ownerUserId: string) {
       .select()
       .from(actions)
       .where(
-        and(eq(actions.id, actionId), eq(actions.ownerUserId, ownerUserId)),
+        and(eq(actions.id, actionId), eq(actions.orgId, orgId)),
       )
       .limit(1);
 

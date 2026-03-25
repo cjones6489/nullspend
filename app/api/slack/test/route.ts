@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import {
   sendSlackTestNotification,
   SlackConfigNotFoundError,
@@ -10,10 +10,10 @@ import { handleRouteError } from "@/lib/utils/http";
 
 export async function POST() {
   try {
-    const userId = await resolveSessionUserId();
+    const { orgId } = await resolveSessionContext();
 
     try {
-      await sendSlackTestNotification(userId);
+      await sendSlackTestNotification(orgId);
     } catch (slackErr) {
       console.error("[NullSpend] Slack test notification failed:", slackErr);
 

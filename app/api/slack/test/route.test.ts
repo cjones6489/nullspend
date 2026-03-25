@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionContext } from "@/lib/auth/session";
 import {
   sendSlackTestNotification,
   SlackConfigNotFoundError,
@@ -10,7 +10,7 @@ import {
 import { POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
-  resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn(),
 }));
 
 vi.mock("@/lib/slack/notify", () => ({
@@ -31,14 +31,14 @@ vi.mock("@/lib/slack/notify", () => ({
   },
 }));
 
-const mockedSession = vi.mocked(resolveSessionUserId);
+const mockedSession = vi.mocked(resolveSessionContext);
 const mockedSendTest = vi.mocked(sendSlackTestNotification);
 
 describe("POST /api/slack/test", () => {
   afterEach(() => vi.resetAllMocks());
 
   it("sends a test notification and returns success", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedSendTest.mockResolvedValue(undefined);
 
     const res = await POST();
@@ -46,11 +46,11 @@ describe("POST /api/slack/test", () => {
 
     expect(res.status).toBe(200);
     expect(json.success).toBe(true);
-    expect(mockedSendTest).toHaveBeenCalledWith("user-123");
+    expect(mockedSendTest).toHaveBeenCalledWith("org-test-1");
   });
 
   it("returns 404 when no Slack config exists", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedSendTest.mockRejectedValue(new SlackConfigNotFoundError());
 
     const res = await POST();
@@ -62,7 +62,7 @@ describe("POST /api/slack/test", () => {
   });
 
   it("returns 400 on webhook client error", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedSendTest.mockRejectedValue(
       new SlackWebhookError(403, "invalid_payload"),
     );
@@ -76,7 +76,7 @@ describe("POST /api/slack/test", () => {
   });
 
   it("returns 502 on webhook server error", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedSendTest.mockRejectedValue(
       new SlackWebhookError(500, "internal_error"),
     );
@@ -90,7 +90,7 @@ describe("POST /api/slack/test", () => {
   });
 
   it("returns 502 for unknown errors", async () => {
-    mockedSession.mockResolvedValue("user-123");
+    mockedSession.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" });
     mockedSendTest.mockRejectedValue(new Error("network timeout"));
 
     const res = await POST();
