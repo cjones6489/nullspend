@@ -262,3 +262,62 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
 
 export type WebhookDeliveryRow = typeof webhookDeliveries.$inferSelect;
 export type NewWebhookDeliveryRow = typeof webhookDeliveries.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Organizations
+// ---------------------------------------------------------------------------
+
+export const organizations = pgTable("organizations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  isPersonal: boolean("is_personal").notNull().default(false),
+  logoUrl: text("logo_url"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(sql`'{}'`),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("organizations_personal_user_idx").on(table.createdBy).where(sql`is_personal = true`),
+]);
+
+export type OrganizationRow = typeof organizations.$inferSelect;
+export type NewOrganizationRow = typeof organizations.$inferInsert;
+
+export const orgMemberships = pgTable("org_memberships", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  role: text("role").$type<"owner" | "admin" | "member">().notNull().default("member"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("org_memberships_org_user_idx").on(table.orgId, table.userId),
+  index("org_memberships_user_id_idx").on(table.userId),
+]);
+
+export type OrgMembershipRow = typeof orgMemberships.$inferSelect;
+export type NewOrgMembershipRow = typeof orgMemberships.$inferInsert;
+
+export const orgInvitations = pgTable("org_invitations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").$type<"owner" | "admin" | "member">().notNull().default("member"),
+  invitedBy: text("invited_by").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  tokenPrefix: text("token_prefix").notNull(),
+  status: text("status").$type<"pending" | "accepted" | "declined" | "revoked" | "expired">().notNull().default("pending"),
+  acceptedBy: text("accepted_by"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (table) => [
+  index("org_invitations_org_id_idx").on(table.orgId),
+  index("org_invitations_email_idx").on(table.email),
+  uniqueIndex("org_invitations_pending_idx").on(table.orgId, table.email).where(sql`status = 'pending'`),
+]);
+
+export type OrgInvitationRow = typeof orgInvitations.$inferSelect;
+export type NewOrgInvitationRow = typeof orgInvitations.$inferInsert;
