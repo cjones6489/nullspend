@@ -18,10 +18,12 @@ import {
   listApiKeysResponseSchema,
 } from "@/lib/validations/api-keys";
 import { resolveUserTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function GET(request: Request) {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "viewer");
     const url = new URL(request.url);
     const query = listApiKeysQuerySchema.parse({
       limit: url.searchParams.get("limit") ?? undefined,
@@ -83,6 +85,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "member");
     const body = await readJsonBody(request);
     const input = createApiKeyInputSchema.parse(body);
 

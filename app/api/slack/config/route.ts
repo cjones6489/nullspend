@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { slackConfigs } from "@nullspend/db";
@@ -27,7 +28,8 @@ function maskWebhookUrl(url: string): string {
 
 export async function GET() {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "viewer");
     const db = getDb();
 
     const [config] = await db
@@ -59,6 +61,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const body = await readJsonBody(request);
     const input = slackConfigInputSchema.parse(body);
 
@@ -104,7 +107,8 @@ export async function POST(request: Request) {
 
 export async function DELETE() {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const db = getDb();
 
     const [deleted] = await db

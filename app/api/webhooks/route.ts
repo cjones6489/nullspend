@@ -12,10 +12,12 @@ import {
 } from "@/lib/validations/webhooks";
 import { invalidateWebhookCacheForUser } from "@/lib/webhooks/invalidate-cache";
 import { resolveUserTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function GET() {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "viewer");
     const db = getDb();
 
     const rows = await db
@@ -51,6 +53,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const body = await readJsonBody(request);
     const input = createWebhookInputSchema.parse(body);
 

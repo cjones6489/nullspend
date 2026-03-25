@@ -7,6 +7,7 @@ import { apiKeys } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { deleteApiKeyResponseSchema, keyIdParamsSchema, updateApiKeyInputSchema, apiKeyRecordSchema } from "@/lib/validations/api-keys";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function DELETE(
   _request: Request,
@@ -14,6 +15,7 @@ export async function DELETE(
 ) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = keyIdParamsSchema.parse(params);
 
@@ -60,6 +62,7 @@ export async function PATCH(
 ) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = keyIdParamsSchema.parse(params);
     const body = await readJsonBody(request);

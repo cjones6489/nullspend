@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db/client";
 import { webhookEndpoints } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { webhookIdParamsSchema } from "@/lib/validations/webhooks";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function POST(
   _request: Request,
@@ -14,6 +15,7 @@ export async function POST(
 ) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
 

@@ -13,7 +13,7 @@ export const GET = withRequestContext(async (
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) => {
-  const authResult = await assertApiKeyOrSession(request);
+  const authResult = await assertApiKeyOrSession(request, "viewer");
   if (authResult instanceof Response) return authResult;
   const params = await readRouteParams(context.params);
   const { id } = actionIdParamsSchema.parse(params);

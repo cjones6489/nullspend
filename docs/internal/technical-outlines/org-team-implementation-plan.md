@@ -654,9 +654,13 @@ Use existing `assertOrgRole` from `lib/auth/org-authorization.ts`. No new middle
 
 **Dual-auth routes (API key + session):** `/api/actions/[id]` GET, `/api/actions` POST, `/api/cost-events` POST, `/api/tool-costs` GET — these use `assertApiKeyOrSession` which returns `{ userId, orgId }`. For API key auth, no role check (agent access). For session auth, should enforce minimum role.
 
-- [ ] Add `assertOrgRole` to all routes in the table above
-- [ ] Update dual-auth routes to enforce role when session-authenticated
-- [ ] Tests: viewer tries write → 403, member tries admin action → 403, admin tries owner action → 403
+- [x] Added `assertOrgRole` to all ~20 session-authenticated routes (viewer/member/admin/owner as mapped above)
+- [x] Updated `assertApiKeyOrSession` with optional `minSessionRole` parameter — API key auth bypasses role checks
+- [x] Updated 3 dual-auth routes to pass minimum role
+- [x] Added `assertOrgRole` mock to all 18 affected test files
+- [x] Permission enforcement test suite: 6 tests covering key boundaries (viewer→write, member→admin, admin→owner)
+
+**Test results:** 1086 root + 1210 proxy = 2296 total, 0 TypeScript errors
 
 ### Phase 4b: Frontend Role Enforcement (~1 day)
 
@@ -780,7 +784,7 @@ Use existing `useSession()` which returns `{ userId, orgId, role }`. Pattern alr
 | 3g: Invitation acceptance page | ~1 day | **COMPLETE** (2026-03-25) |
 | 3h: Create org + multi-org switcher | ~1 day | **COMPLETE** (2026-03-25) |
 | **Phase 3 total** | **~8-10 days** | |
-| 4a: Permission enforcement | ~1 day | Not started |
+| 4a: Permission enforcement | ~1 day | **COMPLETE** (2026-03-25) |
 | 4b: Frontend role enforcement | ~1 day | Not started |
 | 4c: Billing migration (per-org) | ~1-2 days | Not started |
 | **Phase 4 total** | **~3-4 days** | |
@@ -809,3 +813,4 @@ Use existing `useSession()` which returns `{ userId, orgId, role }`. Pattern alr
 | 2026-03-25 | Phase 3g completed — invitation acceptance page. Server/client split, auth check, accept flow with state machine, error handling for expired/conflict/invalid. |
 | 2026-03-25 | Phase 3h completed — org switcher in sidebar, create org dialog with auto-slug, switch-org endpoint, general settings page. Phase 3 complete. |
 | 2026-03-25 | Phase 4 re-evaluated. Key findings: assertOrgRole already exists (no new middleware), useSession already returns role (no new hook), ~15 routes need role checks, billing is per-user and must migrate to per-org. Stripe docs confirm Customer metadata pattern. Estimated 3-4 days total (down from 4-6). |
+| 2026-03-25 | Phase 4a completed — role enforcement on ~20 routes, dual-auth updated with minSessionRole, 18 test files updated, 6 permission boundary tests. 1086 root + 1210 proxy = 2296 total. |

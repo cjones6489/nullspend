@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq, and, isNull, sql } from "drizzle-orm";
 
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
@@ -14,6 +15,7 @@ type RouteParams = { params: Promise<{ id: string }> };
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const rawParams = await readRouteParams(params);
     const { id } = budgetIdParamsSchema.parse(rawParams);
     const db = getDb();
@@ -52,6 +54,7 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
 export async function POST(_request: Request, { params }: RouteParams) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const rawParams = await readRouteParams(params);
     const { id } = budgetIdParamsSchema.parse(rawParams);
     const db = getDb();

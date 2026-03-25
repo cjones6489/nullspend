@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
 import { getDb } from "@/lib/db/client";
@@ -16,7 +17,8 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "viewer");
     const params = await readRouteParams(context.params);
 
     // Accept raw UUID or ns_evt_ prefixed ID

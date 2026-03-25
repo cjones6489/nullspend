@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
@@ -10,7 +11,8 @@ import { checkoutInputSchema } from "@/lib/validations/subscription";
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "owner");
     const body = await readJsonBody(request);
     const input = checkoutInputSchema.parse(body);
 

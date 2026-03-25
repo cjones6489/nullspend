@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { withRequestContext } from "@/lib/observability";
 
 /**
@@ -16,7 +17,8 @@ import { withRequestContext } from "@/lib/observability";
  * - Returns { velocityState: [] } in local dev (no PROXY_INTERNAL_URL)
  */
 export const GET = withRequestContext(async (_request: Request) => {
-  const { orgId } = await resolveSessionContext();
+  const { userId, orgId } = await resolveSessionContext();
+  await assertOrgRole(userId, orgId, "viewer");
 
   const url = process.env.PROXY_INTERNAL_URL;
   const secret = process.env.PROXY_INTERNAL_SECRET;

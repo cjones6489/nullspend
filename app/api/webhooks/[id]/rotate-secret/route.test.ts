@@ -7,6 +7,11 @@ vi.mock("@/lib/auth/session", () => ({
   resolveSessionContext: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/org-authorization", () => ({
+  assertOrgRole: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
+  assertOrgMember: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
+}));
+
 const mockUpdateReturning = vi.fn();
 const mockSetArg = vi.fn();
 

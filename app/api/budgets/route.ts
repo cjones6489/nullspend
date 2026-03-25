@@ -3,6 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
@@ -17,7 +18,8 @@ import {
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
 export const GET = withRequestContext(async (_request: Request) => {
-  const { orgId } = await resolveSessionContext();
+  const { userId, orgId } = await resolveSessionContext();
+  await assertOrgRole(userId, orgId, "viewer");
   const db = getDb();
 
   const rows = await db
@@ -39,6 +41,7 @@ export const GET = withRequestContext(async (_request: Request) => {
 
 export const POST = withRequestContext(async (request: Request) => {
   const { userId, orgId } = await resolveSessionContext();
+  await assertOrgRole(userId, orgId, "member");
   const body = await readJsonBody(request);
   const input = createBudgetInputSchema.parse(body);
 

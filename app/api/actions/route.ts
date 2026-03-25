@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createAction } from "@/lib/actions/create-action";
 import { listActions } from "@/lib/actions/list-actions";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { withRequestContext } from "@/lib/observability";
@@ -16,7 +17,8 @@ import {
 import { readJsonBody } from "@/lib/utils/http";
 
 export const GET = withRequestContext(async (request: Request) => {
-  const { orgId } = await resolveSessionContext();
+  const { userId, orgId } = await resolveSessionContext();
+  await assertOrgRole(userId, orgId, "viewer");
   const url = new URL(request.url);
   const query = listActionsQuerySchema.parse({
     status: url.searchParams.get("status") ?? undefined,

@@ -9,13 +9,15 @@ import {
   webhookIdParamsSchema,
   webhookDeliveryRecordSchema,
 } from "@/lib/validations/webhooks";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "viewer");
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
 

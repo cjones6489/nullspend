@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
 import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
@@ -7,7 +8,8 @@ import { handleRouteError } from "@/lib/utils/http";
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "owner");
     const existing = await getSubscriptionByUserId(userId);
 
     if (!existing?.stripeCustomerId) {

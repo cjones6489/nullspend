@@ -8,6 +8,7 @@ import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { webhookIdParamsSchema } from "@/lib/validations/webhooks";
 import { signPayload } from "@/lib/webhooks/signer";
 import { buildTestPingPayload } from "@/lib/webhooks/dispatch";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 const TEST_TIMEOUT_MS = 5_000;
 
@@ -16,7 +17,8 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
 

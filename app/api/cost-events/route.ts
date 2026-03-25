@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { costEventInputSchema, insertCostEvent } from "@/lib/cost-events/ingest";
@@ -21,7 +22,8 @@ import {
 const log = getLogger("cost-events");
 
 export const GET = withRequestContext(async (request: Request) => {
-  const { orgId } = await resolveSessionContext();
+  const { userId, orgId } = await resolveSessionContext();
+  await assertOrgRole(userId, orgId, "viewer");
   const url = new URL(request.url);
 
   // Parse tag.* query params for JSONB containment filtering

@@ -9,6 +9,11 @@ vi.mock("@/lib/auth/session", () => ({
   resolveSessionContext: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/org-authorization", () => ({
+  assertOrgRole: vi.fn().mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" }),
+  assertOrgMember: vi.fn().mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "owner" }),
+}));
+
 vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(),
 }));

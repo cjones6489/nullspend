@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
 import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { toolCosts } from "@nullspend/db";
@@ -23,7 +24,7 @@ function toResponse(row: typeof toolCosts.$inferSelect) {
 
 export async function GET(request: Request) {
   try {
-    const authResult = await assertApiKeyOrSession(request);
+    const authResult = await assertApiKeyOrSession(request, "viewer");
     if (authResult instanceof Response) return authResult;
     const db = getDb();
 
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const body = await readJsonBody(request);
     const input = upsertToolCostInputSchema.parse(body);
 

@@ -6,6 +6,11 @@ vi.mock("@/lib/auth/session", () => ({
   resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const }),
 }));
 
+vi.mock("@/lib/auth/org-authorization", () => ({
+  assertOrgRole: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
+  assertOrgMember: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
+}));
+
 vi.mock("@/lib/observability/sentry", () => ({
   captureExceptionWithContext: vi.fn(),
   addSentryBreadcrumb: vi.fn(),

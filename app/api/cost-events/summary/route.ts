@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import {
   getCostBreakdownTotals,
@@ -21,7 +22,8 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "viewer");
     const url = new URL(request.url);
     const { period, excludeEstimated: excludeEstimatedRaw } = costSummaryQuerySchema.parse({
       period: url.searchParams.get("period") ?? undefined,

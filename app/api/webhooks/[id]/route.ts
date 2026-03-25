@@ -11,6 +11,7 @@ import {
   webhookRecordSchema,
 } from "@/lib/validations/webhooks";
 import { invalidateWebhookCacheForUser } from "@/lib/webhooks/invalidate-cache";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function PATCH(
   request: Request,
@@ -18,6 +19,7 @@ export async function PATCH(
 ) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
     const body = await readJsonBody(request);
@@ -92,6 +94,7 @@ export async function DELETE(
 ) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = webhookIdParamsSchema.parse(params);
 
