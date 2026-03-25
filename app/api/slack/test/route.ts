@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import {
   sendSlackTestNotification,
   SlackConfigNotFoundError,
@@ -10,7 +11,8 @@ import { handleRouteError } from "@/lib/utils/http";
 
 export async function POST() {
   try {
-    const { orgId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
 
     try {
       await sendSlackTestNotification(orgId);

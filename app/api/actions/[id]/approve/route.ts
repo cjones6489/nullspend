@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { approveAction } from "@/lib/actions/approve-action";
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import {
   actionIdParamsSchema,
   mutateActionResponseSchema,
@@ -14,6 +15,7 @@ export async function POST(
 ) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
     const action = await approveAction(id, { approvedBy: userId }, orgId);

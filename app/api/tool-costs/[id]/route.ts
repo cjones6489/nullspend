@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { eq, and, sql } from "drizzle-orm";
 
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
 import { toolCosts } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
@@ -19,6 +20,7 @@ class NotFoundError extends Error {
 export async function DELETE(_request: Request, { params }: RouteParams) {
   try {
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const raw = await readRouteParams(params);
     const { id } = deleteRouteParamsSchema.parse(raw);
 
