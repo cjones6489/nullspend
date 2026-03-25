@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { LimitExceededError } from "@/lib/utils/http";
 import { getDb } from "@/lib/db/client";
@@ -54,7 +54,7 @@ export const GET = withRequestContext(async (_request: Request) => {
 });
 
 export const POST = withRequestContext(async (request: Request) => {
-  const userId = await resolveSessionUserId();
+  const { userId, orgId } = await resolveSessionContext();
   const body = await readJsonBody(request);
   const input = createBudgetInputSchema.parse(body);
 
@@ -137,6 +137,7 @@ export const POST = withRequestContext(async (request: Request) => {
       .insert(budgets)
       .values({
         userId,
+        orgId,
         entityType: input.entityType,
         entityId: input.entityId,
         maxBudgetMicrodollars: input.maxBudgetMicrodollars,

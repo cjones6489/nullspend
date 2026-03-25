@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 import { GET, POST } from "@/app/api/budgets/route";
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
 vi.mock("@/lib/db/client", () => ({
@@ -45,6 +46,7 @@ vi.mock("@/lib/utils/http", async (importOriginal) => {
 const mockedInvalidateProxyCache = vi.mocked(invalidateProxyCache);
 
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
+const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 const mockedGetDb = vi.mocked(getDb);
 
 function makeBudgetRow(overrides: Record<string, unknown> = {}) {
@@ -237,6 +239,7 @@ describe("POST /api/budgets — proxy invalidation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedResolveSessionUserId.mockResolvedValue(TEST_USER_ID);
+    mockedResolveSessionContext.mockResolvedValue({ userId: TEST_USER_ID, orgId: "org-test-1", role: "owner" });
   });
 
   afterEach(() => {

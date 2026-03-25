@@ -5,6 +5,7 @@ import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
@@ -41,7 +42,7 @@ const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 
 describe("GET /api/webhooks", () => {
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it("returns webhook endpoints for authenticated user", async () => {
@@ -82,7 +83,7 @@ describe("GET /api/webhooks", () => {
 
 describe("POST /api/webhooks", () => {
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it("creates a webhook endpoint and returns signing secret once", async () => {

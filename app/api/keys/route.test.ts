@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
 import { generateRawKey, hashKey, extractPrefix } from "@/lib/auth/api-key";
 import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
+  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
@@ -59,7 +60,7 @@ const mockedExtractPrefix = vi.mocked(extractPrefix);
 
 describe("GET /api/keys", () => {
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it("returns keys for authenticated user with cursor=null when no more pages", async () => {
@@ -130,7 +131,7 @@ describe("GET /api/keys", () => {
 
 describe("POST /api/keys", () => {
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it("creates a new API key and returns prefix + raw key", async () => {
@@ -271,7 +272,7 @@ describe("POST /api/keys", () => {
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
-    mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
+    vi.mocked(resolveSessionContext).mockRejectedValueOnce(new AuthenticationRequiredError());
 
     const req = new Request("http://localhost/api/keys", {
       method: "POST",

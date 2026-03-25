@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { count, eq, desc } from "drizzle-orm";
 
-import { resolveSessionUserId } from "@/lib/auth/session";
+import { resolveSessionUserId, resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { webhookEndpoints } from "@nullspend/db";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
@@ -51,7 +51,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const userId = await resolveSessionUserId();
+    const { userId, orgId } = await resolveSessionContext();
     const body = await readJsonBody(request);
     const input = createWebhookInputSchema.parse(body);
 
@@ -79,6 +79,7 @@ export async function POST(request: Request) {
       .insert(webhookEndpoints)
       .values({
         userId,
+        orgId,
         url: input.url,
         description: input.description ?? null,
         signingSecret,
