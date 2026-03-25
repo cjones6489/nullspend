@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useSession } from "@/lib/queries/session";
 import {
   useCreateWebhook,
   useDeleteWebhook,
@@ -44,6 +45,8 @@ import {
 
 export function WebhooksSection() {
   const { data, isLoading, error } = useWebhooks();
+  const { data: session } = useSession();
+  const canManage = session?.role === "owner" || session?.role === "admin";
   const [createOpen, setCreateOpen] = useState(false);
   const endpoints = data?.data ?? [];
 
@@ -58,7 +61,7 @@ export function WebhooksSection() {
             Send signed HTTP callbacks when cost events and budget alerts occur.
           </p>
         </div>
-        {endpoints.length < MAX_WEBHOOK_ENDPOINTS_PER_USER && (
+        {canManage && endpoints.length < MAX_WEBHOOK_ENDPOINTS_PER_USER && (
           <CreateEndpointDialog open={createOpen} onOpenChange={setCreateOpen} />
         )}
       </CardHeader>
@@ -92,7 +95,7 @@ export function WebhooksSection() {
               </TableHeader>
               <TableBody>
                 {endpoints.map((ep) => (
-                  <EndpointRow key={ep.id} endpoint={ep} />
+                  <EndpointRow key={ep.id} endpoint={ep} canManage={canManage} />
                 ))}
               </TableBody>
             </Table>
@@ -121,7 +124,7 @@ function truncateUrl(url: string): string {
   }
 }
 
-function EndpointRow({ endpoint }: { endpoint: WebhookRecord }) {
+function EndpointRow({ endpoint, canManage }: { endpoint: WebhookRecord; canManage: boolean }) {
   const updateWebhook = useUpdateWebhook();
   const testWebhook = useTestWebhook();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -196,61 +199,64 @@ function EndpointRow({ endpoint }: { endpoint: WebhookRecord }) {
         <Switch
           checked={endpoint.enabled}
           onCheckedChange={handleToggle}
+          disabled={!canManage}
           aria-label="Toggle endpoint"
         />
       </TableCell>
       <TableCell>
-        <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={testWebhook.isPending}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-            aria-label="Send test webhook"
-            title="Send test"
-          >
-            <Send className="h-3.5 w-3.5" />
-          </button>
-
-          <Dialog
-            open={rotateOpen}
-            onOpenChange={(next) => {
-              if (rotateSecretShown && !next) return;
-              setRotateOpen(next);
-            }}
-          >
-            <DialogTrigger
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Rotate signing secret"
-              title="Rotate secret"
+        {canManage && (
+          <div className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              onClick={handleTest}
+              disabled={testWebhook.isPending}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+              aria-label="Send test webhook"
+              title="Send test"
             >
-              <RotateCw className="h-3.5 w-3.5" />
-            </DialogTrigger>
-            <RotateSecretDialogContent
-              endpointId={endpoint.id}
-              onSecretShown={setRotateSecretShown}
-              onClose={() => {
-                setRotateSecretShown(false);
-                setRotateOpen(false);
+              <Send className="h-3.5 w-3.5" />
+            </button>
+
+            <Dialog
+              open={rotateOpen}
+              onOpenChange={(next) => {
+                if (rotateSecretShown && !next) return;
+                setRotateOpen(next);
               }}
-            />
-          </Dialog>
-
-          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <DialogTrigger
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
-              aria-label="Delete endpoint"
-              title="Delete"
             >
-              <Trash2 className="h-3.5 w-3.5" />
-            </DialogTrigger>
-            <DeleteEndpointDialogContent
-              endpointId={endpoint.id}
-              endpointUrl={endpoint.url}
-              onClose={() => setDeleteOpen(false)}
-            />
-          </Dialog>
-        </div>
+              <DialogTrigger
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Rotate signing secret"
+                title="Rotate secret"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+              </DialogTrigger>
+              <RotateSecretDialogContent
+                endpointId={endpoint.id}
+                onSecretShown={setRotateSecretShown}
+                onClose={() => {
+                  setRotateSecretShown(false);
+                  setRotateOpen(false);
+                }}
+              />
+            </Dialog>
+
+            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <DialogTrigger
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
+                aria-label="Delete endpoint"
+                title="Delete"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </DialogTrigger>
+              <DeleteEndpointDialogContent
+                endpointId={endpoint.id}
+                endpointUrl={endpoint.url}
+                onClose={() => setDeleteOpen(false)}
+              />
+            </Dialog>
+          </div>
+        )}
       </TableCell>
     </TableRow>
   );

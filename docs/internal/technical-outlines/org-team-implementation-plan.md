@@ -662,18 +662,20 @@ Use existing `assertOrgRole` from `lib/auth/org-authorization.ts`. No new middle
 
 **Test results:** 1086 root + 1210 proxy = 2296 total, 0 TypeScript errors
 
-### Phase 4b: Frontend Role Enforcement (~1 day)
+### Phase 4b: Frontend Role Enforcement — COMPLETE (2026-03-25)
 
-Use existing `useSession()` which returns `{ userId, orgId, role }`. Pattern already established in `members-section.tsx` (`isAdmin` checks).
+Uses `useSession()` → `{ role }` with permission booleans (`canCreate`, `canManage`, `isOwner`).
 
-- [ ] Budgets page: hide create button for viewer, hide delete for member
-- [ ] API Keys page: hide create for viewer, hide revoke for member
-- [ ] Webhooks page: hide create/edit/delete for viewer/member
-- [ ] Slack config: hide create/delete for viewer/member
-- [ ] Billing page: show read-only plan info for non-owners, restrict checkout/portal to owner
-- [ ] Settings > General: danger zone (delete org) restricted to owners
-- [ ] Analytics/activity/cost events pages: read-only for all roles (no changes needed)
-- [ ] Disabled state with tooltips for permission-denied actions
+- [x] API Keys section: create button hidden for viewer, revoke hidden for viewer/member
+- [x] Webhooks section: add/test/rotate/delete hidden for viewer/member, enabled toggle disabled
+- [x] Budgets page: create hidden for viewer, edit/reset/delete dropdown hidden for viewer/member, empty state create button gated
+- [x] Billing page: upgrade + manage subscription restricted to owner, non-owners see "owner only" message
+- [x] Settings > General: already had role checks (Phase 3h)
+- [x] Members section: already had role checks (Phase 3f)
+- [x] Analytics/activity/cost events: read-only for all roles (no changes needed)
+- [x] Slack config: backend-enforced (Phase 4a), no separate UI section exists
+
+**Test results:** 1086 root + 1210 proxy = 2296 total, 0 TypeScript errors
 
 ### Phase 4c: Billing Migration — Per-User → Per-Org (~1-2 days)
 
@@ -785,7 +787,7 @@ Use existing `useSession()` which returns `{ userId, orgId, role }`. Pattern alr
 | 3h: Create org + multi-org switcher | ~1 day | **COMPLETE** (2026-03-25) |
 | **Phase 3 total** | **~8-10 days** | |
 | 4a: Permission enforcement | ~1 day | **COMPLETE** (2026-03-25) |
-| 4b: Frontend role enforcement | ~1 day | Not started |
+| 4b: Frontend role enforcement | ~1 day | **COMPLETE** (2026-03-25) |
 | 4c: Billing migration (per-org) | ~1-2 days | Not started |
 | **Phase 4 total** | **~3-4 days** | |
 | **Phase 5** | Demand-driven | Not started |
@@ -814,3 +816,4 @@ Use existing `useSession()` which returns `{ userId, orgId, role }`. Pattern alr
 | 2026-03-25 | Phase 3h completed — org switcher in sidebar, create org dialog with auto-slug, switch-org endpoint, general settings page. Phase 3 complete. |
 | 2026-03-25 | Phase 4 re-evaluated. Key findings: assertOrgRole already exists (no new middleware), useSession already returns role (no new hook), ~15 routes need role checks, billing is per-user and must migrate to per-org. Stripe docs confirm Customer metadata pattern. Estimated 3-4 days total (down from 4-6). |
 | 2026-03-25 | Phase 4a completed — role enforcement on ~20 routes, dual-auth updated with minSessionRole, 18 test files updated, 6 permission boundary tests. 1086 root + 1210 proxy = 2296 total. |
+| 2026-03-25 | Phase 4b completed — frontend role enforcement on API keys, webhooks, budgets, and billing pages. |

@@ -16,6 +16,7 @@ import {
   useSyncCheckout,
 } from "@/lib/queries/subscription";
 import { useCostSummary } from "@/lib/queries/cost-event-summary";
+import { useSession } from "@/lib/queries/session";
 import { TIERS, type Tier } from "@/lib/stripe/tiers";
 import { formatMicrodollars } from "@/lib/utils/format";
 
@@ -26,6 +27,8 @@ export default function BillingPage() {
   const checkout = useCheckout();
   const portal = usePortalSession();
   const syncCheckout = useSyncCheckout();
+  const { data: session } = useSession();
+  const isOwner = session?.role === "owner";
   const syncAttempted = useRef(false);
 
   useEffect(() => {
@@ -97,7 +100,7 @@ export default function BillingPage() {
               )}
             </div>
           </div>
-          {isPaid && (
+          {isPaid && isOwner && (
             <Button
               variant="outline"
               size="sm"
@@ -111,6 +114,9 @@ export default function BillingPage() {
               )}
               Manage Subscription
             </Button>
+          )}
+          {isPaid && !isOwner && (
+            <p className="text-xs text-muted-foreground">Only the organization owner can manage billing.</p>
           )}
         </div>
       </div>
@@ -143,7 +149,7 @@ export default function BillingPage() {
       </div>
 
       {/* Upgrade card (Free users only) */}
-      {!isPaid && (
+      {!isPaid && isOwner && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <PricingCard
             tier="pro"
@@ -168,6 +174,9 @@ export default function BillingPage() {
             </Button>
           </div>
         </div>
+      )}
+      {!isPaid && !isOwner && (
+        <p className="text-xs text-muted-foreground">Only the organization owner can manage billing.</p>
       )}
     </div>
   );

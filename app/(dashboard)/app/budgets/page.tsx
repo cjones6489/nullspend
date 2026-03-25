@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useApiKeys } from "@/lib/queries/api-keys";
+import { useSession } from "@/lib/queries/session";
 import {
   useBudgets,
   useCreateBudget,
@@ -73,6 +74,9 @@ interface BudgetData {
 export default function BudgetsPage() {
   const { data, isLoading, error } = useBudgets();
   const { data: keysData } = useApiKeys();
+  const { data: session } = useSession();
+  const canCreate = session?.role === "owner" || session?.role === "admin" || session?.role === "member";
+  const canManage = session?.role === "owner" || session?.role === "admin";
   const [createOpen, setCreateOpen] = useState(false);
   const [editBudget, setEditBudget] = useState<EditBudgetData | undefined>();
 
@@ -124,15 +128,17 @@ export default function BudgetsPage() {
             Manage spending limits for your account and API keys.
           </p>
         </div>
-        <BudgetDialog open={createOpen} onOpenChange={setCreateOpen} />
+        {canCreate && <BudgetDialog open={createOpen} onOpenChange={setCreateOpen} />}
       </div>
 
-      <BudgetDialog
-        key={editBudget?.entityId ?? "edit-closed"}
-        open={!!editBudget}
-        onOpenChange={(open) => { if (!open) setEditBudget(undefined); }}
-        editBudget={editBudget}
-      />
+      {canManage && (
+        <BudgetDialog
+          key={editBudget?.entityId ?? "edit-closed"}
+          open={!!editBudget}
+          onOpenChange={(open) => { if (!open) setEditBudget(undefined); }}
+          editBudget={editBudget}
+        />
+      )}
 
       {isLoading && <BudgetsSkeleton />}
 
@@ -143,7 +149,7 @@ export default function BudgetsPage() {
       )}
 
       {data && budgets.length === 0 && (
-        <EmptyBudgets onCreateClick={() => setCreateOpen(true)} />
+        <EmptyBudgets onCreateClick={() => setCreateOpen(true)} canCreate={!!canCreate} />
       )}
 
       {data && budgets.length > 0 && (
@@ -183,6 +189,7 @@ export default function BudgetsPage() {
                     }
                     onEditClick={() => handleEditClick(budget)}
                     velocityEntries={velocityEntries}
+                    canManage={!!canManage}
                   />
                 ))}
               </TableBody>
@@ -250,11 +257,13 @@ function BudgetRow({
   entityName,
   onEditClick,
   velocityEntries,
+  canManage,
 }: {
   budget: BudgetData;
   entityName: string;
   onEditClick: () => void;
   velocityEntries: VelocityStateEntry[];
+  canManage: boolean;
 }) {
   const resetBudget = useResetBudget();
   const deleteBudget = useDeleteBudget();
@@ -923,7 +932,7 @@ function BudgetDialog({
   );
 }
 
-function EmptyBudgets({ onCreateClick }: { onCreateClick: () => void }) {
+function EmptyBudgets({ onCreateClick, canCreate }: { onCreateClick: () => void; canCreate: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border/50 py-20 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/50">
@@ -935,10 +944,12 @@ function EmptyBudgets({ onCreateClick }: { onCreateClick: () => void }) {
           Set spending limits for your account or individual API keys.
         </p>
       </div>
-      <Button size="sm" onClick={onCreateClick}>
-        <Plus className="mr-1.5 h-3.5 w-3.5" />
-        Set Budget
-      </Button>
+      {canCreate && (
+        <Button size="sm" onClick={onCreateClick}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Set Budget
+        </Button>
+      )}
     </div>
   );
 }

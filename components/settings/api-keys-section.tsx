@@ -31,12 +31,16 @@ import {
   useCreateApiKey,
   useRevokeApiKey,
 } from "@/lib/queries/api-keys";
+import { useSession } from "@/lib/queries/session";
 import { CopyButton } from "@/components/ui/copy-button";
 import { formatRelativeTime } from "@/lib/utils/format";
 
 export function ApiKeysSection() {
   const { data, isLoading, error } = useApiKeys();
   const [createOpen, setCreateOpen] = useState(false);
+  const { data: session } = useSession();
+  const canCreate = session?.role === "owner" || session?.role === "admin" || session?.role === "member";
+  const canRevoke = session?.role === "owner" || session?.role === "admin";
 
   return (
     <Card className="border-border/50 bg-card">
@@ -49,7 +53,7 @@ export function ApiKeysSection() {
             Keys are used to authenticate SDK requests. The raw key is only shown once.
           </p>
         </div>
-        <CreateKeyDialog open={createOpen} onOpenChange={setCreateOpen} />
+        {canCreate && <CreateKeyDialog open={createOpen} onOpenChange={setCreateOpen} />}
       </CardHeader>
       <CardContent className="p-0">
         {isLoading && <KeysSkeleton />}
@@ -84,7 +88,7 @@ export function ApiKeysSection() {
               </TableHeader>
               <TableBody>
                 {data.data.map((key) => (
-                  <KeyRow key={key.id} apiKey={key} />
+                  <KeyRow key={key.id} apiKey={key} canRevoke={canRevoke} />
                 ))}
               </TableBody>
             </Table>
@@ -97,6 +101,7 @@ export function ApiKeysSection() {
 
 function KeyRow({
   apiKey,
+  canRevoke,
 }: {
   apiKey: {
     id: string;
@@ -105,6 +110,7 @@ function KeyRow({
     lastUsedAt: string | null;
     createdAt: string;
   };
+  canRevoke: boolean;
 }) {
   const revokeKey = useRevokeApiKey();
   const [revokeOpen, setRevokeOpen] = useState(false);
@@ -147,37 +153,39 @@ function KeyRow({
         {formatRelativeTime(apiKey.createdAt)}
       </TableCell>
       <TableCell>
-        <Dialog open={revokeOpen} onOpenChange={setRevokeOpen}>
-          <DialogTrigger
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
-            aria-label={`Revoke API key "${apiKey.name}"`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </DialogTrigger>
-          <DialogContent>
-            <DialogTitle>Revoke API key?</DialogTitle>
-            <DialogDescription>
-              This will immediately invalidate the key &ldquo;{apiKey.name}&rdquo;.
-              Any SDK clients using this key will stop working. This cannot be undone.
-            </DialogDescription>
-            <DialogFooter>
-              <DialogClose
-                className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
-                disabled={revokeKey.isPending}
-              >
-                Cancel
-              </DialogClose>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleRevoke}
-                disabled={revokeKey.isPending}
-              >
-                {revokeKey.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Revoking...</> : "Revoke Key"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {canRevoke && (
+          <Dialog open={revokeOpen} onOpenChange={setRevokeOpen}>
+            <DialogTrigger
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
+              aria-label={`Revoke API key "${apiKey.name}"`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </DialogTrigger>
+            <DialogContent>
+              <DialogTitle>Revoke API key?</DialogTitle>
+              <DialogDescription>
+                This will immediately invalidate the key &ldquo;{apiKey.name}&rdquo;.
+                Any SDK clients using this key will stop working. This cannot be undone.
+              </DialogDescription>
+              <DialogFooter>
+                <DialogClose
+                  className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
+                  disabled={revokeKey.isPending}
+                >
+                  Cancel
+                </DialogClose>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRevoke}
+                  disabled={revokeKey.isPending}
+                >
+                  {revokeKey.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Revoking...</> : "Revoke Key"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </TableCell>
     </TableRow>
   );
