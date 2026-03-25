@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phase 2 Complete, Phase 3a-3e Complete, Phase 3f Next
+**Status:** Phase 2 Complete, Phase 3a-3f Complete, Phase 3g Next
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -519,16 +519,28 @@ Three-layer gating: API-level enforcement, React Query-based tier hook, componen
 
 **Test results:** 1075 root + 1210 proxy = 2285 total, 0 TypeScript errors
 
-### Phase 3f: Member Management UI (~1-2 days)
+### Phase 3f: Member Management UI — COMPLETE (2026-03-25)
 
-- [ ] `<InviteForm>` — email + role selector (admin/member/viewer) + invite button
-- [ ] `<MemberTable>` — avatar, name, email, role badge, joined date, actions dropdown (change role, remove)
-- [ ] `<PendingInvitesTable>` — email, role, sent date, expiry, resend/revoke actions
-- [ ] Empty states for both tables
-- [ ] Loading skeletons
-- [ ] Wire up to API routes via TanStack Query hooks
-- [ ] `AlertDialog` for destructive actions (remove member, revoke invitation)
-- [ ] `/app/settings/members/page.tsx` — members page with invite form + both tables
+**Infrastructure:**
+- [x] `app/api/auth/session/route.ts` — returns `{ userId, orgId, role }` for client components
+- [x] `lib/queries/session.ts` — `useSession()` hook (60s staleTime)
+- [x] `lib/queries/members.ts` — `useMembers`, `useInvitations`, `useInviteMember`, `useChangeRole`, `useRemoveMember`, `useRevokeInvitation` hooks with cache invalidation
+
+**Components** (`components/settings/members-section.tsx`):
+- [x] `<InviteForm>` — email input + role selector (admin/member/viewer) + invite button, enter-to-submit
+- [x] `<MemberTable>` — user ID, role badge (clickable dropdown for role change when permitted), joined date, remove button
+- [x] `<PendingInvitesTable>` — email, role badge, expiry countdown, revoke button
+- [x] `<MemberRow>` — inline role change via DropdownMenu, remove via Dialog confirmation
+- [x] Empty state with icon + description
+- [x] Loading skeleton (3 rows)
+- [x] Error state
+- [x] Role-aware: invite form + invitations only visible to admin/owner; role change + remove respect permission rules
+
+**Page + navigation:**
+- [x] `/app/settings/members/page.tsx` — wrapper page
+- [x] Settings nav updated with "Members" link (Users icon)
+
+**Test results:** 1080 root + 1210 proxy = 2290 total, 0 TypeScript errors
 
 ### Phase 3g: Invitation Acceptance Page (~1 day)
 
@@ -654,7 +666,7 @@ Before proceeding to Phase 4, verify:
 | 3c: Proxy DO keying for team orgs | ~2-3 hours | **COMPLETE** (2026-03-25) |
 | 3d: Org CRUD API | ~1 day | **COMPLETE** (2026-03-25) |
 | 3e: Invitation backend | ~1 day | **COMPLETE** (2026-03-25) |
-| 3f: Member management UI | ~1-2 days | Not started |
+| 3f: Member management UI | ~1-2 days | **COMPLETE** (2026-03-25) |
 | 3g: Invitation acceptance page | ~1 day | Not started |
 | 3h: Create org + multi-org switcher | ~1 day | Not started |
 | **Phase 3 total** | **~8-10 days** | |
@@ -683,3 +695,4 @@ Before proceeding to Phase 4, verify:
 | 2026-03-25 | Phase 3c audit fixes — identity field mismatch (ownerId vs orgId), entity_id value mismatch (userId for "user" budgets), velocity-status query param, auth cache invalidation, proxy auth EXISTS checks (user_id → org_id). |
 | 2026-03-25 | Phase 3d completed — org CRUD API + member management. 6 routes, authorization layer (assertOrgMember/assertOrgRole), 72 new tests. 1051 root + 1210 proxy = 2261 total. |
 | 2026-03-25 | Phase 3e completed — invitation backend. Token system, CRUD routes, accept endpoint, seat limit enforcement with viewer bypass, lazy expiry. 24 new tests. 1075 root + 1210 proxy = 2285 total. |
+| 2026-03-25 | Phase 3f completed — member management UI. Session endpoint, query hooks, MembersSection component (InviteForm, MemberTable, PendingInvitesTable), settings nav updated. |
