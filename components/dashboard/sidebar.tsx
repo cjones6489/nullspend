@@ -123,7 +123,14 @@ export function Sidebar() {
         </div>
       </nav>
       <div className="border-t border-border/50 p-3">
-        <p className="font-mono text-[11px] text-muted-foreground/80">v0.1.0</p>
+        <a
+          href="/docs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono text-[11px] text-muted-foreground/80 hover:text-muted-foreground transition-colors"
+        >
+          v0.1.0
+        </a>
       </div>
     </aside>
   );

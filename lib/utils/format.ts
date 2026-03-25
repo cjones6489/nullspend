@@ -37,6 +37,7 @@ export function formatTimestamp(dateString: string): string {
 }
 
 export function formatMicrodollars(microdollars: number): string {
+  if (!Number.isFinite(microdollars)) return "Unlimited";
   const dollars = microdollars / 1_000_000;
   if (dollars >= 0.01 || dollars === 0) return `$${dollars.toFixed(2)}`;
   return `$${dollars.toFixed(4).replace(/0+$/, "")}`;
@@ -126,6 +127,9 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
   "claude-haiku-3": "Claude Haiku 3",
   "claude-3-haiku-20240307": "Claude Haiku 3",
+
+  "gemini-2.5-pro": "Gemini 2.5 Pro",
+  "gemini-2.5-flash": "Gemini 2.5 Flash",
 };
 
 export function formatModelName(model: string): string {
