@@ -593,43 +593,138 @@ Before proceeding to Phase 4, verify:
 
 **Goal:** Enforce role-based permissions. Move billing from per-user to per-org.
 
-**Prerequisites (verify before starting):**
-- Phase 3 complete — team orgs exist, members can be invited, feature gating works
-- Roles are assigned but not yet enforced at API level (everyone with org access can do everything)
+**Prerequisites (verified 2026-03-25):**
+- [x] Phase 3 complete — team orgs exist, members can be invited, feature gating works
+- [x] Roles are assigned but not yet enforced at API level (everyone with org access can do everything)
 
-### Phase 4a: Permission Middleware (~1 day)
+**Re-evaluation findings (2026-03-25):**
+- `assertOrgRole` already exists in `lib/auth/org-authorization.ts` — no new permissions file needed
+- `useSession()` already returns `role` — no new `useOrgRole()` hook needed
+- ~15 dashboard routes only use `resolveSessionContext()` with no role check — these are the Phase 4a targets
+- Billing is entirely per-user: `subscriptions.userId` is UNIQUE, `getSubscriptionByUserId()` is the only lookup, `resolveUserTier(userId)` drives all feature gating
+- No `getSubscriptionByOrgId()` exists — must be created in Phase 4c
+- Stripe Customer is created per user with `userId` in metadata — must change to per-org with `orgId`
+- Since we have zero real users: break cleanly, rip out per-user billing, no data migration needed
+- Stripe docs confirm: Customer metadata (`orgId`) + subscription_data metadata (`orgId`, `tier`) is the standard pattern for org-level billing
 
-- [ ] `lib/auth/permissions.ts`: `requireRole('viewer' | 'member' | 'admin' | 'owner')` middleware
-  - `viewer`: read-only access (GET routes only)
-  - `member`: create own resources (budgets, keys), view shared dashboards
-  - `admin`: manage all resources, invite members, change roles
-  - `owner`: billing, delete org, transfer ownership
-- [ ] Apply to all dashboard API routes with appropriate minimum role
+### Phase 4a: Permission Enforcement (~1 day)
+
+Use existing `assertOrgRole` from `lib/auth/org-authorization.ts`. No new middleware file.
+
+**Permission model:**
+
+| Role | Permissions |
+|------|------------|
+| **viewer** | GET routes only — dashboards, analytics, activity, cost events, budgets list, members list |
+| **member** | Everything viewer can + create budgets, create API keys |
+| **admin** | Everything member can + revoke keys, delete budgets, manage webhooks, slack config, invite/manage members |
+| **owner** | Everything admin can + billing (checkout, portal), delete org, transfer ownership |
+
+**Routes to add role checks (currently session-only):**
+
+| Route | Method | Current | Target |
+|-------|--------|---------|--------|
+| `/api/budgets` | GET | session | viewer |
+| `/api/budgets` | POST | session | member |
+| `/api/budgets/[id]` | DELETE | session | admin |
+| `/api/budgets/[id]` | POST (reset) | session | admin |
+| `/api/keys` | GET | session | viewer |
+| `/api/keys` | POST | session | member |
+| `/api/keys/[id]` | PATCH (revoke) | session | admin |
+| `/api/webhooks` | GET | session | viewer |
+| `/api/webhooks` | POST | session | admin |
+| `/api/webhooks/[id]/*` | PATCH/DELETE | session | admin |
+| `/api/cost-events` | GET | session | viewer |
+| `/api/cost-events/summary` | GET | session | viewer |
+| `/api/cost-events/[id]` | GET | session | viewer |
+| `/api/slack/config` | GET | session | viewer |
+| `/api/slack/config` | POST/DELETE | session | admin |
+| `/api/tool-costs` | POST | session | admin |
+| `/api/actions` | GET | session | viewer |
+| `/api/stripe/checkout` | POST | session | owner |
+| `/api/stripe/portal` | POST | session | owner |
+| `/api/stripe/subscription` | GET | session | viewer |
+
+**Already protected (Phase 3d/3e):**
+- `/api/orgs/[orgId]` — GET: member, PATCH: admin, DELETE: owner
+- `/api/orgs/[orgId]/members` — GET: member
+- `/api/orgs/[orgId]/members/[userId]` — PATCH/DELETE: admin
+- `/api/orgs/[orgId]/invitations` — GET/POST: admin
+- `/api/orgs/[orgId]/invitations/[id]` — DELETE: admin
+
+**Dual-auth routes (API key + session):** `/api/actions/[id]` GET, `/api/actions` POST, `/api/cost-events` POST, `/api/tool-costs` GET — these use `assertApiKeyOrSession` which returns `{ userId, orgId }`. For API key auth, no role check (agent access). For session auth, should enforce minimum role.
+
+- [ ] Add `assertOrgRole` to all routes in the table above
+- [ ] Update dual-auth routes to enforce role when session-authenticated
 - [ ] Tests: viewer tries write → 403, member tries admin action → 403, admin tries owner action → 403
-- [ ] `useOrgRole()` hook for client-side role checks
 
 ### Phase 4b: Frontend Role Enforcement (~1 day)
 
-- [ ] Hide admin actions from members/viewers (invite, budget management, key revocation)
-- [ ] Billing section restricted to owners (show read-only plan info to others)
-- [ ] Settings > General danger zone (delete org) restricted to owners
+Use existing `useSession()` which returns `{ userId, orgId, role }`. Pattern already established in `members-section.tsx` (`isAdmin` checks).
+
+- [ ] Budgets page: hide create button for viewer, hide delete for member
+- [ ] API Keys page: hide create for viewer, hide revoke for member
+- [ ] Webhooks page: hide create/edit/delete for viewer/member
+- [ ] Slack config: hide create/delete for viewer/member
+- [ ] Billing page: show read-only plan info for non-owners, restrict checkout/portal to owner
+- [ ] Settings > General: danger zone (delete org) restricted to owners
+- [ ] Analytics/activity/cost events pages: read-only for all roles (no changes needed)
 - [ ] Disabled state with tooltips for permission-denied actions
-- [ ] Viewer sees dashboards but all create/edit buttons hidden
 
-### Phase 4c: Billing Migration (~2-3 days)
+### Phase 4c: Billing Migration — Per-User → Per-Org (~1-2 days)
 
-- [ ] Subscription scoped to org: `getTierForOrg(orgId)` replaces `getTierForUser(userId)`
-- [ ] Stripe Customer per org (personal orgs get their own Stripe Customer)
-- [ ] Stripe checkout route: scope to org, owner-only
-- [ ] Stripe webhook: handle org-scoped subscriptions
-- [ ] Stripe portal: scope to org, owner-only
-- [ ] Pricing page: show plan for current org, upgrade/downgrade flows
-- [ ] Tests: upgrade flow, multi-org billing, owner transfer doesn't break billing
+**Strategy:** Since we have zero real users, break cleanly — rip out per-user billing entirely.
+
+**Schema migration:**
+- [ ] Change `subscriptions` unique constraint from `userId` to `orgId`
+- [ ] Keep `userId` column (tracks which user initiated the subscription, useful for audit)
+- [ ] Add `stripeCustomerId` unique constraint (already unique)
+
+**Subscription functions (`lib/stripe/subscription.ts`):**
+- [ ] Replace `getSubscriptionByUserId(userId)` with `getSubscriptionByOrgId(orgId)`
+- [ ] Update `upsertSubscription` to upsert by `orgId` (not `userId`)
+- [ ] Remove personal org lookup in `upsertSubscription` (orgId comes from metadata directly)
+
+**Feature gating (`lib/stripe/feature-gate.ts`):**
+- [ ] Replace `resolveUserTier(userId)` with `resolveOrgTier(orgId)`
+- [ ] Update 4 route callers: `budgets/route.ts`, `keys/route.ts`, `webhooks/route.ts`, `orgs/[orgId]/invitations/route.ts`
+- [ ] Update `useOrgTier()` hook to derive tier from org subscription (not user subscription)
+
+**Stripe Customer per org:**
+- [ ] Create Stripe Customer with `metadata: { orgId }` and `name: org.name`
+- [ ] Personal orgs get their own Customer (same as current, just keyed by orgId)
+
+**Checkout flow (`app/api/stripe/checkout/route.ts`):**
+- [ ] Require owner role (already in 4a route table)
+- [ ] Look up/create Stripe Customer by orgId (not userId)
+- [ ] Pass `orgId` + `tier` in checkout session metadata and `subscription_data.metadata`
+
+**Portal flow (`app/api/stripe/portal/route.ts`):**
+- [ ] Require owner role
+- [ ] Look up subscription by orgId
+
+**Webhook handler (`app/api/stripe/webhook/route.ts`):**
+- [ ] `checkout.session.completed`: extract `orgId` + `tier` from metadata → `upsertSubscription`
+- [ ] `customer.subscription.updated`: look up `orgId` from Customer metadata → `upsertSubscription`
+- [ ] `customer.subscription.deleted`: look up by `stripeCustomerId` → update status
+- [ ] `invoice.paid` / `invoice.payment_failed`: same pattern
+
+**Subscription query hook (`lib/queries/subscription.ts`):**
+- [ ] `useSubscription()` → change endpoint to return org-scoped subscription
+- [ ] `/api/stripe/subscription` GET → look up by orgId from session context
+
+**Tests:**
+- [ ] Checkout creates Stripe Customer with orgId metadata
+- [ ] Webhook correctly resolves orgId from metadata
+- [ ] Feature gating uses org tier, not user tier
+- [ ] Multi-org: user in two orgs sees different tiers per org
+- [ ] Owner-only access on checkout/portal routes
 
 ### Phase 4 Review Gate
 
 - [ ] Permissions enforced — viewer reads only, member can't admin, admin can't owner
 - [ ] Billing works per-org — Stripe Customer per org, subscription per org
+- [ ] `resolveOrgTier(orgId)` replaces `resolveUserTier(userId)` everywhere
 - [ ] Upgrade flow works end-to-end (free → pro)
 - [ ] Downgrade preserves resources, blocks new creation beyond limits
 - [ ] All tests pass
@@ -685,10 +780,10 @@ Before proceeding to Phase 4, verify:
 | 3g: Invitation acceptance page | ~1 day | **COMPLETE** (2026-03-25) |
 | 3h: Create org + multi-org switcher | ~1 day | **COMPLETE** (2026-03-25) |
 | **Phase 3 total** | **~8-10 days** | |
-| 4a: Permission middleware | ~1 day | Not started |
+| 4a: Permission enforcement | ~1 day | Not started |
 | 4b: Frontend role enforcement | ~1 day | Not started |
-| 4c: Billing migration | ~2-3 days | Not started |
-| **Phase 4 total** | **~4-6 days** | |
+| 4c: Billing migration (per-org) | ~1-2 days | Not started |
+| **Phase 4 total** | **~3-4 days** | |
 | **Phase 5** | Demand-driven | Not started |
 | **Grand total (3-4)** | **~12-16 days** | |
 
@@ -713,3 +808,4 @@ Before proceeding to Phase 4, verify:
 | 2026-03-25 | Phase 3f completed — member management UI. Session endpoint, query hooks, MembersSection component (InviteForm, MemberTable, PendingInvitesTable), settings nav updated. |
 | 2026-03-25 | Phase 3g completed — invitation acceptance page. Server/client split, auth check, accept flow with state machine, error handling for expired/conflict/invalid. |
 | 2026-03-25 | Phase 3h completed — org switcher in sidebar, create org dialog with auto-slug, switch-org endpoint, general settings page. Phase 3 complete. |
+| 2026-03-25 | Phase 4 re-evaluated. Key findings: assertOrgRole already exists (no new middleware), useSession already returns role (no new hook), ~15 routes need role checks, billing is per-user and must migrate to per-org. Stripe docs confirm Customer metadata pattern. Estimated 3-4 days total (down from 4-6). |
