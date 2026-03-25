@@ -36,7 +36,7 @@ export function UserMenu({ email }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger className="inline-flex h-7 items-center gap-2 rounded-md border border-border/50 bg-secondary/50 px-2.5 font-mono text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
         <User className="h-3 w-3" />
-        <span className="max-w-[120px] truncate">
+        <span className="max-w-[120px] truncate" title={email ?? undefined}>
           {email ?? "Developer"}
         </span>
       </DropdownMenuTrigger>

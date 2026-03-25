@@ -160,20 +160,25 @@ export default function HomePage() {
               {firstKey ? (
                 <div className="flex items-center gap-2">
                   <code className="rounded bg-muted px-2 py-1 text-xs">
-                    {firstKey.keyPrefix}...
+                    {firstKey.keyPrefix}••••••••
                   </code>
-                  <CopyButton value={firstKey.keyPrefix} />
+                  <Link
+                    href="/app/settings/api-keys"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Manage →
+                  </Link>
                 </div>
               ) : (
                 <Link
-                  href="/app/settings"
+                  href="/app/settings/api-keys"
                   className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   Create API Key
                 </Link>
               )}
               <Link
-                href="/app/settings"
+                href="/app/settings/api-keys"
                 className="block text-xs text-muted-foreground hover:text-foreground"
               >
                 View all &rarr;

@@ -3,9 +3,11 @@
 import { usePathname } from "next/navigation";
 
 const ROUTE_TITLES: Record<string, string> = {
+  "/app/home": "Home",
   "/app/inbox": "Inbox",
   "/app/history": "History",
   "/app/budgets": "Budgets",
+  "/app/tool-costs": "Tool Costs",
   "/app/activity": "Activity",
   "/app/analytics": "Analytics",
   "/app/billing": "Billing",

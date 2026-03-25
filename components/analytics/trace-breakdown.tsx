@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Table,
   TableBody,
@@ -44,11 +45,13 @@ export function TraceBreakdown({ data }: { data: TraceBreakdownData[] }) {
             <TableBody>
               {data.map((row) => (
                 <TableRow key={row.traceId} className="border-border/30">
-                  <TableCell
-                    className="cursor-default font-mono text-[13px] text-foreground"
-                    title={row.traceId}
-                  >
-                    {row.traceId.slice(0, 12)}…
+                  <TableCell className="font-mono text-[13px] text-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="cursor-default" title={row.traceId}>
+                        {row.traceId.slice(0, 12)}…
+                      </span>
+                      <CopyButton value={row.traceId} />
+                    </span>
                   </TableCell>
                   <TableCell className="text-right text-[13px] tabular-nums text-foreground">
                     {row.requestCount.toLocaleString()}

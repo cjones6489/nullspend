@@ -104,7 +104,7 @@ export function ToolCostTable({
                   onClick={() => onRowClick(tc)}
                 >
                   <TableCell className="pl-8">
-                    <p className="text-[13px] font-medium text-foreground">{tc.toolName}</p>
+                    <p className="text-[13px] font-medium text-foreground truncate max-w-[200px]" title={tc.toolName}>{tc.toolName}</p>
                     {tc.description && (
                       <p className="text-[11px] text-muted-foreground line-clamp-1">
                         {tc.description}
