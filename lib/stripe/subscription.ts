@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { organizations, subscriptions } from "@nullspend/db";
 import { getDb } from "@/lib/db/client";
@@ -44,11 +44,15 @@ export async function upsertSubscription(data: {
     .where(and(eq(organizations.createdBy, data.userId), eq(organizations.isPersonal, true)))
     .limit(1);
 
+  if (!org) {
+    throw new Error(`Cannot upsert subscription: no personal org found for user ${data.userId}`);
+  }
+
   const [row] = await db
     .insert(subscriptions)
     .values({
       userId: data.userId,
-      orgId: org!.id,
+      orgId: org.id,
       stripeCustomerId: data.stripeCustomerId,
       stripeSubscriptionId: data.stripeSubscriptionId,
       tier: data.tier,
@@ -60,7 +64,7 @@ export async function upsertSubscription(data: {
     .onConflictDoUpdate({
       target: subscriptions.userId,
       set: {
-        orgId: org?.id,
+        orgId: org.id,
         stripeCustomerId: data.stripeCustomerId,
         stripeSubscriptionId: data.stripeSubscriptionId,
         tier: data.tier,
