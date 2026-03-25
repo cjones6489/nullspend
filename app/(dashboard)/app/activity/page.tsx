@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApiKeys } from "@/lib/queries/api-keys";
 import { RecentActivity } from "@/components/usage/recent-activity";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function ActivityContent() {
   const { data: keysData } = useApiKeys();
@@ -18,6 +19,16 @@ function ActivityContent() {
   );
 }
 
+function ActivitySkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-12 w-full rounded-lg bg-secondary/50" />
+      ))}
+    </div>
+  );
+}
+
 export default function ActivityPage() {
   return (
     <div className="space-y-6">
@@ -29,7 +40,7 @@ export default function ActivityPage() {
           Every API call that flows through the proxy.
         </p>
       </div>
-      <Suspense fallback={null}>
+      <Suspense fallback={<ActivitySkeleton />}>
         <ActivityContent />
       </Suspense>
     </div>

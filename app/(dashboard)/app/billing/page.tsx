@@ -163,12 +163,9 @@ export default function BillingPage() {
                 </li>
               ))}
             </ul>
-            <a
-              href="mailto:support@nullspend.com"
-              className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
+            <Button variant="outline" render={<a href="mailto:support@nullspend.com" />}>
               Contact Us
-            </a>
+            </Button>
           </div>
         </div>
       )}

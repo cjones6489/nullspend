@@ -25,6 +25,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { CopyButton } from "@/components/ui/copy-button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiKeys } from "@/lib/queries/api-keys";
 import { useCostSummary } from "@/lib/queries/cost-event-summary";
 import { formatMicrodollars } from "@/lib/utils/format";
@@ -98,8 +99,8 @@ export default function HomePage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="font-mono text-2xl font-semibold">NullSpend</h1>
-        <p className="font-mono text-sm text-muted-foreground">Welcome back</p>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">Home</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">Get started and monitor usage.</p>
       </div>
 
       {/* Two-column body */}
@@ -115,22 +116,15 @@ export default function HomePage() {
             </p>
 
             {/* Tabs */}
-            <div className="flex gap-1 rounded-md bg-muted p-1">
-              {tabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={`rounded px-3 py-1 font-mono text-xs font-medium transition-colors ${
-                    activeTab === tab
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
+              <TabsList className="h-8 bg-secondary/50 p-0.5">
+                {tabs.map((tab) => (
+                  <TabsTrigger key={tab} value={tab}>
+                    {tab}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
 
             {/* Code snippet */}
             <div className="relative">
