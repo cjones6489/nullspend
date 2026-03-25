@@ -30,7 +30,7 @@ describe("POST /api/actions/[id]/reject", () => {
   });
 
   it("rejects a pending action", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedRejectAction.mockResolvedValue({
       id: "00000000-0000-4000-a000-000000000001",
       status: "rejected",
@@ -52,7 +52,7 @@ describe("POST /api/actions/[id]/reject", () => {
   });
 
   it("returns 404 when action is not found", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedRejectAction.mockRejectedValue(new ActionNotFoundError("00000000-0000-4000-a000-000000000002"));
 
     const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000002/reject", { method: "POST" });
@@ -62,7 +62,7 @@ describe("POST /api/actions/[id]/reject", () => {
   });
 
   it("returns 409 when action has expired", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedRejectAction.mockRejectedValue(new ActionExpiredError("00000000-0000-4000-a000-000000000001"));
 
     const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000001/reject", { method: "POST" });
@@ -72,7 +72,7 @@ describe("POST /api/actions/[id]/reject", () => {
   });
 
   it("returns 409 when action is not in pending state", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedRejectAction.mockRejectedValue(
       new InvalidActionTransitionError("executed", "rejected"),
     );

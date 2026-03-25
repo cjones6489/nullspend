@@ -1,14 +1,20 @@
+import { cookies } from "next/headers";
+import { and, eq } from "drizzle-orm";
+
 import {
   AuthenticationRequiredError,
   SupabaseEnvError,
 } from "@/lib/auth/errors";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
+import { getDb } from "@/lib/db/client";
+import { organizations, orgMemberships } from "@nullspend/db";
 import { setRequestUserId } from "@/lib/observability/request-context";
 import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 import {
   CircuitBreaker,
   CircuitOpenError,
 } from "@/lib/resilience/circuit-breaker";
+import type { OrgRole } from "@/lib/validations/orgs";
 
 const supabaseCircuit = new CircuitBreaker({
   name: "supabase-auth",
@@ -112,6 +118,166 @@ export async function resolveApprovalActor(): Promise<string> {
   });
 }
 
-export async function resolveSessionContext(): Promise<{ userId: string }> {
-  return { userId: await resolveUserId({ warnOnFallback: true }) };
+// ---------------------------------------------------------------------------
+// Org context — cookie-embedded, zero DB on hot path
+// ---------------------------------------------------------------------------
+
+const ORG_COOKIE = "ns-active-org";
+const MEMBERSHIP_CACHE_TTL_MS = 60_000;
+
+interface CachedMembership {
+  orgId: string;
+  role: OrgRole;
+  expiresAt: number;
+}
+
+const membershipCache = new Map<string, CachedMembership>();
+
+/**
+ * Create a personal org for a new user.
+ * Uses a partial unique index to prevent duplicates from concurrent requests.
+ * If the INSERT violates the constraint, re-queries the existing org.
+ */
+async function ensurePersonalOrg(
+  userId: string,
+): Promise<{ orgId: string; role: OrgRole }> {
+  const db = getDb();
+
+  try {
+    const [org] = await db
+      .insert(organizations)
+      .values({
+        name: "Personal",
+        slug: `user-${userId.slice(0, 8)}-${Date.now().toString(36)}`,
+        isPersonal: true,
+        createdBy: userId,
+      })
+      .returning({ id: organizations.id });
+
+    await db.insert(orgMemberships).values({
+      orgId: org.id,
+      userId,
+      role: "owner",
+    });
+
+    return { orgId: org.id, role: "owner" };
+  } catch (err) {
+    // Partial unique index violation — another concurrent request created the org
+    const existing = await db
+      .select({ orgId: orgMemberships.orgId, role: orgMemberships.role })
+      .from(orgMemberships)
+      .innerJoin(organizations, eq(organizations.id, orgMemberships.orgId))
+      .where(
+        and(
+          eq(orgMemberships.userId, userId),
+          eq(organizations.isPersonal, true),
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      return { orgId: existing[0].orgId, role: existing[0].role as OrgRole };
+    }
+
+    // If re-query also fails, propagate the original error
+    throw err;
+  }
+}
+
+/**
+ * Set the active org cookie. Called after ensurePersonalOrg or org switch.
+ */
+export async function setActiveOrgCookie(orgId: string, role: OrgRole): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(ORG_COOKIE, `${orgId}:${role}`, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/app",
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+  });
+}
+
+/**
+ * Parse the active org cookie. Returns null if missing or malformed.
+ */
+async function readActiveOrgCookie(): Promise<{ orgId: string; role: OrgRole } | null> {
+  try {
+    const cookieStore = await cookies();
+    const value = cookieStore.get(ORG_COOKIE)?.value;
+    if (!value) return null;
+
+    const sep = value.indexOf(":");
+    if (sep < 1) return null;
+
+    const orgId = value.slice(0, sep);
+    const role = value.slice(sep + 1) as OrgRole;
+    if (!["owner", "admin", "member"].includes(role)) return null;
+
+    return { orgId, role };
+  } catch {
+    return null;
+  }
+}
+
+export interface SessionContext {
+  userId: string;
+  orgId: string;
+  role: OrgRole;
+}
+
+export async function resolveSessionContext(): Promise<SessionContext> {
+  const userId = await resolveUserId({ warnOnFallback: true });
+
+  // Hot path: read from cookie
+  const cookieOrg = await readActiveOrgCookie();
+  if (cookieOrg) {
+    // Check in-memory cache for membership validity
+    const cacheKey = `${userId}:${cookieOrg.orgId}`;
+    const cached = membershipCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { userId, orgId: cached.orgId, role: cached.role };
+    }
+
+    // Cache miss — validate membership in DB
+    const db = getDb();
+    const [membership] = await db
+      .select({ role: orgMemberships.role })
+      .from(orgMemberships)
+      .where(
+        and(
+          eq(orgMemberships.userId, userId),
+          eq(orgMemberships.orgId, cookieOrg.orgId),
+        ),
+      )
+      .limit(1);
+
+    if (membership) {
+      const role = membership.role as OrgRole;
+      membershipCache.set(cacheKey, {
+        orgId: cookieOrg.orgId,
+        role,
+        expiresAt: Date.now() + MEMBERSHIP_CACHE_TTL_MS,
+      });
+      // Update cookie if role changed
+      if (role !== cookieOrg.role) {
+        await setActiveOrgCookie(cookieOrg.orgId, role);
+      }
+      return { userId, orgId: cookieOrg.orgId, role };
+    }
+
+    // Cookie org is invalid (user not a member) — fall through to personal org
+  }
+
+  // Cold path: no cookie or invalid — ensure personal org
+  const { orgId, role } = await ensurePersonalOrg(userId);
+  await setActiveOrgCookie(orgId, role);
+
+  const cacheKey = `${userId}:${orgId}`;
+  membershipCache.set(cacheKey, {
+    orgId,
+    role,
+    expiresAt: Date.now() + MEMBERSHIP_CACHE_TTL_MS,
+  });
+
+  return { userId, orgId, role };
 }

@@ -30,7 +30,7 @@ describe("POST /api/actions/[id]/approve", () => {
   });
 
   it("approves a pending action", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedApproveAction.mockResolvedValue({
       id: "00000000-0000-4000-a000-000000000001",
       status: "approved",
@@ -52,7 +52,7 @@ describe("POST /api/actions/[id]/approve", () => {
   });
 
   it("returns 404 when action is not found", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedApproveAction.mockRejectedValue(new ActionNotFoundError("missing"));
 
     const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000002/approve", { method: "POST" });
@@ -62,7 +62,7 @@ describe("POST /api/actions/[id]/approve", () => {
   });
 
   it("returns 409 when action has expired", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedApproveAction.mockRejectedValue(new ActionExpiredError("00000000-0000-4000-a000-000000000001"));
 
     const req = new Request("http://localhost/api/actions/ns_act_00000000-0000-4000-a000-000000000001/approve", { method: "POST" });
@@ -72,7 +72,7 @@ describe("POST /api/actions/[id]/approve", () => {
   });
 
   it("returns 409 when action is not in pending state", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1" });
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "00000000-0000-4000-b000-000000000001", role: "owner" as const });
     mockedApproveAction.mockRejectedValue(
       new InvalidActionTransitionError("rejected", "approved"),
     );
