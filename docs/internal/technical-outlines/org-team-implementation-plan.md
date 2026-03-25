@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phase 2 Complete, Phase 3a-3f Complete, Phase 3g Next
+**Status:** Phase 2 Complete, Phase 3a-3g Complete, Phase 3h Next
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -542,12 +542,15 @@ Three-layer gating: API-level enforcement, React Query-based tier hook, componen
 
 **Test results:** 1080 root + 1210 proxy = 2290 total, 0 TypeScript errors
 
-### Phase 3g: Invitation Acceptance Page (~1 day)
+### Phase 3g: Invitation Acceptance Page — COMPLETE (2026-03-25)
 
-- [ ] `/invite/[token]/page.tsx` — outside dashboard layout
-- [ ] States: valid+logged-in → accept, valid+not-logged-in → signup redirect, expired, already-member, error
-- [ ] Accept: call API → create membership → set cookie → redirect to dashboard
-- [ ] Not-logged-in: redirect to signup with `redirect` param back to invitation
+- [x] `/invite/[token]/page.tsx` — server component (checks auth via `getCurrentUserId`)
+- [x] `/invite/[token]/client.tsx` — client component with state machine: ready → accepting → success/error
+- [x] States: not-logged-in (sign in redirect with `?next=`), ready (accept button), accepting (spinner), success (auto-redirect after 1.5s), error (expired/conflict/invalid with appropriate icons)
+- [x] Outside dashboard layout — uses auth-style centered card with NullSpend branding
+- [x] Calls `POST /api/invite/accept` with raw token, handles all error codes (404, 409, 410)
+
+**Test results:** 1080 root + 1210 proxy = 2290 total, 0 TypeScript errors
 
 ### Phase 3h: Create Org + Multi-Org Switcher (~1 day)
 
@@ -667,7 +670,7 @@ Before proceeding to Phase 4, verify:
 | 3d: Org CRUD API | ~1 day | **COMPLETE** (2026-03-25) |
 | 3e: Invitation backend | ~1 day | **COMPLETE** (2026-03-25) |
 | 3f: Member management UI | ~1-2 days | **COMPLETE** (2026-03-25) |
-| 3g: Invitation acceptance page | ~1 day | Not started |
+| 3g: Invitation acceptance page | ~1 day | **COMPLETE** (2026-03-25) |
 | 3h: Create org + multi-org switcher | ~1 day | Not started |
 | **Phase 3 total** | **~8-10 days** | |
 | 4a: Permission middleware | ~1 day | Not started |
@@ -696,3 +699,4 @@ Before proceeding to Phase 4, verify:
 | 2026-03-25 | Phase 3d completed — org CRUD API + member management. 6 routes, authorization layer (assertOrgMember/assertOrgRole), 72 new tests. 1051 root + 1210 proxy = 2261 total. |
 | 2026-03-25 | Phase 3e completed — invitation backend. Token system, CRUD routes, accept endpoint, seat limit enforcement with viewer bypass, lazy expiry. 24 new tests. 1075 root + 1210 proxy = 2285 total. |
 | 2026-03-25 | Phase 3f completed — member management UI. Session endpoint, query hooks, MembersSection component (InviteForm, MemberTable, PendingInvitesTable), settings nav updated. |
+| 2026-03-25 | Phase 3g completed — invitation acceptance page. Server/client split, auth check, accept flow with state machine, error handling for expired/conflict/invalid. |
