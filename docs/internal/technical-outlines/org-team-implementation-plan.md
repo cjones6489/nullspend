@@ -165,69 +165,91 @@ Before proceeding to Phase 1, verify:
 
 ## Phase 1: Org Tables + Foundation
 
-**Goal:** Create org infrastructure. Every user gets a personal org. No scoping changes yet — `org_id` is populated but not used for queries.
+**Goal:** Create org infrastructure. Every user gets a personal org. No scoping changes yet — `org_id` is populated on new writes but not used for queries.
 
 **Prerequisites (verify before starting):**
-- Phase 0 complete — all `org_id` columns exist
-- Schema types are correct (`org_id` is `uuid` on all tables)
-- Settings restructure is done (members page placeholder exists)
+- Phase 0 complete — all `org_id` columns exist as `uuid` (migrated in Phase 0a)
+- Settings restructure done (Phase 0d)
 
-### Phase 1a: Org Schema + Tables (~1 hour)
+**Architecture decisions (from Phase 1 arch review, 2026-03-24):**
+- **Org context resolution:** Cookie-embedded (`ns-active-org` httpOnly cookie stores `orgId:role`). Zero DB queries on hot path. DB hit only on first request (new user), cookie miss, or org switch. Industry standard (Clerk, WorkOS pattern).
+- **Personal org race condition:** Partial unique index `UNIQUE(created_by) WHERE is_personal = true` + catch-and-retry. Database-level idempotency (Stripe pattern).
+- **`created_by` columns:** Skipped — existing `user_id` serves as creator audit trail (Phase 0 decision).
+- **Org switcher UI:** Deferred to Phase 3 — no value for single-org users. Keep sidebar clean.
 
-- [ ] Add `organizations`, `orgMemberships`, `orgInvitations` to Drizzle schema
-- [ ] Use `uuid` PK for `organizations.id` (matches codebase convention)
-- [ ] Use `.$type<>()` annotations for role and status columns
-- [ ] Create migration SQL for 3 tables + indexes
+**Estimated effort:** ~2 hours (down from 2-3 days after scope reduction).
+
+### Increment 1: Schema + Validation (~30 min)
+
+**Phase 1a: Org tables**
+- [ ] Add `organizations`, `orgMemberships`, `orgInvitations` to Drizzle schema (`packages/db/src/schema.ts`)
+  - `organizations.id`: `uuid` PK (matches codebase convention)
+  - Role/status columns: use `.$type<>()` annotations
+  - Add partial unique index: `UNIQUE(created_by) WHERE is_personal = true` — enforces one personal org per user
+- [ ] Create migration SQL for 3 tables + indexes (including partial unique index)
 - [ ] Apply migration via Supabase MCP
-- [ ] Migrate existing `org_id` columns from `text` to `uuid` (zero rows, safe)
-- [ ] Verify typecheck and tests pass
+- [ ] Verify `pnpm typecheck` passes
 
-### Phase 1b: Validation Schemas (~30 min)
-
+**Phase 1b: Validation schemas**
 - [ ] Create `lib/validations/orgs.ts` with Zod schemas:
-  - `createOrgSchema` (name, slug)
-  - `updateOrgSchema` (name, slug)
-  - `inviteMemberSchema` (email, role)
-  - `changeRoleSchema` (role)
+  - `createOrgSchema` — name (1-50 chars), slug (alphanumeric + hyphens, 3-50 chars, lowercase)
+  - `updateOrgSchema` — name (optional), slug (optional)
+  - `inviteMemberSchema` — email (valid email), role (`"owner" | "admin" | "member"`)
+  - `changeRoleSchema` — role (`"owner" | "admin" | "member"`)
 - [ ] Follow existing patterns in `lib/validations/`
+- [ ] Verify `pnpm test` and `pnpm proxy:test` pass
 
-### Phase 1c: Personal Org Lazy-Init (~1-2 hours)
+### Increment 2: Personal Org + Session Context (~45 min)
 
-- [ ] Implement `ensurePersonalOrg(userId)` in `lib/auth/session.ts`
-  - Check for existing personal org via `org_memberships` + `organizations.isPersonal`
-  - If none, create org + owner membership in transaction
-  - Cache result in-memory for the request lifecycle
-- [ ] Extend `resolveSessionContext()` to return `{ userId, orgId, role }`
-  - `orgId` from personal org (for now)
-  - `role` always `"owner"` (personal org)
-- [ ] Add tests for `ensurePersonalOrg` (new org created, existing org returned, concurrent-safe)
+**Phase 1c: `ensurePersonalOrg` + cookie-based `resolveSessionContext`**
 
-### Phase 1d: Populate `created_by` + `org_id` on Writes (~1 hour)
+`ensurePersonalOrg(userId)` in `lib/auth/session.ts`:
+- [ ] Try INSERT `organizations` (name: "Personal", slug: `user-{userId prefix}`, is_personal: true, created_by: userId) + `org_memberships` (role: "owner") in transaction
+- [ ] If partial unique index violation → catch, re-query existing personal org
+- [ ] Return `{ orgId, role: "owner" }`
 
-- [ ] `app/api/keys/route.ts`: Set `createdBy: userId` on INSERT
-- [ ] `app/api/budgets/route.ts`: Set `createdBy: userId` on INSERT
-- [ ] `app/api/webhooks/route.ts`: Set `createdBy: userId` on INSERT
-- [ ] Set `orgId` on new rows where `resolveSessionContext()` is available (dashboard routes)
+`resolveSessionContext()` — cookie-first, zero DB on hot path:
+- [ ] Step 1: `userId = resolveSessionUserId()` (existing)
+- [ ] Step 2: Read `ns-active-org` cookie → parse `orgId:role`
+- [ ] Step 3: If cookie valid → validate membership (in-memory cache, 60s TTL) → return `{ userId, orgId, role }`
+- [ ] Step 4: If no cookie or invalid → `ensurePersonalOrg(userId)` → set `ns-active-org` cookie → return
+- [ ] In-memory membership cache: `Map<string, { orgId, role, expiresAt }>` keyed by `userId:orgId`
+
+Cookie server action:
+- [ ] `setActiveOrg(orgId, role)` — sets `ns-active-org` httpOnly cookie with value `orgId:role`
+- [ ] Cookie is httpOnly, SameSite=Lax, path=/app
+
+Tests:
+- [ ] New user → personal org created, cookie set, context returned with orgId + role "owner"
+- [ ] Existing user with cookie → no DB hit, context returned from cookie
+- [ ] Concurrent first requests → second catches unique violation, returns same org
+- [ ] Invalid cookie (bad format, nonexistent org) → falls back to DB lookup
+- [ ] Verify `resolveSessionContext()` returns correct shape `{ userId, orgId, role }`
+
+### Increment 3: Populate `org_id` on Writes (~30 min)
+
+**Phase 1d: Add `orgId` to dashboard INSERT routes**
+- [ ] `app/api/keys/route.ts`: `orgId` from `resolveSessionContext()` in POST handler
+- [ ] `app/api/budgets/route.ts`: `orgId` in POST handler (transaction already has `userId`)
+- [ ] `app/api/webhooks/route.ts`: `orgId` in POST handler
 - [ ] Proxy cost-logger: NOT yet — `org_id` populated in Phase 2 when proxy auth returns it
 
-### Phase 1e: Frontend Org Switcher (non-functional) (~2 hours)
-
-- [ ] Build `<OrgSwitcher>` component (DropdownMenu-based)
-- [ ] Add to sidebar header (replace Shield icon row)
-- [ ] Shows single personal org (reads from `resolveSessionContext()`)
-- [ ] Build `ns-active-org` cookie server action
-- [ ] Build inline utilities: `OrgAvatar`, `RoleBadge`, `PlanBadge`
-- [ ] No behavioral change — personal org only, same data
+Tests:
+- [ ] Create API key → verify `org_id` column is populated (non-null)
+- [ ] Create budget → verify `org_id` populated
+- [ ] Create webhook → verify `org_id` populated
 
 ### Phase 1 Review Gate
 
 Before proceeding to Phase 2, verify:
 - [ ] `organizations`, `org_memberships`, `org_invitations` tables exist in DB
-- [ ] New user signup creates a personal org (test the lazy-init path)
+- [ ] Partial unique index enforces one personal org per user
+- [ ] New user first request creates a personal org (test the lazy-init path)
 - [ ] `resolveSessionContext()` returns `{ userId, orgId, role }` correctly
-- [ ] Org switcher renders in sidebar with personal org
-- [ ] New API key/budget/webhook writes include `created_by` and `org_id`
-- [ ] All tests pass
+- [ ] Cookie-based hot path: zero DB queries on subsequent requests
+- [ ] Concurrent first requests don't create duplicate orgs
+- [ ] New API key/budget/webhook writes include `org_id`
+- [ ] All tests pass (922+ root, 1208 proxy, typecheck clean)
 - [ ] **Re-read Phase 2 plan** — do assumptions still hold? Any adjustments needed?
 
 ---
@@ -446,12 +468,11 @@ Before proceeding to Phase 4, verify:
 | 0c: PREFIX_MAP | ~5 min | None |
 | 0d: Settings restructure | ~2-3 hours | None (frontend-only) |
 | **Phase 0 total** | **~1 day** | |
-| 1a: Org tables | ~1 hour | Phase 0a |
-| 1b: Validation schemas | ~30 min | Phase 1a |
-| 1c: Personal org lazy-init | ~1-2 hours | Phase 1a |
-| 1d: Populate created_by + org_id | ~1 hour | Phase 1c |
-| 1e: Frontend org switcher | ~2 hours | Phase 1c |
-| **Phase 1 total** | **~2-3 days** | Phase 0 |
+| Increment 1: Org tables + validation (1a+1b) | ~30 min | Phase 0 |
+| Increment 2: Personal org + session context (1c) | ~45 min | Increment 1 |
+| Increment 3: Populate org_id on writes (1d) | ~30 min | Increment 2 |
+| ~~1e: Frontend org switcher~~ | ~~deferred~~ | Moved to Phase 3 |
+| **Phase 1 total** | **~2 hours** | Phase 0 |
 | 2a: Proxy auth orgId | ~2 hours | Phase 1 |
 | 2b: Proxy cost-logger | ~1 hour | Phase 2a |
 | 2c: Proxy DO keying | ~2-3 hours | Phase 2a |
@@ -478,3 +499,5 @@ Before proceeding to Phase 4, verify:
 | Date | Change |
 |---|---|
 | 2026-03-24 | Initial plan created from architecture + UI/UX research |
+| 2026-03-24 | Phase 0 completed (all 4 sub-phases shipped) |
+| 2026-03-24 | Phase 1 arch review: cookie-embedded org context, partial unique index for race safety, deferred org switcher UI to Phase 3, removed created_by (already skipped), removed text→uuid migration (already done). Scope reduced from 2-3 days to ~2 hours across 3 increments. |
