@@ -14,7 +14,7 @@ import {
   CircuitBreaker,
   CircuitOpenError,
 } from "@/lib/resilience/circuit-breaker";
-import type { OrgRole } from "@/lib/validations/orgs";
+import { ORG_ROLES, type OrgRole } from "@/lib/validations/orgs";
 
 const supabaseCircuit = new CircuitBreaker({
   name: "supabase-auth",
@@ -133,6 +133,9 @@ interface CachedMembership {
 
 const membershipCache = new Map<string, CachedMembership>();
 
+/** @internal Expose for testing only. */
+export const _membershipCacheForTesting = membershipCache;
+
 /**
  * Create a personal org for a new user.
  * Uses a partial unique index to prevent duplicates from concurrent requests.
@@ -144,24 +147,33 @@ async function ensurePersonalOrg(
   const db = getDb();
 
   try {
-    const [org] = await db
-      .insert(organizations)
-      .values({
-        name: "Personal",
-        slug: `user-${userId.slice(0, 8)}-${Date.now().toString(36)}`,
-        isPersonal: true,
-        createdBy: userId,
-      })
-      .returning({ id: organizations.id });
+    // Transaction: both org + membership or neither
+    const [org] = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(organizations)
+        .values({
+          name: "Personal",
+          slug: `user-${userId.slice(0, 8)}-${Date.now().toString(36)}`,
+          isPersonal: true,
+          createdBy: userId,
+        })
+        .returning({ id: organizations.id });
 
-    await db.insert(orgMemberships).values({
-      orgId: org.id,
-      userId,
-      role: "owner",
+      await tx.insert(orgMemberships).values({
+        orgId: created.id,
+        userId,
+        role: "owner",
+      });
+
+      return [created];
     });
 
     return { orgId: org.id, role: "owner" };
   } catch (err) {
+    // Only recover from Postgres unique_violation (23505) — rethrow everything else
+    const pgCode = (err as { code?: string }).code;
+    if (pgCode !== "23505") throw err;
+
     // Partial unique index violation — another concurrent request created the org
     const existing = await db
       .select({ orgId: orgMemberships.orgId, role: orgMemberships.role })
@@ -179,7 +191,6 @@ async function ensurePersonalOrg(
       return { orgId: existing[0].orgId, role: existing[0].role as OrgRole };
     }
 
-    // If re-query also fails, propagate the original error
     throw err;
   }
 }
@@ -192,7 +203,7 @@ export async function setActiveOrgCookie(orgId: string, role: OrgRole): Promise<
   cookieStore.set(ORG_COOKIE, `${orgId}:${role}`, {
     httpOnly: true,
     sameSite: "lax",
-    path: "/app",
+    path: "/",
     maxAge: 60 * 60 * 24 * 365, // 1 year
   });
 }
@@ -211,7 +222,7 @@ async function readActiveOrgCookie(): Promise<{ orgId: string; role: OrgRole } |
 
     const orgId = value.slice(0, sep);
     const role = value.slice(sep + 1) as OrgRole;
-    if (!["owner", "admin", "member"].includes(role)) return null;
+    if (!(ORG_ROLES as readonly string[]).includes(role)) return null;
 
     return { orgId, role };
   } catch {

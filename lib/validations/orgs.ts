@@ -34,13 +34,15 @@ export const updateOrgSchema = z.object({
   slug: slugSchema.optional(),
 });
 
+export const ASSIGNABLE_ROLES = ["admin", "member"] as const;
+
 export const inviteMemberSchema = z.object({
   email: z.string().email("A valid email is required."),
-  role: z.enum(ORG_ROLES, { message: "Role must be owner, admin, or member." }),
+  role: z.enum(ASSIGNABLE_ROLES, { message: "Role must be admin or member. Owner must be transferred explicitly." }),
 });
 
 export const changeRoleSchema = z.object({
-  role: z.enum(ORG_ROLES, { message: "Role must be owner, admin, or member." }),
+  role: z.enum(ASSIGNABLE_ROLES, { message: "Role must be admin or member. Owner must be transferred explicitly." }),
 });
 
 export const orgIdParamsSchema = z.object({

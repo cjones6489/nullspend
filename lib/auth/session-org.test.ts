@@ -12,10 +12,16 @@ const mockSelectJoin = vi.fn(() => ({ where: mockSelectJoinWhere }));
 const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere, innerJoin: mockSelectJoin }));
 const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
 
+const mockTransaction = vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
+  const txDb = { insert: mockInsert, select: mockSelect };
+  return cb(txDb);
+});
+
 vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(() => ({
     insert: mockInsert,
     select: mockSelect,
+    transaction: mockTransaction,
   })),
 }));
 
@@ -49,11 +55,12 @@ vi.mock("next/headers", () => ({
 }));
 
 // --- Import after mocks ---
-import { resolveSessionContext, setActiveOrgCookie } from "./session";
+import { resolveSessionContext, setActiveOrgCookie, _membershipCacheForTesting } from "./session";
 
 describe("resolveSessionContext", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    _membershipCacheForTesting.clear();
   });
 
   it("returns orgId and role from cookie on hot path (no DB hit for org)", async () => {
@@ -86,15 +93,16 @@ describe("resolveSessionContext", () => {
     expect(mockCookieSet).toHaveBeenCalledWith(
       "ns-active-org",
       "new-org-uuid:owner",
-      expect.objectContaining({ httpOnly: true, path: "/app" }),
+      expect.objectContaining({ httpOnly: true, path: "/" }),
     );
   });
 
   it("handles race condition — INSERT fails, re-queries existing org", async () => {
     mockCookieGet.mockReturnValue(undefined); // no cookie
 
-    // ensurePersonalOrg: INSERT org fails with unique violation
-    mockInsertReturning.mockRejectedValueOnce(new Error("unique_violation"));
+    // ensurePersonalOrg: INSERT org fails with Postgres unique violation (23505)
+    const uniqueViolation = Object.assign(new Error("unique_violation"), { code: "23505" });
+    mockInsertReturning.mockRejectedValueOnce(uniqueViolation);
 
     // Re-query: find existing personal org
     mockSelectLimit.mockResolvedValueOnce([{ orgId: "existing-org-uuid", role: "owner" }]);
@@ -148,7 +156,7 @@ describe("setActiveOrgCookie", () => {
       expect.objectContaining({
         httpOnly: true,
         sameSite: "lax",
-        path: "/app",
+        path: "/",
       }),
     );
   });
