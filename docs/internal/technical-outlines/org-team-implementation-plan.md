@@ -366,123 +366,194 @@ Items moved to Phase 3:
 
 ---
 
-## Phase 3: Team Features
+## Phase 3: Team Features + Feature Gating
 
-**Goal:** Multi-user collaboration. Users can create team orgs and invite members.
+**Goal:** Multi-user collaboration. Users can create team orgs and invite members. Feature gating enforces tier limits.
 
 **Prerequisites (verify before starting):**
-- Phase 2 complete — everything scoped by `org_id`
-- Feature gating works (Members page shows upgrade CTA on free/pro)
-- Org switcher shows personal org correctly
+- [x] Phase 2 complete — everything scoped by `org_id`, NOT NULL enforced
+- [ ] Re-read Phase 3 plan — do assumptions still hold?
 
-### Phase 3a: Proxy DO Keying for Team Orgs (~2-3 hours)
+**Industry research (2026-03-24):**
+Studied GitHub, Vercel, Supabase, Clerk, WorkOS, Linear, Stripe, Datadog, PostHog. Key findings:
+- **Free orgs drive adoption:** GitHub, Clerk, Linear, PostHog all allow free team creation. Only Vercel gates team creation behind Pro. Recommendation: allow free users to create team orgs with limited members (3).
+- **Viewer seats should be free:** Vercel charges only "deploying seats." Finance/management stakeholders viewing dashboards shouldn't count toward seat limits.
+- **Add `viewer` role:** Every platform (Vercel, Linear, Datadog, Stripe) has a read-only role. NullSpend currently has `owner | admin | member` — add `viewer`.
+- **Billing on org, not user:** GitHub, Supabase, Vercel all bill at the org level. Personal orgs get their own subscription.
+- **Resources stay with org when user leaves:** Universal pattern (WorkOS, GitHub, Supabase). NullSpend already implements this via `orgId` scoping.
+- **Graceful downgrade:** Never delete config on downgrade. Block new creation beyond limits. Show persistent upgrade banner. Supabase pauses, GitHub preserves but stops enforcing.
+- **SSO/SAML = enterprise only:** Universal. Use WorkOS or Clerk's enterprise add-on when needed.
 
-**Moved from Phase 2.** Personal orgs keep `idFromName(userId)`. Team orgs use `idFromName(orgId)`. The DO client needs to accept an org-aware identifier.
+**Tier matrix (revised from research):**
 
-- [ ] `budget-do-client.ts`: change 6 call sites — use `orgId` when available, fall back to `userId` for personal orgs
-- [ ] `budget-orchestrator.ts`: pass `ctx.auth.orgId` (for team orgs) or `ctx.auth.userId` (for personal orgs)
-- [ ] `budget-do-lookup.ts`: change `WHERE user_id =` to `WHERE org_id =` in all 3 queries
-- [ ] `routes/internal.ts`: add `orgId` to `InvalidationBody`, use for DO client calls
+| Feature | Free | Pro ($49/mo) | Enterprise |
+|---------|------|-------------|------------|
+| Team members | 3 | Unlimited | Unlimited |
+| Viewer seats | Unlimited | Unlimited | Unlimited |
+| Budgets | 3 | Unlimited | Unlimited |
+| API keys | 10 | Unlimited | Unlimited |
+| Webhook endpoints | 2 | 25 | Unlimited |
+| Data retention | 30 days | 90 days | Unlimited |
+| Spend cap | $5K | $50K | Unlimited |
+| Org creation | Yes | Yes | Yes |
+| Roles | owner/admin/member/viewer | owner/admin/member/viewer | Custom RBAC |
+| Invite method | Email only | Email + link | Email + link + domain auto-join |
+| Audit log | Last 10 events | Full | Full + export |
+| SSO/SAML | No | No | Yes |
+
+### Phase 3a: Tier + Role Updates (~1 hour)
+
+Schema and config changes before building features.
+
+- [ ] Add `viewer` role to `orgMemberships.role` type and `ORG_ROLES` constant
+- [ ] Update `TIERS.free.maxTeamMembers` from `1` to `3`
+- [ ] Viewer seats exempt from `maxTeamMembers` count (don't count viewers in limit checks)
+- [ ] Update `ASSIGNABLE_ROLES` to include `viewer`
+- [ ] Tests for viewer role validation
+
+### Phase 3b: Feature Gating Infrastructure (~1 day)
+
+Three-layer gating: API-level enforcement, middleware-level context, component-level UX.
+
+- [ ] `lib/stripe/feature-gate.ts`: `assertTierLimit(orgId, limitKey)` — server-side enforcement helper
+  - Returns structured error: `{ code: "tier_limit_exceeded", message, upgradeUrl }`
+  - Checks `TIERS[tier][limitKey]` against current count
+- [ ] `<TierGate requiredTier="pro" feature="unlimited-budgets">` — client-side wrapper component
+  - Renders children when tier is sufficient
+  - Renders inline `<UpgradeCard>` when tier is insufficient (shows what they unlock, not just a lock icon)
+- [ ] `<UpgradeCard feature tier currentTier>` — contextual upgrade prompt
+- [ ] Tier context provider: resolve tier in server layout, inject via React context
+- [ ] `useOrgTier()` hook for client components
+- [ ] Tests for each component and the server-side helper
+
+### Phase 3c: Proxy DO Keying for Team Orgs (~2-3 hours)
+
+**Moved from Phase 2.** Personal orgs keep `idFromName(userId)`. Team orgs use `idFromName(orgId)`.
+
+- [ ] `budget-do-client.ts`: 6 call sites — use `orgId` when available, fall back to `userId` for personal orgs
+- [ ] `budget-orchestrator.ts`: pass `ctx.auth.orgId` or `ctx.auth.userId`
+- [ ] `budget-do-lookup.ts`: `WHERE org_id =` instead of `WHERE user_id =` (3 queries)
+- [ ] `routes/internal.ts`: add `orgId` to `InvalidationBody`
 - [ ] `webhook-cache.ts`: cache key by `orgId` instead of `userId`
 - [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body
 - [ ] Update proxy tests (~20-30 files)
 - [ ] Run smoke tests after deploy
 
-### Phase 3b: Org CRUD API (~1 day)
+### Phase 3d: Org CRUD API (~1 day)
 
 - [ ] `app/api/orgs/route.ts`: GET (list user's orgs), POST (create org)
-- [ ] `app/api/orgs/[orgId]/route.ts`: GET, PATCH, DELETE
-- [ ] `app/api/orgs/[orgId]/members/route.ts`: GET (list members)
+  - POST enforces `maxTeamMembers` — free users can create orgs (industry standard)
+  - POST creates org + owner membership in transaction
+- [ ] `app/api/orgs/[orgId]/route.ts`: GET, PATCH (name, slug, logo), DELETE (owner only, cascades)
+- [ ] `app/api/orgs/[orgId]/members/route.ts`: GET (list members with roles)
 - [ ] `app/api/orgs/[orgId]/members/[userId]/route.ts`: PATCH (role), DELETE (remove)
-- [ ] Permission checks: verify requester is member of org, check role for write ops
-- [ ] Tests for each route
-- [ ] Zod validation on all inputs
+  - Cannot remove the owner; owner transfer is a separate action
+  - Cannot change own role (prevent accidental de-admin)
+- [ ] Membership verification middleware: check requester is member of target org
+- [ ] Role checks: member management requires `admin` or `owner`
+- [ ] Tests for each route + permission edge cases
 
-### Phase 3c: Invitation Backend (~1 day)
+### Phase 3e: Invitation Backend (~1 day)
 
-- [ ] `lib/auth/invitation.ts`: token generation, SHA-256 hashing, verification
-- [ ] `app/api/orgs/[orgId]/invitations/route.ts`: GET (list), POST (create)
+- [ ] `lib/auth/invitation.ts`: token generation (crypto.randomBytes), SHA-256 hashing, verification
+- [ ] `app/api/orgs/[orgId]/invitations/route.ts`: GET (list), POST (create — requires admin+)
+  - POST enforces `maxTeamMembers` (viewer invites exempt from count)
+  - 7-day token expiry (matches schema `expiresAt`)
+  - Prevents duplicate invitations to same email
 - [ ] `app/api/orgs/[orgId]/invitations/[id]/route.ts`: DELETE (revoke)
 - [ ] `app/api/invite/accept/route.ts`: POST (accept via token hash lookup)
-- [ ] Email sending (Resend/SendGrid/Supabase) for invitation emails
-- [ ] Tests: create, accept, expire, revoke, already-member, invalid token
+  - Creates `orgMembership` with invited role
+  - Sets `ns-active-org` cookie to new org
+  - Returns redirect URL
+- [ ] Email sending (Resend) for invitation emails
+- [ ] Tests: create, accept, expire, revoke, already-member, invalid token, duplicate invite
 
-### Phase 3d: Member Management UI (~1-2 days)
+### Phase 3f: Member Management UI (~1-2 days)
 
-- [ ] `<InviteForm>` — email + role selector + invite button
-- [ ] `<MemberTable>` — avatar, name, email, role badge, joined date, actions dropdown
-- [ ] `<PendingInvitesTable>` — email, role, sent date, status badge, resend/revoke actions
-- [ ] Empty states for both tables (follow existing `EmptyKeys` pattern)
+- [ ] `<InviteForm>` — email + role selector (admin/member/viewer) + invite button
+- [ ] `<MemberTable>` — avatar, name, email, role badge, joined date, actions dropdown (change role, remove)
+- [ ] `<PendingInvitesTable>` — email, role, sent date, expiry, resend/revoke actions
+- [ ] Empty states for both tables
 - [ ] Loading skeletons
 - [ ] Wire up to API routes via TanStack Query hooks
 - [ ] `AlertDialog` for destructive actions (remove member, revoke invitation)
+- [ ] `/app/settings/members/page.tsx` — members page with invite form + both tables
 
-### Phase 3e: Invitation Acceptance Page (~1 day)
+### Phase 3g: Invitation Acceptance Page (~1 day)
 
 - [ ] `/invite/[token]/page.tsx` — outside dashboard layout
-- [ ] States: valid+logged-in, valid+not-logged-in, expired, already-member, error
-- [ ] Accept action: call API → create membership → set `ns-active-org` cookie → redirect to dashboard
-- [ ] Not-logged-in path: redirect to signup with `redirect` param back to invitation
+- [ ] States: valid+logged-in → accept, valid+not-logged-in → signup redirect, expired, already-member, error
+- [ ] Accept: call API → create membership → set cookie → redirect to dashboard
+- [ ] Not-logged-in: redirect to signup with `redirect` param back to invitation
 
-### Phase 3f: Create Org + Multi-Org Switcher (~1 day)
+### Phase 3h: Create Org + Multi-Org Switcher (~1 day)
 
-- [ ] Create Organization dialog (from org switcher dropdown)
-- [ ] Name + auto-generated slug + create button
-- [ ] On success: switch to new org (update cookie, refresh)
-- [ ] Org switcher now lists multiple orgs with role badges and active checkmark
-- [ ] Settings > General page: org name, avatar editing (for team orgs)
+- [ ] `<OrgSwitcher>` in sidebar header (top-left, matches GitHub/Vercel/Linear placement)
+  - Current org: avatar + name + plan badge
+  - Dropdown: other orgs with role badges, personal org, "Create organization" action
+- [ ] Create Organization dialog: name + auto-slug + create
+- [ ] On switch: update `ns-active-org` cookie → full page refresh
+- [ ] `/app/settings/general/page.tsx`: org name, avatar, slug (team orgs only, personal org is read-only)
 
 ### Phase 3 Review Gate
 
 Before proceeding to Phase 4, verify:
+- [ ] Feature gating blocks creation beyond tier limits with contextual upgrade prompts
 - [ ] Can create a team org, invite members, accept invitations end-to-end
-- [ ] Org switcher works for multi-org users
-- [ ] Member table shows correct roles, invite/remove works
-- [ ] Invitation emails send and links work
+- [ ] Viewer role works — read-only access, doesn't count toward seat limit
+- [ ] Org switcher works for multi-org users (personal + team orgs)
+- [ ] Member table shows correct roles, invite/remove/role-change works
+- [ ] Invitation emails send and acceptance links work
 - [ ] Personal org is unaffected (solo user experience unchanged)
+- [ ] Downgrade behavior: existing resources preserved, new creation blocked beyond limits
 - [ ] All tests pass
 - [ ] **Re-read Phase 4 plan** — do assumptions still hold?
 
 ---
 
-## Phase 4: Role Enforcement + Billing Migration
+## Phase 4: Permission Enforcement + Billing Migration
 
-**Goal:** Enforce permissions. Move billing from per-user to per-org.
+**Goal:** Enforce role-based permissions. Move billing from per-user to per-org.
 
 **Prerequisites (verify before starting):**
-- Phase 3 complete — team orgs exist, members can be invited
-- Roles are assigned but not yet enforced (everyone can do everything)
+- Phase 3 complete — team orgs exist, members can be invited, feature gating works
+- Roles are assigned but not yet enforced at API level (everyone with org access can do everything)
 
 ### Phase 4a: Permission Middleware (~1 day)
 
-- [ ] `lib/auth/permissions.ts`: `requireRole('member' | 'admin' | 'owner')` middleware
-- [ ] Apply to all dashboard API routes (budget CRUD: admin, key revocation: admin, billing: owner, etc.)
-- [ ] Tests: member tries admin action → 403, admin tries owner action → 403
-- [ ] Role-based UI rendering: `useOrgRole()` hook
+- [ ] `lib/auth/permissions.ts`: `requireRole('viewer' | 'member' | 'admin' | 'owner')` middleware
+  - `viewer`: read-only access (GET routes only)
+  - `member`: create own resources (budgets, keys), view shared dashboards
+  - `admin`: manage all resources, invite members, change roles
+  - `owner`: billing, delete org, transfer ownership
+- [ ] Apply to all dashboard API routes with appropriate minimum role
+- [ ] Tests: viewer tries write → 403, member tries admin action → 403, admin tries owner action → 403
+- [ ] `useOrgRole()` hook for client-side role checks
 
 ### Phase 4b: Frontend Role Enforcement (~1 day)
 
-- [ ] Hide admin actions from members (invite, budget management, key revocation)
-- [ ] Billing section restricted to owners
-- [ ] Settings > General: danger zone (delete org) restricted to owners
-- [ ] Disabled state for actions user can't perform (with tooltip explaining why)
+- [ ] Hide admin actions from members/viewers (invite, budget management, key revocation)
+- [ ] Billing section restricted to owners (show read-only plan info to others)
+- [ ] Settings > General danger zone (delete org) restricted to owners
+- [ ] Disabled state with tooltips for permission-denied actions
+- [ ] Viewer sees dashboards but all create/edit buttons hidden
 
 ### Phase 4c: Billing Migration (~2-3 days)
 
-- [ ] `subscriptions` table: `user_id` → `org_id` (migration + backfill from personal orgs)
-- [ ] Stripe Customer: create per-org instead of per-user
-- [ ] `getTierForOrg(orgId)` replaces `getTierForUser(userId)`
-- [ ] Stripe checkout route: scope to org
+- [ ] Subscription scoped to org: `getTierForOrg(orgId)` replaces `getTierForUser(userId)`
+- [ ] Stripe Customer per org (personal orgs get their own Stripe Customer)
+- [ ] Stripe checkout route: scope to org, owner-only
 - [ ] Stripe webhook: handle org-scoped subscriptions
-- [ ] Stripe portal: scope to org
-- [ ] Pricing page: personal (free) vs team (paid plans)
-- [ ] Test: upgrade personal → still works. Create team org → new Stripe Customer.
+- [ ] Stripe portal: scope to org, owner-only
+- [ ] Pricing page: show plan for current org, upgrade/downgrade flows
+- [ ] Tests: upgrade flow, multi-org billing, owner transfer doesn't break billing
 
 ### Phase 4 Review Gate
 
-- [ ] Permissions enforced — member can't do admin things, admin can't do owner things
+- [ ] Permissions enforced — viewer reads only, member can't admin, admin can't owner
 - [ ] Billing works per-org — Stripe Customer per org, subscription per org
-- [ ] Upgrade flow works end-to-end (free → pro, personal → team)
+- [ ] Upgrade flow works end-to-end (free → pro)
+- [ ] Downgrade preserves resources, blocks new creation beyond limits
 - [ ] All tests pass
 - [ ] Platform is ready for multi-user teams
 
@@ -490,63 +561,58 @@ Before proceeding to Phase 4, verify:
 
 ## Phase 5: Enterprise (demand-driven, not pre-built)
 
-**Trigger:** Enterprise customer requests it.
+**Trigger:** Enterprise customer requests it. Do not build speculatively.
 
-### Phase 5a: Additional Roles
-- Viewer role (read-only dashboard access)
-- Billing role (invoice management only)
+**Industry patterns:** SSO = $125/connection/mo (WorkOS), custom RBAC = enterprise-only (Datadog, Clerk), audit logs = team+ tier (Supabase, GitHub), domain auto-join = enterprise (WorkOS, Clerk).
+
+### Phase 5a: Audit Log
+- `audit_events` table: actor, action, resource_type, resource_id, org_id, metadata, created_at
+- Pro: full audit log access. Free: last 10 events only.
+- Audit log page in org settings
+- Retention policy (90 days Pro, unlimited Enterprise)
 
 ### Phase 5b: Custom Roles + Permissions
 - `org_roles` and `org_permissions` tables
-- Granular permission strings (`org:budgets:write`, `org:members:invite`)
-- Role editor UI
+- Granular permission strings (`org:budgets:write`, `org:members:invite`) — Clerk's Feature > Permission model
+- Role editor UI in org settings
+- Gate to Enterprise tier
 
 ### Phase 5c: SSO/SAML
-- SSO per org (WorkOS integration or custom)
-- Domain-verified auto-join
+- Use WorkOS or Clerk Enterprise add-on (do not build SAML yourself)
+- Per-connection pricing model
+- Domain-verified auto-join for enterprise orgs
 - Enforce SSO for org members
+- Gate to Enterprise tier
 
-### Phase 5d: Audit Log
-- `org_audit_log` table: who changed what, when
-- Audit log page in settings
-- Retention policy
+### Phase 5d: Project-Scoped Roles
+- Scope member access to specific budgets or API keys (not all org resources)
+- Follows Supabase's project-scoped roles pattern
+- Gate to Enterprise tier
 
 ---
 
 ## Effort Summary
 
-| Phase | Estimated | Dependencies |
+| Phase | Estimated | Status |
 |---|---|---|
-| 0a: Schema columns | ~15 min | None |
-| 0b: Tier-driven limits | ~30 min | None |
-| 0c: PREFIX_MAP | ~5 min | None |
-| 0d: Settings restructure | ~2-3 hours | None (frontend-only) |
-| **Phase 0 total** | **~1 day** | |
-| Increment 1: Org tables + validation (1a+1b) | ~30 min | Phase 0 |
-| Increment 2: Personal org + session context (1c) | ~45 min | Increment 1 |
-| Increment 3: Populate org_id on writes (1d) | ~30 min | Increment 2 |
-| ~~1e: Frontend org switcher~~ | ~~deferred~~ | Moved to Phase 3 |
-| **Phase 1 total** | **~2 hours** | Phase 0 |
-| Increment 1: Proxy auth orgId | ~1 hour | Phase 1 |
-| Increment 2: Proxy cost-logger | ~30 min | Increment 1 |
-| ~~Proxy DO keying + cache~~ | ~~moved~~ | Moved to Phase 3 |
-| Increment 3: Dashboard query migration | ~2-3 days | Phase 1, Increment 1 |
-| ~~Feature gating~~ | ~~moved~~ | Moved to Phase 3 |
-| Increment 4: org_id NOT NULL + indexes | ~30 min | Increment 3 |
-| **Phase 2 total** | **~3 days** | Phase 1 |
-| 3a: Proxy DO keying for team orgs | ~2-3 hours | Phase 2 |
-| 3a.5: Feature gating (FeatureGate, UpgradeCard, FEATURE_TIERS) | ~1 day | Phase 2 |
-| 3b: Org CRUD API | ~1 day | Phase 2 |
-| 3c: Invitation backend | ~1 day | Phase 3b |
-| 3d: Member management UI | ~1-2 days | Phase 3b, 3c |
-| 3e: Invitation acceptance page | ~1 day | Phase 3c |
-| 3f: Create org + multi-org switcher | ~1 day | Phase 3b |
-| **Phase 3 total** | **~7-9 days** | Phase 2 |
-| 4a: Permission middleware | ~1 day | Phase 3 |
-| 4b: Frontend role enforcement | ~1 day | Phase 4a |
-| 4c: Billing migration | ~2-3 days | Phase 4a |
-| **Phase 4 total** | **~4-6 days** | Phase 3 |
-| **Grand total** | **~16-24 days** | |
+| **Phase 0** | ~1 day | **COMPLETE** (2026-03-24) |
+| **Phase 1** | ~2 hours | **COMPLETE** (2026-03-24) |
+| **Phase 2** | ~3 days | **COMPLETE** (2026-03-24) |
+| 3a: Tier + role updates | ~1 hour | Not started |
+| 3b: Feature gating infrastructure | ~1 day | Not started |
+| 3c: Proxy DO keying for team orgs | ~2-3 hours | Not started |
+| 3d: Org CRUD API | ~1 day | Not started |
+| 3e: Invitation backend | ~1 day | Not started |
+| 3f: Member management UI | ~1-2 days | Not started |
+| 3g: Invitation acceptance page | ~1 day | Not started |
+| 3h: Create org + multi-org switcher | ~1 day | Not started |
+| **Phase 3 total** | **~8-10 days** | |
+| 4a: Permission middleware | ~1 day | Not started |
+| 4b: Frontend role enforcement | ~1 day | Not started |
+| 4c: Billing migration | ~2-3 days | Not started |
+| **Phase 4 total** | **~4-6 days** | |
+| **Phase 5** | Demand-driven | Not started |
+| **Grand total (3-4)** | **~12-16 days** | |
 
 ---
 
@@ -555,9 +621,8 @@ Before proceeding to Phase 4, verify:
 | Date | Change |
 |---|---|
 | 2026-03-24 | Initial plan created from architecture + UI/UX research |
-| 2026-03-24 | Phase 0 completed (all 4 sub-phases shipped) |
-| 2026-03-24 | Phase 1 arch review: cookie-embedded org context, partial unique index for race safety, deferred org switcher UI to Phase 3, removed created_by (already skipped), removed text→uuid migration (already done). Scope reduced from 2-3 days to ~2 hours across 3 increments. |
 | 2026-03-24 | Phase 0 completed — all 4 sub-phases shipped + pricing tier restructure (Free/Pro/Enterprise) |
 | 2026-03-24 | Phase 1 completed — 3 increments shipped, audited 3 times, all findings resolved |
-| 2026-03-24 | Phase 2 arch review: broken into 5 increments. Verified 22 dashboard routes, 16 proxy test files, 6 DO call sites need updating. Feature gating scoped to Enterprise-only features per pricing strategy. |
-| 2026-03-24 | Phase 2 arch review (cont): DO keying moved to Phase 3 (personal orgs keep userId DOs). Feature gating moved to Phase 3 (no features to gate yet). Phase 2 reduced to ~3 days (4 increments). Backfill-first strategy for dashboard migration. Billing routes keep userId until Phase 4. |
+| 2026-03-24 | Phase 2 arch review: DO keying + feature gating moved to Phase 3. Backfill-first strategy. |
+| 2026-03-24 | Phase 2 completed — 4 increments shipped. 88 files changed, 3 audit passes, all 2139 tests passing. |
+| 2026-03-24 | Phase 3-5 updated from industry research (GitHub, Vercel, Supabase, Clerk, WorkOS, Linear, Stripe, Datadog, PostHog). Key changes: free users can create team orgs (3 members), added `viewer` role (free seats), feature gating is now Phase 3b (not deferred), revised tier matrix, graceful downgrade strategy, audit log moved from Phase 5 to Pro feature. |
