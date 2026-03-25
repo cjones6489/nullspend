@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
+import { OrgSwitcher } from "@/components/dashboard/org-switcher";
 import type { LucideIcon } from "lucide-react";
 
 interface NavItem {
@@ -53,6 +54,9 @@ export function Sidebar() {
         >
           NullSpend
         </Link>
+      </div>
+      <div className="border-b border-border/50 py-1.5">
+        <OrgSwitcher />
       </div>
       <nav className="flex flex-1 flex-col p-2">
         <Link

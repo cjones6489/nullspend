@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phase 2 Complete, Phase 3a-3g Complete, Phase 3h Next
+**Status:** Phase 2 Complete, Phase 3 Complete, Phase 4 Next
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -552,14 +552,26 @@ Three-layer gating: API-level enforcement, React Query-based tier hook, componen
 
 **Test results:** 1080 root + 1210 proxy = 2290 total, 0 TypeScript errors
 
-### Phase 3h: Create Org + Multi-Org Switcher (~1 day)
+### Phase 3h: Create Org + Multi-Org Switcher — COMPLETE (2026-03-25)
 
-- [ ] `<OrgSwitcher>` in sidebar header (top-left, matches GitHub/Vercel/Linear placement)
-  - Current org: avatar + name + plan badge
-  - Dropdown: other orgs with role badges, personal org, "Create organization" action
-- [ ] Create Organization dialog: name + auto-slug + create
-- [ ] On switch: update `ns-active-org` cookie → full page refresh
-- [ ] `/app/settings/general/page.tsx`: org name, avatar, slug (team orgs only, personal org is read-only)
+**Infrastructure:**
+- [x] `POST /api/auth/switch-org` — validates membership, sets `ns-active-org` cookie, returns new session
+- [x] `lib/queries/orgs.ts` — `useOrgs`, `useCreateOrg`, `useSwitchOrg` hooks with cache invalidation
+
+**OrgSwitcher** (`components/dashboard/org-switcher.tsx`):
+- [x] Dropdown trigger: current org icon (Building2 for team, User for personal) + name + chevron
+- [x] Dropdown content: current org (checked), other orgs with role badges, "Create organization" action
+- [x] On switch: POST to switch-org endpoint → `router.refresh()` for full page reload
+- [x] Create org dialog: name + auto-slug (slugify on name change, editable), creates org + auto-switches
+- [x] Integrated into sidebar between logo and nav sections
+
+**General settings** (`components/settings/general-section.tsx`):
+- [x] `/app/settings/general/page.tsx` — org name, slug display/edit (team orgs: admin+ can edit, personal: read-only)
+- [x] Shows org icon, role badge, personal workspace message
+- [x] Save button disabled until changes detected
+- [x] Settings nav updated with "General" as first item
+
+**Test results:** 1080 root + 1210 proxy = 2290 total, 0 TypeScript errors
 
 ### Phase 3 Review Gate
 
@@ -671,7 +683,7 @@ Before proceeding to Phase 4, verify:
 | 3e: Invitation backend | ~1 day | **COMPLETE** (2026-03-25) |
 | 3f: Member management UI | ~1-2 days | **COMPLETE** (2026-03-25) |
 | 3g: Invitation acceptance page | ~1 day | **COMPLETE** (2026-03-25) |
-| 3h: Create org + multi-org switcher | ~1 day | Not started |
+| 3h: Create org + multi-org switcher | ~1 day | **COMPLETE** (2026-03-25) |
 | **Phase 3 total** | **~8-10 days** | |
 | 4a: Permission middleware | ~1 day | Not started |
 | 4b: Frontend role enforcement | ~1 day | Not started |
@@ -700,3 +712,4 @@ Before proceeding to Phase 4, verify:
 | 2026-03-25 | Phase 3e completed — invitation backend. Token system, CRUD routes, accept endpoint, seat limit enforcement with viewer bypass, lazy expiry. 24 new tests. 1075 root + 1210 proxy = 2285 total. |
 | 2026-03-25 | Phase 3f completed — member management UI. Session endpoint, query hooks, MembersSection component (InviteForm, MemberTable, PendingInvitesTable), settings nav updated. |
 | 2026-03-25 | Phase 3g completed — invitation acceptance page. Server/client split, auth check, accept flow with state machine, error handling for expired/conflict/invalid. |
+| 2026-03-25 | Phase 3h completed — org switcher in sidebar, create org dialog with auto-slug, switch-org endpoint, general settings page. Phase 3 complete. |

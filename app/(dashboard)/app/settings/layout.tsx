@@ -1,12 +1,13 @@
 "use client";
 
-import { Key, Puzzle, Users, Webhook } from "lucide-react";
+import { Building2, Key, Puzzle, Users, Webhook } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
 const settingsNav = [
+  { href: "/app/settings/general", label: "General", icon: Building2 },
   { href: "/app/settings/api-keys", label: "API Keys", icon: Key },
   { href: "/app/settings/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/app/settings/integrations", label: "Integrations", icon: Puzzle },
