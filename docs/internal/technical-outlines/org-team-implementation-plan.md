@@ -296,27 +296,19 @@ Before proceeding to Phase 2, verify:
 - [ ] Batch INSERT: add `org_id: e.orgId ?? null` to column map
 - [ ] Verify cost events are written with `org_id`
 
-### Increment 3: Proxy DO Keying + Cache (~2-3 hours, highest risk)
+### ~~Increment 3: Proxy DO Keying + Cache~~ — MOVED TO PHASE 3
 
-**Budget enforcement path — test extensively.**
+**Decision (Phase 2 arch review):** DO keying stays `idFromName(userId)` for personal orgs. Changing to `idFromName(orgId)` would orphan all existing DO state (budgets, reservations, velocity tracking) and require a complex data migration with zero benefit — personal orgId maps 1:1 to userId. The DO keying change is only needed when team orgs exist (Phase 3), where multiple users share one org-keyed DO. At that point, the first budget sync for a new team org naturally creates the DO via `idFromName(orgId)`.
 
-- [ ] `apps/proxy/src/lib/budget-do-client.ts`: change 6 call sites from `idFromName(userId)` to `idFromName(orgId)`
-  - `doBudgetCheck`, `doBudgetReconcile`, `doBudgetUpsertEntities`, `doBudgetRemove`, `doBudgetResetSpend`, `doBudgetGetVelocityState`
-- [ ] `apps/proxy/src/lib/budget-orchestrator.ts`: pass `ctx.auth.orgId` to DO client (was `ctx.auth.userId`)
-  - Keep `ctx.auth.userId` for `emitMetric` calls (user attribution)
-  - `budget_check_skipped` metric: use `ctx.auth.userId` (not orgId)
-  - `budget_cache_stale` metric: use `userId` (not orgId)
-- [ ] `apps/proxy/src/lib/budget-do-lookup.ts`: change `WHERE user_id =` to `WHERE org_id =` in all 3 queries
-- [ ] `apps/proxy/src/routes/internal.ts`:
-  - Add `orgId?: string` to `InvalidationBody`
-  - Use `orgId` for DO client calls (budget sync, remove, reset)
-  - Keep `userId` for `invalidateAuthCacheForUser` (auth cache is per-user, not per-org)
-  - Dashboard `invalidateProxyCache()` must send `orgId` in body
-- [ ] `apps/proxy/src/lib/webhook-cache.ts`: cache key `webhook:${orgId}` instead of `webhook:${userId}`
-- [ ] Update proxy tests (~20-30 files with budget/webhook mocks)
-- [ ] Run smoke tests after deploy
+Items moved to Phase 3:
+- `budget-do-client.ts`: `idFromName(userId)` → `idFromName(orgId)` (6 call sites)
+- `budget-do-lookup.ts`: `WHERE user_id =` → `WHERE org_id =` (3 queries)
+- `budget-orchestrator.ts`: pass `orgId` to DO client
+- `routes/internal.ts`: add `orgId` to invalidation body
+- `webhook-cache.ts`: cache key by `orgId`
+- Proxy test updates for DO/webhook mocks
 
-### Increment 4: Dashboard Query Migration (~2-3 days)
+### Increment 3: Dashboard Query Migration (~2-3 days)
 
 **Mechanical but wide-reaching — 22 route files.**
 
@@ -332,7 +324,7 @@ Before proceeding to Phase 2, verify:
 - [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body
 - [ ] Update dashboard tests
 
-### Increment 5: Feature Gating + NOT NULL (~1 day)
+### Increment 4: Feature Gating + NOT NULL (~1 day)
 
 - [ ] Add `FEATURE_TIERS` map to `lib/stripe/tiers.ts`:
   ```typescript
@@ -373,7 +365,20 @@ Before proceeding to Phase 3, verify:
 - Feature gating works (Members page shows upgrade CTA on free/pro)
 - Org switcher shows personal org correctly
 
-### Phase 3a: Org CRUD API (~1 day)
+### Phase 3a: Proxy DO Keying for Team Orgs (~2-3 hours)
+
+**Moved from Phase 2.** Personal orgs keep `idFromName(userId)`. Team orgs use `idFromName(orgId)`. The DO client needs to accept an org-aware identifier.
+
+- [ ] `budget-do-client.ts`: change 6 call sites — use `orgId` when available, fall back to `userId` for personal orgs
+- [ ] `budget-orchestrator.ts`: pass `ctx.auth.orgId` (for team orgs) or `ctx.auth.userId` (for personal orgs)
+- [ ] `budget-do-lookup.ts`: change `WHERE user_id =` to `WHERE org_id =` in all 3 queries
+- [ ] `routes/internal.ts`: add `orgId` to `InvalidationBody`, use for DO client calls
+- [ ] `webhook-cache.ts`: cache key by `orgId` instead of `userId`
+- [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body
+- [ ] Update proxy tests (~20-30 files)
+- [ ] Run smoke tests after deploy
+
+### Phase 3b: Org CRUD API (~1 day)
 
 - [ ] `app/api/orgs/route.ts`: GET (list user's orgs), POST (create org)
 - [ ] `app/api/orgs/[orgId]/route.ts`: GET, PATCH, DELETE
@@ -383,7 +388,7 @@ Before proceeding to Phase 3, verify:
 - [ ] Tests for each route
 - [ ] Zod validation on all inputs
 
-### Phase 3b: Invitation Backend (~1 day)
+### Phase 3c: Invitation Backend (~1 day)
 
 - [ ] `lib/auth/invitation.ts`: token generation, SHA-256 hashing, verification
 - [ ] `app/api/orgs/[orgId]/invitations/route.ts`: GET (list), POST (create)
@@ -392,7 +397,7 @@ Before proceeding to Phase 3, verify:
 - [ ] Email sending (Resend/SendGrid/Supabase) for invitation emails
 - [ ] Tests: create, accept, expire, revoke, already-member, invalid token
 
-### Phase 3c: Member Management UI (~1-2 days)
+### Phase 3d: Member Management UI (~1-2 days)
 
 - [ ] `<InviteForm>` — email + role selector + invite button
 - [ ] `<MemberTable>` — avatar, name, email, role badge, joined date, actions dropdown
@@ -402,14 +407,14 @@ Before proceeding to Phase 3, verify:
 - [ ] Wire up to API routes via TanStack Query hooks
 - [ ] `AlertDialog` for destructive actions (remove member, revoke invitation)
 
-### Phase 3d: Invitation Acceptance Page (~1 day)
+### Phase 3e: Invitation Acceptance Page (~1 day)
 
 - [ ] `/invite/[token]/page.tsx` — outside dashboard layout
 - [ ] States: valid+logged-in, valid+not-logged-in, expired, already-member, error
 - [ ] Accept action: call API → create membership → set `ns-active-org` cookie → redirect to dashboard
 - [ ] Not-logged-in path: redirect to signup with `redirect` param back to invitation
 
-### Phase 3e: Create Org + Multi-Org Switcher (~1 day)
+### Phase 3f: Create Org + Multi-Org Switcher (~1 day)
 
 - [ ] Create Organization dialog (from org switcher dropdown)
 - [ ] Name + auto-generated slug + create button
@@ -514,16 +519,17 @@ Before proceeding to Phase 4, verify:
 | **Phase 1 total** | **~2 hours** | Phase 0 |
 | Increment 1: Proxy auth orgId | ~1 hour | Phase 1 |
 | Increment 2: Proxy cost-logger | ~30 min | Increment 1 |
-| Increment 3: Proxy DO keying + cache | ~2-3 hours | Increment 1 |
-| Increment 4: Dashboard query migration | ~2-3 days | Phase 1, Increment 1 |
-| Increment 5: Feature gating + NOT NULL | ~1 day | Increment 4 |
-| **Phase 2 total** | **~4-6 days** | Phase 1 |
-| 3a: Org CRUD API | ~1 day | Phase 2 |
-| 3b: Invitation backend | ~1 day | Phase 3a |
-| 3c: Member management UI | ~1-2 days | Phase 3a, 3b |
-| 3d: Invitation acceptance page | ~1 day | Phase 3b |
-| 3e: Create org + multi-org switcher | ~1 day | Phase 3a |
-| **Phase 3 total** | **~5-7 days** | Phase 2 |
+| ~~Increment 3: Proxy DO keying + cache~~ | ~~moved~~ | Moved to Phase 3 |
+| Increment 3: Dashboard query migration | ~2-3 days | Phase 1, Increment 1 |
+| Increment 4: Feature gating + NOT NULL | ~1 day | Increment 3 |
+| **Phase 2 total** | **~3-4 days** | Phase 1 |
+| 3a: Proxy DO keying for team orgs | ~2-3 hours | Phase 2 |
+| 3b: Org CRUD API | ~1 day | Phase 2 |
+| 3c: Invitation backend | ~1 day | Phase 3b |
+| 3d: Member management UI | ~1-2 days | Phase 3b, 3c |
+| 3e: Invitation acceptance page | ~1 day | Phase 3c |
+| 3f: Create org + multi-org switcher | ~1 day | Phase 3b |
+| **Phase 3 total** | **~6-8 days** | Phase 2 |
 | 4a: Permission middleware | ~1 day | Phase 3 |
 | 4b: Frontend role enforcement | ~1 day | Phase 4a |
 | 4c: Billing migration | ~2-3 days | Phase 4a |
@@ -542,3 +548,4 @@ Before proceeding to Phase 4, verify:
 | 2026-03-24 | Phase 0 completed — all 4 sub-phases shipped + pricing tier restructure (Free/Pro/Enterprise) |
 | 2026-03-24 | Phase 1 completed — 3 increments shipped, audited 3 times, all findings resolved |
 | 2026-03-24 | Phase 2 arch review: broken into 5 increments. Verified 22 dashboard routes, 16 proxy test files, 6 DO call sites need updating. Feature gating scoped to Enterprise-only features per pricing strategy. |
+| 2026-03-24 | Phase 2 arch review (cont): DO keying change moved to Phase 3 — personal orgs keep idFromName(userId), team orgs get idFromName(orgId) when created. Phase 2 reduced from ~4-6 days to ~3-4 days. Phase 3 grows by ~2-3 hours. |
