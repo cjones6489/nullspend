@@ -12,6 +12,7 @@ interface Tier {
   description: string;
   features: string[];
   cta: string;
+  ctaHref?: string;
   highlighted?: boolean;
 }
 
@@ -59,6 +60,7 @@ const tiers: Tier[] = [
       "Dedicated support",
     ],
     cta: "Contact Us",
+    ctaHref: "mailto:support@nullspend.com",
   },
 ];
 
@@ -112,7 +114,7 @@ export function PricingTable() {
               </ul>
 
               <Link
-                href="/signup"
+                href={tier.ctaHref ?? "/signup"}
                 className={cn(
                   buttonVariants({
                     variant: tier.highlighted ? "default" : "outline",

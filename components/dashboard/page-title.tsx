@@ -17,6 +17,10 @@ export function PageTitle() {
 
   let title = ROUTE_TITLES[pathname];
 
+  if (!title && pathname.startsWith("/app/settings/")) {
+    title = "Settings";
+  }
+
   if (!title && pathname.startsWith("/app/actions/")) {
     title = "Action Details";
   }

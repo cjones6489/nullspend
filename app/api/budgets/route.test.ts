@@ -370,4 +370,67 @@ describe("POST /api/budgets — proxy invalidation", () => {
       entityId: TEST_USER_ID,
     });
   });
+
+  it("returns 409 limit_exceeded when budget count exceeds tier limit", async () => {
+    // Override TIERS mock for this test — free tier with maxBudgets: 1
+    const { TIERS } = await import("@/lib/stripe/tiers");
+    const mockedTIERS = vi.mocked(TIERS);
+    (mockedTIERS as Record<string, Record<string, unknown>>).free.maxBudgets = 1;
+
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 5_000_000,
+    });
+
+    // Mock: existingForEntity returns [] (new entity), allBudgets returns 1 existing budget
+    const mockWhere = vi.fn()
+      .mockResolvedValueOnce([])  // existingForEntity check
+      .mockResolvedValueOnce([])  // userKeys (no api keys)
+      .mockResolvedValueOnce([makeBudgetRow()]);  // allBudgets count
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: vi.fn() };
+    mockedGetDb.mockReturnValue({
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(409);
+    const json = await response.json();
+    expect(json.error.code).toBe("limit_exceeded");
+    expect(json.error.message).toContain("Free");
+
+    // Restore
+    (mockedTIERS as Record<string, Record<string, unknown>>).free.maxBudgets = Infinity;
+  });
+
+  it("returns 400 spend_cap_exceeded when budget exceeds tier spend cap", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 999_000_000_000, // exceeds the $100K mock cap
+    });
+
+    mockedGetDb.mockReturnValue({} as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.error.code).toBe("spend_cap_exceeded");
+  });
 });
