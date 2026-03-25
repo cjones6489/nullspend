@@ -65,7 +65,7 @@ describe("POST /api/stripe/subscription/sync", () => {
 
   it("syncs checkout session and returns subscription", async () => {
     mockSessionRetrieve.mockResolvedValue({
-      metadata: { userId: "user-123", tier: "pro" },
+      metadata: { orgId: "org-test-1", tier: "pro" },
       customer: "cus_123",
       subscription: {
         id: "sub_123",
@@ -92,6 +92,7 @@ describe("POST /api/stripe/subscription/sync", () => {
 
     expect(mockedUpsertSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
+        orgId: "org-test-1",
         userId: "user-123",
         stripeCustomerId: "cus_123",
         tier: "pro",
@@ -99,9 +100,9 @@ describe("POST /api/stripe/subscription/sync", () => {
     );
   });
 
-  it("returns 403 when session belongs to a different user", async () => {
+  it("returns 403 when session belongs to a different org", async () => {
     mockSessionRetrieve.mockResolvedValue({
-      metadata: { userId: "user-OTHER" },
+      metadata: { orgId: "org-OTHER" },
       customer: "cus_123",
       subscription: { id: "sub_123" },
     });
@@ -112,7 +113,7 @@ describe("POST /api/stripe/subscription/sync", () => {
 
   it("returns 400 when no subscription on session", async () => {
     mockSessionRetrieve.mockResolvedValue({
-      metadata: { userId: "user-123" },
+      metadata: { orgId: "org-test-1" },
       customer: "cus_123",
       subscription: null,
     });
@@ -123,7 +124,7 @@ describe("POST /api/stripe/subscription/sync", () => {
 
   it("returns 400 when no customer on session", async () => {
     mockSessionRetrieve.mockResolvedValue({
-      metadata: { userId: "user-123" },
+      metadata: { orgId: "org-test-1" },
       customer: null,
       subscription: {
         id: "sub_123",
@@ -141,7 +142,7 @@ describe("POST /api/stripe/subscription/sync", () => {
     mockedTierFromPriceId.mockReturnValue(null);
 
     mockSessionRetrieve.mockResolvedValue({
-      metadata: { userId: "user-123" },
+      metadata: { orgId: "org-test-1" },
       customer: "cus_123",
       subscription: {
         id: "sub_123",

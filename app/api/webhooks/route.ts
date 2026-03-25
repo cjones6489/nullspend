@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     );
 
     // Fire-and-forget: invalidate proxy's webhook cache
-    void invalidateWebhookCacheForUser(userId);
+    void invalidateWebhookCacheForUser(orgId);
 
     return NextResponse.json(
       {

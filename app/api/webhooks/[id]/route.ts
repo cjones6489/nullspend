@@ -74,7 +74,7 @@ export async function PATCH(
     );
 
     // Fire-and-forget: invalidate proxy's webhook cache so it picks up changes
-    void invalidateWebhookCacheForUser(userId);
+    void invalidateWebhookCacheForUser(orgId);
 
     return NextResponse.json({
       data: webhookRecordSchema.parse({
@@ -122,7 +122,7 @@ export async function DELETE(
     );
 
     // Fire-and-forget: invalidate proxy's webhook cache
-    void invalidateWebhookCacheForUser(userId);
+    void invalidateWebhookCacheForUser(orgId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

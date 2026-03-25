@@ -19,9 +19,9 @@ export async function POST(request: Request) {
       expand: ["subscription"],
     });
 
-    if (session.metadata?.userId !== userId) {
+    if (session.metadata?.orgId !== orgId) {
       return NextResponse.json(
-        { error: { code: "forbidden", message: "Session does not belong to this user.", details: null } },
+        { error: { code: "forbidden", message: "Session does not belong to this organization.", details: null } },
         { status: 403 },
       );
     }
