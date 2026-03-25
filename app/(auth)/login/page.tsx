@@ -43,7 +43,7 @@ export default function LoginPage() {
       }
 
       const next = searchParams.get("next");
-      const redirectTo = next && next.startsWith("/") ? next : "/app/home";
+      const redirectTo = next && next.startsWith("/") && !next.startsWith("//") ? next : "/app/home";
       router.push(redirectTo);
       router.refresh();
     } catch {
@@ -105,7 +105,10 @@ export default function LoginPage() {
           </Button>
           <p className="text-center text-xs text-muted-foreground">
             Don&apos;t have an account?{" "}
-            <Link href="/signup" className="text-primary hover:text-primary/80">
+            <Link
+              href={searchParams.get("next") ? `/signup?next=${encodeURIComponent(searchParams.get("next")!)}` : "/signup"}
+              className="text-primary hover:text-primary/80"
+            >
               Sign up
             </Link>
           </p>
