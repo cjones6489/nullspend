@@ -76,11 +76,11 @@ export async function handleChatCompletions(
     if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
     budgetStatus = outcome.status;
-    const denialResponse = handleBudgetDenials(outcome, ctx, env, "openai", requestModel, estimate, budgetEntities);
-    if (denialResponse) return denialResponse;
-
     reservationId = outcome.reservationId;
     budgetEntities = outcome.budgetEntities;
+
+    const denialResponse = handleBudgetDenials(outcome, ctx, env, "openai", requestModel, estimate, budgetEntities);
+    if (denialResponse) return denialResponse;
 
     dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "openai");
   } catch {
