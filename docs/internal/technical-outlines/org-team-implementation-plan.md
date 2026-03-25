@@ -343,23 +343,25 @@ Items moved to Phase 3:
 - `<UpgradeCard>` component
 - Upgrade CTAs on gated pages
 
-### Increment 4: Make `org_id` NOT NULL + Indexes (~30 min)
+### Increment 4: Make `org_id` NOT NULL + Indexes — COMPLETE (2026-03-24)
 
-- [ ] Verify all existing rows have `org_id` populated (SQL count check per table)
-- [ ] Migration: `ALTER TABLE ... ALTER COLUMN org_id SET NOT NULL` on all 8 tables
-- [ ] Add indexes: `CREATE INDEX ... ON ... (org_id, ...)` to match query patterns
-- [ ] Verify typecheck and all tests pass
+- [x] Verified 0 null org_id rows across all 8 tables
+- [x] Deleted 3 orphan actions (null owner_user_id, test artifacts from March 8)
+- [x] Migration `0042_org_id_not_null.sql`: SET NOT NULL on all 8 tables + 7 indexes
+- [x] Updated `upsertSubscription` to look up personal org for orgId (Stripe webhook path has no session)
+- [x] All API-key-authenticated routes now guard null orgId with 403 (actions POST, cost-events POST/batch, tool-costs discover, actions/[id]/result)
+- [x] Schema `.notNull()` on all 8 orgId columns + index definitions in Drizzle
+- [x] 929 root tests + 1210 proxy tests passing, 0 TypeScript errors
 
-### Phase 2 Review Gate
+### Phase 2 Review Gate — COMPLETE
 
-Before proceeding to Phase 3, verify:
-- [ ] Proxy auth returns `orgId` on every request
-- [ ] Proxy cost events include `org_id`
-- [ ] Every dashboard query scopes by `org_id` (except billing — stays `userId` until Phase 4)
-- [ ] Budget enforcement still works (DO keying unchanged — uses `userId`)
-- [ ] `org_id` is NOT NULL on all 8 tables
-- [ ] Zero rows with NULL `org_id` in any table
-- [ ] All tests pass (929+ root, 1208+ proxy, typecheck clean)
+- [x] Proxy auth returns `orgId` on every request
+- [x] Proxy cost events include `org_id`
+- [x] Every dashboard query scopes by `org_id` (billing uses `userId` for Stripe, but subscription table stores `orgId`)
+- [x] Budget enforcement still works (DO keying unchanged — uses `userId`)
+- [x] `org_id` is NOT NULL on all 8 tables (+ org_memberships, org_invitations = 10 total)
+- [x] Zero rows with NULL `org_id` in any table
+- [x] All tests pass (929 root, 1210 proxy, typecheck clean)
 - [ ] **Re-read Phase 3 plan** — do assumptions still hold?
 
 ---

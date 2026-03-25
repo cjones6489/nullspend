@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
-import { subscriptions } from "@nullspend/db";
+import { organizations, subscriptions } from "@nullspend/db";
 import { getDb } from "@/lib/db/client";
 
 export async function getSubscriptionByUserId(userId: string) {
@@ -36,10 +36,19 @@ export async function upsertSubscription(data: {
   cancelAtPeriodEnd?: boolean;
 }) {
   const db = getDb();
+
+  // Look up the user's personal org for the orgId (required NOT NULL column)
+  const [org] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(and(eq(organizations.createdBy, data.userId), eq(organizations.isPersonal, true)))
+    .limit(1);
+
   const [row] = await db
     .insert(subscriptions)
     .values({
       userId: data.userId,
+      orgId: org!.id,
       stripeCustomerId: data.stripeCustomerId,
       stripeSubscriptionId: data.stripeSubscriptionId,
       tier: data.tier,
@@ -51,6 +60,7 @@ export async function upsertSubscription(data: {
     .onConflictDoUpdate({
       target: subscriptions.userId,
       set: {
+        orgId: org?.id,
         stripeCustomerId: data.stripeCustomerId,
         stripeSubscriptionId: data.stripeSubscriptionId,
         tier: data.tier,

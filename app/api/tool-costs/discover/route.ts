@@ -13,14 +13,19 @@ export const POST = withRequestContext(async (request: Request) => {
   return withIdempotency(request, async () => {
     const authResult = await authenticateApiKey(request);
     if (authResult instanceof Response) return authResult;
+    if (!authResult.orgId) {
+      return NextResponse.json(
+        { error: { code: "configuration_error", message: "API key is not associated with an organization.", details: null } },
+        { status: 403 },
+      );
+    }
     const userId = authResult.userId;
+    const orgId = authResult.orgId;
 
     const body = await readJsonBody(request);
     const input = discoverToolCostsInputSchema.parse(body);
 
     const db = getDb();
-
-    const orgId = authResult.orgId;
     const values = input.tools.map((t) => ({
       userId,
       orgId,

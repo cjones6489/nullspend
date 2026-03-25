@@ -41,7 +41,7 @@ export const costEventBatchInputSchema = z.object({
 
 interface InsertContext {
   userId: string;
-  orgId: string | null;
+  orgId: string;
   apiKeyId: string | null;
 }
 

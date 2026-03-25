@@ -20,6 +20,12 @@ export const POST = withRequestContext(async (request: Request) => {
   return withIdempotency(request, async () => {
     const authResult = await authenticateApiKey(request);
     if (authResult instanceof Response) return authResult;
+    if (!authResult.orgId) {
+      return NextResponse.json(
+        { error: { code: "configuration_error", message: "API key is not associated with an organization.", details: null } },
+        { status: 403 },
+      );
+    }
 
     const body = await readJsonBody(request);
     const { events } = costEventBatchInputSchema.parse(body);
@@ -31,9 +37,10 @@ export const POST = withRequestContext(async (request: Request) => {
     });
 
     // Fire-and-forget webhook dispatch for actually-inserted rows
-    if (result.inserted > 0 && authResult.orgId) {
+    if (result.inserted > 0) {
+      const orgId = authResult.orgId;
       const dispatchAll = async () => {
-        const endpoints = await fetchWebhookEndpoints(authResult.orgId!);
+        const endpoints = await fetchWebhookEndpoints(orgId);
         if (endpoints.length === 0) return;
 
         for (const row of result.rows) {

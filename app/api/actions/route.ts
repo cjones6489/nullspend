@@ -33,16 +33,20 @@ export const POST = withRequestContext(async (request: Request) => {
   return withIdempotency(request, async () => {
     const authResult = await authenticateApiKey(request);
     if (authResult instanceof Response) return authResult;
+    if (!authResult.orgId) {
+      return NextResponse.json(
+        { error: { code: "configuration_error", message: "API key is not associated with an organization.", details: null } },
+        { status: 403 },
+      );
+    }
     const ownerUserId = authResult.userId;
     const body = await readJsonBody(request);
     const input = createActionInputSchema.parse(body);
-    const action = await createAction(input, ownerUserId, authResult.orgId ?? null);
+    const action = await createAction(input, ownerUserId, authResult.orgId);
 
-    if (authResult.orgId) {
-      sendSlackNotification(action, authResult.orgId).catch((err) => {
-        console.error("[NullSpend] Slack notification failed:", err);
-      });
-    }
+    sendSlackNotification(action, authResult.orgId).catch((err) => {
+      console.error("[NullSpend] Slack notification failed:", err);
+    });
 
     return applyRateLimitHeaders(
       NextResponse.json(

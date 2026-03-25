@@ -17,7 +17,7 @@ function pickMetadataField(
 export async function createAction(
   input: CreateActionInput,
   ownerUserId: string,
-  orgId: string | null,
+  orgId: string,
 ): Promise<RawActionRecord> {
   const db = getDb();
   const expiresAt = computeExpiresAt(input.expiresInSeconds);
