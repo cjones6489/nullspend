@@ -129,6 +129,16 @@ describe("resolveSessionContext", () => {
     expect(ctx.role).toBe("owner");
   });
 
+  it("rethrows non-unique-violation errors from ensurePersonalOrg", async () => {
+    mockCookieGet.mockReturnValue(undefined);
+
+    // ensurePersonalOrg: INSERT fails with a connection error (NOT 23505)
+    const connectionError = Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" });
+    mockTransaction.mockRejectedValueOnce(connectionError);
+
+    await expect(resolveSessionContext()).rejects.toThrow("connection refused");
+  });
+
   it("ignores malformed cookie values", async () => {
     mockCookieGet.mockReturnValue({ value: "no-colon-here" });
 
