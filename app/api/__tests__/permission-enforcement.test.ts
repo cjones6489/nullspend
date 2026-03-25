@@ -35,7 +35,7 @@ vi.mock("@/lib/utils/http", async (importOriginal) => {
   return { ...actual, readJsonBody: vi.fn().mockResolvedValue({}) };
 });
 vi.mock("@/lib/stripe/subscription", () => ({
-  getSubscriptionByUserId: vi.fn().mockResolvedValue(null),
+  getSubscriptionByOrgId: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/lib/stripe/tiers", () => ({
   getTierForUser: vi.fn().mockReturnValue("free"),

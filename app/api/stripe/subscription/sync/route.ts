@@ -10,7 +10,7 @@ import { syncInputSchema } from "@/lib/validations/subscription";
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await resolveSessionContext();
+    const { userId, orgId } = await resolveSessionContext();
     const body = await readJsonBody(request);
     const { sessionId } = syncInputSchema.parse(body);
 
@@ -57,6 +57,7 @@ export async function POST(request: Request) {
       : null;
 
     const row = await upsertSubscription({
+      orgId,
       userId,
       stripeCustomerId,
       stripeSubscriptionId: subscription.id,

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  resolveUserTier,
+  resolveOrgTier,
   assertCountBelowLimit,
   assertAmountBelowCap,
   type OrgTierInfo,
@@ -9,18 +9,18 @@ import {
 import { LimitExceededError, SpendCapExceededError } from "@/lib/utils/http";
 
 vi.mock("@/lib/stripe/subscription", () => ({
-  getSubscriptionByUserId: vi.fn(),
+  getSubscriptionByOrgId: vi.fn(),
 }));
 
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 
-const mockedGetSubscription = vi.mocked(getSubscriptionByUserId);
+const mockedGetSubscription = vi.mocked(getSubscriptionByOrgId);
 
-describe("resolveUserTier", () => {
+describe("resolveOrgTier", () => {
   it("returns free tier when no subscription exists", async () => {
-    mockedGetSubscription.mockResolvedValue(null as unknown as Awaited<ReturnType<typeof getSubscriptionByUserId>>);
+    mockedGetSubscription.mockResolvedValue(null as unknown as Awaited<ReturnType<typeof getSubscriptionByOrgId>>);
 
-    const result = await resolveUserTier("user-1");
+    const result = await resolveOrgTier("org-1");
 
     expect(result.tier).toBe("free");
     expect(result.label).toBe("Free");
@@ -30,9 +30,9 @@ describe("resolveUserTier", () => {
     mockedGetSubscription.mockResolvedValue({
       tier: "pro",
       status: "active",
-    } as Awaited<ReturnType<typeof getSubscriptionByUserId>>);
+    } as Awaited<ReturnType<typeof getSubscriptionByOrgId>>);
 
-    const result = await resolveUserTier("user-1");
+    const result = await resolveOrgTier("org-1");
 
     expect(result.tier).toBe("pro");
     expect(result.label).toBe("Pro");
@@ -42,9 +42,9 @@ describe("resolveUserTier", () => {
     mockedGetSubscription.mockResolvedValue({
       tier: "pro",
       status: "canceled",
-    } as Awaited<ReturnType<typeof getSubscriptionByUserId>>);
+    } as Awaited<ReturnType<typeof getSubscriptionByOrgId>>);
 
-    const result = await resolveUserTier("user-1");
+    const result = await resolveOrgTier("org-1");
 
     expect(result.tier).toBe("free");
   });

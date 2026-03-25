@@ -111,7 +111,7 @@ describe("POST /api/stripe/webhook", () => {
     it("creates a subscription with period dates from session metadata", async () => {
       const event = makeStripeEvent("checkout.session.completed", {
         id: "cs_test",
-        metadata: { userId: "user-123", tier: "pro" },
+        metadata: { orgId: "org-1", tier: "pro" },
         customer: "cus_123",
         subscription: "sub_123",
       });
@@ -127,13 +127,15 @@ describe("POST /api/stripe/webhook", () => {
           ],
         },
       });
+      mockCustomersRetrieve.mockResolvedValue({ deleted: false, metadata: {} });
       mockedUpsertSubscription.mockResolvedValue({} as never);
 
       const res = await POST(makeRequest("{}"));
       expect(res.status).toBe(200);
       expect(mockSubscriptionsRetrieve).toHaveBeenCalledWith("sub_123");
       expect(mockedUpsertSubscription).toHaveBeenCalledWith({
-        userId: "user-123",
+        orgId: "org-1",
+        userId: "",
         stripeCustomerId: "cus_123",
         stripeSubscriptionId: "sub_123",
         tier: "pro",
@@ -146,18 +148,20 @@ describe("POST /api/stripe/webhook", () => {
     it("creates subscription with null dates when retrieve fails", async () => {
       const event = makeStripeEvent("checkout.session.completed", {
         id: "cs_test",
-        metadata: { userId: "user-123", tier: "pro" },
+        metadata: { orgId: "org-1", tier: "pro" },
         customer: "cus_123",
         subscription: "sub_123",
       });
       mockConstructEvent.mockReturnValue(event);
       mockSubscriptionsRetrieve.mockRejectedValue(new Error("API error"));
+      mockCustomersRetrieve.mockResolvedValue({ deleted: false, metadata: {} });
       mockedUpsertSubscription.mockResolvedValue({} as never);
 
       const res = await POST(makeRequest("{}"));
       expect(res.status).toBe(200);
       expect(mockedUpsertSubscription).toHaveBeenCalledWith({
-        userId: "user-123",
+        orgId: "org-1",
+        userId: "",
         stripeCustomerId: "cus_123",
         stripeSubscriptionId: "sub_123",
         tier: "pro",
@@ -239,7 +243,7 @@ describe("POST /api/stripe/webhook", () => {
       mockedGetSubscriptionByStripeCustomerId.mockResolvedValue(null as never);
       mockCustomersRetrieve.mockResolvedValue({
         deleted: false,
-        metadata: { userId: "user-456" },
+        metadata: { orgId: "org-2", userId: "user-456" },
       });
       mockedTierFromPriceId.mockReturnValue("pro");
       mockedUpsertSubscription.mockResolvedValue({} as never);
@@ -249,6 +253,7 @@ describe("POST /api/stripe/webhook", () => {
       expect(mockCustomersRetrieve).toHaveBeenCalledWith("cus_123");
       expect(mockedUpsertSubscription).toHaveBeenCalledWith(
         expect.objectContaining({
+          orgId: "org-2",
           userId: "user-456",
           tier: "pro",
         }),
@@ -483,7 +488,7 @@ describe("POST /api/stripe/webhook", () => {
     it("returns 500 for transient errors (Stripe retries)", async () => {
       const event = makeStripeEvent("checkout.session.completed", {
         id: "cs_test",
-        metadata: { userId: "user-123", tier: "pro" },
+        metadata: { orgId: "org-1", tier: "pro" },
         customer: "cus_123",
         subscription: "sub_123",
       });
@@ -491,6 +496,7 @@ describe("POST /api/stripe/webhook", () => {
       mockSubscriptionsRetrieve.mockRejectedValue(
         new Error("connect ECONNREFUSED 127.0.0.1:5432"),
       );
+      mockCustomersRetrieve.mockResolvedValue({ deleted: false, metadata: {} });
       mockedUpsertSubscription.mockRejectedValue(
         new Error("connect ECONNREFUSED 127.0.0.1:5432"),
       );

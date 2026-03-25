@@ -17,7 +17,7 @@ import {
   listApiKeysQuerySchema,
   listApiKeysResponseSchema,
 } from "@/lib/validations/api-keys";
-import { resolveUserTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
+import { resolveOrgTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function GET(request: Request) {
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       .from(apiKeys)
       .where(and(eq(apiKeys.orgId, orgId), isNull(apiKeys.revokedAt)));
 
-    const tierInfo = await resolveUserTier(userId);
+    const tierInfo = await resolveOrgTier(orgId);
     assertCountBelowLimit(tierInfo, "maxApiKeys", activeKeyCount, "active API keys");
 
     const rawKey = generateRawKey();

@@ -1,14 +1,14 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-import { organizations, subscriptions } from "@nullspend/db";
+import { subscriptions } from "@nullspend/db";
 import { getDb } from "@/lib/db/client";
 
-export async function getSubscriptionByUserId(userId: string) {
+export async function getSubscriptionByOrgId(orgId: string) {
   const db = getDb();
   const rows = await db
     .select()
     .from(subscriptions)
-    .where(eq(subscriptions.userId, userId))
+    .where(eq(subscriptions.orgId, orgId))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -26,6 +26,7 @@ export async function getSubscriptionByStripeCustomerId(
 }
 
 export async function upsertSubscription(data: {
+  orgId: string;
   userId: string;
   stripeCustomerId: string;
   stripeSubscriptionId: string;
@@ -37,22 +38,11 @@ export async function upsertSubscription(data: {
 }) {
   const db = getDb();
 
-  // Look up the user's personal org for the orgId (required NOT NULL column)
-  const [org] = await db
-    .select({ id: organizations.id })
-    .from(organizations)
-    .where(and(eq(organizations.createdBy, data.userId), eq(organizations.isPersonal, true)))
-    .limit(1);
-
-  if (!org) {
-    throw new Error(`Cannot upsert subscription: no personal org found for user ${data.userId}`);
-  }
-
   const [row] = await db
     .insert(subscriptions)
     .values({
+      orgId: data.orgId,
       userId: data.userId,
-      orgId: org.id,
       stripeCustomerId: data.stripeCustomerId,
       stripeSubscriptionId: data.stripeSubscriptionId,
       tier: data.tier,
@@ -62,9 +52,9 @@ export async function upsertSubscription(data: {
       cancelAtPeriodEnd: data.cancelAtPeriodEnd ?? false,
     })
     .onConflictDoUpdate({
-      target: subscriptions.userId,
+      target: subscriptions.orgId,
       set: {
-        orgId: org.id,
+        userId: data.userId,
         stripeCustomerId: data.stripeCustomerId,
         stripeSubscriptionId: data.stripeSubscriptionId,
         tier: data.tier,

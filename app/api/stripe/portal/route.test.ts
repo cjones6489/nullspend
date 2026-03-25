@@ -15,18 +15,18 @@ vi.mock("@/lib/stripe/client", () => ({
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
-  getSubscriptionByUserId: vi.fn(),
+  getSubscriptionByOrgId: vi.fn(),
 }));
 
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 import { POST } from "./route";
 
 const mockedResolveSession = vi.mocked(resolveSessionContext);
 const mockedGetStripe = vi.mocked(getStripe);
 const mockedGetOrigin = vi.mocked(getOrigin);
-const mockedGetSubscription = vi.mocked(getSubscriptionByUserId);
+const mockedGetSubscription = vi.mocked(getSubscriptionByOrgId);
 
 function makeRequest(): Request {
   return new Request("http://localhost:3000/api/stripe/portal", {

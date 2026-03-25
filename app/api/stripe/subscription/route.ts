@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 import { handleRouteError } from "@/lib/utils/http";
 
 export async function GET() {
   try {
     const { userId, orgId } = await resolveSessionContext();
     await assertOrgRole(userId, orgId, "viewer");
-    const row = await getSubscriptionByUserId(userId);
+    const row = await getSubscriptionByOrgId(orgId);
 
     if (!row) {
       return NextResponse.json(null);

@@ -13,7 +13,7 @@ vi.mock("@/lib/auth/org-authorization", () => ({
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
-  getSubscriptionByUserId: vi.fn().mockResolvedValue(null),
+  getSubscriptionByOrgId: vi.fn().mockResolvedValue(null),
 }));
 
 const mockSelectList = vi.fn();

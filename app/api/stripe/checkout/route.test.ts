@@ -19,7 +19,7 @@ vi.mock("@/lib/stripe/client", () => ({
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
-  getSubscriptionByUserId: vi.fn(),
+  getSubscriptionByOrgId: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe/tiers", () => ({
@@ -30,14 +30,14 @@ vi.mock("@/lib/stripe/tiers", () => ({
 import { resolveSessionContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 import { isValidPriceId, tierFromPriceId } from "@/lib/stripe/tiers";
 import { POST } from "./route";
 
 const mockedResolveSession = vi.mocked(resolveSessionContext);
 const mockedGetStripe = vi.mocked(getStripe);
 const mockedGetOrigin = vi.mocked(getOrigin);
-const mockedGetSubscription = vi.mocked(getSubscriptionByUserId);
+const mockedGetSubscription = vi.mocked(getSubscriptionByOrgId);
 const mockedIsValidPriceId = vi.mocked(isValidPriceId);
 const mockedTierFromPriceId = vi.mocked(tierFromPriceId);
 const mockedCreateSupabaseClient = vi.mocked(createServerSupabaseClient);
@@ -90,7 +90,7 @@ describe("POST /api/stripe/checkout", () => {
       expect.objectContaining({
         mode: "subscription",
         customer: "cus_new",
-        metadata: { userId: "user-123", tier: "pro" },
+        metadata: { orgId: "org-test-1", tier: "pro" },
       }),
     );
   });
@@ -129,7 +129,7 @@ describe("POST /api/stripe/checkout", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("subscription_exists");
-    expect(body.error.message).toMatch(/already have an active subscription/);
+    expect(body.error.message).toMatch(/already has an active subscription/);
   });
 
   it("returns 400 for missing priceId", async () => {

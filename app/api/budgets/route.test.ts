@@ -28,7 +28,7 @@ vi.mock("@/lib/proxy-invalidate", () => ({
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
-  getSubscriptionByUserId: vi.fn().mockResolvedValue(null),
+  getSubscriptionByOrgId: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/stripe/tiers", () => ({

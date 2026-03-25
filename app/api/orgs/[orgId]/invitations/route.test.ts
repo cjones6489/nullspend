@@ -76,11 +76,11 @@ vi.mock("@/lib/auth/invitation", () => ({
 }));
 
 /* ---- Feature gate ---- */
-const mockResolveUserTier = vi.fn().mockResolvedValue({ tier: "free", label: "Free" });
+const mockResolveOrgTier = vi.fn().mockResolvedValue({ tier: "free", label: "Free" });
 const mockAssertCountBelowLimit = vi.fn();
 
 vi.mock("@/lib/stripe/feature-gate", () => ({
-  resolveUserTier: (...args: unknown[]) => mockResolveUserTier(...args),
+  resolveOrgTier: (...args: unknown[]) => mockResolveOrgTier(...args),
   assertCountBelowLimit: (...args: unknown[]) => mockAssertCountBelowLimit(...args),
 }));
 
@@ -285,7 +285,7 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
     expect(body.role).toBe("viewer");
 
     // The key assertion: seat limit helpers should NOT have been called
-    expect(mockResolveUserTier).not.toHaveBeenCalled();
+    expect(mockResolveOrgTier).not.toHaveBeenCalled();
     expect(mockAssertCountBelowLimit).not.toHaveBeenCalled();
   });
 });

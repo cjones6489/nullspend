@@ -8,7 +8,7 @@ import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
 import { withRequestContext } from "@/lib/observability";
-import { resolveUserTier, assertCountBelowLimit, assertAmountBelowCap } from "@/lib/stripe/feature-gate";
+import { resolveOrgTier, assertCountBelowLimit, assertAmountBelowCap } from "@/lib/stripe/feature-gate";
 import { readJsonBody } from "@/lib/utils/http";
 import {
   budgetResponseSchema,
@@ -47,7 +47,7 @@ export const POST = withRequestContext(async (request: Request) => {
 
   await verifyEntityOwnership(userId, input.entityType, input.entityId);
 
-  const tierInfo = await resolveUserTier(userId);
+  const tierInfo = await resolveOrgTier(orgId);
   assertAmountBelowCap(tierInfo, "spendCapMicrodollars", input.maxBudgetMicrodollars);
 
   const db = getDb();

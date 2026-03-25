@@ -78,14 +78,11 @@ export async function POST(request: Request) {
       Sentry.captureException(err);
     });
     if (isTransient) {
-      // Return 500 so Stripe retries — the error may resolve on its own.
       return NextResponse.json(
         { error: { code: "webhook_processing_error", message: "Webhook processing failed (transient).", details: null } },
         { status: 500 },
       );
     }
-    // Permanent error: return 200 to prevent Stripe from retrying endlessly.
-    // The error is logged above for investigation.
     return NextResponse.json({ received: true, error: { code: "processing_failed", message: "Permanent webhook processing failure.", details: null } });
   }
 
@@ -96,9 +93,9 @@ async function handleCheckoutCompleted(
   session: Stripe.Checkout.Session,
   stripe: Stripe,
 ) {
-  const userId = session.metadata?.userId;
+  const orgId = session.metadata?.orgId;
   const tier = session.metadata?.tier;
-  if (!userId || !tier) {
+  if (!orgId || !tier) {
     console.error(
       "[NullSpend] checkout.session.completed missing metadata:",
       session.id,
@@ -142,7 +139,12 @@ async function handleCheckoutCompleted(
     );
   }
 
+  // userId tracked for audit — extract from customer metadata or use empty
+  const customer = await stripe.customers.retrieve(stripeCustomerId);
+  const userId = (!customer.deleted && customer.metadata?.userId) || "";
+
   await upsertSubscription({
+    orgId,
     userId,
     stripeCustomerId,
     stripeSubscriptionId,
@@ -153,7 +155,7 @@ async function handleCheckoutCompleted(
   });
 
   console.log(
-    `[NullSpend] Subscription created via checkout: userId=${userId}, tier=${tier}`,
+    `[NullSpend] Subscription created via checkout: orgId=${orgId}, tier=${tier}`,
   );
 }
 
@@ -168,12 +170,14 @@ async function handleSubscriptionUpdated(
 
   const existing = await getSubscriptionByStripeCustomerId(stripeCustomerId);
 
+  let orgId: string;
   let userId: string;
   if (existing) {
+    orgId = existing.orgId;
     userId = existing.userId;
   } else {
     // Event ordering fallback: checkout.session.completed may not have arrived yet.
-    // Look up userId from Stripe Customer metadata.
+    // Look up orgId from Stripe Customer metadata.
     const customer = await stripe.customers.retrieve(stripeCustomerId);
     if (customer.deleted) {
       console.error(
@@ -182,15 +186,16 @@ async function handleSubscriptionUpdated(
       );
       return;
     }
-    const metaUserId = customer.metadata?.userId;
-    if (!metaUserId) {
+    const metaOrgId = customer.metadata?.orgId;
+    if (!metaOrgId) {
       console.error(
-        "[NullSpend] subscription.updated: no userId in customer metadata:",
+        "[NullSpend] subscription.updated: no orgId in customer metadata:",
         stripeCustomerId,
       );
       return;
     }
-    userId = metaUserId;
+    orgId = metaOrgId;
+    userId = customer.metadata?.userId || "";
   }
 
   const item = subscription.items.data[0];
@@ -210,7 +215,6 @@ async function handleSubscriptionUpdated(
     return;
   }
 
-  // In API version 2026-02-25.clover, period dates are on the item, not the subscription root.
   const periodStart = item.current_period_start
     ? new Date(item.current_period_start * 1000)
     : null;
@@ -219,6 +223,7 @@ async function handleSubscriptionUpdated(
     : null;
 
   await upsertSubscription({
+    orgId,
     userId,
     stripeCustomerId,
     stripeSubscriptionId: subscription.id,
@@ -230,7 +235,7 @@ async function handleSubscriptionUpdated(
   });
 
   console.log(
-    `[NullSpend] Subscription updated: userId=${userId}, tier=${tier}, status=${subscription.status}`,
+    `[NullSpend] Subscription updated: orgId=${orgId}, tier=${tier}, status=${subscription.status}`,
   );
 }
 
@@ -250,6 +255,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   }
 
   await upsertSubscription({
+    orgId: existing.orgId,
     userId: existing.userId,
     stripeCustomerId,
     stripeSubscriptionId: subscription.id,
@@ -259,7 +265,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   });
 
   console.log(
-    `[NullSpend] Subscription canceled: userId=${existing.userId}`,
+    `[NullSpend] Subscription canceled: orgId=${existing.orgId}`,
   );
 }
 
@@ -279,7 +285,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       status: "active",
     });
     console.log(
-      `[NullSpend] Subscription reactivated after payment: userId=${existing.userId}`,
+      `[NullSpend] Subscription reactivated after payment: orgId=${existing.orgId}`,
     );
   }
 }
@@ -300,6 +306,6 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   });
 
   console.log(
-    `[NullSpend] Subscription past_due after payment failure: userId=${existing.userId}`,
+    `[NullSpend] Subscription past_due after payment failure: orgId=${existing.orgId}`,
   );
 }

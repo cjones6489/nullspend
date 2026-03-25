@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phase 2 Complete, Phase 3 Complete, Phase 4 Next
+**Status:** Phases 0-4 Complete, Phase 5 Demand-Driven
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -788,7 +788,7 @@ Uses `useSession()` → `{ role }` with permission booleans (`canCreate`, `canMa
 | **Phase 3 total** | **~8-10 days** | |
 | 4a: Permission enforcement | ~1 day | **COMPLETE** (2026-03-25) |
 | 4b: Frontend role enforcement | ~1 day | **COMPLETE** (2026-03-25) |
-| 4c: Billing migration (per-org) | ~1-2 days | Not started |
+| 4c: Billing migration (per-org) | ~1-2 days | **COMPLETE** (2026-03-25) |
 | **Phase 4 total** | **~3-4 days** | |
 | **Phase 5** | Demand-driven | Not started |
 | **Grand total (3-4)** | **~12-16 days** | |
@@ -817,3 +817,4 @@ Uses `useSession()` → `{ role }` with permission booleans (`canCreate`, `canMa
 | 2026-03-25 | Phase 4 re-evaluated. Key findings: assertOrgRole already exists (no new middleware), useSession already returns role (no new hook), ~15 routes need role checks, billing is per-user and must migrate to per-org. Stripe docs confirm Customer metadata pattern. Estimated 3-4 days total (down from 4-6). |
 | 2026-03-25 | Phase 4a completed — role enforcement on ~20 routes, dual-auth updated with minSessionRole, 18 test files updated, 6 permission boundary tests. 1086 root + 1210 proxy = 2296 total. |
 | 2026-03-25 | Phase 4b completed — frontend role enforcement on API keys, webhooks, budgets, and billing pages. |
+| 2026-03-25 | Phase 4c completed — billing migrated from per-user to per-org. Schema: unique on orgId (was userId). getSubscriptionByOrgId replaces getSubscriptionByUserId. resolveOrgTier replaces resolveUserTier. Stripe Customer/checkout/webhook all use orgId metadata. Migration 0043_billing_per_org.sql applied. Phase 4 complete. |

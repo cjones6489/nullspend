@@ -13,7 +13,7 @@ import {
   SEAT_COUNTED_ROLES,
 } from "@/lib/validations/orgs";
 import { generateInviteToken, hashInviteToken, extractTokenPrefix } from "@/lib/auth/invitation";
-import { resolveUserTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
+import { resolveOrgTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
 
 type RouteContext = { params: Promise<{ orgId: string }> };
 
@@ -81,7 +81,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Enforce seat limit for non-viewer roles
     if ((SEAT_COUNTED_ROLES as readonly string[]).includes(input.role)) {
-      const tierInfo = await resolveUserTier(userId);
+      const tierInfo = await resolveOrgTier(orgId);
 
       // Count current seat-counted members + pending seat-counted invitations
       const [{ value: memberCount }] = await db

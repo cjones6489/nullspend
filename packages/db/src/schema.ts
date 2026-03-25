@@ -180,8 +180,8 @@ export type NewCostEventRow = typeof costEvents.$inferInsert;
 
 export const subscriptions = pgTable("subscriptions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userId: text("user_id").notNull().unique(),
-  orgId: uuid("org_id").notNull(),
+  userId: text("user_id").notNull(),
+  orgId: uuid("org_id").notNull().unique(),
   stripeCustomerId: text("stripe_customer_id").notNull(),
   stripeSubscriptionId: text("stripe_subscription_id").notNull(),
   tier: text("tier").notNull(),

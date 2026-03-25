@@ -10,15 +10,15 @@ vi.mock("@/lib/auth/org-authorization", () => ({
 }));
 
 vi.mock("@/lib/stripe/subscription", () => ({
-  getSubscriptionByUserId: vi.fn(),
+  getSubscriptionByOrgId: vi.fn(),
 }));
 
 import { resolveSessionContext } from "@/lib/auth/session";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 import { GET } from "./route";
 
 const mockedResolveSession = vi.mocked(resolveSessionContext);
-const mockedGetSubscription = vi.mocked(getSubscriptionByUserId);
+const mockedGetSubscription = vi.mocked(getSubscriptionByOrgId);
 
 describe("GET /api/stripe/subscription", () => {
   beforeEach(() => {

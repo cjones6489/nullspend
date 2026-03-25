@@ -11,7 +11,7 @@ import {
   webhookRecordSchema,
 } from "@/lib/validations/webhooks";
 import { invalidateWebhookCacheForUser } from "@/lib/webhooks/invalidate-cache";
-import { resolveUserTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
+import { resolveOrgTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 
 export async function GET() {
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
       .from(webhookEndpoints)
       .where(eq(webhookEndpoints.orgId, orgId));
 
-    const tierInfo = await resolveUserTier(userId);
+    const tierInfo = await resolveOrgTier(orgId);
     assertCountBelowLimit(tierInfo, "maxWebhookEndpoints", endpointCount, "webhook endpoints");
 
     const signingSecret = `whsec_${randomBytes(32).toString("hex")}`;

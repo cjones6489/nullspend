@@ -1,4 +1,4 @@
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 import { getTierForUser, TIERS, type Tier } from "@/lib/stripe/tiers";
 import { LimitExceededError, SpendCapExceededError } from "@/lib/utils/http";
 
@@ -11,11 +11,11 @@ export interface OrgTierInfo {
 }
 
 /**
- * Resolve the effective tier for a user (personal org billing model).
+ * Resolve the effective tier for an org.
  * Returns the tier name and label for use in error messages.
  */
-export async function resolveUserTier(userId: string): Promise<OrgTierInfo> {
-  const subscription = await getSubscriptionByUserId(userId);
+export async function resolveOrgTier(orgId: string): Promise<OrgTierInfo> {
+  const subscription = await getSubscriptionByOrgId(orgId);
   const tier = getTierForUser(subscription);
   return { tier, label: TIERS[tier].label };
 }

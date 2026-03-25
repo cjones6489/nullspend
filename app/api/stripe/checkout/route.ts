@@ -4,7 +4,7 @@ import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getStripe, getOrigin } from "@/lib/stripe/client";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 import { isValidPriceId, tierFromPriceId } from "@/lib/stripe/tiers";
 import { handleRouteError, readJsonBody } from "@/lib/utils/http";
 import { checkoutInputSchema } from "@/lib/validations/subscription";
@@ -25,14 +25,14 @@ export async function POST(request: Request) {
 
     const tier = tierFromPriceId(input.priceId)!;
 
-    const existing = await getSubscriptionByUserId(userId);
+    const existing = await getSubscriptionByOrgId(orgId);
     if (existing && existing.status === "active") {
       return NextResponse.json(
         {
           error: {
             code: "subscription_exists",
             message:
-              "You already have an active subscription. Use the Manage Subscription page to change plans.",
+              "This organization already has an active subscription. Use the Manage Subscription page to change plans.",
             details: null,
           },
         },
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
       const customer = await stripe.customers.create({
         email: user?.email ?? undefined,
-        metadata: { userId },
+        metadata: { orgId },
       });
       stripeCustomerId = customer.id;
     }
@@ -64,7 +64,10 @@ export async function POST(request: Request) {
       mode: "subscription",
       customer: stripeCustomerId,
       line_items: [{ price: input.priceId, quantity: 1 }],
-      metadata: { userId, tier },
+      metadata: { orgId, tier },
+      subscription_data: {
+        metadata: { orgId, tier },
+      },
       success_url: `${origin}/app/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/app/billing`,
     });
