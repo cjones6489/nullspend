@@ -271,6 +271,7 @@ export async function handleMcpEvents(
         costMicrodollars: event.costMicrodollars,
         durationMs: event.durationMs,
         userId,
+        orgId: ctx.auth.orgId,
         apiKeyId,
         actionId: event.actionId && UUID_RE.test(event.actionId) ? event.actionId : null,
         eventType: "tool" as const,
