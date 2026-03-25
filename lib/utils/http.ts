@@ -24,6 +24,13 @@ class InvalidJsonBodyError extends Error {
   }
 }
 
+export class LimitExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LimitExceededError";
+  }
+}
+
 class PayloadTooLargeError extends Error {
   constructor(maxBytes: number) {
     super(`Request body exceeds ${maxBytes} bytes.`);
@@ -129,6 +136,10 @@ export function handleRouteError(error: unknown) {
 
   if (error instanceof ForbiddenError) {
     return NextResponse.json(errorJson("forbidden", error.message), { status: 403 });
+  }
+
+  if (error instanceof LimitExceededError) {
+    return NextResponse.json(errorJson("limit_exceeded", error.message), { status: 409 });
   }
 
   if (error instanceof CircuitOpenError) {

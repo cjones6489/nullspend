@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
 
-/** UI display hint — actual limit enforced per-tier in the route handler. Pro/Team have Infinity. */
+/** @deprecated Tier limits are enforced server-side. Use TIERS[tier].maxApiKeys. */
 export const MAX_KEYS_PER_USER = Infinity;
 
 const tagKeySchema = z.string().regex(/^[a-zA-Z0-9_-]+$/, "Tag keys must be alphanumeric, underscore, or hyphen.").max(64);

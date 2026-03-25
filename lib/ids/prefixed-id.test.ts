@@ -162,7 +162,7 @@ describe("round-trip", () => {
     expect(uuid).toBe(TEST_UUID);
   });
 
-  it("works for all 8 prefix types", () => {
+  it("works for all prefix types", () => {
     for (const type of Object.keys(PREFIX_MAP)) {
       const t = type as keyof typeof PREFIX_MAP;
       const prefixed = nsIdOutput(t).parse(TEST_UUID);

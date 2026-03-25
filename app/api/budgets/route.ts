@@ -4,6 +4,7 @@ import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionUserId } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
+import { LimitExceededError } from "@/lib/utils/http";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
 import { withRequestContext } from "@/lib/observability";
@@ -125,7 +126,7 @@ export const POST = withRequestContext(async (request: Request) => {
           );
 
         if (allBudgets.length >= maxBudgets) {
-          throw new ForbiddenError(
+          throw new LimitExceededError(
             `${TIERS[tier].label} plan is limited to ${maxBudgets} budget${maxBudgets === 1 ? "" : "s"}. Upgrade for unlimited budgets.`,
           );
         }

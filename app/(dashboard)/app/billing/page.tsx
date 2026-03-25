@@ -123,7 +123,7 @@ export default function BillingPage() {
           </p>
           <p className="text-xs tabular-nums text-muted-foreground">
             {formatMicrodollars(currentSpend)} /{" "}
-            {formatMicrodollars(spendCap)}
+            {spendCap === Infinity ? "Unlimited" : formatMicrodollars(spendCap)}
           </p>
         </div>
         <Progress
@@ -138,7 +138,7 @@ export default function BillingPage() {
         />
         <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
           <span>Budgets: {isPaid ? "Unlimited" : `${tierConfig.maxBudgets} max`}</span>
-          <span>Data retention: {tierConfig.retentionDays} days</span>
+          <span>Data retention: {tierConfig.retentionDays === Infinity ? "Unlimited" : `${tierConfig.retentionDays} days`}</span>
         </div>
       </div>
 

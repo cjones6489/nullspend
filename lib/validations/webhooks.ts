@@ -22,8 +22,8 @@ export const WEBHOOK_EVENT_TYPES = [
 
 export const PAYLOAD_MODES = ["full", "thin"] as const;
 
-/** UI display hint — actual limit enforced per-tier in the route handler. */
-export const MAX_WEBHOOK_ENDPOINTS_PER_USER = 50;
+/** @deprecated Tier limits are enforced server-side. Use TIERS[tier].maxWebhookEndpoints. */
+export const MAX_WEBHOOK_ENDPOINTS_PER_USER = Infinity;
 
 function isValidWebhookUrl(raw: string): boolean {
   let parsed: URL;
