@@ -342,3 +342,31 @@ describe("authenticateApiKey hasBudgets", () => {
     expect(mockSql).toHaveBeenCalledTimes(1); // Only one DB call
   });
 });
+
+describe("authenticateApiKey orgId", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    _resetCaches();
+  });
+
+  afterEach(() => {
+    _resetCaches();
+  });
+
+  it("returns orgId when org_id is present in DB row", async () => {
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, org_id: "550e8400-e29b-41d4-a716-000000000099" },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.orgId).toBe("550e8400-e29b-41d4-a716-000000000099");
+  });
+
+  it("returns orgId=null when org_id is null in DB row", async () => {
+    mockSql.mockResolvedValueOnce([validRow]); // validRow has org_id: null
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.orgId).toBeNull();
+  });
+});
