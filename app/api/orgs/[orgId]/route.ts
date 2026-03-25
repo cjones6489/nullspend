@@ -4,7 +4,18 @@ import { eq, sql } from "drizzle-orm";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { assertOrgMember, assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
-import { organizations } from "@nullspend/db";
+import {
+  actions,
+  apiKeys,
+  budgets,
+  costEvents,
+  organizations,
+  slackConfigs,
+  subscriptions,
+  toolCosts,
+  webhookDeliveries,
+  webhookEndpoints,
+} from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema, updateOrgSchema, orgRecordSchema } from "@/lib/validations/orgs";
 import { ForbiddenError } from "@/lib/auth/errors";
@@ -142,7 +153,23 @@ export async function DELETE(request: Request, context: RouteContext) {
       throw new ForbiddenError("Personal organizations cannot be deleted.");
     }
 
-    await db.delete(organizations).where(eq(organizations.id, orgId));
+    // Delete all org resources, then the org itself (which FK-cascades memberships + invitations)
+    await db.transaction(async (tx) => {
+      // Delete dependent tables first (webhook_deliveries references webhook_endpoints)
+      await tx.delete(webhookDeliveries).where(
+        sql`${webhookDeliveries.endpointId} IN (SELECT id FROM webhook_endpoints WHERE org_id = ${orgId})`,
+      );
+      await tx.delete(webhookEndpoints).where(eq(webhookEndpoints.orgId, orgId));
+      await tx.delete(costEvents).where(eq(costEvents.orgId, orgId));
+      await tx.delete(budgets).where(eq(budgets.orgId, orgId));
+      await tx.delete(apiKeys).where(eq(apiKeys.orgId, orgId));
+      await tx.delete(actions).where(eq(actions.orgId, orgId));
+      await tx.delete(slackConfigs).where(eq(slackConfigs.orgId, orgId));
+      await tx.delete(toolCosts).where(eq(toolCosts.orgId, orgId));
+      await tx.delete(subscriptions).where(eq(subscriptions.orgId, orgId));
+      // Finally delete the org — cascades memberships + invitations via FK
+      await tx.delete(organizations).where(eq(organizations.id, orgId));
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

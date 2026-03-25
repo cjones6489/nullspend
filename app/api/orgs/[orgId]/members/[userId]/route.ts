@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
-import { orgMemberships } from "@nullspend/db";
+import { apiKeys, orgMemberships } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema, changeRoleSchema, memberRecordSchema } from "@/lib/validations/orgs";
 import { ForbiddenError } from "@/lib/auth/errors";
@@ -115,9 +115,23 @@ export async function DELETE(request: Request, context: RouteContext) {
       throw new ForbiddenError("Admins cannot remove other admins.");
     }
 
-    await db
-      .delete(orgMemberships)
-      .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, targetUserId)));
+    // Revoke the removed user's API keys for this org + delete membership
+    await db.transaction(async (tx) => {
+      await tx
+        .update(apiKeys)
+        .set({ revokedAt: sql`NOW()` })
+        .where(
+          and(
+            eq(apiKeys.orgId, orgId),
+            eq(apiKeys.userId, targetUserId),
+            sql`${apiKeys.revokedAt} IS NULL`,
+          ),
+        );
+
+      await tx
+        .delete(orgMemberships)
+        .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, targetUserId)));
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

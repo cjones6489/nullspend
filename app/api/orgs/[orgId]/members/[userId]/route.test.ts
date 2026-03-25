@@ -45,25 +45,29 @@ vi.mock("@/lib/auth/org-authorization", () => ({
 }));
 
 vi.mock("@/lib/db/client", () => ({
-  getDb: vi.fn(() => ({
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: mockSelectLimit,
+  getDb: vi.fn(() => {
+    const dbMethods = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: mockSelectLimit,
+          }),
         }),
       }),
-    }),
-    update: () => ({
-      set: () => ({
-        where: () => ({
-          returning: mockReturning,
+      update: () => ({
+        set: () => ({
+          where: () => ({
+            returning: mockReturning,
+          }),
         }),
       }),
-    }),
-    delete: () => ({
-      where: mockDeleteWhere,
-    }),
-  })),
+      delete: () => ({
+        where: mockDeleteWhere,
+      }),
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(dbMethods)),
+    };
+    return dbMethods;
+  }),
 }));
 
 vi.mock("@/lib/utils/http", async (importOriginal) => {

@@ -28,25 +28,29 @@ const mockDeleteWhere = vi.fn().mockResolvedValue(undefined);
 const mockUpdateReturning = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
-  getDb: vi.fn(() => ({
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: mockSelectResult,
+  getDb: vi.fn(() => {
+    const dbMethods = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: mockSelectResult,
+          }),
         }),
       }),
-    }),
-    update: () => ({
-      set: () => ({
-        where: () => ({
-          returning: mockUpdateReturning,
+      update: () => ({
+        set: () => ({
+          where: () => ({
+            returning: mockUpdateReturning,
+          }),
         }),
       }),
-    }),
-    delete: () => ({
-      where: mockDeleteWhere,
-    }),
-  })),
+      delete: () => ({
+        where: mockDeleteWhere,
+      }),
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(dbMethods)),
+    };
+    return dbMethods;
+  }),
 }));
 
 vi.mock("@/lib/utils/http", async (importOriginal) => {
