@@ -55,7 +55,7 @@ export function ApiKeysSection() {
         {isLoading && <KeysSkeleton />}
 
         {error && (
-          <div className="p-6 text-sm text-red-400">
+          <div className="m-4 rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
             Failed to load API keys.
           </div>
         )}

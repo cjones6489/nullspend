@@ -50,9 +50,7 @@ export function CostBreakdown({
     { name: "Input", cost: data.inputCost },
     { name: "Output", cost: data.outputCost },
     { name: "Cached", cost: data.cachedCost },
-    ...(data.reasoningCost > 0
-      ? [{ name: "Reasoning", cost: data.reasoningCost }]
-      : []),
+    { name: "Reasoning", cost: data.reasoningCost },
   ];
 
   const allZero = components.every((c) => c.cost === 0);

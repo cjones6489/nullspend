@@ -61,10 +61,8 @@ export default function AnalyticsPage() {
       {isLoading && <AnalyticsSkeleton />}
 
       {isError && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
-          <p className="text-[13px] text-red-400">
-            Failed to load analytics. Please try again.
-          </p>
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+          Failed to load analytics. Please try again.
         </div>
       )}
 
