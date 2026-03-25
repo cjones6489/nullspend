@@ -75,8 +75,8 @@ describe("budgets table schema", () => {
     expect(cols.currentPeriodStart.notNull).toBe(false);
   });
 
-  it("userId is nullable", () => {
-    expect(cols.userId.notNull).toBe(false);
+  it("userId is NOT NULL", () => {
+    expect(cols.userId.notNull).toBe(true);
   });
 
   it("type inference produces correct BudgetRow shape", () => {
@@ -155,9 +155,9 @@ describe("costEvents table schema", () => {
     expect(cols.reasoningTokens.hasDefault).toBe(true);
   });
 
-  it("apiKeyId and userId are nullable", () => {
+  it("apiKeyId is nullable, userId is NOT NULL", () => {
     expect(cols.apiKeyId.notNull).toBe(false);
-    expect(cols.userId.notNull).toBe(false);
+    expect(cols.userId.notNull).toBe(true);
   });
 
   it("durationMs is nullable", () => {
