@@ -79,6 +79,7 @@ function makeCtx(
     body,
     bodyText: JSON.stringify(body),
     auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+    ownerId: "user-1",
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
@@ -328,7 +329,7 @@ describe("handleMcpBudgetCheck", () => {
 
     const ctx = makeCtx(
       { toolName: "t", serverName: "s", estimateMicrodollars: 0 },
-      { auth: { userId: "user-abc", keyId: "key-xyz", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } },
+      { auth: { userId: "user-abc", keyId: "key-xyz", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} }, ownerId: "user-abc" },
     );
     await handleMcpBudgetCheck(request, env, ctx);
 

@@ -34,7 +34,7 @@ export async function handleDlqQueue(
       emitMetric("reconciliation_dlq", {
         reservationId: msg.reservationId,
         costMicrodollars: msg.actualCostMicrodollars,
-        userId: msg.userId ?? "unknown",
+        ownerId: msg.ownerId ?? "unknown",
         ageMs,
         entityCount: msg.budgetEntities.length,
       });
@@ -56,7 +56,7 @@ export async function handleDlqQueue(
 
       await reconcileBudget(
         env,
-        msg.userId,
+        msg.ownerId,
         msg.reservationId,
         msg.actualCostMicrodollars,
         budgetEntities,

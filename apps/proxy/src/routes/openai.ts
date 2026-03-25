@@ -134,7 +134,7 @@ export async function handleChatCompletions(
       // Fix 6: reconcile with actualCost=0 on upstream error
       if (reservationId) {
         waitUntil(
-          reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, ctx.connectionString),
+          reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, ctx.connectionString),
         );
       }
       const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
@@ -198,7 +198,7 @@ export async function handleChatCompletions(
     // Fix 11: clean up reservation on fetch timeout or unexpected error
     if (reservationId) {
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, ctx.connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, ctx.connectionString),
       );
     }
     throw err;
@@ -225,7 +225,7 @@ function handleStreaming(
   if (!upstreamBody) {
     if (reservationId) {
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString),
       );
     }
     const noBodyResp = errorResponse("upstream_error", "No response body from upstream", 502);
@@ -279,7 +279,7 @@ function handleStreaming(
           );
           if (reservationId) {
             await reconcileBudgetQueued(
-              getReconcileQueue(env), env, ctx.auth.userId, reservationId, reconcileCost, budgetEntities, connectionString,
+              getReconcileQueue(env), env, ctx.ownerId, reservationId, reconcileCost, budgetEntities, connectionString,
             );
           }
           return;
@@ -311,7 +311,7 @@ function handleStreaming(
 
         if (reservationId) {
           await reconcileBudgetQueued(
-            getReconcileQueue(env), env, ctx.auth.userId, reservationId, costEvent.costMicrodollars,
+            getReconcileQueue(env), env, ctx.ownerId, reservationId, costEvent.costMicrodollars,
             budgetEntities, connectionString,
           );
         }
@@ -327,7 +327,7 @@ function handleStreaming(
         if (reservationId) {
           try {
             await reconcileBudgetQueued(
-              getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString,
+              getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString,
             );
           } catch { /* already logged inside reconcileBudget */ }
         }
@@ -409,7 +409,7 @@ async function handleNonStreaming(
       if (reservationId) {
         waitUntil(
           reconcileBudgetQueued(
-            getReconcileQueue(env), env, ctx.auth.userId, reservationId, costEvent.costMicrodollars,
+            getReconcileQueue(env), env, ctx.ownerId, reservationId, costEvent.costMicrodollars,
             budgetEntities, connectionString,
           ),
         );
@@ -420,7 +420,7 @@ async function handleNonStreaming(
     } else if (reservationId) {
       // No usage in parsed response — reconcile with 0
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString),
       );
     }
   } catch {
@@ -428,7 +428,7 @@ async function handleNonStreaming(
     // Fix 6: reconcile on parse failure
     if (reservationId) {
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString),
       );
     }
   }

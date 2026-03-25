@@ -3,7 +3,7 @@ export interface ReconciliationMessage {
   reservationId: string;
   actualCostMicrodollars: number;
   budgetEntities: Array<{ entityKey: string; entityType: string; entityId: string }>;
-  userId: string | null;
+  ownerId: string | null;
   enqueuedAt: number;
 }
 

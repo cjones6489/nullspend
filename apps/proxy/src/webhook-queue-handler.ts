@@ -28,29 +28,29 @@ export async function handleWebhookQueue(
 
   const connectionString = env.HYPERDRIVE.connectionString;
 
-  // Lazy per-batch cache: one DB call per unique userId.
+  // Lazy per-batch cache: one DB call per unique ownerId.
   // Only cache non-empty results — empty could be a fail-open DB error
   // from getWebhookEndpointsWithSecrets, and caching it would silently
-  // skip all remaining messages for that user in the batch.
+  // skip all remaining messages for that owner in the batch.
   const endpointCache = new Map<string, WebhookEndpointWithSecret[]>();
-  async function getEndpoints(userId: string): Promise<WebhookEndpointWithSecret[]> {
-    if (endpointCache.has(userId)) return endpointCache.get(userId)!;
-    const endpoints = await getWebhookEndpointsWithSecrets(connectionString, userId);
-    if (endpoints.length > 0) endpointCache.set(userId, endpoints);
+  async function getEndpoints(ownerId: string): Promise<WebhookEndpointWithSecret[]> {
+    if (endpointCache.has(ownerId)) return endpointCache.get(ownerId)!;
+    const endpoints = await getWebhookEndpointsWithSecrets(connectionString, ownerId);
+    if (endpoints.length > 0) endpointCache.set(ownerId, endpoints);
     return endpoints;
   }
 
   for (const msg of batch.messages) {
-    const { userId, endpointId, event } = msg.body;
+    const { ownerId, endpointId, event } = msg.body;
 
     try {
       // Look up endpoint with secrets
-      const endpoints = await getEndpoints(userId);
+      const endpoints = await getEndpoints(ownerId);
       const endpoint = endpoints.find((ep) => ep.id === endpointId);
 
       if (!endpoint) {
         // Endpoint deleted between enqueue and delivery — skip
-        console.warn(`[webhook-queue] Endpoint ${endpointId} not found for user ${userId}, skipping`);
+        console.warn(`[webhook-queue] Endpoint ${endpointId} not found for owner ${ownerId}, skipping`);
         msg.ack();
         continue;
       }

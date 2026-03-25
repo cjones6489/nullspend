@@ -224,9 +224,9 @@ export function dispatchVelocityRecoveryWebhooks(
 
   waitUntil((async () => {
     try {
-      const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+      const cached = await getWebhookEndpoints(ctx.connectionString, ctx.ownerId, env.CACHE_KV);
       if (cached.length > 0) {
-        const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+        const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.ownerId);
         for (const recovered of outcome.velocityRecovered!) {
           const event = buildVelocityRecoveredPayload({
             budgetEntityType: recovered.entityType,
@@ -261,9 +261,9 @@ export async function dispatchCostEventWebhooks(
   const logPrefix = `[${provider}-route]`;
 
   try {
-    const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+    const cached = await getWebhookEndpoints(ctx.connectionString, ctx.ownerId, env.CACHE_KV);
     if (cached.length > 0) {
-      const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+      const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.ownerId);
       const webhookData = {
         ...costEvent,
         ...enrichment,
@@ -309,9 +309,9 @@ export function dispatchDenialWebhook(
 
   waitUntil((async () => {
     try {
-      const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+      const cached = await getWebhookEndpoints(ctx.connectionString, ctx.ownerId, env.CACHE_KV);
       if (cached.length > 0) {
-        const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+        const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.ownerId);
         const event = buildEvent();
         await dispatchToEndpoints(ctx.webhookDispatcher!, endpoints, event);
       }

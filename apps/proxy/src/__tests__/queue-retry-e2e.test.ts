@@ -85,7 +85,7 @@ function makeBody(overrides?: Record<string, unknown>) {
     reservationId: "res-123",
     actualCostMicrodollars: 50_000,
     budgetEntities: ENTITIES,
-    userId: "user-abc",
+    ownerId: "user-abc",
     enqueuedAt: Date.now(),
     ...overrides,
   };

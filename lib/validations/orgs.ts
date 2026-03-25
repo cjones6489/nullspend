@@ -66,3 +66,20 @@ export const memberRecordSchema = z.object({
   role: z.enum(ORG_ROLES),
   createdAt: z.string(),
 });
+
+const INVITATION_STATUSES = ["pending", "accepted", "declined", "revoked", "expired"] as const;
+
+export const invitationRecordSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string(),
+  role: z.enum(ASSIGNABLE_ROLES),
+  status: z.enum(INVITATION_STATUSES),
+  invitedBy: z.string(),
+  tokenPrefix: z.string(),
+  expiresAt: z.string(),
+  createdAt: z.string(),
+});
+
+export const acceptInviteSchema = z.object({
+  token: z.string().min(1, "Invitation token is required."),
+});

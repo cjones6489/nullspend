@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phase 2 Increments 1-3 Complete, Increment 4 Ready
+**Status:** Phase 2 Complete, Phase 3a-3e Complete, Phase 3f Next
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -401,72 +401,123 @@ Studied GitHub, Vercel, Supabase, Clerk, WorkOS, Linear, Stripe, Datadog, PostHo
 | Audit log | Last 10 events | Full | Full + export |
 | SSO/SAML | No | No | Yes |
 
-### Phase 3a: Tier + Role Updates (~1 hour)
+### Phase 3a: Tier + Role Updates — COMPLETE (2026-03-24)
 
 Schema and config changes before building features.
 
-- [ ] Add `viewer` role to `orgMemberships.role` type and `ORG_ROLES` constant
-- [ ] Update `TIERS.free.maxTeamMembers` from `1` to `3`
-- [ ] Viewer seats exempt from `maxTeamMembers` count (don't count viewers in limit checks)
-- [ ] Update `ASSIGNABLE_ROLES` to include `viewer`
-- [ ] Tests for viewer role validation
+- [x] Add `viewer` role to `orgMemberships.role` type and `ORG_ROLES` constant
+- [x] Update `TIERS.free.maxTeamMembers` from `1` to `3`
+- [x] Viewer seats exempt from `maxTeamMembers` count (`SEAT_COUNTED_ROLES` excludes viewer)
+- [x] Update `ASSIGNABLE_ROLES` to include `viewer`
+- [x] Tests for viewer role validation
 
-### Phase 3b: Feature Gating Infrastructure (~1 day)
+### Phase 3b: Feature Gating Infrastructure — COMPLETE (2026-03-24)
 
-Three-layer gating: API-level enforcement, middleware-level context, component-level UX.
+Three-layer gating: API-level enforcement, React Query-based tier hook, component-level UX.
 
-- [ ] `lib/stripe/feature-gate.ts`: `assertTierLimit(orgId, limitKey)` — server-side enforcement helper
-  - Returns structured error: `{ code: "tier_limit_exceeded", message, upgradeUrl }`
-  - Checks `TIERS[tier][limitKey]` against current count
-- [ ] `<TierGate requiredTier="pro" feature="unlimited-budgets">` — client-side wrapper component
-  - Renders children when tier is sufficient
-  - Renders inline `<UpgradeCard>` when tier is insufficient (shows what they unlock, not just a lock icon)
-- [ ] `<UpgradeCard feature tier currentTier>` — contextual upgrade prompt
-- [ ] Tier context provider: resolve tier in server layout, inject via React context
-- [ ] `useOrgTier()` hook for client components
-- [ ] Tests for each component and the server-side helper
+**Server-side enforcement:**
+- [x] `lib/stripe/feature-gate.ts`: `resolveUserTier(userId)`, `assertCountBelowLimit()`, `assertAmountBelowCap()`, `SpendCapExceededError`
+- [x] Route refactoring: `budgets/route.ts`, `keys/route.ts`, `webhooks/route.ts` — replaced inline tier checks with centralized helpers
+- [x] Budget count check simplified: `count(*)` on org-scoped budgets (was: multi-query by user's keys + user entity)
+- [x] `SpendCapExceededError` handled in `lib/utils/http.ts` → 400 `spend_cap_exceeded`
+- [x] `LimitExceededError` continues to return 409 `limit_exceeded`
 
-### Phase 3c: Proxy DO Keying for Team Orgs (~2-3 hours)
+**Client-side components:**
+- [x] `lib/hooks/use-org-tier.ts`: `useOrgTier()` hook — derives tier from `useSubscription()`, returns `{ tier, label, limits, isLoading }`
+- [x] `isAtLeastTier(current, required)` — pure tier comparison helper
+- [x] `components/tier/tier-gate.tsx`: `<TierGate requiredTier feature>` — renders children or `<UpgradeCard>`
+- [x] `components/tier/upgrade-card.tsx`: `<UpgradeCard feature requiredTier>` — contextual upgrade with tier benefits list, Stripe checkout integration
+- [x] No separate API endpoint needed — tier derived from existing `/api/stripe/subscription`
 
-**Moved from Phase 2.** Personal orgs keep `idFromName(userId)`. Team orgs use `idFromName(orgId)`.
+**Design decisions:**
+- Used React Query (`useSubscription`) instead of server-side context provider. Simpler, avoids prop-drilling, and auto-refreshes on re-focus (e.g., after Stripe checkout redirect).
+- `UpgradeCard` shows tier-specific benefits (Pro: unlimited budgets/keys/members; Enterprise: SSO/SAML + custom RBAC).
+- Enterprise upgrade shows "Contact Sales" (no self-serve checkout).
 
-- [ ] `budget-do-client.ts`: 6 call sites — use `orgId` when available, fall back to `userId` for personal orgs
-- [ ] `budget-orchestrator.ts`: pass `ctx.auth.orgId` or `ctx.auth.userId`
-- [ ] `budget-do-lookup.ts`: `WHERE org_id =` instead of `WHERE user_id =` (3 queries)
-- [ ] `routes/internal.ts`: add `orgId` to `InvalidationBody`
-- [ ] `webhook-cache.ts`: cache key by `orgId` instead of `userId`
-- [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body
-- [ ] Update proxy tests (~20-30 files)
-- [ ] Run smoke tests after deploy
+**Tests:** 22 new tests across 4 files:
+- `lib/stripe/feature-gate.test.ts` — resolveUserTier, assertCountBelowLimit, assertAmountBelowCap
+- `lib/hooks/use-org-tier.test.ts` — isAtLeastTier (9 tier comparison scenarios)
+- `components/tier/tier-gate.test.tsx` — TierGate gating logic (9 scenarios)
+- `components/tier/upgrade-card.test.tsx` — tier data and limits validation
 
-### Phase 3d: Org CRUD API (~1 day)
+**Test results:** 974 root tests + 1210 proxy tests = 2184 total, 0 TypeScript errors
 
-- [ ] `app/api/orgs/route.ts`: GET (list user's orgs), POST (create org)
-  - POST enforces `maxTeamMembers` — free users can create orgs (industry standard)
-  - POST creates org + owner membership in transaction
-- [ ] `app/api/orgs/[orgId]/route.ts`: GET, PATCH (name, slug, logo), DELETE (owner only, cascades)
-- [ ] `app/api/orgs/[orgId]/members/route.ts`: GET (list members with roles)
-- [ ] `app/api/orgs/[orgId]/members/[userId]/route.ts`: PATCH (role), DELETE (remove)
-  - Cannot remove the owner; owner transfer is a separate action
-  - Cannot change own role (prevent accidental de-admin)
-- [ ] Membership verification middleware: check requester is member of target org
-- [ ] Role checks: member management requires `admin` or `owner`
-- [ ] Tests for each route + permission edge cases
+### Phase 3c: Proxy DO Keying for Team Orgs — COMPLETE (2026-03-25)
 
-### Phase 3e: Invitation Backend (~1 day)
+**Moved from Phase 2.** Unified DO keying via `ownerId` (= `orgId ?? userId`). All budget enforcement, webhook caching, and cache invalidation now scoped by org.
 
-- [ ] `lib/auth/invitation.ts`: token generation (crypto.randomBytes), SHA-256 hashing, verification
-- [ ] `app/api/orgs/[orgId]/invitations/route.ts`: GET (list), POST (create — requires admin+)
-  - POST enforces `maxTeamMembers` (viewer invites exempt from count)
-  - 7-day token expiry (matches schema `expiresAt`)
-  - Prevents duplicate invitations to same email
-- [ ] `app/api/orgs/[orgId]/invitations/[id]/route.ts`: DELETE (revoke)
-- [ ] `app/api/invite/accept/route.ts`: POST (accept via token hash lookup)
-  - Creates `orgMembership` with invited role
+**Design:** Added `ownerId: string` to `RequestContext` (computed as `auth.orgId ?? auth.userId` in `index.ts`). All downstream functions use `ownerId` — orgId for production keys, userId as dev fallback only.
+
+- [x] `budget-do-client.ts`: all 6 functions renamed `userId` → `ownerId`, `idFromName(ownerId)`
+- [x] `budget-orchestrator.ts`: `checkBudget`/`reconcileBudget`/`reconcileBudgetQueued` use `ctx.ownerId`
+- [x] `budget-do-lookup.ts`: identity type uses `orgId`, SQL `WHERE org_id =` (2 queries)
+- [x] `routes/internal.ts`: `InvalidationBody.ownerId`, `handleVelocityState` query param `ownerId`
+- [x] `webhook-cache.ts`: all 4 functions renamed `userId` → `ownerId`, SQL `WHERE org_id =`, KV cache keyed by ownerId
+- [x] `lib/proxy-invalidate.ts` (dashboard): `ownerId` param, all callers pass `orgId`
+- [x] Route callers: `openai.ts`, `anthropic.ts`, `mcp.ts`, `shared.ts` — budget/webhook calls use `ctx.ownerId`
+- [x] Queue handlers: `reconciliation-queue.ts`, `webhook-queue.ts`, `webhook-dispatch.ts`, queue/dlq handlers — all use `ownerId`
+- [x] Dashboard callers: `budgets/route.ts`, `budgets/[id]/route.ts`, `keys/[id]/route.ts` — pass `orgId` as `ownerId`
+- [x] ~30 proxy test files updated (makeCtx, mock assertions, queue messages, internal route bodies)
+
+**Test results:** 979 root + 1210 proxy = 2189 total, 0 TypeScript errors
+
+### Phase 3d: Org CRUD API — COMPLETE (2026-03-25)
+
+**Authorization layer:** `lib/auth/org-authorization.ts` — `assertOrgMember(userId, orgId)` and `assertOrgRole(userId, orgId, minRole)` with role hierarchy (viewer < member < admin < owner).
+
+**Routes:**
+- [x] `app/api/orgs/route.ts`: GET (list user's orgs with roles via JOIN), POST (create team org + owner membership in tx)
+- [x] `app/api/orgs/[orgId]/route.ts`: GET (member required), PATCH (admin+ required, personal org protected), DELETE (owner only, personal org protected, cascades via FK)
+- [x] `app/api/orgs/[orgId]/members/route.ts`: GET (any member can view)
+- [x] `app/api/orgs/[orgId]/members/[userId]/route.ts`: PATCH role (admin+, can't change self/owner, admin can't change admin), DELETE (admin+, can't remove self/owner, admin can't remove admin)
+- [x] Membership verification via `assertOrgMember`/`assertOrgRole` helpers
+- [x] Role checks enforced at route level
+
+**Permission rules:**
+- Admin cannot modify other admins (prevents horizontal privilege escalation)
+- Owner role cannot be changed/removed (must use explicit ownership transfer)
+- Self-modification prevented on both role change and removal
+- Personal orgs cannot be renamed or deleted
+
+**Tests:** 72 new tests across 5 files:
+- `lib/auth/org-authorization.test.ts` — 30 tests (membership check, role hierarchy matrix, boundary cases)
+- `app/api/orgs/route.test.ts` — 9 tests (list, create, validation)
+- `app/api/orgs/[orgId]/route.test.ts` — 14 tests (get, update, delete, permissions)
+- `app/api/orgs/[orgId]/members/route.test.ts` — 4 tests (list, permissions)
+- `app/api/orgs/[orgId]/members/[userId]/route.test.ts` — 15 tests (role change, removal, all permission edge cases)
+
+**Test results:** 1051 root + 1210 proxy = 2261 total, 0 TypeScript errors
+
+### Phase 3e: Invitation Backend — COMPLETE (2026-03-25)
+
+**Token system:** `lib/auth/invitation.ts` — `generateInviteToken` (ns_inv_ prefix + 24 random bytes), `hashInviteToken` (SHA-256), `extractTokenPrefix`. Follows the API key pattern.
+
+**Routes:**
+- [x] `app/api/orgs/[orgId]/invitations/route.ts`: GET (list pending, admin+), POST (create, admin+)
+  - POST enforces `maxTeamMembers` via `assertCountBelowLimit` (counts members + pending seat-counted invitations)
+  - Viewer invites exempt from seat count
+  - 7-day token expiry
+  - Duplicate pending invitations blocked by partial unique index (→ 409)
+  - Raw token returned only in create response (never stored or returned again)
+- [x] `app/api/orgs/[orgId]/invitations/[id]/route.ts`: DELETE (revoke pending only, admin+)
+- [x] `app/api/invite/accept/route.ts`: POST (accept via token hash lookup)
+  - Validates: pending status, not expired, not already a member
+  - Creates orgMembership + marks invitation accepted in a transaction
   - Sets `ns-active-org` cookie to new org
-  - Returns redirect URL
-- [ ] Email sending (Resend) for invitation emails
-- [ ] Tests: create, accept, expire, revoke, already-member, invalid token, duplicate invite
+  - Returns `{ orgId, role, redirectUrl }` for client redirect
+  - Expired tokens auto-marked as expired on access (lazy expiry)
+- [ ] Email sending (Resend) — deferred to Phase 3g (invitation acceptance page handles the link)
+
+**Validation schemas added to `lib/validations/orgs.ts`:**
+- `invitationRecordSchema` — response shape for invitation records
+- `acceptInviteSchema` — `{ token: string }` input for accept endpoint
+
+**Tests:** 24 new tests across 3 files:
+- `lib/auth/invitation.test.ts` — 9 tests (token generation, hashing, prefix extraction)
+- `app/api/orgs/[orgId]/invitations/route.test.ts` — 8 tests (list, create, validation, duplicate, seat limit, viewer bypass)
+- `app/api/invite/accept/route.test.ts` — 7 tests (accept, invalid token, expired, revoked, already-accepted, already-member, missing token)
+
+**Test results:** 1075 root + 1210 proxy = 2285 total, 0 TypeScript errors
 
 ### Phase 3f: Member Management UI (~1-2 days)
 
@@ -598,11 +649,11 @@ Before proceeding to Phase 4, verify:
 | **Phase 0** | ~1 day | **COMPLETE** (2026-03-24) |
 | **Phase 1** | ~2 hours | **COMPLETE** (2026-03-24) |
 | **Phase 2** | ~3 days | **COMPLETE** (2026-03-24) |
-| 3a: Tier + role updates | ~1 hour | Not started |
-| 3b: Feature gating infrastructure | ~1 day | Not started |
-| 3c: Proxy DO keying for team orgs | ~2-3 hours | Not started |
-| 3d: Org CRUD API | ~1 day | Not started |
-| 3e: Invitation backend | ~1 day | Not started |
+| 3a: Tier + role updates | ~1 hour | **COMPLETE** (2026-03-24) |
+| 3b: Feature gating infrastructure | ~1 day | **COMPLETE** (2026-03-24) |
+| 3c: Proxy DO keying for team orgs | ~2-3 hours | **COMPLETE** (2026-03-25) |
+| 3d: Org CRUD API | ~1 day | **COMPLETE** (2026-03-25) |
+| 3e: Invitation backend | ~1 day | **COMPLETE** (2026-03-25) |
 | 3f: Member management UI | ~1-2 days | Not started |
 | 3g: Invitation acceptance page | ~1 day | Not started |
 | 3h: Create org + multi-org switcher | ~1 day | Not started |
@@ -626,3 +677,9 @@ Before proceeding to Phase 4, verify:
 | 2026-03-24 | Phase 2 arch review: DO keying + feature gating moved to Phase 3. Backfill-first strategy. |
 | 2026-03-24 | Phase 2 completed — 4 increments shipped. 88 files changed, 3 audit passes, all 2139 tests passing. |
 | 2026-03-24 | Phase 3-5 updated from industry research (GitHub, Vercel, Supabase, Clerk, WorkOS, Linear, Stripe, Datadog, PostHog). Key changes: free users can create team orgs (3 members), added `viewer` role (free seats), feature gating is now Phase 3b (not deferred), revised tier matrix, graceful downgrade strategy, audit log moved from Phase 5 to Pro feature. |
+| 2026-03-24 | Phase 3a completed — viewer role, updated tier limits, SEAT_COUNTED_ROLES. |
+| 2026-03-24 | Phase 3b completed — server-side enforcement (feature-gate.ts + route refactoring), client-side components (useOrgTier, TierGate, UpgradeCard), 22 new tests. 974 root + 1210 proxy = 2184 total. |
+| 2026-03-25 | Phase 3c completed — unified DO keying via `ownerId` (orgId ?? userId). Budget enforcement, webhook caching, cache invalidation all org-scoped. ~30 proxy test files updated. 979 root + 1210 proxy = 2189 total. |
+| 2026-03-25 | Phase 3c audit fixes — identity field mismatch (ownerId vs orgId), entity_id value mismatch (userId for "user" budgets), velocity-status query param, auth cache invalidation, proxy auth EXISTS checks (user_id → org_id). |
+| 2026-03-25 | Phase 3d completed — org CRUD API + member management. 6 routes, authorization layer (assertOrgMember/assertOrgRole), 72 new tests. 1051 root + 1210 proxy = 2261 total. |
+| 2026-03-25 | Phase 3e completed — invitation backend. Token system, CRUD routes, accept endpoint, seat limit enforcement with viewer bypass, lazy expiry. 24 new tests. 1075 root + 1210 proxy = 2285 total. |

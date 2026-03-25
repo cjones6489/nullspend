@@ -49,7 +49,7 @@ function makeRequest(options: {
 
 const validBody = {
   action: "remove",
-  userId: "user-1",
+  ownerId: "user-1",
   entityType: "api_key",
   entityId: "key-1",
 };
@@ -118,7 +118,7 @@ describe("handleBudgetInvalidation", () => {
   });
 
   it("400: missing required fields", async () => {
-    for (const missingField of ["action", "userId", "entityType", "entityId"]) {
+    for (const missingField of ["action", "ownerId", "entityType", "entityId"]) {
       const body = { ...validBody, [missingField]: undefined };
       const res = await handleBudgetInvalidation(
         makeRequest({ auth: "Bearer test-secret-value", body }),
@@ -129,7 +129,7 @@ describe("handleBudgetInvalidation", () => {
   });
 
   it("400: whitespace-only fields rejected", async () => {
-    for (const field of ["userId", "entityType", "entityId"]) {
+    for (const field of ["ownerId", "entityType", "entityId"]) {
       const body = { ...validBody, [field]: "   " };
       const res = await handleBudgetInvalidation(
         makeRequest({ auth: "Bearer test-secret-value", body }),
@@ -141,7 +141,7 @@ describe("handleBudgetInvalidation", () => {
 
   it("400: fields exceeding 256 chars rejected", async () => {
     const longStr = "a".repeat(257);
-    for (const field of ["userId", "entityType", "entityId"]) {
+    for (const field of ["ownerId", "entityType", "entityId"]) {
       const body = { ...validBody, [field]: longStr };
       const res = await handleBudgetInvalidation(
         makeRequest({ auth: "Bearer test-secret-value", body }),
@@ -153,7 +153,7 @@ describe("handleBudgetInvalidation", () => {
 
   it("200: fields at exactly 256 chars accepted", async () => {
     const maxStr = "a".repeat(256);
-    const body = { ...validBody, userId: maxStr };
+    const body = { ...validBody, ownerId: maxStr };
     const res = await handleBudgetInvalidation(
       makeRequest({ auth: "Bearer test-secret-value", body }),
       makeEnv(),
@@ -162,7 +162,7 @@ describe("handleBudgetInvalidation", () => {
   });
 
   it("200: leading/trailing whitespace is trimmed", async () => {
-    const body = { ...validBody, userId: "  user-1  ", entityType: " api_key ", entityId: " key-1 " };
+    const body = { ...validBody, ownerId: "  user-1  ", entityType: " api_key ", entityId: " key-1 " };
     const res = await handleBudgetInvalidation(
       makeRequest({ auth: "Bearer test-secret-value", body }),
       makeEnv(),

@@ -39,7 +39,7 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockResolvedValueOnce([makeBudgetRow()]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: {},
+      keyId: null, orgId: "user-1", userId: "user-1", tags: {},
     });
 
     expect(result).toHaveLength(1);
@@ -67,7 +67,7 @@ describe("lookupBudgetsForDO", () => {
     })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: {},
+      keyId: null, orgId: "user-1", userId: "user-1", tags: {},
     });
 
     expect(result[0].velocityLimit).toBe(5_000_000);
@@ -79,7 +79,7 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockResolvedValueOnce([makeBudgetRow()]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: {},
+      keyId: null, orgId: "user-1", userId: "user-1", tags: {},
     });
 
     expect(result[0].velocityLimit).toBeNull();
@@ -92,7 +92,7 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockResolvedValueOnce([makeBudgetRow({ current_period_start: dateStr })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: "key-1", userId: null, tags: {},
+      keyId: "key-1", orgId: null, userId: null, tags: {},
     });
 
     expect(result[0].periodStart).toBe(new Date(dateStr).getTime());
@@ -102,7 +102,7 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockResolvedValueOnce([makeBudgetRow({ current_period_start: null })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: {},
+      keyId: null, orgId: "user-1", userId: "user-1", tags: {},
     });
 
     expect(result[0].periodStart).toBe(0);
@@ -112,7 +112,7 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockResolvedValueOnce([makeBudgetRow({ reset_interval: null })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: {},
+      keyId: null, orgId: "user-1", userId: "user-1", tags: {},
     });
 
     expect(result[0].resetInterval).toBeNull();
@@ -122,7 +122,7 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockResolvedValueOnce([]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: {},
+      keyId: null, orgId: "user-1", userId: "user-1", tags: {},
     });
 
     expect(result).toEqual([]);
@@ -132,13 +132,13 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockRejectedValueOnce(new Error("connection refused"));
 
     await expect(
-      lookupBudgetsForDO("postgres://test", { keyId: null, userId: "user-1", tags: {} }),
+      lookupBudgetsForDO("postgres://test", { keyId: null, orgId: "user-1", userId: "user-1", tags: {} }),
     ).rejects.toThrow("connection refused");
   });
 
   it("skips entities where identity field is null", async () => {
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: null, tags: {},
+      keyId: null, orgId: null, userId: null, tags: {},
     });
 
     expect(result).toEqual([]);
@@ -158,7 +158,7 @@ describe("lookupBudgetsForDO", () => {
     })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: { project: "openclaw" },
+      keyId: null, orgId: "user-1", userId: "user-1", tags: { project: "openclaw" },
     });
 
     expect(result).toHaveLength(2);
@@ -171,18 +171,18 @@ describe("lookupBudgetsForDO", () => {
     mockSql.mockResolvedValueOnce([makeBudgetRow()]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: null, userId: "user-1", tags: {},
+      keyId: null, orgId: "user-1", userId: "user-1", tags: {},
     });
 
     expect(result).toHaveLength(1);
     expect(mockSql).toHaveBeenCalledTimes(1); // only user query
   });
 
-  it("does not query tag budgets when userId is null", async () => {
+  it("does not query tag budgets when orgId is null", async () => {
     mockSql.mockResolvedValueOnce([makeBudgetRow({ entity_type: "api_key", entity_id: "key-1" })]);
 
     const result = await lookupBudgetsForDO("postgres://test", {
-      keyId: "key-1", userId: null, tags: { project: "openclaw" },
+      keyId: "key-1", orgId: null, userId: null, tags: { project: "openclaw" },
     });
 
     expect(result).toHaveLength(1);

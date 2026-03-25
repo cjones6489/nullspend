@@ -11,8 +11,7 @@ import {
   webhookRecordSchema,
 } from "@/lib/validations/webhooks";
 import { invalidateWebhookCacheForUser } from "@/lib/webhooks/invalidate-cache";
-import { TIERS, getTierForUser } from "@/lib/stripe/tiers";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { resolveUserTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
 
 export async function GET() {
   try {
@@ -62,16 +61,8 @@ export async function POST(request: Request) {
       .from(webhookEndpoints)
       .where(eq(webhookEndpoints.orgId, orgId));
 
-    const subscription = await getSubscriptionByUserId(userId);
-    const tier = getTierForUser(subscription);
-    const maxEndpoints = TIERS[tier].maxWebhookEndpoints;
-
-    if (endpointCount >= maxEndpoints) {
-      return NextResponse.json(
-        { error: { code: "limit_exceeded", message: `Maximum of ${maxEndpoints} webhook endpoints allowed on the ${TIERS[tier].label} plan.`, details: null } },
-        { status: 409 },
-      );
-    }
+    const tierInfo = await resolveUserTier(userId);
+    assertCountBelowLimit(tierInfo, "maxWebhookEndpoints", endpointCount, "webhook endpoints");
 
     const signingSecret = `whsec_${randomBytes(32).toString("hex")}`;
 

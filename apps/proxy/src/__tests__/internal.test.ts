@@ -20,7 +20,7 @@ vi.mock("../lib/budget-do-lookup.js", () => ({
 }));
 
 vi.mock("../lib/api-key-auth.js", () => ({
-  invalidateAuthCacheForUser: (...args: unknown[]) => mockInvalidateAuthCacheForUser(...args),
+  invalidateAuthCacheForOwner: (...args: unknown[]) => mockInvalidateAuthCacheForUser(...args),
 }));
 
 vi.mock("../lib/metrics.js", () => ({
@@ -85,7 +85,7 @@ describe("handleBudgetInvalidation — auth", () => {
     const req = new Request("http://localhost/internal/budget/invalidate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "remove", userId: "u1", entityType: "user", entityId: "u1" }),
+      body: JSON.stringify({ action: "remove", ownerId: "u1", entityType: "user", entityId: "u1" }),
     });
 
     const res = await handleBudgetInvalidation(req, makeEnv());
@@ -94,7 +94,7 @@ describe("handleBudgetInvalidation — auth", () => {
 
   it("returns 401 when token is wrong", async () => {
     const req = makeRequest(
-      { action: "remove", userId: "u1", entityType: "user", entityId: "u1" },
+      { action: "remove", ownerId: "u1", entityType: "user", entityId: "u1" },
       "wrong-secret",
     );
 
@@ -103,7 +103,7 @@ describe("handleBudgetInvalidation — auth", () => {
   });
 
   it("returns 500 when INTERNAL_SECRET is not configured", async () => {
-    const req = makeRequest({ action: "remove", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "remove", ownerId: "u1", entityType: "user", entityId: "u1" });
     const env = makeEnv({ INTERNAL_SECRET: undefined } as any);
 
     const res = await handleBudgetInvalidation(req, env);
@@ -131,25 +131,25 @@ describe("handleBudgetInvalidation — body validation", () => {
   });
 
   it("returns 400 for missing action", async () => {
-    const req = makeRequest({ userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ ownerId: "u1", entityType: "user", entityId: "u1" });
     const res = await handleBudgetInvalidation(req, makeEnv());
     expect(res.status).toBe(400);
   });
 
   it("returns 400 for invalid action", async () => {
-    const req = makeRequest({ action: "nuke", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "nuke", ownerId: "u1", entityType: "user", entityId: "u1" });
     const res = await handleBudgetInvalidation(req, makeEnv());
     expect(res.status).toBe(400);
   });
 
-  it("returns 400 for missing userId", async () => {
+  it("returns 400 for missing ownerId", async () => {
     const req = makeRequest({ action: "remove", entityType: "user", entityId: "u1" });
     const res = await handleBudgetInvalidation(req, makeEnv());
     expect(res.status).toBe(400);
   });
 
   it("returns 400 for empty entityType", async () => {
-    const req = makeRequest({ action: "remove", userId: "u1", entityType: "", entityId: "u1" });
+    const req = makeRequest({ action: "remove", ownerId: "u1", entityType: "", entityId: "u1" });
     const res = await handleBudgetInvalidation(req, makeEnv());
     expect(res.status).toBe(400);
   });
@@ -161,7 +161,7 @@ describe("handleBudgetInvalidation — body validation", () => {
 
 describe("handleBudgetInvalidation — remove", () => {
   it("calls doBudgetRemove with correct args", async () => {
-    const req = makeRequest({ action: "remove", userId: "u1", entityType: "api_key", entityId: "k1" });
+    const req = makeRequest({ action: "remove", ownerId: "u1", entityType: "api_key", entityId: "k1" });
     const env = makeEnv();
 
     const res = await handleBudgetInvalidation(req, env);
@@ -172,7 +172,7 @@ describe("handleBudgetInvalidation — remove", () => {
   });
 
   it("emits budget_invalidation metric with action=remove", async () => {
-    const req = makeRequest({ action: "remove", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "remove", ownerId: "u1", entityType: "user", entityId: "u1" });
     await handleBudgetInvalidation(req, makeEnv());
 
     expect(mockEmitMetric).toHaveBeenCalledWith("budget_invalidation", expect.objectContaining({
@@ -188,7 +188,7 @@ describe("handleBudgetInvalidation — remove", () => {
 
 describe("handleBudgetInvalidation — reset_spend", () => {
   it("calls doBudgetResetSpend with correct args", async () => {
-    const req = makeRequest({ action: "reset_spend", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "reset_spend", ownerId: "u1", entityType: "user", entityId: "u1" });
     const env = makeEnv();
 
     const res = await handleBudgetInvalidation(req, env);
@@ -218,13 +218,13 @@ describe("handleBudgetInvalidation — sync", () => {
     }];
     mockLookupBudgetsForDO.mockResolvedValue(entities);
 
-    const req = makeRequest({ action: "sync", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "sync", ownerId: "u1", entityType: "user", entityId: "u1" });
     const env = makeEnv();
 
     const res = await handleBudgetInvalidation(req, env);
     expect(res.status).toBe(200);
 
-    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", { keyId: null, userId: "u1", tags: {} });
+    expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", { keyId: null, orgId: "u1", userId: "u1", tags: {} });
     expect(mockDoBudgetUpsertEntities).toHaveBeenCalledWith(env, "u1", entities);
     expect(mockEmitMetric).not.toHaveBeenCalledWith("budget_sync_empty", expect.anything());
   });
@@ -244,7 +244,7 @@ describe("handleBudgetInvalidation — sync", () => {
     }];
     mockLookupBudgetsForDO.mockResolvedValue(entities);
 
-    const req = makeRequest({ action: "sync", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "sync", ownerId: "u1", entityType: "user", entityId: "u1" });
     await handleBudgetInvalidation(req, makeEnv());
 
     const upsertedEntities = mockDoBudgetUpsertEntities.mock.calls[0][2];
@@ -257,19 +257,19 @@ describe("handleBudgetInvalidation — sync", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockLookupBudgetsForDO.mockResolvedValue([]);
 
-    const req = makeRequest({ action: "sync", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "sync", ownerId: "u1", entityType: "user", entityId: "u1" });
     const res = await handleBudgetInvalidation(req, makeEnv());
 
     expect(res.status).toBe(200);
     expect(mockDoBudgetUpsertEntities).toHaveBeenCalledWith(expect.anything(), "u1", []);
     expect(mockEmitMetric).toHaveBeenCalledWith("budget_sync_empty", {
-      userId: "u1",
+      ownerId: "u1",
       entityType: "user",
       entityId: "u1",
     });
     expect(warnSpy).toHaveBeenCalledWith(
       "[internal] sync returned 0 entities from Postgres",
-      { userId: "u1", entityType: "user", entityId: "u1" },
+      { ownerId: "u1", entityType: "user", entityId: "u1" },
     );
 
     warnSpy.mockRestore();
@@ -278,7 +278,7 @@ describe("handleBudgetInvalidation — sync", () => {
   it("invalidates auth cache after sync", async () => {
     mockLookupBudgetsForDO.mockResolvedValue([]);
 
-    const req = makeRequest({ action: "sync", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "sync", ownerId: "u1", entityType: "user", entityId: "u1" });
     await handleBudgetInvalidation(req, makeEnv());
 
     expect(mockInvalidateAuthCacheForUser).toHaveBeenCalledWith("u1");
@@ -293,7 +293,7 @@ describe("handleBudgetInvalidation — error handling", () => {
   it("returns 500 and emits error metric when DO operation fails", async () => {
     mockDoBudgetRemove.mockRejectedValue(new Error("DO unavailable"));
 
-    const req = makeRequest({ action: "remove", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "remove", ownerId: "u1", entityType: "user", entityId: "u1" });
     const res = await handleBudgetInvalidation(req, makeEnv());
 
     expect(res.status).toBe(500);
@@ -306,7 +306,7 @@ describe("handleBudgetInvalidation — error handling", () => {
   it("returns 500 when Postgres lookup fails during sync", async () => {
     mockLookupBudgetsForDO.mockRejectedValue(new Error("PG connection refused"));
 
-    const req = makeRequest({ action: "sync", userId: "u1", entityType: "user", entityId: "u1" });
+    const req = makeRequest({ action: "sync", ownerId: "u1", entityType: "user", entityId: "u1" });
     const res = await handleBudgetInvalidation(req, makeEnv());
 
     expect(res.status).toBe(500);
@@ -339,7 +339,7 @@ describe("handleBudgetInvalidation — tag sync", () => {
 
     const req = makeRequest({
       action: "sync",
-      userId: "u1",
+      ownerId: "u1",
       entityType: "tag",
       entityId: "project=openclaw",
     });
@@ -349,18 +349,19 @@ describe("handleBudgetInvalidation — tag sync", () => {
     expect(res.status).toBe(200);
     expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", {
       keyId: null,
-      userId: "u1",
+      orgId: "u1",
+      userId: null,
       tags: { project: "openclaw" },
     });
     expect(mockDoBudgetUpsertEntities).toHaveBeenCalledWith(env, "u1", [tagEntity]);
   });
 
-  it("sync with entityType=api_key unchanged (backward compat)", async () => {
+  it("sync with entityType=api_key passes keyId and orgId", async () => {
     mockLookupBudgetsForDO.mockResolvedValue([]);
 
     const req = makeRequest({
       action: "sync",
-      userId: "u1",
+      ownerId: "u1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -368,7 +369,8 @@ describe("handleBudgetInvalidation — tag sync", () => {
 
     expect(mockLookupBudgetsForDO).toHaveBeenCalledWith("postgres://test", {
       keyId: "key-1",
-      userId: "u1",
+      orgId: "u1",
+      userId: null,
       tags: {},
     });
   });

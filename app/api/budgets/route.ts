@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { ForbiddenError } from "@/lib/auth/errors";
-import { LimitExceededError } from "@/lib/utils/http";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, budgets } from "@nullspend/db";
 import { withRequestContext } from "@/lib/observability";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
-import { getTierForUser, TIERS } from "@/lib/stripe/tiers";
+import { resolveUserTier, assertCountBelowLimit, assertAmountBelowCap } from "@/lib/stripe/feature-gate";
 import { readJsonBody } from "@/lib/utils/http";
 import {
   budgetResponseSchema,
@@ -46,23 +44,8 @@ export const POST = withRequestContext(async (request: Request) => {
 
   await verifyEntityOwnership(userId, input.entityType, input.entityId);
 
-  // Tier-based spend cap enforcement
-  const subscription = await getSubscriptionByUserId(userId);
-  const tier = getTierForUser(subscription);
-  const spendCap = TIERS[tier].spendCapMicrodollars;
-
-  if (input.maxBudgetMicrodollars > spendCap) {
-    return NextResponse.json(
-      {
-        error: {
-          code: "spend_cap_exceeded",
-          message: `Budget amount exceeds your ${TIERS[tier].label} tier spend cap of ${(spendCap / 1_000_000).toLocaleString()} microdollars ($${(spendCap / 1_000_000_000).toLocaleString()}). Upgrade your plan to increase your limit.`,
-          details: null,
-        },
-      },
-      { status: 400 },
-    );
-  }
+  const tierInfo = await resolveUserTier(userId);
+  assertAmountBelowCap(tierInfo, "spendCapMicrodollars", input.maxBudgetMicrodollars);
 
   const db = getDb();
 
@@ -81,42 +64,12 @@ export const POST = withRequestContext(async (request: Request) => {
       );
 
     if (existingForEntity.length === 0) {
-      const maxBudgets = TIERS[tier].maxBudgets;
+      const [{ count }] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(budgets)
+        .where(eq(budgets.orgId, orgId));
 
-      if (maxBudgets !== Infinity) {
-        const userKeys = await tx
-          .select({ id: apiKeys.id })
-          .from(apiKeys)
-          .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)));
-        const keyIds = userKeys.map((k) => k.id);
-
-        const allBudgets = await tx
-          .select({ id: budgets.id })
-          .from(budgets)
-          .where(
-            keyIds.length > 0
-              ? or(
-                  and(
-                    eq(budgets.entityType, "user"),
-                    eq(budgets.entityId, userId),
-                  ),
-                  and(
-                    eq(budgets.entityType, "api_key"),
-                    inArray(budgets.entityId, keyIds),
-                  ),
-                )
-              : and(
-                  eq(budgets.entityType, "user"),
-                  eq(budgets.entityId, userId),
-                ),
-          );
-
-        if (allBudgets.length >= maxBudgets) {
-          throw new LimitExceededError(
-            `${TIERS[tier].label} plan is limited to ${maxBudgets} budget${maxBudgets === 1 ? "" : "s"}. Upgrade for unlimited budgets.`,
-          );
-        }
-      }
+      assertCountBelowLimit(tierInfo, "maxBudgets", count, "budgets");
     }
 
     return tx
@@ -157,7 +110,7 @@ export const POST = withRequestContext(async (request: Request) => {
 
   invalidateProxyCache({
     action: "sync",
-    userId,
+    ownerId: orgId,
     entityType: input.entityType,
     entityId: input.entityId,
   }).catch((err) => console.error("[budgets] Proxy cache sync failed:", err));

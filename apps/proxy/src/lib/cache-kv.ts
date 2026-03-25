@@ -13,24 +13,24 @@ const WEBHOOK_TTL = 300; // 5 minutes
 
 export async function getCachedWebhookEndpoints(
   kv: KVNamespace,
-  userId: string,
+  ownerId: string,
 ): Promise<CachedWebhookEndpoint[] | null> {
-  return kv.get<CachedWebhookEndpoint[]>(`webhook:${userId}`, "json");
+  return kv.get<CachedWebhookEndpoint[]>(`webhook:${ownerId}`, "json");
 }
 
 export async function setCachedWebhookEndpoints(
   kv: KVNamespace,
-  userId: string,
+  ownerId: string,
   endpoints: CachedWebhookEndpoint[],
 ): Promise<void> {
-  await kv.put(`webhook:${userId}`, JSON.stringify(endpoints), {
+  await kv.put(`webhook:${ownerId}`, JSON.stringify(endpoints), {
     expirationTtl: WEBHOOK_TTL,
   });
 }
 
 export async function invalidateWebhookEndpoints(
   kv: KVNamespace,
-  userId: string,
+  ownerId: string,
 ): Promise<void> {
-  await kv.delete(`webhook:${userId}`);
+  await kv.delete(`webhook:${ownerId}`);
 }

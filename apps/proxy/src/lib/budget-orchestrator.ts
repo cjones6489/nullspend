@@ -49,10 +49,10 @@ export async function checkBudget(
   estimateMicrodollars: number,
 ): Promise<BudgetCheckOutcome> {
   if (!ctx.auth.hasBudgets) {
-    emitMetric("budget_check_skipped", { userId: ctx.auth.userId });
+    emitMetric("budget_check_skipped", { ownerId: ctx.ownerId });
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
-  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.auth.userId, estimateMicrodollars, ctx.sessionId, ctx.tags);
+  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.ownerId, estimateMicrodollars, ctx.sessionId, ctx.tags);
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ export async function checkBudget(
 
 export async function reconcileBudget(
   env: Env,
-  userId: string | null,
+  ownerId: string | null,
   reservationId: string | null,
   actualCost: number,
   budgetEntities: BudgetEntity[],
@@ -69,12 +69,12 @@ export async function reconcileBudget(
   options?: { throwOnError?: boolean },
 ): Promise<void> {
   try {
-    if (reservationId && userId) {
+    if (reservationId && ownerId) {
       const entities = budgetEntities.map((e) => ({
         entityType: e.entityType,
         entityId: e.entityId,
       }));
-      const status = await doBudgetReconcile(env, userId, reservationId, actualCost, entities, connectionString);
+      const status = await doBudgetReconcile(env, ownerId, reservationId, actualCost, entities, connectionString);
       if (options?.throwOnError && status !== "ok") {
         throw new Error(`Reconciliation failed with status: ${status}`);
       }
@@ -103,7 +103,7 @@ export function getReconcileQueue(env: Env): Queue | undefined {
 export async function reconcileBudgetQueued(
   queue: Queue | undefined,
   env: Env,
-  userId: string | null,
+  ownerId: string | null,
   reservationId: string | null,
   actualCost: number,
   budgetEntities: BudgetEntity[],
@@ -120,7 +120,7 @@ export async function reconcileBudgetQueued(
           entityType: e.entityType,
           entityId: e.entityId,
         })),
-        userId,
+        ownerId,
         enqueuedAt: Date.now(),
       });
       return;
@@ -129,7 +129,7 @@ export async function reconcileBudgetQueued(
     }
   }
   // Fallback: direct reconciliation (current behavior)
-  await reconcileBudget(env, userId, reservationId, actualCost, budgetEntities, connectionString);
+  await reconcileBudget(env, ownerId, reservationId, actualCost, budgetEntities, connectionString);
 }
 
 // ---------------------------------------------------------------------------
@@ -140,12 +140,12 @@ async function checkBudgetDO(
   env: Env,
   connectionString: string,
   keyId: string | null,
-  userId: string | null,
+  ownerId: string | null,
   estimateMicrodollars: number,
   sessionId: string | null = null,
   tags: Record<string, string>,
 ): Promise<BudgetCheckOutcome> {
-  if (!userId) {
+  if (!ownerId) {
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
 
@@ -153,11 +153,11 @@ async function checkBudgetDO(
   const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
 
   // Single DO RPC — no Postgres lookup, no cache
-  const checkResult = await doBudgetCheck(env, userId, keyId, estimateMicrodollars, sessionId, tagEntityIds);
+  const checkResult = await doBudgetCheck(env, ownerId, keyId, estimateMicrodollars, sessionId, tagEntityIds);
 
   if (!checkResult.hasBudgets) {
     // Auth cache said hasBudgets=true (we got here), but DO says false — stale cache
-    emitMetric("budget_cache_stale", { userId });
+    emitMetric("budget_cache_stale", { ownerId });
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
 

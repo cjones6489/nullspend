@@ -1,4 +1,4 @@
-import { invalidateAuthCacheForUser } from "../lib/api-key-auth.js";
+import { invalidateAuthCacheForOwner } from "../lib/api-key-auth.js";
 import { doBudgetRemove, doBudgetResetSpend, doBudgetUpsertEntities, doBudgetGetVelocityState } from "../lib/budget-do-client.js";
 import { lookupBudgetsForDO } from "../lib/budget-do-lookup.js";
 import { errorResponse } from "../lib/errors.js";
@@ -7,7 +7,7 @@ import { timingSafeStringEqual } from "../lib/timing-safe-equal.js";
 
 interface InvalidationBody {
   action: "remove" | "reset_spend" | "sync";
-  userId: string;
+  ownerId: string;
   entityType: string;
   entityId: string;
   sentAt?: number;
@@ -24,13 +24,13 @@ function parseBody(raw: unknown): InvalidationBody | null {
   const obj = raw as Record<string, unknown>;
 
   if (obj.action !== "remove" && obj.action !== "reset_spend" && obj.action !== "sync") return null;
-  if (!isNonEmptyString(obj.userId)) return null;
+  if (!isNonEmptyString(obj.ownerId)) return null;
   if (!isNonEmptyString(obj.entityType)) return null;
   if (!isNonEmptyString(obj.entityId)) return null;
 
   return {
     action: obj.action,
-    userId: obj.userId.trim(),
+    ownerId: obj.ownerId.trim(),
     entityType: obj.entityType.trim(),
     entityId: obj.entityId.trim(),
     ...(typeof obj.sentAt === "number" && { sentAt: obj.sentAt }),
@@ -68,33 +68,32 @@ export async function handleBudgetInvalidation(
 
   const body = parseBody(raw);
   if (!body) {
-    return errorResponse("bad_request", "Missing or invalid fields: action (remove|reset_spend), userId, entityType, entityId", 400);
+    return errorResponse("bad_request", "Missing or invalid fields: action (remove|reset_spend), ownerId, entityType, entityId", 400);
   }
 
   // Execute
   try {
     if (body.action === "remove") {
-      await doBudgetRemove(env, body.userId, body.entityType, body.entityId);
+      await doBudgetRemove(env, body.ownerId, body.entityType, body.entityId);
     } else if (body.action === "reset_spend") {
-      await doBudgetResetSpend(env, body.userId, body.entityType, body.entityId);
+      await doBudgetResetSpend(env, body.ownerId, body.entityType, body.entityId);
     } else {
       // action === "sync": look up specific entity from Postgres and upsert into DO
       // Uses populateIfEmpty (single-entity upsert) — does NOT purge sibling budgets
       const connectionString = env.HYPERDRIVE.connectionString;
-      let identity: { keyId: string | null; userId: string | null; tags: Record<string, string> };
+      let identity: { keyId: string | null; orgId: string | null; userId: string | null; tags: Record<string, string> };
       if (body.entityType === "tag") {
-        // Tag entities: reconstruct tags from entity_id (e.g., "project=openclaw")
         const eqIdx = body.entityId.indexOf("=");
         const tagObj = eqIdx > 0
           ? { [body.entityId.slice(0, eqIdx)]: body.entityId.slice(eqIdx + 1) }
           : { [body.entityId]: "" };
-        identity = { keyId: null, userId: body.userId, tags: tagObj };
+        identity = { keyId: null, orgId: body.ownerId, userId: null, tags: tagObj };
       } else if (body.entityType === "user") {
-        // User entities: no keyId needed, userId is both the lookup key and the owner
-        identity = { keyId: null, userId: body.userId, tags: {} };
+        // entityId is the userId for "user" entity budgets
+        identity = { keyId: null, orgId: body.ownerId, userId: body.entityId, tags: {} };
       } else {
-        // api_key / agent / team entities: entityId is the key ID
-        identity = { keyId: body.entityId, userId: body.userId, tags: {} };
+        // api_key entities: entityId is the key ID
+        identity = { keyId: body.entityId, orgId: body.ownerId, userId: null, tags: {} };
       }
       const entities = await lookupBudgetsForDO(connectionString, identity);
       // Empty on sync is unexpected (removes use action: "remove") — may indicate
@@ -102,18 +101,18 @@ export async function handleBudgetInvalidation(
       if (entities.length === 0) {
         console.warn(
           `[internal] sync returned 0 entities from Postgres`,
-          { userId: body.userId, entityType: body.entityType, entityId: body.entityId },
+          { ownerId: body.ownerId, entityType: body.entityType, entityId: body.entityId },
         );
         emitMetric("budget_sync_empty", {
-          userId: body.userId,
+          ownerId: body.ownerId,
           entityType: body.entityType,
           entityId: body.entityId,
         });
       }
-      await doBudgetUpsertEntities(env, body.userId, entities);
+      await doBudgetUpsertEntities(env, body.ownerId, entities);
     }
 
-    invalidateAuthCacheForUser(body.userId);
+    invalidateAuthCacheForOwner(body.ownerId);
 
     if (body.sentAt) {
       emitMetric("budget_sync_latency_ms", { ms: Math.max(0, Date.now() - body.sentAt), action: body.action });
@@ -121,7 +120,7 @@ export async function handleBudgetInvalidation(
 
     emitMetric("budget_invalidation", {
       action: body.action,
-      userId: body.userId,
+      ownerId: body.ownerId,
       entityType: body.entityType,
       entityId: body.entityId,
       status: "ok",
@@ -133,7 +132,7 @@ export async function handleBudgetInvalidation(
 
     emitMetric("budget_invalidation", {
       action: body.action,
-      userId: body.userId,
+      ownerId: body.ownerId,
       entityType: body.entityType,
       entityId: body.entityId,
       status: "error",
@@ -164,18 +163,18 @@ export async function handleVelocityState(
     return errorResponse("unauthorized", "Invalid token", 401);
   }
 
-  // Read userId from query param
+  // Read ownerId from query param
   const url = new URL(request.url);
-  const userId = url.searchParams.get("userId");
-  if (!userId || userId.length === 0 || userId.length > MAX_FIELD_LENGTH) {
-    return errorResponse("bad_request", "Missing or invalid userId query parameter", 400);
+  const ownerId = url.searchParams.get("ownerId");
+  if (!ownerId || ownerId.length === 0 || ownerId.length > MAX_FIELD_LENGTH) {
+    return errorResponse("bad_request", "Missing or invalid ownerId query parameter", 400);
   }
 
   try {
-    const velocityState = await doBudgetGetVelocityState(env, userId);
+    const velocityState = await doBudgetGetVelocityState(env, ownerId);
 
     emitMetric("velocity_state_lookup", {
-      userId,
+      ownerId,
       count: velocityState.length,
       status: "ok",
     });
@@ -185,7 +184,7 @@ export async function handleVelocityState(
     console.error("[internal] Velocity state lookup failed:", err);
 
     emitMetric("velocity_state_lookup", {
-      userId,
+      ownerId,
       status: "error",
     });
 

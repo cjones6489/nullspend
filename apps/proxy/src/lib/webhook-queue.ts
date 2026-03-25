@@ -7,7 +7,7 @@ import { emitMetric } from "./metrics.js";
  * and to handle endpoint changes between enqueue and delivery.
  */
 export interface WebhookQueueMessage {
-  userId: string;
+  ownerId: string;
   endpointId: string;
   event: AnyWebhookEvent;
 }

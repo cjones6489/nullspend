@@ -221,7 +221,7 @@ export default {
 
       // Build context
       const webhookDispatcher = auth.hasWebhooks
-        ? createWebhookDispatcher((env as Record<string, unknown>).WEBHOOK_QUEUE as Queue | undefined, auth.userId)
+        ? createWebhookDispatcher((env as Record<string, unknown>).WEBHOOK_QUEUE as Queue | undefined, auth.orgId ?? auth.userId)
         : null;
 
       if (auth.hasWebhooks && !webhookDispatcher) {
@@ -240,6 +240,7 @@ export default {
         bodyText: result.bodyText,
         bodyByteLength: result.bodyByteLength,
         auth,
+        ownerId: auth.orgId ?? auth.userId,
         connectionString,
         skipDbWrites,
         sessionId: truncateSessionId(request.headers.get("x-nullspend-session")),

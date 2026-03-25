@@ -16,7 +16,7 @@ import { withRequestContext } from "@/lib/observability";
  * - Returns { velocityState: [] } in local dev (no PROXY_INTERNAL_URL)
  */
 export const GET = withRequestContext(async (_request: Request) => {
-  const { userId } = await resolveSessionContext();
+  const { orgId } = await resolveSessionContext();
 
   const url = process.env.PROXY_INTERNAL_URL;
   const secret = process.env.PROXY_INTERNAL_SECRET;
@@ -27,7 +27,7 @@ export const GET = withRequestContext(async (_request: Request) => {
 
   try {
     const res = await fetch(
-      `${url}/internal/budget/velocity-state?userId=${encodeURIComponent(userId)}`,
+      `${url}/internal/budget/velocity-state?ownerId=${encodeURIComponent(orgId)}`,
       {
         method: "GET",
         headers: {

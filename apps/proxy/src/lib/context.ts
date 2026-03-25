@@ -7,6 +7,7 @@ export interface RequestContext {
   bodyText: string;                // original request body text (avoids re-serialize for upstream fetch)
   bodyByteLength: number;          // original request body size (avoids re-stringify for estimation)
   auth: AuthResult;
+  ownerId: string;                 // orgId ?? userId — DO keying and webhook/budget scoping
   connectionString: string;
   skipDbWrites: boolean;     // true in local dev without Hyperdrive (env: SKIP_DB_PERSIST)
   sessionId: string | null;     // from x-nullspend-session

@@ -3,7 +3,7 @@
  *
  * Tests GET /internal/budget/velocity-state:
  * 1. Auth: 401 without token, 401 with bad token
- * 2. Validation: 400 without userId
+ * 2. Validation: 400 without ownerId
  * 3. Happy path: returns velocity state data
  * 4. Empty state: returns empty array
  */
@@ -26,7 +26,7 @@ vi.mock("../lib/budget-do-lookup.js", () => ({
 }));
 
 vi.mock("../lib/api-key-auth.js", () => ({
-  invalidateAuthCacheForUser: vi.fn(),
+  invalidateAuthCacheForOwner: vi.fn(),
 }));
 
 vi.mock("../lib/metrics.js", () => ({
@@ -69,9 +69,9 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
   } as unknown as Env;
 }
 
-function makeRequest(userId?: string, token: string = INTERNAL_SECRET): Request {
-  const url = userId
-    ? `http://localhost/internal/budget/velocity-state?userId=${userId}`
+function makeRequest(ownerId?: string, token: string = INTERNAL_SECRET): Request {
+  const url = ownerId
+    ? `http://localhost/internal/budget/velocity-state?ownerId=${ownerId}`
     : "http://localhost/internal/budget/velocity-state";
   return new Request(url, {
     method: "GET",
@@ -93,7 +93,7 @@ beforeEach(() => {
 
 describe("GET /internal/budget/velocity-state — auth", () => {
   it("returns 401 without Authorization header", async () => {
-    const req = new Request("http://localhost/internal/budget/velocity-state?userId=user-1", {
+    const req = new Request("http://localhost/internal/budget/velocity-state?ownerId=user-1", {
       method: "GET",
     });
     const res = await handleVelocityState(req, makeEnv());
@@ -119,7 +119,7 @@ describe("GET /internal/budget/velocity-state — auth", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /internal/budget/velocity-state — validation", () => {
-  it("returns 400 without userId query param", async () => {
+  it("returns 400 without ownerId query param", async () => {
     const res = await handleVelocityState(makeRequest(), makeEnv());
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -174,7 +174,7 @@ describe("GET /internal/budget/velocity-state — happy path", () => {
     expect(body.velocityState[1].tripped_at).not.toBeNull();
   });
 
-  it("passes correct userId to doBudgetGetVelocityState", async () => {
+  it("passes correct ownerId to doBudgetGetVelocityState", async () => {
     mockDoBudgetGetVelocityState.mockResolvedValue([]);
 
     await handleVelocityState(makeRequest("specific-user-id"), makeEnv());
@@ -194,7 +194,7 @@ describe("GET /internal/budget/velocity-state — happy path", () => {
     expect(body.error.code).toBe("internal_error");
 
     expect(mockEmitMetric).toHaveBeenCalledWith("velocity_state_lookup", {
-      userId: "user-1",
+      ownerId: "user-1",
       status: "error",
     });
   });
@@ -208,7 +208,7 @@ describe("GET /internal/budget/velocity-state — happy path", () => {
     expect(res.status).toBe(200);
 
     expect(mockEmitMetric).toHaveBeenCalledWith("velocity_state_lookup", {
-      userId: "user-1",
+      ownerId: "user-1",
       count: 1,
       status: "ok",
     });

@@ -12,7 +12,7 @@ describe("enqueueReconciliation", () => {
       budgetEntities: [
         { entityKey: "{budget}:api_key:key-1", entityType: "api_key", entityId: "key-1" },
       ],
-      userId: "user-abc",
+      ownerId: "user-abc",
       enqueuedAt: 1710000000000,
     };
 
@@ -30,7 +30,7 @@ describe("enqueueReconciliation", () => {
       reservationId: "res-456",
       actualCostMicrodollars: 10_000,
       budgetEntities: [],
-      userId: null,
+      ownerId: null,
       enqueuedAt: Date.now(),
     };
 
@@ -48,7 +48,7 @@ describe("enqueueReconciliation", () => {
         { entityKey: "{budget}:user:u1", entityType: "user", entityId: "u1" },
         { entityKey: "{budget}:api_key:k1", entityType: "api_key", entityId: "k1" },
       ],
-      userId: "user-xyz",
+      ownerId: "user-xyz",
       enqueuedAt: 1710000000000,
     };
 
@@ -59,7 +59,7 @@ describe("enqueueReconciliation", () => {
     expect(sent.reservationId).toBe("res-789");
     expect(sent.actualCostMicrodollars).toBe(100_000);
     expect(sent.budgetEntities).toHaveLength(2);
-    expect(sent.userId).toBe("user-xyz");
+    expect(sent.ownerId).toBe("user-xyz");
     expect(sent.enqueuedAt).toBe(1710000000000);
   });
 });

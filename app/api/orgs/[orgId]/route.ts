@@ -1,0 +1,151 @@
+import { NextResponse } from "next/server";
+import { eq, sql } from "drizzle-orm";
+
+import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgMember, assertOrgRole } from "@/lib/auth/org-authorization";
+import { getDb } from "@/lib/db/client";
+import { organizations } from "@nullspend/db";
+import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
+import { orgIdParamsSchema, updateOrgSchema, orgRecordSchema } from "@/lib/validations/orgs";
+import { ForbiddenError } from "@/lib/auth/errors";
+
+type RouteContext = { params: Promise<{ orgId: string }> };
+
+/**
+ * GET /api/orgs/[orgId] — get org details. Requires membership.
+ */
+export async function GET(request: Request, context: RouteContext) {
+  try {
+    const { userId } = await resolveSessionContext();
+    const params = await readRouteParams(context.params);
+    const { orgId } = orgIdParamsSchema.parse(params);
+
+    await assertOrgMember(userId, orgId);
+
+    const db = getDb();
+    const [org] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+
+    if (!org) {
+      return NextResponse.json(
+        { error: { code: "not_found", message: "Organization not found.", details: null } },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({
+      data: orgRecordSchema.parse({
+        id: org.id,
+        name: org.name,
+        slug: org.slug,
+        isPersonal: org.isPersonal,
+        createdAt: org.createdAt.toISOString(),
+        updatedAt: org.updatedAt.toISOString(),
+      }),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}
+
+/**
+ * PATCH /api/orgs/[orgId] — update org name/slug. Requires admin+.
+ * Personal orgs cannot be renamed.
+ */
+export async function PATCH(request: Request, context: RouteContext) {
+  try {
+    const { userId } = await resolveSessionContext();
+    const params = await readRouteParams(context.params);
+    const { orgId } = orgIdParamsSchema.parse(params);
+
+    await assertOrgRole(userId, orgId, "admin");
+
+    const body = await readJsonBody(request);
+    const input = updateOrgSchema.parse(body);
+
+    if (Object.keys(input).length === 0) {
+      return NextResponse.json(
+        { error: { code: "validation_error", message: "No fields to update.", details: null } },
+        { status: 400 },
+      );
+    }
+
+    const db = getDb();
+
+    // Prevent renaming personal orgs
+    const [existing] = await db
+      .select({ isPersonal: organizations.isPersonal })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+
+    if (existing?.isPersonal) {
+      throw new ForbiddenError("Personal organizations cannot be renamed.");
+    }
+
+    let updated;
+    try {
+      [updated] = await db
+        .update(organizations)
+        .set({ ...input, updatedAt: sql`NOW()` })
+        .where(eq(organizations.id, orgId))
+        .returning();
+    } catch (err) {
+      if (err instanceof Error && "code" in err && (err as { code: string }).code === "23505") {
+        return NextResponse.json(
+          { error: { code: "conflict", message: "An organization with this slug already exists.", details: null } },
+          { status: 409 },
+        );
+      }
+      throw err;
+    }
+
+    return NextResponse.json({
+      data: orgRecordSchema.parse({
+        id: updated.id,
+        name: updated.name,
+        slug: updated.slug,
+        isPersonal: updated.isPersonal,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      }),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}
+
+/**
+ * DELETE /api/orgs/[orgId] — delete org. Owner only.
+ * Personal orgs cannot be deleted. Cascades via FK (memberships, invitations).
+ */
+export async function DELETE(request: Request, context: RouteContext) {
+  try {
+    const { userId } = await resolveSessionContext();
+    const params = await readRouteParams(context.params);
+    const { orgId } = orgIdParamsSchema.parse(params);
+
+    await assertOrgRole(userId, orgId, "owner");
+
+    const db = getDb();
+
+    const [existing] = await db
+      .select({ isPersonal: organizations.isPersonal })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+
+    if (existing?.isPersonal) {
+      throw new ForbiddenError("Personal organizations cannot be deleted.");
+    }
+
+    await db.delete(organizations).where(eq(organizations.id, orgId));
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}

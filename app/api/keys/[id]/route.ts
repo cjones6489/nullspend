@@ -100,7 +100,7 @@ export async function PATCH(
     // Flush the proxy's auth cache so the new defaultTags take effect immediately
     invalidateProxyCache({
       action: "sync",
-      userId,
+      ownerId: orgId,
       entityType: "api_key",
       entityId: id,
     }).catch((err) => console.error("[keys] Proxy cache sync failed:", err));

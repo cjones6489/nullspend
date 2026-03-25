@@ -15,7 +15,7 @@ export interface WebhookDispatcher {
  */
 export function createWebhookDispatcher(
   queue: Queue | undefined,
-  userId: string,
+  ownerId: string,
 ): WebhookDispatcher | null {
   if (!queue) return null;
 
@@ -33,7 +33,7 @@ export function createWebhookDispatcher(
       }
 
       await enqueueWebhook(queue, {
-        userId,
+        ownerId,
         endpointId: endpoint.id,
         event,
       });

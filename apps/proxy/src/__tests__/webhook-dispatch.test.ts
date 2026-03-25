@@ -53,7 +53,7 @@ describe("dispatcher.dispatch", () => {
     vi.clearAllMocks();
   });
 
-  it("enqueues message with correct shape (userId, endpointId, event)", async () => {
+  it("enqueues message with correct shape (ownerId, endpointId, event)", async () => {
     const dispatcher = createWebhookDispatcher(makeQueue(), "user-1")!;
     const endpoint = makeEndpoint();
     const event = makeEvent();
@@ -61,7 +61,7 @@ describe("dispatcher.dispatch", () => {
     await dispatcher.dispatch(endpoint, event);
 
     expect(mockQueueSend).toHaveBeenCalledWith({
-      userId: "user-1",
+      ownerId: "user-1",
       endpointId: "ep-1",
       event,
     });

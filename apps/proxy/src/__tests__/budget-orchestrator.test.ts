@@ -34,6 +34,7 @@ function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
     body: {},
     bodyText: "{}",
     auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+    ownerId: "user-1",
     connectionString: "postgres://test",
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
@@ -144,7 +145,7 @@ describe("checkBudget — DO-first mode", () => {
   });
 
   it("skipped when no userId", async () => {
-    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } });
+    const ctx = makeCtx({ auth: { userId: null, keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} }, ownerId: null as any });
 
     const result = await checkBudget(makeEnv(), ctx, 5_000_000);
 

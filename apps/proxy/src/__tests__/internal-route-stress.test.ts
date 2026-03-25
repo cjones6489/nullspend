@@ -75,7 +75,7 @@ function makeRequest(options: {
 
 const validBody = {
   action: "remove" as const,
-  userId: "user-1",
+  ownerId: "user-1",
   entityType: "api_key",
   entityId: "key-1",
 };
@@ -274,9 +274,9 @@ describe("Body validation attacks", () => {
   const auth = "Bearer test-secret-value";
 
   describe("empty string fields", () => {
-    it("400: userId is empty string", async () => {
+    it("400: ownerId is empty string", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: "" } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: "" } }),
         makeEnv(),
       );
       expect(res.status).toBe(400);
@@ -308,9 +308,9 @@ describe("Body validation attacks", () => {
   });
 
   describe("type confusion — numeric values where strings expected", () => {
-    it("400: userId is a number", async () => {
+    it("400: ownerId is a number", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: 12345 } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: 12345 } }),
         makeEnv(),
       );
       expect(res.status).toBe(400);
@@ -334,9 +334,9 @@ describe("Body validation attacks", () => {
   });
 
   describe("type confusion — nested objects where strings expected", () => {
-    it("400: userId is an object", async () => {
+    it("400: ownerId is an object", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: { nested: "val" } } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: { nested: "val" } } }),
         makeEnv(),
       );
       expect(res.status).toBe(400);
@@ -352,9 +352,9 @@ describe("Body validation attacks", () => {
   });
 
   describe("type confusion — arrays where strings expected", () => {
-    it("400: userId is an array", async () => {
+    it("400: ownerId is an array", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: ["user-1", "user-2"] } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: ["user-1", "user-2"] } }),
         makeEnv(),
       );
       expect(res.status).toBe(400);
@@ -370,17 +370,17 @@ describe("Body validation attacks", () => {
   });
 
   describe("boolean values where strings expected", () => {
-    it("400: userId is true", async () => {
+    it("400: ownerId is true", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: true } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: true } }),
         makeEnv(),
       );
       expect(res.status).toBe(400);
     });
 
-    it("400: userId is null", async () => {
+    it("400: ownerId is null", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: null } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: null } }),
         makeEnv(),
       );
       expect(res.status).toBe(400);
@@ -390,12 +390,12 @@ describe("Body validation attacks", () => {
   describe("very long string fields (100KB)", () => {
     const longStr = "x".repeat(100 * 1024);
 
-    it("accepts or rejects 100KB userId (no crash, no memory bomb to downstream)", async () => {
+    it("accepts or rejects 100KB ownerId (no crash, no memory bomb to downstream)", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: longStr } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: longStr } }),
         makeEnv(),
       );
-      // The code doesn't enforce length limits — it will pass validation and call DO with a 100KB userId.
+      // The code doesn't enforce length limits — it will pass validation and call DO with a 100KB ownerId.
       // This test documents the behavior. If it returns 200, that's a finding (no length limit).
       const status = res.status;
       // Record what actually happens
@@ -406,7 +406,7 @@ describe("Body validation attacks", () => {
           expect.any(String),
           expect.any(String),
         );
-        // FINDING: 100KB userId is accepted and forwarded to DO
+        // FINDING: 100KB ownerId is accepted and forwarded to DO
       }
       expect([200, 400, 413]).toContain(status);
     });
@@ -459,9 +459,9 @@ describe("Body validation attacks", () => {
       expect(res.status).toBe(200);
     });
 
-    it("200: zero-width characters in userId", async () => {
+    it("200: zero-width characters in ownerId", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: "user\u200B-\u200B1" } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: "user\u200B-\u200B1" } }),
         makeEnv(),
       );
       // Zero-width chars make the string truthy — parseBody accepts it
@@ -497,11 +497,11 @@ describe("Body validation attacks", () => {
       expect(res.status).toBe(200);
     });
 
-    it("200: SQL injection in userId", async () => {
+    it("200: SQL injection in ownerId", async () => {
       const res = await handleBudgetInvalidation(
         makeRequest({
           auth,
-          body: { ...validBody, userId: "user-1'; DELETE FROM users WHERE '1'='1" },
+          body: { ...validBody, ownerId: "user-1'; DELETE FROM users WHERE '1'='1" },
         }),
         makeEnv(),
       );
@@ -601,13 +601,13 @@ describe("Body validation attacks", () => {
   });
 
   describe("whitespace-only string fields", () => {
-    it("200 or 400: userId is whitespace only", async () => {
+    it("200 or 400: ownerId is whitespace only", async () => {
       const res = await handleBudgetInvalidation(
-        makeRequest({ auth, body: { ...validBody, userId: "   " } }),
+        makeRequest({ auth, body: { ...validBody, ownerId: "   " } }),
         makeEnv(),
       );
       // "   " is a truthy string, so parseBody accepts it.
-      // FINDING if 200: whitespace-only userId is accepted.
+      // FINDING if 200: whitespace-only ownerId is accepted.
       const status = res.status;
       if (status === 200) {
         expect(mockDoBudgetRemove).toHaveBeenCalledWith(
@@ -629,7 +629,7 @@ describe("Concurrency", () => {
       handleBudgetInvalidation(
         makeRequest({
           auth: "Bearer test-secret-value",
-          body: { ...validBody, userId: `user-${i}` },
+          body: { ...validBody, ownerId: `user-${i}` },
         }),
         env,
       ),
@@ -646,7 +646,7 @@ describe("Concurrency", () => {
     const requests = [
       // 5 valid
       ...Array.from({ length: 5 }, (_, i) =>
-        makeRequest({ auth: "Bearer test-secret-value", body: { ...validBody, userId: `valid-${i}` } }),
+        makeRequest({ auth: "Bearer test-secret-value", body: { ...validBody, ownerId: `valid-${i}` } }),
       ),
       // 5 wrong token
       ...Array.from({ length: 5 }, () =>
@@ -693,7 +693,7 @@ describe("Concurrency", () => {
       handleBudgetInvalidation(
         makeRequest({
           auth: "Bearer test-secret-value",
-          body: { ...validBody, userId: `user-${i}` },
+          body: { ...validBody, ownerId: `user-${i}` },
         }),
         env,
       ),
@@ -715,10 +715,10 @@ describe("Request body edge cases", () => {
   const auth = "Bearer test-secret-value";
 
   it("handles very large JSON body (>1MB) without crashing", async () => {
-    // Build a valid body with a 1.5MB userId
+    // Build a valid body with a 1.5MB ownerId
     const bigUserId = "u".repeat(1.5 * 1024 * 1024);
     const res = await handleBudgetInvalidation(
-      makeRequest({ auth, body: { ...validBody, userId: bigUserId } }),
+      makeRequest({ auth, body: { ...validBody, ownerId: bigUserId } }),
       makeEnv(),
     );
     // No body size limit in the handler — it relies on upstream CF limits.
@@ -726,7 +726,7 @@ describe("Request body edge cases", () => {
     const status = res.status;
     expect([200, 400, 413]).toContain(status);
     if (status === 200) {
-      // FINDING: 1.5MB userId accepted
+      // FINDING: 1.5MB ownerId accepted
       expect(mockDoBudgetRemove).toHaveBeenCalled();
     }
   });
@@ -793,7 +793,7 @@ describe("Request body edge cases", () => {
 
   it("handles duplicate JSON keys (last wins in standard JSON.parse)", async () => {
     // JSON with duplicate "action" key — standard JSON.parse takes the last one
-    const rawBody = '{"action":"remove","userId":"user-1","entityType":"api_key","entityId":"key-1","action":"reset_spend"}';
+    const rawBody = '{"action":"remove","ownerId":"user-1","entityType":"api_key","entityId":"key-1","action":"reset_spend"}';
     const res = await handleBudgetInvalidation(
       makeRequest({ auth, rawBody }),
       makeEnv(),
@@ -816,7 +816,7 @@ describe("Request body edge cases", () => {
   });
 
   it("400: body with trailing comma (invalid JSON)", async () => {
-    const rawBody = '{"action":"remove","userId":"user-1","entityType":"api_key","entityId":"key-1",}';
+    const rawBody = '{"action":"remove","ownerId":"user-1","entityType":"api_key","entityId":"key-1",}';
     const res = await handleBudgetInvalidation(
       makeRequest({ auth, rawBody }),
       makeEnv(),
@@ -825,7 +825,7 @@ describe("Request body edge cases", () => {
   });
 
   it("400: body with comments (invalid JSON)", async () => {
-    const rawBody = '{"action":"remove"/* comment */,"userId":"user-1","entityType":"api_key","entityId":"key-1"}';
+    const rawBody = '{"action":"remove"/* comment */,"ownerId":"user-1","entityType":"api_key","entityId":"key-1"}';
     const res = await handleBudgetInvalidation(
       makeRequest({ auth, rawBody }),
       makeEnv(),
@@ -834,7 +834,7 @@ describe("Request body edge cases", () => {
   });
 
   it("400: body with single quotes (invalid JSON)", async () => {
-    const rawBody = "{'action':'remove','userId':'user-1','entityType':'api_key','entityId':'key-1'}";
+    const rawBody = "{'action':'remove','ownerId':'user-1','entityType':'api_key','entityId':'key-1'}";
     const res = await handleBudgetInvalidation(
       makeRequest({ auth, rawBody }),
       makeEnv(),

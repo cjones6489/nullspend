@@ -207,7 +207,7 @@ describe("PATCH /api/keys/[id]", () => {
 
     expect(mockInvalidateProxyCache).toHaveBeenCalledWith({
       action: "sync",
-      userId: "user-1",
+      ownerId: "org-test-1",
       entityType: "api_key",
       entityId: TEST_KEY_UUID,
     });

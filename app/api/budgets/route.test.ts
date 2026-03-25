@@ -348,7 +348,7 @@ describe("POST /api/budgets — proxy invalidation", () => {
 
     expect(mockedInvalidateProxyCache).toHaveBeenCalledWith({
       action: "sync",
-      userId: TEST_USER_ID,
+      ownerId: "org-test-1",
       entityType: "user",
       entityId: TEST_USER_ID,
     });
@@ -368,11 +368,10 @@ describe("POST /api/budgets — proxy invalidation", () => {
       maxBudgetMicrodollars: 5_000_000,
     });
 
-    // Mock: existingForEntity returns [] (new entity), allBudgets returns 1 existing budget
+    // Mock: existingForEntity returns [] (new entity), count returns 1 (at limit)
     const mockWhere = vi.fn()
-      .mockResolvedValueOnce([])  // existingForEntity check
-      .mockResolvedValueOnce([])  // userKeys (no api keys)
-      .mockResolvedValueOnce([makeBudgetRow()]);  // allBudgets count
+      .mockResolvedValueOnce([])          // existingForEntity check
+      .mockResolvedValueOnce([{ count: 1 }]);  // budget count query
     const mockFrom = vi.fn(() => ({ where: mockWhere }));
     const mockSelect = vi.fn(() => ({ from: mockFrom }));
     const mockTxDb = { select: mockSelect, insert: vi.fn() };

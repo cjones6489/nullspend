@@ -49,7 +49,7 @@ describe("handleDlqQueue", () => {
       reservationId: "res-dlq-1",
       actualCostMicrodollars: 50_000,
       budgetEntities: [],
-      userId: "user-1",
+      ownerId: "user-1",
       enqueuedAt: Date.now() - 60_000,
     });
 
@@ -69,7 +69,7 @@ describe("handleDlqQueue", () => {
         { entityKey: "{budget}:user:u1", entityType: "user", entityId: "u1" },
         { entityKey: "{budget}:api_key:k1", entityType: "api_key", entityId: "k1" },
       ],
-      userId: "user-abc",
+      ownerId: "user-abc",
       enqueuedAt,
     });
 
@@ -78,7 +78,7 @@ describe("handleDlqQueue", () => {
     expect(mockEmitMetric).toHaveBeenCalledWith("reconciliation_dlq", {
       reservationId: "res-metric",
       costMicrodollars: 75_000,
-      userId: "user-abc",
+      ownerId: "user-abc",
       ageMs: expect.any(Number),
       entityCount: 2,
     });
@@ -93,7 +93,7 @@ describe("handleDlqQueue", () => {
       reservationId: "res-log",
       actualCostMicrodollars: 10_000,
       budgetEntities: [],
-      userId: "user-log",
+      ownerId: "user-log",
       enqueuedAt: Date.now(),
     });
 
@@ -113,7 +113,7 @@ describe("handleDlqQueue", () => {
       budgetEntities: [
         { entityKey: "{budget}:user:u1", entityType: "user", entityId: "u1" },
       ],
-      userId: "user-retry",
+      ownerId: "user-retry",
       enqueuedAt: Date.now(),
     });
 
@@ -142,7 +142,7 @@ describe("handleDlqQueue", () => {
       reservationId: "res-throw",
       actualCostMicrodollars: 50_000,
       budgetEntities: [],
-      userId: "user-throw",
+      ownerId: "user-throw",
       enqueuedAt: Date.now(),
     });
 
@@ -158,7 +158,7 @@ describe("handleDlqQueue", () => {
       reservationId: "res-batch-1",
       actualCostMicrodollars: 10_000,
       budgetEntities: [],
-      userId: "user-1",
+      ownerId: "user-1",
       enqueuedAt: Date.now(),
     });
     const msg2 = makeMessage({
@@ -166,7 +166,7 @@ describe("handleDlqQueue", () => {
       reservationId: "res-batch-2",
       actualCostMicrodollars: 20_000,
       budgetEntities: [],
-      userId: "user-2",
+      ownerId: "user-2",
       enqueuedAt: Date.now(),
     });
 
@@ -177,13 +177,13 @@ describe("handleDlqQueue", () => {
     expect(msg2.ack).toHaveBeenCalledTimes(1);
   });
 
-  it("uses 'unknown' for null userId in metric", async () => {
+  it("uses 'unknown' for null ownerId in metric", async () => {
     const msg = makeMessage({
       type: "reconcile",
       reservationId: "res-null-user",
       actualCostMicrodollars: 5_000,
       budgetEntities: [],
-      userId: null,
+      ownerId: null,
       enqueuedAt: Date.now(),
     });
 
@@ -191,7 +191,7 @@ describe("handleDlqQueue", () => {
 
     expect(mockEmitMetric).toHaveBeenCalledWith(
       "reconciliation_dlq",
-      expect.objectContaining({ userId: "unknown" }),
+      expect.objectContaining({ ownerId: "unknown" }),
     );
   });
 
@@ -209,7 +209,7 @@ describe("handleDlqQueue", () => {
       reservationId: "res-fail-1",
       actualCostMicrodollars: 10_000,
       budgetEntities: [],
-      userId: "user-1",
+      ownerId: "user-1",
       enqueuedAt: Date.now(),
     });
     const msg2 = makeMessage({
@@ -217,7 +217,7 @@ describe("handleDlqQueue", () => {
       reservationId: "res-ok-2",
       actualCostMicrodollars: 20_000,
       budgetEntities: [],
-      userId: "user-2",
+      ownerId: "user-2",
       enqueuedAt: Date.now(),
     });
 

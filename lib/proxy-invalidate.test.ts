@@ -42,7 +42,7 @@ describe("invalidateProxyCache", () => {
 
     await invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -57,7 +57,7 @@ describe("invalidateProxyCache", () => {
     const body = JSON.parse(init?.body as string);
     expect(body).toMatchObject({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -74,7 +74,7 @@ describe("invalidateProxyCache", () => {
 
     await invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -92,7 +92,7 @@ describe("invalidateProxyCache", () => {
 
     await invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -109,7 +109,7 @@ describe("invalidateProxyCache", () => {
 
     const promise = invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -118,11 +118,11 @@ describe("invalidateProxyCache", () => {
     await expect(promise).resolves.toBeUndefined();
 
     expect(mockError).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "remove", userId: "user-1", attempt: 0 }),
+      expect.objectContaining({ action: "remove", ownerId: "user-1", attempt: 0 }),
       "Proxy cache invalidation error",
     );
     expect(mockWarn).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "remove", userId: "user-1", retries: 2 }),
+      expect.objectContaining({ action: "remove", ownerId: "user-1", retries: 2 }),
       expect.stringContaining("Budget sync gap"),
     );
 
@@ -140,7 +140,7 @@ describe("invalidateProxyCache", () => {
 
     const promise = invalidateProxyCache({
       action: "reset_spend",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "user",
       entityId: "user-1",
     });
@@ -148,11 +148,11 @@ describe("invalidateProxyCache", () => {
     await expect(promise).resolves.toBeUndefined();
 
     expect(mockError).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 401, action: "reset_spend", userId: "user-1" }),
+      expect.objectContaining({ status: 401, action: "reset_spend", ownerId: "user-1" }),
       "Proxy cache invalidation failed",
     );
     expect(mockWarn).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "reset_spend", userId: "user-1", retries: 2 }),
+      expect.objectContaining({ action: "reset_spend", ownerId: "user-1", retries: 2 }),
       expect.stringContaining("Budget sync gap"),
     );
 
@@ -169,14 +169,14 @@ describe("invalidateProxyCache", () => {
 
     await invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
 
     expect(mockInfo).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: "remove", userId: "user-1",
+        action: "remove", ownerId: "user-1",
         entityType: "api_key", entityId: "key-1",
       }),
       "Proxy cache invalidated",
@@ -194,7 +194,7 @@ describe("invalidateProxyCache", () => {
 
     const promise = invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -205,7 +205,7 @@ describe("invalidateProxyCache", () => {
     expect(mockAddSentryBreadcrumb).toHaveBeenCalledWith(
       "proxy-invalidate",
       "Invalidation failed after retries",
-      expect.objectContaining({ status: 500, action: "remove", userId: "user-1", retries: 2 }),
+      expect.objectContaining({ status: 500, action: "remove", ownerId: "user-1", retries: 2 }),
     );
 
     vi.useRealTimers();
@@ -220,7 +220,7 @@ describe("invalidateProxyCache", () => {
 
     const promise = invalidateProxyCache({
       action: "reset_spend",
-      userId: "user-2",
+      ownerId: "user-2",
       entityType: "user",
       entityId: "user-2",
     });
@@ -234,7 +234,7 @@ describe("invalidateProxyCache", () => {
       expect.objectContaining({
         error: "Connection refused",
         action: "reset_spend",
-        userId: "user-2",
+        ownerId: "user-2",
         retries: 2,
       }),
     );
@@ -252,7 +252,7 @@ describe("invalidateProxyCache", () => {
 
     await invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -274,7 +274,7 @@ describe("invalidateProxyCache", () => {
 
     const promise = invalidateProxyCache({
       action: "sync",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "user",
       entityId: "user-1",
     });
@@ -304,7 +304,7 @@ describe("invalidateProxyCache", () => {
 
     const promise = invalidateProxyCache({
       action: "sync",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });
@@ -330,7 +330,7 @@ describe("invalidateProxyCache", () => {
 
     const promise = invalidateProxyCache({
       action: "sync",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "user",
       entityId: "user-1",
     });
@@ -355,7 +355,7 @@ describe("invalidateProxyCache", () => {
 
     await invalidateProxyCache({
       action: "remove",
-      userId: "user-1",
+      ownerId: "user-1",
       entityType: "api_key",
       entityId: "key-1",
     });

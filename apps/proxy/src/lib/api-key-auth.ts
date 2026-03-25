@@ -74,11 +74,11 @@ async function lookupKeyInDb(
     SELECT k.id, k.user_id, k.org_id, k.api_version, k.default_tags,
       EXISTS(
         SELECT 1 FROM webhook_endpoints w
-        WHERE w.user_id = k.user_id AND w.enabled = true
+        WHERE w.org_id = k.org_id AND w.enabled = true
       ) AS has_webhooks,
       EXISTS(
         SELECT 1 FROM budgets b
-        WHERE b.user_id = k.user_id
+        WHERE b.org_id = k.org_id
       ) AS has_budgets
     FROM api_keys k
     WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
@@ -172,14 +172,14 @@ export async function authenticateApiKey(
 }
 
 /**
- * Invalidate auth cache entries for a specific user.
- * Needed when a key is revoked or webhook config changes.
+ * Invalidate auth cache entries for an org (or user fallback).
+ * Needed when a budget/webhook config changes.
  * Returns the number of evicted entries.
  */
-export function invalidateAuthCacheForUser(userId: string): number {
+export function invalidateAuthCacheForOwner(ownerId: string): number {
   let evicted = 0;
   for (const [hash, entry] of positiveCache) {
-    if (entry.identity.userId === userId) {
+    if (entry.identity.orgId === ownerId || entry.identity.userId === ownerId) {
       positiveCache.delete(hash);
       evicted++;
     }

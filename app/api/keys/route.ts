@@ -17,8 +17,7 @@ import {
   listApiKeysQuerySchema,
   listApiKeysResponseSchema,
 } from "@/lib/validations/api-keys";
-import { TIERS, getTierForUser } from "@/lib/stripe/tiers";
-import { getSubscriptionByUserId } from "@/lib/stripe/subscription";
+import { resolveUserTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
 
 export async function GET(request: Request) {
   try {
@@ -94,16 +93,8 @@ export async function POST(request: Request) {
       .from(apiKeys)
       .where(and(eq(apiKeys.orgId, orgId), isNull(apiKeys.revokedAt)));
 
-    const subscription = await getSubscriptionByUserId(userId);
-    const tier = getTierForUser(subscription);
-    const maxKeys = TIERS[tier].maxApiKeys;
-
-    if (activeKeyCount >= maxKeys) {
-      return NextResponse.json(
-        { error: { code: "limit_exceeded", message: `Maximum of ${maxKeys} active API keys allowed on the ${TIERS[tier].label} plan.`, details: null } },
-        { status: 409 },
-      );
-    }
+    const tierInfo = await resolveUserTier(userId);
+    assertCountBelowLimit(tierInfo, "maxApiKeys", activeKeyCount, "active API keys");
 
     const rawKey = generateRawKey();
 

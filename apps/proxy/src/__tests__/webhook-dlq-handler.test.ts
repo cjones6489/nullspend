@@ -17,7 +17,7 @@ import type { WebhookQueueMessage } from "../lib/webhook-queue.js";
 
 function makeMessage(overrides: Partial<WebhookQueueMessage> = {}) {
   const body: WebhookQueueMessage = {
-    userId: "user-1",
+    ownerId: "user-1",
     endpointId: "ep-1",
     event: {
       id: "evt_test123",
@@ -80,7 +80,7 @@ describe("handleWebhookDlq", () => {
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("[webhook-dlq]"),
       expect.objectContaining({
-        userId: "user-1",
+        ownerId: "user-1",
         endpointId: "ep-1",
         eventType: "cost_event.created",
         eventId: "evt_test123",

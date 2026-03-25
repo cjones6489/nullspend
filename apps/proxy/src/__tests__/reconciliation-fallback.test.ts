@@ -64,7 +64,7 @@ describe("reconcileBudgetQueued", () => {
         type: "reconcile",
         reservationId: "res-123",
         actualCostMicrodollars: 50_000,
-        userId: "user-1",
+        ownerId: "user-1",
       }),
     );
   });

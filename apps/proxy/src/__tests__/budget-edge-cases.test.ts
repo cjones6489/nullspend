@@ -137,6 +137,7 @@ function makeCtx(
     bodyText: JSON.stringify(body),
     bodyByteLength: JSON.stringify(body).length,
     auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+    ownerId: "user-uuid-456",
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     skipDbWrites: false,
     sessionId: null,
@@ -213,6 +214,7 @@ describe("Budget Edge Cases", () => {
     // userId=null means DO path skips (returns skipped) so no lookupBudgetsForDO call
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
       auth: { userId: null as any, keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+      ownerId: null as any,
     }));
 
     // DO path skips when no userId — no lookup call
@@ -224,6 +226,7 @@ describe("Budget Edge Cases", () => {
 
     await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody, {
       auth: { userId: null as any, keyId: null as any, hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+      ownerId: null as any,
     }));
 
     expect(mockDoBudgetCheck).not.toHaveBeenCalled();

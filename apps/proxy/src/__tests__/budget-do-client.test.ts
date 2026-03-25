@@ -621,7 +621,7 @@ describe("doBudgetUpsertEntities", () => {
     // Called twice: once for initial upsert, once for retry
     expect(stub.populateIfEmpty).toHaveBeenCalledTimes(2);
     expect(mockEmitMetric).toHaveBeenCalledWith("budget_sync_retry", {
-      userId: "user-1",
+      ownerId: "user-1",
       missingCount: 1,
     });
   });

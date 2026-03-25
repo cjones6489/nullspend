@@ -93,7 +93,7 @@ describe("GET /api/budgets/velocity-status", () => {
     await GET(makeRequest());
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/internal/budget/velocity-state?userId="),
+      expect.stringContaining("/internal/budget/velocity-state?ownerId="),
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "Bearer test-secret",

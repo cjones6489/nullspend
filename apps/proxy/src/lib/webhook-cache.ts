@@ -27,11 +27,11 @@ export interface WebhookEndpointWithSecret extends CachedWebhookEndpoint {
  */
 export async function getWebhookEndpoints(
   connectionString: string,
-  userId: string,
+  ownerId: string,
   kv: KVNamespace,
 ): Promise<CachedWebhookEndpoint[]> {
   try {
-    const kvCached = await getCachedWebhookEndpoints(kv, userId);
+    const kvCached = await getCachedWebhookEndpoints(kv, ownerId);
     if (kvCached) return kvCached;
   } catch (err) {
     console.error("[webhook-cache:kv] read error:", err);
@@ -40,7 +40,7 @@ export async function getWebhookEndpoints(
 
   let endpoints: WebhookEndpointWithSecret[];
   try {
-    endpoints = await queryActiveEndpoints(connectionString, userId);
+    endpoints = await queryActiveEndpoints(connectionString, ownerId);
   } catch (err) {
     console.error("[webhook-cache:kv] DB query error:", err);
     return []; // Fail-open
@@ -53,7 +53,7 @@ export async function getWebhookEndpoints(
   }));
 
   try {
-    await setCachedWebhookEndpoints(kv, userId, metadata);
+    await setCachedWebhookEndpoints(kv, ownerId, metadata);
   } catch (err) {
     console.error("[webhook-cache:kv] write error:", err);
   }
@@ -68,10 +68,10 @@ export async function getWebhookEndpoints(
  */
 export async function getWebhookEndpointsWithSecrets(
   connectionString: string,
-  userId: string,
+  ownerId: string,
 ): Promise<WebhookEndpointWithSecret[]> {
   try {
-    return await queryActiveEndpoints(connectionString, userId);
+    return await queryActiveEndpoints(connectionString, ownerId);
   } catch (err) {
     console.error("[webhook-cache] DB query error (secrets):", err);
     return []; // Fail-open
@@ -83,11 +83,11 @@ export async function getWebhookEndpointsWithSecrets(
  * Called from dashboard API on create/update/delete.
  */
 export async function invalidateWebhookCache(
-  userId: string,
+  ownerId: string,
   kv: KVNamespace,
 ): Promise<void> {
   try {
-    await invalidateWebhookEndpoints(kv, userId);
+    await invalidateWebhookEndpoints(kv, ownerId);
   } catch (err) {
     console.error("[webhook-cache:kv] invalidation error:", err);
   }
@@ -95,14 +95,14 @@ export async function invalidateWebhookCache(
 
 async function queryActiveEndpoints(
   connectionString: string,
-  userId: string,
+  ownerId: string,
 ): Promise<WebhookEndpointWithSecret[]> {
   const sql = getSql(connectionString);
 
   const rows = await sql`
     SELECT id, url, signing_secret, previous_signing_secret, secret_rotated_at, event_types, api_version, payload_mode
     FROM webhook_endpoints
-    WHERE user_id = ${userId} AND enabled = true
+    WHERE org_id = ${ownerId} AND enabled = true
   `;
 
   return rows.map((row) => ({

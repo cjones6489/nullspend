@@ -13,7 +13,7 @@ export async function handleWebhookDlq(
 ): Promise<void> {
   for (const msg of batch.messages) {
     console.error("[webhook-dlq] Permanently failed webhook delivery:", {
-      userId: msg.body.userId,
+      ownerId: msg.body.ownerId,
       endpointId: msg.body.endpointId,
       eventType: msg.body.event.type,
       eventId: msg.body.event.id,

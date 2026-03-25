@@ -31,6 +31,13 @@ export class LimitExceededError extends Error {
   }
 }
 
+export class SpendCapExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpendCapExceededError";
+  }
+}
+
 class PayloadTooLargeError extends Error {
   constructor(maxBytes: number) {
     super(`Request body exceeds ${maxBytes} bytes.`);
@@ -140,6 +147,10 @@ export function handleRouteError(error: unknown) {
 
   if (error instanceof LimitExceededError) {
     return NextResponse.json(errorJson("limit_exceeded", error.message), { status: 409 });
+  }
+
+  if (error instanceof SpendCapExceededError) {
+    return NextResponse.json(errorJson("spend_cap_exceeded", error.message), { status: 400 });
   }
 
   if (error instanceof CircuitOpenError) {

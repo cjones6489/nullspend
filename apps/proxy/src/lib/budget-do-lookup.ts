@@ -65,9 +65,9 @@ function mapRow(row: BudgetDbRow, entityType: string, entityId: string): DOBudge
  */
 export async function lookupBudgetsForDO(
   connectionString: string,
-  identity: { keyId: string | null; userId: string | null; tags: Record<string, string> },
+  identity: { keyId: string | null; orgId: string | null; userId: string | null; tags: Record<string, string> },
 ): Promise<DOBudgetEntity[]> {
-  const { keyId, userId } = identity;
+  const { keyId, orgId, userId } = identity;
   const entities: { type: string; id: string }[] = [];
 
   if (keyId) {
@@ -91,7 +91,7 @@ export async function lookupBudgetsForDO(
                velocity_limit_microdollars, velocity_window_seconds, velocity_cooldown_seconds,
                threshold_percentages, session_limit_microdollars
         FROM budgets
-        WHERE user_id = ${userId} AND entity_type = ${entity.type} AND entity_id = ${entity.id}
+        WHERE org_id = ${orgId} AND entity_type = ${entity.type} AND entity_id = ${entity.id}
       `;
 
       if (rows.length > 0) {
@@ -99,9 +99,9 @@ export async function lookupBudgetsForDO(
       }
     }
 
-    // Tag budget lookup: query by user_id + entity_type='tag' + entity_id IN (tag keys)
+    // Tag budget lookup: query by org_id + entity_type='tag' + entity_id IN (tag keys)
     const tags = identity.tags;
-    if (Object.keys(tags).length > 0 && userId) {
+    if (Object.keys(tags).length > 0 && orgId) {
       const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
       const tagRows = await sql<BudgetDbRow[]>`
         SELECT entity_type, entity_id, max_budget_microdollars, spend_microdollars,
@@ -109,7 +109,7 @@ export async function lookupBudgetsForDO(
                velocity_limit_microdollars, velocity_window_seconds, velocity_cooldown_seconds,
                threshold_percentages, session_limit_microdollars
         FROM budgets
-        WHERE user_id = ${userId}
+        WHERE org_id = ${orgId}
           AND entity_type = 'tag'
           AND entity_id = ANY(${tagEntityIds})
       `;

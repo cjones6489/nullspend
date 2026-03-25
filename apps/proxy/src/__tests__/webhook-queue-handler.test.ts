@@ -55,7 +55,7 @@ function makeEvent(overrides: Record<string, unknown> = {}) {
 
 function makeMessage(overrides: Partial<WebhookQueueMessage> = {}) {
   const body: WebhookQueueMessage = {
-    userId: "user-1",
+    ownerId: "user-1",
     endpointId: "ep-1",
     event: makeEvent() as any,
     ...overrides,
@@ -191,7 +191,7 @@ describe("handleWebhookQueue", () => {
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("not found"));
   });
 
-  it("batch cache — 2 messages for same userId result in 1 DB call", async () => {
+  it("batch cache — 2 messages for same ownerId result in 1 DB call", async () => {
     const msg1 = makeMessage({ endpointId: "ep-1" });
     const msg2 = makeMessage({ endpointId: "ep-1" });
     mockGetEndpointsWithSecrets.mockResolvedValue([makeEndpoint()]);

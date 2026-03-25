@@ -119,7 +119,7 @@ export async function handleAnthropicMessages(
     if (!upstreamResponse.ok) {
       if (reservationId) {
         waitUntil(
-          reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, ctx.connectionString),
+          reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, ctx.connectionString),
         );
       }
       const clientHeaders = buildAnthropicClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
@@ -182,7 +182,7 @@ export async function handleAnthropicMessages(
 
     if (reservationId) {
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, ctx.connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, ctx.connectionString),
       );
     }
     throw err;
@@ -208,7 +208,7 @@ function handleStreaming(
   if (!upstreamBody) {
     if (reservationId) {
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString),
       );
     }
     const noBodyResp = errorResponse("upstream_error", "No response body from upstream", 502);
@@ -262,7 +262,7 @@ function handleStreaming(
           );
           if (reservationId) {
             await reconcileBudgetQueued(
-              getReconcileQueue(env), env, ctx.auth.userId, reservationId, reconcileCost, budgetEntities, connectionString,
+              getReconcileQueue(env), env, ctx.ownerId, reservationId, reconcileCost, budgetEntities, connectionString,
             );
           }
           return;
@@ -311,7 +311,7 @@ function handleStreaming(
 
         if (reservationId) {
           await reconcileBudgetQueued(
-            getReconcileQueue(env), env, ctx.auth.userId, reservationId, costEvent.costMicrodollars, budgetEntities, connectionString,
+            getReconcileQueue(env), env, ctx.ownerId, reservationId, costEvent.costMicrodollars, budgetEntities, connectionString,
           );
         }
 
@@ -328,7 +328,7 @@ function handleStreaming(
         if (reservationId) {
           try {
             await reconcileBudgetQueued(
-              getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString,
+              getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString,
             );
           } catch { /* already logged inside reconcileBudgetQueued */ }
         }
@@ -436,7 +436,7 @@ async function handleNonStreaming(
       if (reservationId) {
         waitUntil(
           reconcileBudgetQueued(
-            getReconcileQueue(env), env, ctx.auth.userId, reservationId, costEvent.costMicrodollars, budgetEntities, connectionString,
+            getReconcileQueue(env), env, ctx.ownerId, reservationId, costEvent.costMicrodollars, budgetEntities, connectionString,
           ),
         );
       }
@@ -445,7 +445,7 @@ async function handleNonStreaming(
       waitUntil(dispatchCostEventWebhooks(ctx, env, "anthropic", costEvent, enrichment, budgetEntities, toolCallsRequested));
     } else if (reservationId) {
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString),
       );
     }
   } catch {
@@ -454,7 +454,7 @@ async function handleNonStreaming(
     );
     if (reservationId) {
       waitUntil(
-        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, reservationId, 0, budgetEntities, connectionString),
+        reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, reservationId, 0, budgetEntities, connectionString),
       );
     }
   }

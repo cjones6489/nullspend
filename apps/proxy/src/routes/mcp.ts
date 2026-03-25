@@ -318,7 +318,7 @@ export async function handleMcpEvents(
       if (budgetEntities.length > 0 && eventsWithReservations.length > 0) {
         for (const event of eventsWithReservations) {
           try {
-            await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.auth.userId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
+            await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
           } catch (err) {
             reconcileFailures++;
             console.error("[mcp-events] Failed to reconcile reservation:", { reservationId: event.reservationId, error: err });
@@ -332,9 +332,9 @@ export async function handleMcpEvents(
       // Phase 4: Webhook dispatch (one per cost event per endpoint, single secrets fetch)
       if (ctx.webhookDispatcher && ctx.auth.hasWebhooks) {
         try {
-          const cached = await getWebhookEndpoints(ctx.connectionString, ctx.auth.userId, env.CACHE_KV);
+          const cached = await getWebhookEndpoints(ctx.connectionString, ctx.ownerId, env.CACHE_KV);
           if (cached.length > 0) {
-            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.auth.userId);
+            const endpoints = await getWebhookEndpointsWithSecrets(ctx.connectionString, ctx.ownerId);
             for (const row of costEventRows) {
               for (const ep of endpoints) {
                 if ((ep.payloadMode ?? "full") === "thin") {

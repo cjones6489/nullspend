@@ -45,7 +45,7 @@ describe("handleReconciliationQueue", () => {
       budgetEntities: [
         { entityKey: "{budget}:api_key:key-1", entityType: "api_key", entityId: "key-1" },
       ],
-      userId: "user-abc",
+      ownerId: "user-abc",
       enqueuedAt: Date.now(),
     });
 
@@ -65,7 +65,7 @@ describe("handleReconciliationQueue", () => {
       reservationId: "res-fail",
       actualCostMicrodollars: 25_000,
       budgetEntities: [],
-      userId: null,
+      ownerId: null,
       enqueuedAt: Date.now(),
     });
 
@@ -85,7 +85,7 @@ describe("handleReconciliationQueue", () => {
       reservationId: "res-1",
       actualCostMicrodollars: 10_000,
       budgetEntities: [],
-      userId: "user-1",
+      ownerId: "user-1",
       enqueuedAt: Date.now(),
     });
     const msg2 = makeMessage({
@@ -93,7 +93,7 @@ describe("handleReconciliationQueue", () => {
       reservationId: "res-2",
       actualCostMicrodollars: 20_000,
       budgetEntities: [],
-      userId: "user-2",
+      ownerId: "user-2",
       enqueuedAt: Date.now(),
     });
 
@@ -112,7 +112,7 @@ describe("handleReconciliationQueue", () => {
       budgetEntities: [
         { entityKey: "{budget}:user:u1", entityType: "user", entityId: "u1" },
       ],
-      userId: "user-xyz",
+      ownerId: "user-xyz",
       enqueuedAt: Date.now(),
     });
 
@@ -141,7 +141,7 @@ describe("handleReconciliationQueue", () => {
       reservationId: "res-status-fail",
       actualCostMicrodollars: 50_000,
       budgetEntities: [],
-      userId: "user-1",
+      ownerId: "user-1",
       enqueuedAt: Date.now(),
     });
 
@@ -158,7 +158,7 @@ describe("handleReconciliationQueue", () => {
       reservationId: "res-compat",
       actualCostMicrodollars: 50_000,
       budgetEntities: [],
-      userId: "user-1",
+      ownerId: "user-1",
       enqueuedAt: Date.now(),
     });
 

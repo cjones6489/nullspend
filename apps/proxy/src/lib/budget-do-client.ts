@@ -13,14 +13,14 @@ const PG_RETRY_DELAYS = [200, 800];
  */
 export async function doBudgetCheck(
   env: Env,
-  userId: string,
+  ownerId: string,
   keyId: string | null,
   estimateMicrodollars: number,
   sessionId: string | null,
   tagEntityIds: string[],
 ): Promise<CheckResult> {
   const startMs = Date.now();
-  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
   const result = await stub.checkAndReserve(keyId, estimateMicrodollars, 30_000, sessionId, tagEntityIds);
   emitMetric("do_budget_check", {
     status: result.status,
@@ -48,7 +48,7 @@ export async function doBudgetCheck(
  */
 export async function doBudgetReconcile(
   env: Env,
-  userId: string,
+  ownerId: string,
   reservationId: string,
   actualCost: number,
   entities: Array<{ entityType: string; entityId: string }>,
@@ -59,7 +59,7 @@ export async function doBudgetReconcile(
   let status: "ok" | "pg_failed" | "error" = "ok";
 
   try {
-    const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+    const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
     const reconcileResult = await stub.reconcile(reservationId, actualCost);
 
     if (reconcileResult.status === "not_found") {
@@ -136,11 +136,11 @@ export async function doBudgetReconcile(
  */
 export async function doBudgetRemove(
   env: Env,
-  userId: string,
+  ownerId: string,
   entityType: string,
   entityId: string,
 ): Promise<void> {
-  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
   await stub.removeBudget(entityType, entityId);
 }
 
@@ -150,11 +150,11 @@ export async function doBudgetRemove(
  */
 export async function doBudgetResetSpend(
   env: Env,
-  userId: string,
+  ownerId: string,
   entityType: string,
   entityId: string,
 ): Promise<void> {
-  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
   await stub.resetSpend(entityType, entityId);
 }
 
@@ -164,9 +164,9 @@ export async function doBudgetResetSpend(
  */
 export async function doBudgetGetVelocityState(
   env: Env,
-  userId: string,
+  ownerId: string,
 ): Promise<VelocityState[]> {
-  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
   return stub.getVelocityState();
 }
 
@@ -182,12 +182,12 @@ export async function doBudgetGetVelocityState(
  */
 export async function doBudgetUpsertEntities(
   env: Env,
-  userId: string,
+  ownerId: string,
   entities: DOBudgetEntity[],
 ): Promise<void> {
   if (entities.length === 0) return;
 
-  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(userId));
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
   for (const e of entities) {
     await stub.populateIfEmpty(
       e.entityType, e.entityId, e.maxBudget, e.spend,
@@ -217,7 +217,7 @@ export async function doBudgetUpsertEntities(
         e.thresholdPercentages, e.sessionLimit,
       );
     }
-    emitMetric("budget_sync_retry", { userId, missingCount: missing.length });
+    emitMetric("budget_sync_retry", { ownerId, missingCount: missing.length });
   }
 }
 
