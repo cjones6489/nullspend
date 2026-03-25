@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phase 0 Ready
+**Status:** Phase 1 Complete, Phase 2 Ready
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -21,11 +21,11 @@ Each phase is broken into sub-phases that can be implemented, tested, and shippe
 
 ---
 
-## Phase 0: Schema Prep + Settings Restructure
+## Phase 0: Schema Prep + Settings Restructure — COMPLETE (2026-03-24)
 
 **Goal:** Add future-proofing columns while tables are empty. Restructure settings for sub-page navigation. No behavioral changes.
 
-**Prerequisites:** None (this is the starting phase).
+**Shipped:** All 4 sub-phases. `org_id uuid` on all 8 tables, tier-driven limits (Free: 3 budgets/$5K/10 keys/2 webhooks/30d, Pro: unlimited/$50K/25 webhooks/90d, Enterprise: all unlimited), `org` in PREFIX_MAP, settings split into sub-pages with secondary nav.
 
 ### Phase 0a: Schema Columns (~15 min)
 
@@ -163,9 +163,11 @@ Before proceeding to Phase 1, verify:
 
 ---
 
-## Phase 1: Org Tables + Foundation
+## Phase 1: Org Tables + Foundation — COMPLETE (2026-03-24)
 
 **Goal:** Create org infrastructure. Every user gets a personal org. No scoping changes yet — `org_id` is populated on new writes but not used for queries.
+
+**Shipped:** 3 increments. Organizations/memberships/invitations tables with partial unique index. Cookie-based `resolveSessionContext()` (zero DB on hot path, `ns-active-org` httpOnly cookie with `orgId:role`). `ensurePersonalOrg` with transactional creation + 23505 catch-and-retry. `org_id` populated on API key, webhook, and budget writes. 7 dedicated tests. Audited 3 times, all findings resolved.
 
 **Prerequisites (verify before starting):**
 - Phase 0 complete — all `org_id` columns exist as `uuid` (migrated in Phase 0a)
@@ -254,62 +256,99 @@ Before proceeding to Phase 2, verify:
 
 ---
 
-## Phase 2: Org-Scoped Dashboard
+## Phase 2: Org-Scoped System
 
-**Goal:** Switch all queries from `user_id` to `org_id`. This is the largest and most impactful phase.
+**Goal:** Switch all queries from `user_id` to `org_id`. Largest phase — proxy, dashboard, DO keying, feature gating all change.
 
 **Prerequisites (verify before starting):**
-- Phase 1 complete — personal orgs auto-created, `resolveSessionContext()` works
-- Existing rows have `org_id` populated (or backfill migration run)
-- `org_id` columns are correctly typed as `uuid`
+- [x] Phase 1 complete — personal orgs auto-created, `resolveSessionContext()` works
+- [ ] Existing rows have `org_id` populated (backfill needed for pre-Phase-1 data)
+- [x] `org_id` columns are correctly typed as `uuid` on all 8 tables
 
-### Phase 2a: Proxy Auth — Add `orgId` (~2 hours)
+**Architecture decisions (from Phase 2 arch review, 2026-03-24):**
+- For personal orgs, `orgId` maps 1:1 to `userId`. Net behavioral change is zero until Phase 3 (team orgs).
+- DO keying change (`userId` → `orgId`) is the highest-risk sub-phase — budget enforcement path.
+- Dashboard migration is mechanical (22 routes) but wide-reaching.
+- Feature gating (`<FeatureGate>`, `FEATURE_TIERS`) is independent frontend work.
 
-- [ ] `ApiKeyIdentity`: add `orgId: string`
-- [ ] Auth SQL: add `k.org_id` to SELECT, map to result
-- [ ] `AuthResult`: add `orgId: string`
-- [ ] `RequestContext`: inherits from `AuthResult` (automatic)
-- [ ] Update all 18+ proxy test `makeCtx` helpers with `orgId`
-- [ ] Verify proxy typecheck and tests pass
+**Verified counts (2026-03-24):**
+- 22 dashboard route files use `resolveSessionUserId()`
+- 16 proxy test files have `makeCtx` helpers needing `orgId`
+- 6 `idFromName(userId)` call sites in budget-do-client
+- Webhook cache keyed by `userId`
+- Cost logger INSERT missing `org_id`
+- `ApiKeyIdentity` missing `orgId`
 
-### Phase 2b: Proxy Cost-Logger + Enrichment (~1 hour)
+### Increment 1: Proxy Auth — Add `orgId` (~1 hour)
 
-- [ ] `cost-logger.ts`: add `org_id` to both INSERT paths (single + batch)
-- [ ] `EnrichmentFields`: no change needed — `orgId` flows from auth via cost event type
-- [ ] Verify cost events are written with `org_id` in smoke tests
+- [ ] `apps/proxy/src/lib/api-key-auth.ts`:
+  - Add `orgId: string` to `ApiKeyIdentity`
+  - Add `k.org_id` to auth SQL SELECT
+  - Map `row.org_id as string` to result
+- [ ] `apps/proxy/src/lib/auth.ts`: add `orgId: string` to `AuthResult`, pass through
+- [ ] `apps/proxy/src/lib/context.ts`: `RequestContext` inherits from `AuthResult` (automatic)
+- [ ] Update 16 proxy test `makeCtx` helpers with `orgId`
+- [ ] Verify `pnpm proxy:test` and typecheck pass
 
-### Phase 2c: Proxy DO Keying (~2-3 hours, highest risk)
+### Increment 2: Proxy Cost-Logger (~30 min)
 
-- [ ] `budget-do-client.ts`: change 6 call sites from `idFromName(userId)` to `idFromName(orgId)`
-- [ ] `budget-orchestrator.ts`: pass `ctx.auth.orgId` instead of `ctx.auth.userId`
-- [ ] `budget-do-lookup.ts`: change `WHERE user_id =` to `WHERE org_id =` (3 queries)
-- [ ] `routes/internal.ts`: invalidation body — add `orgId`, keep `userId` for auth cache
-- [ ] `webhook-cache.ts`: cache key by `orgId` instead of `userId`
-- [ ] Update proxy tests for DO keying changes (~20-30 test files)
-- [ ] **Test extensively** — this is the highest-risk change (budget enforcement path)
+- [ ] `apps/proxy/src/lib/cost-logger.ts`: add `org_id` to single INSERT column list + VALUES
+- [ ] Batch INSERT: add `org_id: e.orgId ?? null` to column map
+- [ ] Verify cost events are written with `org_id`
 
-### Phase 2d: Dashboard Query Migration (~2-3 days)
+### Increment 3: Proxy DO Keying + Cache (~2-3 hours, highest risk)
 
-- [ ] Update `resolveSessionContext()` callers (migrate from `resolveSessionUserId()`)
-  - Start with a few routes, verify pattern works, then batch the rest
-  - 42+ route files to update
-- [ ] `aggregate-cost-events.ts`: `baseConditions` uses `orgId` instead of `userId`
-- [ ] Each dashboard API route: `const { orgId } = await resolveSessionContext()` then `WHERE org_id = orgId`
-- [ ] Update TanStack Query hooks to pass `orgId`
+**Budget enforcement path — test extensively.**
+
+- [ ] `apps/proxy/src/lib/budget-do-client.ts`: change 6 call sites from `idFromName(userId)` to `idFromName(orgId)`
+  - `doBudgetCheck`, `doBudgetReconcile`, `doBudgetUpsertEntities`, `doBudgetRemove`, `doBudgetResetSpend`, `doBudgetGetVelocityState`
+- [ ] `apps/proxy/src/lib/budget-orchestrator.ts`: pass `ctx.auth.orgId` to DO client (was `ctx.auth.userId`)
+  - Keep `ctx.auth.userId` for `emitMetric` calls (user attribution)
+  - `budget_check_skipped` metric: use `ctx.auth.userId` (not orgId)
+  - `budget_cache_stale` metric: use `userId` (not orgId)
+- [ ] `apps/proxy/src/lib/budget-do-lookup.ts`: change `WHERE user_id =` to `WHERE org_id =` in all 3 queries
+- [ ] `apps/proxy/src/routes/internal.ts`:
+  - Add `orgId?: string` to `InvalidationBody`
+  - Use `orgId` for DO client calls (budget sync, remove, reset)
+  - Keep `userId` for `invalidateAuthCacheForUser` (auth cache is per-user, not per-org)
+  - Dashboard `invalidateProxyCache()` must send `orgId` in body
+- [ ] `apps/proxy/src/lib/webhook-cache.ts`: cache key `webhook:${orgId}` instead of `webhook:${userId}`
+- [ ] Update proxy tests (~20-30 files with budget/webhook mocks)
+- [ ] Run smoke tests after deploy
+
+### Increment 4: Dashboard Query Migration (~2-3 days)
+
+**Mechanical but wide-reaching — 22 route files.**
+
+- [ ] Backfill existing rows: migration to set `org_id` from personal org for all existing data
+- [ ] `lib/cost-events/aggregate-cost-events.ts`: `baseConditions` uses `eq(costEvents.orgId, orgId)` (8 functions)
+- [ ] Migrate dashboard routes batch by batch:
+  - Batch 1 (high-traffic): `budgets/route.ts`, `keys/route.ts`, `cost-events/route.ts`, `webhooks/route.ts` — GET handlers switch from `resolveSessionUserId` to `resolveSessionContext`, queries by `orgId`
+  - Batch 2 (analytics): `cost-events/summary/route.ts`, `activity`, `analytics` pages
+  - Batch 3 (actions): `actions/route.ts` and sub-routes
+  - Batch 4 (settings): `tool-costs/route.ts`, `slack/config/route.ts`, `velocity-status/route.ts`
+  - Batch 5 (billing): `stripe/checkout/route.ts`, `stripe/portal/route.ts`, `stripe/subscription/route.ts`
+- [ ] Update remaining routes that insert without `orgId` (tool-costs, slack-config, actions)
+- [ ] `lib/proxy-invalidate.ts`: include `orgId` in invalidation request body
 - [ ] Update dashboard tests
 
-### Phase 2e: Feature Gating Infrastructure (~1 day)
+### Increment 5: Feature Gating + NOT NULL (~1 day)
 
-- [ ] Add `FEATURE_TIERS` map to `lib/stripe/tiers.ts`
+- [ ] Add `FEATURE_TIERS` map to `lib/stripe/tiers.ts`:
+  ```typescript
+  export const FEATURE_TIERS = {
+    team_members: "enterprise",
+    sso_saml: "enterprise",
+    custom_roles: "enterprise",
+    audit_log: "enterprise",
+  } as const;
+  ```
+  (Note: all enforcement features are free on all tiers per pricing strategy. Only Enterprise-specific org features are gated.)
 - [ ] Build `<FeatureGate>` component (banner/card/hidden modes)
-- [ ] Build `<UpgradeCard>` (reuse existing PricingCard patterns)
-- [ ] Add upgrade CTAs at feature limits (budgets, webhooks, velocity)
-- [ ] Home page banner: "Working with a team? [Create an Organization]"
-
-### Phase 2f: Make `org_id` NOT NULL (~30 min)
-
-- [ ] Verify all existing rows have `org_id` populated (SQL count check)
-- [ ] Migration: `ALTER TABLE ... ALTER COLUMN org_id SET NOT NULL` on all tables
+- [ ] Build `<UpgradeCard>` component (reuse existing PricingCard patterns from billing page)
+- [ ] Add upgrade CTAs where relevant (Members page → Enterprise, SSO → Enterprise)
+- [ ] Verify all existing rows have `org_id` populated (SQL count check per table)
+- [ ] Migration: `ALTER TABLE ... ALTER COLUMN org_id SET NOT NULL` on all 8 tables
 - [ ] Add indexes: `CREATE INDEX ... ON ... (org_id, ...)` to match query patterns
 
 ### Phase 2 Review Gate
@@ -319,8 +358,8 @@ Before proceeding to Phase 3, verify:
 - [ ] Every dashboard query scopes by `org_id`, not `user_id`
 - [ ] Budget enforcement works (run smoke tests against live worker)
 - [ ] `org_id` is NOT NULL on all tables
-- [ ] Feature gating works (free user sees upgrade CTA on gated features)
-- [ ] All tests pass
+- [ ] Feature gating shows Enterprise CTA on gated features
+- [ ] All tests pass (929+ root, 1208+ proxy, typecheck clean)
 - [ ] **Re-read Phase 3 plan** — do assumptions still hold?
 
 ---
@@ -473,12 +512,11 @@ Before proceeding to Phase 4, verify:
 | Increment 3: Populate org_id on writes (1d) | ~30 min | Increment 2 |
 | ~~1e: Frontend org switcher~~ | ~~deferred~~ | Moved to Phase 3 |
 | **Phase 1 total** | **~2 hours** | Phase 0 |
-| 2a: Proxy auth orgId | ~2 hours | Phase 1 |
-| 2b: Proxy cost-logger | ~1 hour | Phase 2a |
-| 2c: Proxy DO keying | ~2-3 hours | Phase 2a |
-| 2d: Dashboard query migration | ~2-3 days | Phase 1c |
-| 2e: Feature gating | ~1 day | Phase 2d |
-| 2f: org_id NOT NULL | ~30 min | Phase 2d |
+| Increment 1: Proxy auth orgId | ~1 hour | Phase 1 |
+| Increment 2: Proxy cost-logger | ~30 min | Increment 1 |
+| Increment 3: Proxy DO keying + cache | ~2-3 hours | Increment 1 |
+| Increment 4: Dashboard query migration | ~2-3 days | Phase 1, Increment 1 |
+| Increment 5: Feature gating + NOT NULL | ~1 day | Increment 4 |
 | **Phase 2 total** | **~4-6 days** | Phase 1 |
 | 3a: Org CRUD API | ~1 day | Phase 2 |
 | 3b: Invitation backend | ~1 day | Phase 3a |
@@ -501,3 +539,6 @@ Before proceeding to Phase 4, verify:
 | 2026-03-24 | Initial plan created from architecture + UI/UX research |
 | 2026-03-24 | Phase 0 completed (all 4 sub-phases shipped) |
 | 2026-03-24 | Phase 1 arch review: cookie-embedded org context, partial unique index for race safety, deferred org switcher UI to Phase 3, removed created_by (already skipped), removed text→uuid migration (already done). Scope reduced from 2-3 days to ~2 hours across 3 increments. |
+| 2026-03-24 | Phase 0 completed — all 4 sub-phases shipped + pricing tier restructure (Free/Pro/Enterprise) |
+| 2026-03-24 | Phase 1 completed — 3 increments shipped, audited 3 times, all findings resolved |
+| 2026-03-24 | Phase 2 arch review: broken into 5 increments. Verified 22 dashboard routes, 16 proxy test files, 6 DO call sites need updating. Feature gating scoped to Enterprise-only features per pricing strategy. |
