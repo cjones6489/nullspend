@@ -9,6 +9,24 @@ import {
 } from "@/lib/stripe/subscription";
 import { tierFromPriceId } from "@/lib/stripe/tiers";
 
+// In-memory event deduplication (5-min TTL).
+// Prevents duplicate processing on Stripe webhook retries.
+const processedEvents = new Map<string, number>();
+const DEDUP_TTL_MS = 5 * 60 * 1000;
+
+/** @internal Reset for testing only. */
+export function _resetWebhookDedupForTesting() { processedEvents.clear(); }
+
+// Periodic cleanup to prevent memory leak
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const cutoff = Date.now() - DEDUP_TTL_MS;
+    for (const [id, ts] of processedEvents) {
+      if (ts < cutoff) processedEvents.delete(id);
+    }
+  }, DEDUP_TTL_MS).unref?.();
+}
+
 export async function POST(request: Request) {
   const stripe = getStripe();
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -40,6 +58,12 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  // Deduplicate: skip if this event was already processed
+  if (processedEvents.has(event.id)) {
+    return NextResponse.json({ received: true, deduplicated: true });
+  }
+  processedEvents.set(event.id, Date.now());
 
   try {
     switch (event.type) {

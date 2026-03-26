@@ -25,7 +25,7 @@ import {
   upsertSubscription,
 } from "@/lib/stripe/subscription";
 import { tierFromPriceId } from "@/lib/stripe/tiers";
-import { POST } from "./route";
+import { POST, _resetWebhookDedupForTesting } from "./route";
 
 const mockedGetStripe = vi.mocked(getStripe);
 const mockedGetSubscriptionByStripeCustomerId = vi.mocked(
@@ -63,6 +63,7 @@ describe("POST /api/stripe/webhook", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    _resetWebhookDedupForTesting();
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test");
 
     mockConstructEvent = vi.fn();

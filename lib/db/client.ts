@@ -12,6 +12,9 @@ function getSqlClient(): postgres.Sql {
   if (!globalThis.__nullspendSql) {
     globalThis.__nullspendSql = postgres(getEnv().DATABASE_URL, {
       prepare: false,
+      max: 3,               // Serverless-friendly pool size (Supabase pooler has limits)
+      idle_timeout: 20,     // Close idle connections after 20s
+      connect_timeout: 10,  // Fail fast on connection issues
     });
   }
 
