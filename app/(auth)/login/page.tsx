@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,9 +15,35 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { createBrowserSupabaseClient } from "@/lib/auth/supabase-browser";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginSkeleton />}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginSkeleton() {
+  return (
+    <Card className="border-border/50 bg-card">
+      <CardHeader className="text-center">
+        <CardTitle className="text-xl">Sign in</CardTitle>
+        <CardDescription className="text-[13px]">
+          Enter your email and password to access the dashboard.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-9 w-full" />
+      </CardContent>
+    </Card>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");

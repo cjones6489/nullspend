@@ -2,7 +2,7 @@
 
 import { use, Suspense } from "react";
 import Link from "next/link";
-import { ArrowLeft, Zap, Clock, Hash, Key, Tag, FileText } from "lucide-react";
+import { ArrowLeft, Zap, Clock, Tag, FileText } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

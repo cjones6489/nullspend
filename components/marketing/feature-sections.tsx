@@ -537,14 +537,14 @@ function TagsVisual() {
 
         {/* Cost breakdown by tag */}
         <div className="mt-6 grid grid-cols-2 gap-3">
-          {tags.map((tag) => (
+          {tags.map((tag, i) => (
             <div key={tag.name} className="rounded-lg border border-border/30 bg-background/30 p-3">
               <div className="flex items-center gap-2">
                 <span className={`h-2 w-2 rounded-full ${tag.color.split(" ")[0]}`} />
                 <span className="text-xs text-muted-foreground">{tag.name}</span>
               </div>
               <p className="mt-1 font-mono text-sm font-semibold">
-                ${(Math.random() * 100 + 10).toFixed(2)}
+                ${[42.18, 28.54, 15.92, 63.41][i % 4]}
               </p>
             </div>
           ))}

@@ -8,7 +8,6 @@ import { getDb } from "@/lib/db/client";
 import { orgMemberships } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema } from "@/lib/validations/orgs";
-import { ForbiddenError } from "@/lib/auth/errors";
 import { logAuditEvent } from "@/lib/audit/log";
 
 const transferSchema = z.object({

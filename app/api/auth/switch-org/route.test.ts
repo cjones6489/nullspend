@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolveSessionContext, setActiveOrgCookie } from "@/lib/auth/session";
 import { assertOrgMember } from "@/lib/auth/org-authorization";
 import { readJsonBody } from "@/lib/utils/http";
-import { AuthenticationRequiredError, ForbiddenError } from "@/lib/auth/errors";
+import { ForbiddenError } from "@/lib/auth/errors";
 import { POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({

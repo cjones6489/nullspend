@@ -214,26 +214,6 @@ export function DashboardPreview() {
   );
 }
 
-// Floating particles in background
-function FloatingParticles() {
-  return (
-    <div className="absolute inset-0 overflow-hidden">
-      {Array.from({ length: 20 }).map((_, i) => (
-        <div
-          key={i}
-          className="absolute h-1 w-1 rounded-full bg-primary/30"
-          style={{
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            animation: `float ${10 + Math.random() * 20}s ease-in-out infinite`,
-            animationDelay: `${Math.random() * 10}s`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 export function AnimatedHeroBg() {
   return (
     <div className="absolute inset-0 h-full w-full overflow-hidden">
@@ -264,6 +244,33 @@ export function AnimatedHeroBg() {
       {/* Gradient overlays for text readability */}
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/95 to-transparent lg:via-background/80" />
       <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/60" />
+    </div>
+  );
+}
+
+// Pre-compute particle positions to avoid Math.random() during render
+const PARTICLE_DATA = Array.from({ length: 20 }, () => ({
+  left: `${Math.random() * 100}%`,
+  top: `${Math.random() * 100}%`,
+  duration: `${10 + Math.random() * 20}s`,
+  delay: `${Math.random() * 10}s`,
+}));
+
+function FloatingParticles() {
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {PARTICLE_DATA.map((p, i) => (
+        <div
+          key={i}
+          className="absolute h-1 w-1 rounded-full bg-primary/30"
+          style={{
+            left: p.left,
+            top: p.top,
+            animation: `float ${p.duration} ease-in-out infinite`,
+            animationDelay: p.delay,
+          }}
+        />
+      ))}
     </div>
   );
 }

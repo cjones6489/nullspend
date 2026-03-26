@@ -5,9 +5,9 @@ import type { McpServerConfig } from "./config.js";
 
 let mockCreateAction = vi.fn();
 let mockGetAction = vi.fn();
-let mockListBudgets = vi.fn();
-let mockGetCostSummary = vi.fn();
-let mockListCostEvents = vi.fn();
+const mockListBudgets = vi.fn();
+const mockGetCostSummary = vi.fn();
+const mockListCostEvents = vi.fn();
 
 vi.mock("@nullspend/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@nullspend/sdk")>();
