@@ -113,11 +113,6 @@ async function parseRequestBody(
 
 const MAX_SESSION_ID_LENGTH = 256;
 
-function truncateSessionId(raw: string | null): string | null {
-  if (!raw) return null;
-  return raw.length > MAX_SESSION_ID_LENGTH ? raw.slice(0, MAX_SESSION_ID_LENGTH) : raw;
-}
-
 export default {
   async queue(
     batch: MessageBatch<ReconciliationMessage | CostEventMessage | WebhookQueueMessage>,
@@ -235,6 +230,12 @@ export default {
 
       const tags = mergeTags(auth.defaultTags, request.headers.get("x-nullspend-tags"));
 
+      const rawSessionId = request.headers.get("x-nullspend-session");
+      if (rawSessionId && rawSessionId.length > MAX_SESSION_ID_LENGTH) {
+        emitMetric("request_error", { status: 400, reason: "session_id_too_long" });
+        return errorResponse("bad_request", `x-nullspend-session exceeds ${MAX_SESSION_ID_LENGTH} characters`, 400);
+      }
+
       const ctx: RequestContext = {
         body: result.body,
         bodyText: result.bodyText,
@@ -243,7 +244,7 @@ export default {
         ownerId: auth.orgId ?? auth.userId,
         connectionString,
         skipDbWrites,
-        sessionId: truncateSessionId(request.headers.get("x-nullspend-session")),
+        sessionId: rawSessionId?.trim() || null,
         traceId,
         tags,
         webhookDispatcher,

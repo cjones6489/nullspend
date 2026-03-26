@@ -33,6 +33,10 @@ export function getSql(connectionString: string): ReturnType<typeof postgres> {
     connect_timeout: 5,  // seconds to wait for connection
     prepare: false,      // required for Hyperdrive compatibility (PgBouncer-style pooling)
     fetch_types: false,  // skip pg_type catalog round-trip — no array types used
+    // Statement-level timeout: kill queries that hang beyond 10s.
+    // Prevents cost-logger and budget-lookup from blocking waitUntil indefinitely.
+    transform: { undefined: null },
+    connection: { statement_timeout: 10_000 },
   });
 }
 
