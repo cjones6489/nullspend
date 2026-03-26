@@ -204,8 +204,17 @@ async function ensurePersonalOrg(
 }
 
 // Cookie signing — HMAC-SHA256
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 function getCookieSecret(): string {
-  return process.env.COOKIE_SECRET ?? process.env.NEXTAUTH_SECRET ?? "nullspend-dev-cookie-secret";
+  const secret = process.env.COOKIE_SECRET ?? process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("COOKIE_SECRET or NEXTAUTH_SECRET must be set in production");
+    }
+    return "nullspend-dev-cookie-secret";
+  }
+  return secret;
 }
 
 /** @internal Expose for testing only. */
@@ -214,7 +223,6 @@ export function _signCookieValueForTesting(payload: string): string {
 }
 
 function signCookieValue(payload: string): string {
-  const { createHmac } = require("node:crypto");
   const sig = createHmac("sha256", getCookieSecret()).update(payload).digest("hex").slice(0, 16);
   return `${payload}.${sig}`;
 }
@@ -223,7 +231,9 @@ function verifyCookieValue(signed: string): string | null {
   const dotIdx = signed.lastIndexOf(".");
   if (dotIdx < 1) return null;
   const payload = signed.slice(0, dotIdx);
-  if (signCookieValue(payload) !== signed) return null;
+  const expected = signCookieValue(payload);
+  if (expected.length !== signed.length) return null;
+  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(signed))) return null;
   return payload;
 }
 

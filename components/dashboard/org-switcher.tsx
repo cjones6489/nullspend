@@ -78,7 +78,7 @@ export function OrgSwitcher() {
           setSlugEdited(false);
           toast.success(`Created ${org.name}`);
           // Switch to the new org
-          const rawId = org.id.startsWith("ns_org_") ? org.id.slice(7) : org.id;
+          const rawId = fromExternalIdOfType("org", org.id);
           switchOrg.mutate(rawId, {
             onSuccess: () => router.refresh(),
           });
