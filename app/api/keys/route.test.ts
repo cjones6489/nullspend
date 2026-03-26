@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSessionContext } from "@/lib/auth/session";
 import { generateRawKey, hashKey, extractPrefix } from "@/lib/auth/api-key";
+import { LimitExceededError } from "@/lib/utils/http";
 import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
@@ -15,6 +16,15 @@ vi.mock("@/lib/auth/org-authorization", () => ({
 
 vi.mock("@/lib/stripe/subscription", () => ({
   getSubscriptionByOrgId: vi.fn().mockResolvedValue(null),
+}));
+
+/* ---- Feature gate ---- */
+const mockResolveOrgTier = vi.fn().mockResolvedValue({ tier: "free", label: "Free" });
+const mockAssertCountBelowLimit = vi.fn();
+
+vi.mock("@/lib/stripe/feature-gate", () => ({
+  resolveOrgTier: (...args: unknown[]) => mockResolveOrgTier(...args),
+  assertCountBelowLimit: (...args: unknown[]) => mockAssertCountBelowLimit(...args),
 }));
 
 const mockSelectList = vi.fn();
@@ -202,6 +212,10 @@ describe("POST /api/keys", () => {
     vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 10 }]); // free tier limit
 
+    mockAssertCountBelowLimit.mockImplementationOnce(() => {
+      throw new LimitExceededError("Maximum of 10 active API keys allowed on the Free plan. Upgrade for more.");
+    });
+
     const req = new Request("http://localhost/api/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -286,5 +300,28 @@ describe("POST /api/keys", () => {
     const res = await POST(req);
 
     expect(res.status).toBe(401);
+  });
+
+  it("returns 409 limit_exceeded when API key count exceeds tier limit", async () => {
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    mockSelectCount.mockResolvedValue([{ value: 10 }]);
+
+    // assertCountBelowLimit throws LimitExceededError
+    mockAssertCountBelowLimit.mockImplementationOnce(() => {
+      throw new LimitExceededError("Maximum of 10 active API keys allowed on the Free plan. Upgrade for more.");
+    });
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "One Too Many" }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("limit_exceeded");
+    expect(body.error.message).toContain("Maximum of 10 active API keys");
   });
 });

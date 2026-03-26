@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSessionContext } from "@/lib/auth/session";
+import { LimitExceededError } from "@/lib/utils/http";
 import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/session", () => ({
@@ -14,6 +15,15 @@ vi.mock("@/lib/auth/org-authorization", () => ({
 
 vi.mock("@/lib/stripe/subscription", () => ({
   getSubscriptionByOrgId: vi.fn().mockResolvedValue(null),
+}));
+
+/* ---- Feature gate ---- */
+const mockResolveOrgTier = vi.fn().mockResolvedValue({ tier: "free", label: "Free" });
+const mockAssertCountBelowLimit = vi.fn();
+
+vi.mock("@/lib/stripe/feature-gate", () => ({
+  resolveOrgTier: (...args: unknown[]) => mockResolveOrgTier(...args),
+  assertCountBelowLimit: (...args: unknown[]) => mockAssertCountBelowLimit(...args),
 }));
 
 const mockSelectList = vi.fn();
@@ -123,6 +133,10 @@ describe("POST /api/webhooks", () => {
   it("returns 409 when max endpoints reached", async () => {
     vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     mockSelectCount.mockResolvedValue([{ value: 2 }]); // free tier limit
+
+    mockAssertCountBelowLimit.mockImplementationOnce(() => {
+      throw new LimitExceededError("Maximum of 2 webhook endpoints allowed on the Free plan. Upgrade for more.");
+    });
 
     const req = new Request("http://localhost/api/webhooks", {
       method: "POST",
@@ -283,5 +297,28 @@ describe("POST /api/webhooks", () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data.eventTypes).toEqual(["budget.exceeded", "budget.threshold.warning"]);
+  });
+
+  it("returns 409 limit_exceeded when webhook count exceeds tier limit", async () => {
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    mockSelectCount.mockResolvedValue([{ value: 2 }]);
+
+    // assertCountBelowLimit throws LimitExceededError
+    mockAssertCountBelowLimit.mockImplementationOnce(() => {
+      throw new LimitExceededError("Maximum of 2 webhook endpoints allowed on the Free plan. Upgrade for more.");
+    });
+
+    const req = new Request("http://localhost/api/webhooks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://hooks.example.com/3rd" }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("limit_exceeded");
+    expect(body.error.message).toContain("Maximum of 2 webhook endpoints");
   });
 });

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
+import { LimitExceededError, SpendCapExceededError } from "@/lib/utils/http";
 import { GET, POST } from "@/app/api/budgets/route";
 
 vi.mock("@/lib/auth/session", () => ({
@@ -37,6 +38,17 @@ vi.mock("@/lib/stripe/tiers", () => ({
     free: { label: "Free", spendCapMicrodollars: 100_000_000_000, maxBudgets: Infinity },
     pro: { label: "Pro", spendCapMicrodollars: 1_000_000_000_000, maxBudgets: Infinity },
   },
+}));
+
+/* ---- Feature gate ---- */
+const mockResolveOrgTier = vi.fn().mockResolvedValue({ tier: "free", label: "Free" });
+const mockAssertCountBelowLimit = vi.fn();
+const mockAssertAmountBelowCap = vi.fn();
+
+vi.mock("@/lib/stripe/feature-gate", () => ({
+  resolveOrgTier: (...args: unknown[]) => mockResolveOrgTier(...args),
+  assertCountBelowLimit: (...args: unknown[]) => mockAssertCountBelowLimit(...args),
+  assertAmountBelowCap: (...args: unknown[]) => mockAssertAmountBelowCap(...args),
 }));
 
 vi.mock("@/lib/utils/http", async (importOriginal) => {
@@ -360,23 +372,22 @@ describe("POST /api/budgets — proxy invalidation", () => {
   });
 
   it("returns 409 limit_exceeded when budget count exceeds tier limit", async () => {
-    // Override TIERS mock for this test — free tier with maxBudgets: 1
-    const { TIERS } = await import("@/lib/stripe/tiers");
-    const mockedTIERS = vi.mocked(TIERS);
-    (mockedTIERS as Record<string, Record<string, unknown>>).free.maxBudgets = 1;
-
     const { readJsonBody } = await import("@/lib/utils/http");
-    const mockedReadJsonBody = vi.mocked(readJsonBody);
-    mockedReadJsonBody.mockResolvedValue({
+    vi.mocked(readJsonBody).mockResolvedValue({
       entityType: "user",
       entityId: `ns_usr_${TEST_USER_ID}`,
       maxBudgetMicrodollars: 5_000_000,
     });
 
-    // Mock: existingForEntity returns [] (new entity), count returns 1 (at limit)
+    // assertCountBelowLimit throws LimitExceededError
+    mockAssertCountBelowLimit.mockImplementationOnce(() => {
+      throw new LimitExceededError("Maximum of 5 budgets allowed on the Free plan. Upgrade for more.");
+    });
+
+    // Mock: existingForEntity returns [] (new entity) so count check fires
     const mockWhere = vi.fn()
-      .mockResolvedValueOnce([])          // existingForEntity check
-      .mockResolvedValueOnce([{ count: 1 }]);  // budget count query
+      .mockResolvedValueOnce([])           // existingForEntity check
+      .mockResolvedValueOnce([{ count: 5 }]);  // budget count query
     const mockFrom = vi.fn(() => ({ where: mockWhere }));
     const mockSelect = vi.fn(() => ({ from: mockFrom }));
     const mockTxDb = { select: mockSelect, insert: vi.fn() };
@@ -393,19 +404,20 @@ describe("POST /api/budgets — proxy invalidation", () => {
     expect(response.status).toBe(409);
     const json = await response.json();
     expect(json.error.code).toBe("limit_exceeded");
-    expect(json.error.message).toContain("Free");
-
-    // Restore
-    (mockedTIERS as Record<string, Record<string, unknown>>).free.maxBudgets = Infinity;
+    expect(json.error.message).toContain("Maximum of 5 budgets");
   });
 
-  it("returns 400 spend_cap_exceeded when budget exceeds tier spend cap", async () => {
+  it("returns 400 spend_cap_exceeded when budget amount exceeds tier cap", async () => {
     const { readJsonBody } = await import("@/lib/utils/http");
-    const mockedReadJsonBody = vi.mocked(readJsonBody);
-    mockedReadJsonBody.mockResolvedValue({
+    vi.mocked(readJsonBody).mockResolvedValue({
       entityType: "user",
       entityId: `ns_usr_${TEST_USER_ID}`,
-      maxBudgetMicrodollars: 999_000_000_000, // exceeds the $100K mock cap
+      maxBudgetMicrodollars: 999_000_000_000,
+    });
+
+    // assertAmountBelowCap throws SpendCapExceededError
+    mockAssertAmountBelowCap.mockImplementationOnce(() => {
+      throw new SpendCapExceededError("Budget amount exceeds your Free tier spend cap of $100,000. Upgrade your plan to increase your limit.");
     });
 
     mockedGetDb.mockReturnValue({} as unknown as ReturnType<typeof getDb>);
