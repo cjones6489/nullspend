@@ -35,6 +35,7 @@ const RACE_CONCURRENCY = { light: 10, medium: 25, heavy: 50 } as const;
 
 describe(`Budget race conditions [${INTENSITY}]`, () => {
   let sql: postgres.Sql;
+  let orgId: string;
 
   beforeAll(async () => {
     const up = await isServerUp();
@@ -46,12 +47,16 @@ describe(`Budget race conditions [${INTENSITY}]`, () => {
     if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL required.");
 
     sql = postgres(process.env.DATABASE_URL!, { max: 3, idle_timeout: 10 });
+
+    const [key] = await sql`SELECT org_id FROM api_keys WHERE id = ${NULLSPEND_SMOKE_KEY_ID!}`;
+    if (!key?.org_id) throw new Error("Smoke test API key has no org_id");
+    orgId = key.org_id;
   });
 
   afterEach(async () => {
     // Wait for in-flight reconciliations to settle
     await new Promise((r) => setTimeout(r, 8_000));
-    await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
+    await invalidateBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
     await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
   });
 
@@ -62,14 +67,15 @@ describe(`Budget race conditions [${INTENSITY}]`, () => {
   async function setupBudget(maxBudgetMicrodollars: number, spendMicrodollars = 0) {
     const userId = NULLSPEND_SMOKE_USER_ID!;
     await sql`
-      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, ${orgId}, 'user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
       ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = ${spendMicrodollars},
+                    org_id = ${orgId},
                     updated_at = NOW()
     `;
-    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "user", userId);
 
     // Brief settle for DO to complete population
     await new Promise((r) => setTimeout(r, 1_000));
@@ -110,7 +116,7 @@ describe(`Budget race conditions [${INTENSITY}]`, () => {
         UPDATE budgets SET max_budget_microdollars = 0, spend_microdollars = 0, updated_at = NOW()
         WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}
       `;
-      await syncBudget(NULLSPEND_SMOKE_USER_ID!, NULLSPEND_SMOKE_KEY_ID!);
+      await syncBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
       await new Promise((r) => setTimeout(r, 1_000));
 
       const enforced = await verifyBudgetEnforced(true);
@@ -123,7 +129,7 @@ describe(`Budget race conditions [${INTENSITY}]`, () => {
         UPDATE budgets SET max_budget_microdollars = ${budget}, spend_microdollars = 0, updated_at = NOW()
         WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}
       `;
-      await syncBudget(NULLSPEND_SMOKE_USER_ID!, NULLSPEND_SMOKE_KEY_ID!);
+      await syncBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
       await new Promise((r) => setTimeout(r, 1_000));
       return enforced;
     };
@@ -188,7 +194,7 @@ describe(`Budget race conditions [${INTENSITY}]`, () => {
     if (!enforced) {
       console.log("[stress] WARNING: $0 budget not blocking probe request — DO sync delay");
       // Re-sync and wait longer
-      await syncBudget(NULLSPEND_SMOKE_USER_ID!, NULLSPEND_SMOKE_KEY_ID!);
+      await syncBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
       await new Promise((r) => setTimeout(r, 3_000));
     }
 
