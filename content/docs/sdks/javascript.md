@@ -1,7 +1,4 @@
----
-title: "JavaScript SDK"
-description: "TypeScript/JavaScript client for the NullSpend API."
----
+# JavaScript SDK
 
 TypeScript/JavaScript client for the NullSpend API.
 
@@ -38,7 +35,7 @@ The `NullSpend` constructor accepts a `NullSpendConfig` object:
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `baseUrl` | `string` | **required** | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
-| `apiKey` | `string` | **required** | API key (`ns_live_sk_...` or `ns_test_sk_...`) |
+| `apiKey` | `string` | **required** | API key (`ns_live_sk_...`) |
 | `apiVersion` | `string` | `"2026-04-01"` | API version sent via `NullSpend-Version` header |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | Custom fetch implementation |
 | `requestTimeoutMs` | `number` | `30000` | Per-request timeout in ms. Set to `0` to disable |
@@ -226,6 +223,78 @@ Returns a `BudgetStatus` with an `entities` array. Each `BudgetEntity` contains:
 | `resetInterval` | `string \| null` | Reset period (e.g. `"daily"`, `"monthly"`) |
 | `currentPeriodStart` | `string \| null` | ISO 8601 timestamp of current period start |
 
+## Cost Awareness (Read APIs)
+
+Query your spend data programmatically — useful for cost-aware agents and dashboards.
+
+### `listBudgets()`
+
+Fetch all budgets for the authenticated org.
+
+```typescript
+const { data: budgets } = await ns.listBudgets();
+
+for (const budget of budgets) {
+  const spent = budget.spendMicrodollars / 1_000_000;
+  const limit = budget.maxBudgetMicrodollars / 1_000_000;
+  console.log(`${budget.entityType}/${budget.entityId}: $${spent} / $${limit}`);
+}
+```
+
+Each `BudgetRecord` contains:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Budget ID |
+| `entityType` | `string` | `"user"`, `"api_key"`, or `"tag"` |
+| `entityId` | `string` | Entity identifier |
+| `maxBudgetMicrodollars` | `number` | Budget ceiling |
+| `spendMicrodollars` | `number` | Current spend |
+| `policy` | `string` | `"strict_block"` or `"warn"` |
+| `resetInterval` | `string \| null` | `"daily"`, `"monthly"`, etc. |
+| `thresholdPercentages` | `number[]` | Webhook alert thresholds |
+| `velocityLimitMicrodollars` | `number \| null` | Per-window spend limit |
+| `sessionLimitMicrodollars` | `number \| null` | Per-session spend limit |
+
+### `getCostSummary(period?)`
+
+Get aggregated spend data for a time period.
+
+```typescript
+const summary = await ns.getCostSummary("30d"); // "7d" | "30d" | "90d"
+
+console.log(`Total spend: $${summary.totals.totalCostMicrodollars / 1_000_000}`);
+console.log(`Total requests: ${summary.totals.totalRequests}`);
+
+// Spend by model
+for (const [model, cost] of Object.entries(summary.models)) {
+  console.log(`  ${model}: $${cost / 1_000_000}`);
+}
+
+// Daily trend
+for (const day of summary.daily) {
+  console.log(`  ${day.date}: $${day.totalCostMicrodollars / 1_000_000}`);
+}
+```
+
+### `listCostEvents(options?)`
+
+Fetch recent cost events with pagination.
+
+```typescript
+// Get the last 10 cost events
+const { data: events, cursor } = await ns.listCostEvents({ limit: 10 });
+
+for (const event of events) {
+  console.log(`${event.model}: ${event.inputTokens} in / ${event.outputTokens} out — $${event.costMicrodollars / 1_000_000}`);
+}
+
+// Paginate with cursor
+if (cursor) {
+  const nextPage = await ns.listCostEvents({ limit: 10, cursor: `${cursor.createdAt},${cursor.id}` });
+}
+```
+
 ## Retry Behavior
 
 The SDK automatically retries on transient failures:
@@ -328,6 +397,15 @@ import type {
   // Budgets
   BudgetStatus,
   BudgetEntity,
+  BudgetRecord,
+  ListBudgetsResponse,
+
+  // Cost awareness (read)
+  CostEventRecord,
+  ListCostEventsResponse,
+  ListCostEventsOptions,
+  CostSummaryResponse,
+  CostSummaryPeriod,
 
   // Enums
   ActionType,
