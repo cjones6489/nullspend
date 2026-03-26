@@ -98,7 +98,7 @@ Validation error details include an `issues` array:
 | Code | HTTP | When | Fix |
 |---|---|---|---|
 | `not_found` | 404 | The requested resource does not exist | Verify the resource ID |
-| `limit_exceeded` | 409 | Resource limit reached (e.g., max 10 webhook endpoints, max 20 API keys) | Delete unused resources before creating new ones |
+| `limit_exceeded` | 409 | Resource limit reached for the organization's tier (e.g., Free: 10 keys, 2 webhooks, 3 budgets) | Delete unused resources or upgrade to a higher tier |
 
 ### HITL Actions
 

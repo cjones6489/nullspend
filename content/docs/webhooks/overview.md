@@ -87,7 +87,7 @@ Thin mode reduces payload size and avoids sending potentially sensitive data (li
 
 ## Transport
 
-Webhooks are delivered via [QStash](https://upstash.com/docs/qstash) with automatic retries:
+Webhooks are delivered via Cloudflare Queues with automatic retries:
 
 - **5 retry attempts** with exponential backoff on failure
 - Your endpoint must return a **2xx** response within **5 seconds**

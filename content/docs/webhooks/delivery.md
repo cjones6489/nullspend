@@ -11,27 +11,26 @@ NullSpend has two independent systems that dispatch webhooks, depending on where
 
 | Path | Events | Transport | Retries |
 |---|---|---|---|
-| **Proxy-side** | `cost_event.created`, all budget events, `velocity.*`, `session.*`, `tag_budget.*`, `request.blocked` | QStash | 5 retries, exponential backoff |
+| **Proxy-side** | `cost_event.created`, all budget events, `velocity.*`, `session.*`, `tag_budget.*`, `request.blocked` | Cloudflare Queue | 5 retries, exponential backoff |
 | **Dashboard-side** | `action.*`, `test.ping`, dashboard-originated `cost_event.created` | Direct HTTP POST | None (fire-and-forget) |
 
 Both paths sign payloads identically — your verification code works the same regardless of which path delivered the event.
 
 ## Proxy-Side Delivery
 
-Events from the proxy worker are delivered via [QStash](https://upstash.com/docs/qstash), Upstash's managed message queue.
+Events from the proxy worker are delivered via a Cloudflare Queue-based dispatch pipeline.
 
 **How it works:**
 
-1. The proxy builds the event payload and signs it with your endpoint's signing secret
-2. The signed event is published to QStash with your endpoint URL as the destination
-3. QStash delivers the HTTP POST to your endpoint
-4. If your endpoint returns a non-2xx response or doesn't respond within 5 seconds, QStash retries
+1. The proxy builds the event payload and enqueues it to the webhook delivery queue
+2. The queue consumer fetches the endpoint metadata, signs the payload, and delivers the HTTP POST
+3. If your endpoint returns a non-2xx response or doesn't respond within 5 seconds, the consumer retries with exponential backoff
 
 **Retry behavior:**
 
 - **5 retry attempts** with exponential backoff
 - Your endpoint must return a **2xx** status code within **5 seconds**
-- After all retries are exhausted, the event goes to QStash's dead-letter queue (DLQ)
+- After all retries are exhausted, the event goes to the dead-letter queue (DLQ)
 
 **Event type filtering:** Each endpoint can subscribe to specific event types. If an endpoint's `eventTypes` array is empty, it receives all events. If it lists specific types, only matching events are dispatched.
 
@@ -97,7 +96,7 @@ Webhook delivery is **fail-open** — errors are logged but never block the oper
 - A failed webhook dispatch never blocks or delays an API response
 - If the endpoint lookup fails (cache miss + DB error), the event is silently dropped
 
-**QStash DLQ:** On the proxy side, events that fail all 5 retry attempts land in QStash's dead-letter queue. These are not automatically retried — check QStash's dashboard for failed deliveries.
+**DLQ:** On the proxy side, events that fail all 5 retry attempts land in the dead-letter queue. These are not automatically retried.
 
 **Dashboard side:** No DLQ. Failed deliveries are logged server-side but not retried or stored.
 
@@ -107,8 +106,7 @@ Webhook delivery is **fail-open** — errors are logged but never block the oper
 
 The proxy caches endpoint metadata (ID, URL, event types) to avoid querying the database on every request:
 
-- **Workers KV** with a **5-minute TTL** (preferred when the KV binding is available)
-- **Redis** with a 5-minute TTL (fallback)
+- **Workers KV** with a **5-minute TTL**
 - **Signing secrets are never cached** — they are always fetched from the database at dispatch time
 
 Cache invalidation happens when you create, update, or delete an endpoint via the dashboard API.
@@ -123,7 +121,7 @@ The dashboard queries the database directly for each dispatch — no caching lay
 - **Deduplicate by event ID.** Use the `X-NullSpend-Webhook-Id` header (same as `event.id`) to skip duplicate deliveries from retries.
 - **Don't rely on ordering.** Events may arrive out of order, especially with retries. Use `created_at` to determine sequence.
 - **Use thin mode for high volume.** If you process hundreds of cost events per minute, thin mode reduces bandwidth and latency. Fetch full details on demand.
-- **Monitor for DLQ entries.** If your endpoint has persistent failures, events accumulate in QStash's DLQ. Check it periodically.
+- **Monitor for DLQ entries.** If your endpoint has persistent failures, events accumulate in the dead-letter queue.
 
 For expanded best practices with code examples, see [Best Practices](best-practices.md).
 
