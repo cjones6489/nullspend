@@ -20,14 +20,24 @@ function makeRequest(headers?: Record<string, string>): Request {
 
 const mockedGetDb = vi.mocked(getDb);
 
-function mockDb(updateResult: unknown[]) {
+function mockDb(selectResult: unknown[]) {
+  const selectChain = {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue(selectResult),
+      }),
+    }),
+  };
+
+  const updatePromise = Promise.resolve();
   const updateChain = {
-    set: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    returning: vi.fn().mockResolvedValue(updateResult),
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue(updatePromise),
+    }),
   };
 
   mockedGetDb.mockReturnValue({
+    select: vi.fn().mockReturnValue(selectChain),
     update: vi.fn().mockReturnValue(updateChain),
   } as never);
 }

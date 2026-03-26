@@ -49,17 +49,33 @@ function getEnvFallbackKey(): string | undefined {
   return process.env.NULLSPEND_API_KEY;
 }
 
+// Debounced lastUsedAt updates — at most once per key per 60s
+const lastUsedAtUpdated = new Map<string, number>();
+const LAST_USED_DEBOUNCE_MS = 60_000;
+
 async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
   const db = getDb();
   const hash = hashKey(rawKey);
 
   const [row] = await db
-    .update(apiKeys)
-    .set({ lastUsedAt: new Date() })
+    .select({ id: apiKeys.id, userId: apiKeys.userId, orgId: apiKeys.orgId, apiVersion: apiKeys.apiVersion })
+    .from(apiKeys)
     .where(and(eq(apiKeys.keyHash, hash), isNull(apiKeys.revokedAt)))
-    .returning({ id: apiKeys.id, userId: apiKeys.userId, orgId: apiKeys.orgId, apiVersion: apiKeys.apiVersion });
+    .limit(1);
 
   if (!row) return null;
+
+  // Fire-and-forget debounced lastUsedAt update (no write contention on hot path)
+  const now = Date.now();
+  const lastUpdate = lastUsedAtUpdated.get(row.id) ?? 0;
+  if (now - lastUpdate > LAST_USED_DEBOUNCE_MS) {
+    lastUsedAtUpdated.set(row.id, now);
+    db.update(apiKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiKeys.id, row.id))
+      .then(() => {})
+      .catch(() => {}); // Best-effort, never block
+  }
 
   return { userId: row.userId, orgId: row.orgId ?? null, keyId: row.id, apiVersion: row.apiVersion };
 }
