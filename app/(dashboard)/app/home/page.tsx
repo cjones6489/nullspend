@@ -31,7 +31,7 @@ import { useCostSummary } from "@/lib/queries/cost-event-summary";
 import { formatMicrodollars } from "@/lib/utils/format";
 import type { LucideIcon } from "lucide-react";
 
-const PROXY_URL = "https://proxy.nullspend.com/v1";
+const PROXY_URL = process.env.NEXT_PUBLIC_NULLSPEND_PROXY_URL ?? "https://proxy.nullspend.com/v1";
 
 const snippets = {
   OpenAI: `import OpenAI from "openai";

@@ -1,3 +1,5 @@
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -29,7 +31,9 @@ async function handleResponse<T>(response: Response): Promise<T> {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+  const response = await fetch(path, {
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+  });
   return handleResponse<T>(response);
 }
 
@@ -41,6 +45,7 @@ export async function apiPost<T>(
     method: "POST",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
   return handleResponse<T>(response);
 }
@@ -53,11 +58,15 @@ export async function apiPatch<T>(
     method: "PATCH",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
   return handleResponse<T>(response);
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
-  const response = await fetch(path, { method: "DELETE" });
+  const response = await fetch(path, {
+    method: "DELETE",
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+  });
   return handleResponse<T>(response);
 }
