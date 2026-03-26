@@ -26,6 +26,7 @@ import {
 
 describe("Anthropic known issues: cost logging & budget edge cases", () => {
   let sql: postgres.Sql;
+  let orgId: string;
   const usersToCleanup: string[] = [];
 
   function trackUser(id: string) {
@@ -40,11 +41,12 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
     trackUser(userId);
 
     await sql`
-      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, ${orgId}, 'user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
       ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = ${spendMicrodollars},
+                    org_id = ${orgId},
                     updated_at = NOW()
     `;
   }
@@ -56,6 +58,11 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
     if (!DATABASE_URL) throw new Error("DATABASE_URL required.");
 
     sql = postgres(DATABASE_URL, { max: 5, idle_timeout: 10 });
+
+    // Look up org_id from the smoke test API key (required NOT NULL since Phase 2)
+    const [key] = await sql`SELECT org_id FROM api_keys WHERE id = ${NULLSPEND_SMOKE_KEY_ID!}`;
+    if (!key?.org_id) throw new Error("Smoke test API key has no org_id");
+    orgId = key.org_id;
   });
 
   afterEach(async () => {
@@ -226,7 +233,7 @@ describe("Anthropic known issues: cost logging & budget edge cases", () => {
   it("budget enforced on /v1/messages route (no bypass)", async () => {
     const userId = NULLSPEND_SMOKE_USER_ID!;
     await setupBudget(userId, 1); // 1 microdollar — guaranteed denial
-    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
     await new Promise((r) => setTimeout(r, 1_000)); // settle
 
     const res = await fetch(`${BASE}/v1/messages`, {

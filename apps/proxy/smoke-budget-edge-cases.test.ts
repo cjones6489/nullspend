@@ -38,6 +38,7 @@ import {
 
 describe("Budget edge cases (LiteLLM bug avoidance)", () => {
   let sql: postgres.Sql;
+  let orgId: string;
 
   beforeAll(async () => {
     const up = await isServerUp();
@@ -50,6 +51,11 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL required.");
 
     sql = postgres(process.env.DATABASE_URL!, { max: 3, idle_timeout: 10 });
+
+    // Look up org_id from the smoke test API key (required NOT NULL since Phase 2)
+    const [key] = await sql`SELECT org_id FROM api_keys WHERE id = ${NULLSPEND_SMOKE_KEY_ID!}`;
+    if (!key?.org_id) throw new Error("Smoke test API key has no org_id");
+    orgId = key.org_id;
   });
 
   afterEach(async () => {
@@ -58,8 +64,8 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
     // Clean up all three layers via internal API.
     // removeBudget now also deletes associated reservations.
-    await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
-    await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "api_key", NULLSPEND_SMOKE_KEY_ID!);
+    await invalidateBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
+    await invalidateBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
     await sql`DELETE FROM budgets WHERE entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
     await sql`DELETE FROM budgets WHERE entity_id = ${NULLSPEND_SMOKE_KEY_ID!} AND max_budget_microdollars < 1000000000000`;
   });
@@ -79,11 +85,12 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     spendMicrodollars = 0,
   ) {
     await sql`
-      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES (${NULLSPEND_SMOKE_USER_ID!}, ${entityType}, ${entityId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${NULLSPEND_SMOKE_USER_ID!}, ${orgId}, ${entityType}, ${entityId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
       ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = ${spendMicrodollars},
+                    org_id = ${orgId},
                     updated_at = NOW()
     `;
   }
@@ -96,7 +103,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     // Wait for Hyperdrive query cache to expire (max_age=5s)
     // so the sync reads fresh Postgres data including all inserted rows.
     await new Promise((r) => setTimeout(r, 5_500));
-    await syncBudget(NULLSPEND_SMOKE_USER_ID!, NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
   }
 
   /** Insert a single budget and sync. Convenience wrapper for single-entity tests. */
@@ -112,8 +119,8 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
   /** Remove any existing budgets so the user/key is non-budgeted */
   async function cleanupBudgets() {
-    await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
-    await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "api_key", NULLSPEND_SMOKE_KEY_ID!);
+    await invalidateBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
+    await invalidateBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
     await sql`DELETE FROM budgets WHERE entity_id IN (${NULLSPEND_SMOKE_USER_ID!}, ${NULLSPEND_SMOKE_KEY_ID!}) AND max_budget_microdollars < 1000000000000`;
   }
 

@@ -118,7 +118,7 @@ export async function waitForBudgetSpend(
  * Requires INTERNAL_SECRET in .env.smoke.
  */
 export async function invalidateBudget(
-  userId: string,
+  ownerId: string,
   entityType: string,
   entityId: string,
   action: "remove" | "reset_spend" = "remove",
@@ -132,7 +132,7 @@ export async function invalidateBudget(
       "Content-Type": "application/json",
       Authorization: `Bearer ${INTERNAL_SECRET}`,
     },
-    body: JSON.stringify({ action, userId, entityType, entityId }),
+    body: JSON.stringify({ action, ownerId, entityType, entityId }),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -149,8 +149,9 @@ export async function invalidateBudget(
  * has the latest state regardless of which Worker isolate handles the request.
  */
 export async function syncBudget(
-  userId: string,
-  keyId: string,
+  ownerId: string,
+  entityType: string,
+  entityId: string,
 ): Promise<void> {
   if (!INTERNAL_SECRET) {
     throw new Error("INTERNAL_SECRET required in .env.smoke for budget sync");
@@ -161,7 +162,7 @@ export async function syncBudget(
       "Content-Type": "application/json",
       Authorization: `Bearer ${INTERNAL_SECRET}`,
     },
-    body: JSON.stringify({ action: "sync", userId, entityType: "api_key", entityId: keyId }),
+    body: JSON.stringify({ action: "sync", ownerId, entityType, entityId }),
   });
   if (!res.ok) {
     const body = await res.text();

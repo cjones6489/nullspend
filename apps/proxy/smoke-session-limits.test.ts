@@ -30,6 +30,7 @@ import {
 
 describe("End-to-end session limit enforcement", () => {
   let sql: postgres.Sql;
+  let orgId: string;
 
   beforeAll(async () => {
     const up = await isServerUp();
@@ -42,6 +43,11 @@ describe("End-to-end session limit enforcement", () => {
     if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL required.");
 
     sql = postgres(process.env.DATABASE_URL!, { max: 3, idle_timeout: 10 });
+
+    // Look up org_id from the smoke test API key (required NOT NULL since Phase 2)
+    const [key] = await sql`SELECT org_id FROM api_keys WHERE id = ${NULLSPEND_SMOKE_KEY_ID!}`;
+    if (!key?.org_id) throw new Error("Smoke test API key has no org_id");
+    orgId = key.org_id;
   });
 
   afterEach(async () => {
@@ -51,7 +57,7 @@ describe("End-to-end session limit enforcement", () => {
 
     // Remove budget from DO + delete from Postgres so next test starts clean.
     try {
-      await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
+      await invalidateBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
     } catch { /* budget may not exist */ }
     await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
     // Brief pause to ensure Postgres commits propagate through the connection pooler
@@ -61,7 +67,7 @@ describe("End-to-end session limit enforcement", () => {
   afterAll(async () => {
     // Full cleanup: remove budget from DO + Postgres
     try {
-      await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
+      await invalidateBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
     } catch { /* may not exist */ }
     await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
     await sql.end();
@@ -77,16 +83,17 @@ describe("End-to-end session limit enforcement", () => {
     const userId = NULLSPEND_SMOKE_USER_ID!;
 
     // 1. Remove stale DO budget (evicts any cached session_limit)
-    try { await invalidateBudget(userId, "user", userId); } catch { /* may not exist */ }
+    try { await invalidateBudget(orgId, "user", userId); } catch { /* may not exist */ }
 
     // 2. Upsert into Postgres with desired session_limit
     await sql`
-      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
-      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', ${sessionLimitMicrodollars})
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
+      VALUES (${userId}, ${orgId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', ${sessionLimitMicrodollars})
       ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = 0,
                     session_limit_microdollars = ${sessionLimitMicrodollars},
+                    org_id = ${orgId},
                     updated_at = NOW()
     `;
 
@@ -94,7 +101,7 @@ describe("End-to-end session limit enforcement", () => {
     await new Promise((r) => setTimeout(r, 500));
 
     // 4. Sync: Postgres → DO (populateIfEmpty creates fresh budget with session_limit)
-    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
   }
 
   /**
@@ -103,20 +110,21 @@ describe("End-to-end session limit enforcement", () => {
   async function _setupBudgetWithoutSessionLimit(maxBudgetMicrodollars: number) {
     const userId = NULLSPEND_SMOKE_USER_ID!;
 
-    try { await invalidateBudget(userId, "user", userId); } catch { /* may not exist */ }
+    try { await invalidateBudget(orgId, "user", userId); } catch { /* may not exist */ }
 
     await sql`
-      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
-      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', NULL)
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
+      VALUES (${userId}, ${orgId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', NULL)
       ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = 0,
                     session_limit_microdollars = NULL,
+                    org_id = ${orgId},
                     updated_at = NOW()
     `;
 
     await new Promise((r) => setTimeout(r, 500));
-    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
   }
 
   // ── Core enforcement ──────────────────────────────────────────────

@@ -33,6 +33,7 @@ import {
 
 describe("Anthropic end-to-end budget enforcement", () => {
   let sql: postgres.Sql;
+  let orgId: string;
 
   beforeAll(async () => {
     const up = await isServerUp();
@@ -44,13 +45,18 @@ describe("Anthropic end-to-end budget enforcement", () => {
     if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL required.");
 
     sql = postgres(process.env.DATABASE_URL!, { max: 3, idle_timeout: 10 });
+
+    // Look up org_id from the smoke test API key (required NOT NULL since Phase 2)
+    const [key] = await sql`SELECT org_id FROM api_keys WHERE id = ${NULLSPEND_SMOKE_KEY_ID!}`;
+    if (!key?.org_id) throw new Error("Smoke test API key has no org_id");
+    orgId = key.org_id;
   });
 
   afterEach(async () => {
     // Wait for waitUntil reconciliation to complete before cleanup
     await new Promise((r) => setTimeout(r, 5_000));
 
-    await invalidateBudget(NULLSPEND_SMOKE_USER_ID!, "user", NULLSPEND_SMOKE_USER_ID!);
+    await invalidateBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
     await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}`;
   });
 
@@ -62,22 +68,23 @@ describe("Anthropic end-to-end budget enforcement", () => {
     const userId = NULLSPEND_SMOKE_USER_ID!;
 
     await sql`
-      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES (${userId}, 'user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, ${orgId}, 'user', ${userId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
       ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = ${spendMicrodollars},
+                    org_id = ${orgId},
                     updated_at = NOW()
     `;
 
     // Force Postgres→DO sync via internal endpoint.
     // Under DO-first architecture, no Worker-level cache to invalidate.
-    await syncBudget(userId, NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
   }
 
   async function cleanupBudget() {
     const userId = NULLSPEND_SMOKE_USER_ID!;
-    await invalidateBudget(userId, "user", userId);
+    await invalidateBudget(orgId, "user", userId);
     await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${userId}`;
   }
 

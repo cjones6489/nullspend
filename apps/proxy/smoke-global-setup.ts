@@ -18,12 +18,21 @@ export async function setup() {
 
   const sql = postgres(dbUrl, { max: 1, idle_timeout: 5 });
   try {
+    // Look up the org_id from the API key (required NOT NULL since Phase 2)
+    const [key] = await sql`SELECT org_id FROM api_keys WHERE id = ${keyId}`;
+    const orgId = key?.org_id;
+    if (!orgId) {
+      console.warn("[smoke-setup] API key not found or missing org_id, skipping budget setup");
+      return;
+    }
+
     await sql`
-      INSERT INTO budgets (user_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES (${userId}, 'api_key', ${keyId}, 1000000000000, 0, 'strict_block')
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, ${orgId}, 'api_key', ${keyId}, 1000000000000, 0, 'strict_block')
       ON CONFLICT (user_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = 1000000000000,
                     spend_microdollars = 0,
+                    org_id = ${orgId},
                     updated_at = NOW()
     `;
   } finally {
