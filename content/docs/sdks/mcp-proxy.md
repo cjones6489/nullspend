@@ -92,17 +92,19 @@ Cost per tool call is estimated using a three-tier priority system:
 | 2 | Dashboard-configured costs | Fetched from `/api/tool-costs` at startup |
 | 3 | MCP annotation tiers | Inferred from the tool's `annotations` field |
 
-### Annotation Tiers
+### Annotation Tiers (Suggested Costs)
 
-When no explicit cost is configured, the proxy uses the tool's MCP annotations:
+Tools are **unpriced ($0.00) by default** until you configure a cost. The dashboard shows suggested costs based on MCP annotations to help you set appropriate prices:
 
-| Condition | Tier | Cost |
+| Condition | Tier | Suggested Cost |
 |---|---|---|
 | `readOnlyHint: true` AND `openWorldHint: false` | FREE | $0.00 |
 | `destructiveHint: true` AND `openWorldHint: true` | WRITE | $0.10 |
 | Everything else (default) | READ | $0.01 |
 
-To override costs for specific tools:
+These are suggestions only — they are not auto-applied. Accept or override them in the dashboard's Tool Costs page.
+
+To set costs for specific tools via environment variable:
 
 ```bash
 NULLSPEND_TOOL_COSTS='{"write_file": 50000, "run_query": 200000}'
