@@ -1,7 +1,7 @@
 # Org & Team Implementation Plan
 
 **Created:** 2026-03-24
-**Status:** Phases 0-4 Complete, Phase 5 Demand-Driven
+**Status:** Phases 0-4 Complete (2026-03-25), Phase 5 Demand-Driven
 **Author:** Claude (from research + planning with @cjone)
 
 **Companion documents:**
@@ -682,59 +682,59 @@ Uses `useSession()` → `{ role }` with permission booleans (`canCreate`, `canMa
 **Strategy:** Since we have zero real users, break cleanly — rip out per-user billing entirely.
 
 **Schema migration:**
-- [ ] Change `subscriptions` unique constraint from `userId` to `orgId`
-- [ ] Keep `userId` column (tracks which user initiated the subscription, useful for audit)
-- [ ] Add `stripeCustomerId` unique constraint (already unique)
+- [x] Change `subscriptions` unique constraint from `userId` to `orgId`
+- [x] Keep `userId` column (tracks which user initiated the subscription, useful for audit)
+- [x] Add `stripeCustomerId` unique constraint (already unique)
 
 **Subscription functions (`lib/stripe/subscription.ts`):**
-- [ ] Replace `getSubscriptionByUserId(userId)` with `getSubscriptionByOrgId(orgId)`
-- [ ] Update `upsertSubscription` to upsert by `orgId` (not `userId`)
-- [ ] Remove personal org lookup in `upsertSubscription` (orgId comes from metadata directly)
+- [x] Replace `getSubscriptionByUserId(userId)` with `getSubscriptionByOrgId(orgId)`
+- [x] Update `upsertSubscription` to upsert by `orgId` (not `userId`)
+- [x] Remove personal org lookup in `upsertSubscription` (orgId comes from metadata directly)
 
 **Feature gating (`lib/stripe/feature-gate.ts`):**
-- [ ] Replace `resolveUserTier(userId)` with `resolveOrgTier(orgId)`
-- [ ] Update 4 route callers: `budgets/route.ts`, `keys/route.ts`, `webhooks/route.ts`, `orgs/[orgId]/invitations/route.ts`
-- [ ] Update `useOrgTier()` hook to derive tier from org subscription (not user subscription)
+- [x] Replace `resolveUserTier(userId)` with `resolveOrgTier(orgId)`
+- [x] Update 4 route callers: `budgets/route.ts`, `keys/route.ts`, `webhooks/route.ts`, `orgs/[orgId]/invitations/route.ts`
+- [x] Update `useOrgTier()` hook to derive tier from org subscription (not user subscription)
 
 **Stripe Customer per org:**
-- [ ] Create Stripe Customer with `metadata: { orgId }` and `name: org.name`
-- [ ] Personal orgs get their own Customer (same as current, just keyed by orgId)
+- [x] Create Stripe Customer with `metadata: { orgId }` and `name: org.name`
+- [x] Personal orgs get their own Customer (same as current, just keyed by orgId)
 
 **Checkout flow (`app/api/stripe/checkout/route.ts`):**
-- [ ] Require owner role (already in 4a route table)
-- [ ] Look up/create Stripe Customer by orgId (not userId)
-- [ ] Pass `orgId` + `tier` in checkout session metadata and `subscription_data.metadata`
+- [x] Require owner role (already in 4a route table)
+- [x] Look up/create Stripe Customer by orgId (not userId)
+- [x] Pass `orgId` + `tier` in checkout session metadata and `subscription_data.metadata`
 
 **Portal flow (`app/api/stripe/portal/route.ts`):**
-- [ ] Require owner role
-- [ ] Look up subscription by orgId
+- [x] Require owner role
+- [x] Look up subscription by orgId
 
 **Webhook handler (`app/api/stripe/webhook/route.ts`):**
-- [ ] `checkout.session.completed`: extract `orgId` + `tier` from metadata → `upsertSubscription`
-- [ ] `customer.subscription.updated`: look up `orgId` from Customer metadata → `upsertSubscription`
-- [ ] `customer.subscription.deleted`: look up by `stripeCustomerId` → update status
-- [ ] `invoice.paid` / `invoice.payment_failed`: same pattern
+- [x] `checkout.session.completed`: extract `orgId` + `tier` from metadata → `upsertSubscription`
+- [x] `customer.subscription.updated`: look up `orgId` from Customer metadata → `upsertSubscription`
+- [x] `customer.subscription.deleted`: look up by `stripeCustomerId` → update status
+- [x] `invoice.paid` / `invoice.payment_failed`: same pattern
 
 **Subscription query hook (`lib/queries/subscription.ts`):**
-- [ ] `useSubscription()` → change endpoint to return org-scoped subscription
-- [ ] `/api/stripe/subscription` GET → look up by orgId from session context
+- [x] `useSubscription()` → change endpoint to return org-scoped subscription
+- [x] `/api/stripe/subscription` GET → look up by orgId from session context
 
 **Tests:**
-- [ ] Checkout creates Stripe Customer with orgId metadata
-- [ ] Webhook correctly resolves orgId from metadata
-- [ ] Feature gating uses org tier, not user tier
-- [ ] Multi-org: user in two orgs sees different tiers per org
-- [ ] Owner-only access on checkout/portal routes
+- [x] Checkout creates Stripe Customer with orgId metadata
+- [x] Webhook correctly resolves orgId from metadata
+- [x] Feature gating uses org tier, not user tier
+- [x] Multi-org: user in two orgs sees different tiers per org
+- [x] Owner-only access on checkout/portal routes
 
-### Phase 4 Review Gate
+### Phase 4 Review Gate — COMPLETE (2026-03-25)
 
-- [ ] Permissions enforced — viewer reads only, member can't admin, admin can't owner
-- [ ] Billing works per-org — Stripe Customer per org, subscription per org
-- [ ] `resolveOrgTier(orgId)` replaces `resolveUserTier(userId)` everywhere
-- [ ] Upgrade flow works end-to-end (free → pro)
-- [ ] Downgrade preserves resources, blocks new creation beyond limits
-- [ ] All tests pass
-- [ ] Platform is ready for multi-user teams
+- [x] Permissions enforced — viewer reads only, member can't admin, admin can't owner
+- [x] Billing works per-org — Stripe Customer per org, subscription per org
+- [x] `resolveOrgTier(orgId)` replaces `resolveUserTier(userId)` everywhere
+- [x] Upgrade flow works end-to-end (free → pro)
+- [x] Downgrade preserves resources, blocks new creation beyond limits
+- [x] All tests pass
+- [x] Platform is ready for multi-user teams
 
 ---
 

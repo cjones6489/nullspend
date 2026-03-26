@@ -97,24 +97,23 @@ and gives you the receipts to prove it.
 
 > **Decision: Usage-based tiers, metered by proxied LLM spend.**
 
-| Tier | Monthly Price | Proxied Spend Cap | Budgets | Retention | Key Features |
-|---|---|---|---|---|---|
-| **Free** | $0 | $1,000/mo | 1 | 7 days | Cost tracking, budget enforcement, dashboard |
-| **Pro** | $49/mo | $50,000/mo | Unlimited | 30 days | Kill receipts, webhooks, API access |
-| **Team** | $199/mo | $250,000/mo | Unlimited | 90 days | Multi-user, team budgets, advanced analytics |
-| **Enterprise** | Custom | Unlimited | Unlimited | Custom | VPC, SSO/SCIM, compliance, SLA |
+| Tier | Monthly Price | Proxied Spend Cap | Budgets | Team Members | Retention | Key Features |
+|---|---|---|---|---|---|---|
+| **Free** | $0 | $5,000/mo | 3 | 3 (viewers unlimited) | 30 days | Cost tracking, budget enforcement, dashboard, team orgs |
+| **Pro** | $49/mo | $50,000/mo | Unlimited | Unlimited | 90 days | Unlimited keys/budgets, 25 webhooks, priority support |
+| **Enterprise** | Custom | Unlimited | Unlimited | Unlimited | Unlimited | SSO/SAML, custom RBAC, audit log export, dedicated support |
 
 **Why this model:**
 
 1. **The natural unit is proxied spend.** That's what developers care about and
-   what our enforcement protects. A developer spending $800/mo on LLM calls
-   uses the free tier indefinitely. When their agent spend grows past $1K/mo,
+   what our enforcement protects. A developer spending $4K/mo on LLM calls
+   uses the free tier indefinitely. When their agent spend grows past $5K/mo,
    they're getting enough value to pay $49.
-2. **Free tier at $1K/mo spend is genuinely generous.** Most solo developers and
+2. **Free tier at $5K/mo spend is genuinely generous.** Most solo developers and
    early-stage startups spend less than this. They get the full product for
    free, build dependency on it, and upgrade organically. Portkey's free tier
    caps at 10K logs with 3-day retention — ours gives real enforcement with
-   7-day retention for anyone under $1K/mo.
+   30-day retention for anyone under $5K/mo. Team orgs with 3 members included.
 3. **$49 Pro matches Portkey's price point but includes budget enforcement.**
    Portkey charges $49/mo for production but gates budget enforcement behind
    enterprise. We include it at Pro. This is the competitive wedge in one
@@ -122,7 +121,7 @@ and gives you the receipts to prove it.
 4. **Proxied spend caps create natural upgrade pressure** without charging a
    percentage. Developers don't feel "taxed" on their AI costs — they pay a
    flat rate for the tier of service they need. The caps just gate which tier.
-5. **Enterprise is where the real revenue is.** Teams spending $250K+/mo on
+5. **Enterprise is where the real revenue is.** Teams spending $50K+/mo on
    LLM calls will happily pay $1K-5K/mo for controls and compliance. Custom
    pricing captures this without artificial ceilings.
 
@@ -260,17 +259,19 @@ schema migration required.
 
 ## Current Phase
 
-### Phase 5: Launch Prep (now — 3 days)
+### Phase 5: Launch Prep (in progress)
 
 **Goal:** Everything needed to put this in front of developers.
+
+**Status:** Core product is feature-complete. Org/team support (Phases 0-4) shipped 2026-03-25. Priority implementation roadmap items (tags, velocity limits, tracing, session budgets, queue-based logging, telemetry) all shipped. Now in launch prep and polish.
 
 #### Scope
 
 1. **README rewrite** — compelling README with the $47K horror story hook,
    one-line setup, architecture diagram
 2. **`.env.example` audit** — verify all required env vars are documented
-3. **`fillDateGaps` fix** — edge case in date gap filling for analytics
-4. **Sidebar reorder** — Analytics above Activity, Settings at bottom
+3. ~~**`fillDateGaps` fix**~~ — done
+4. ~~**Sidebar reorder**~~ — done
 5. **Documentation** — quickstart guide, provider setup guides (OpenAI,
    Anthropic), budget configuration guide, API reference
 6. **HN post draft** — "Show HN: NullSpend – FinOps for AI agents (budget
@@ -281,6 +282,7 @@ schema migration required.
    organizations need an alternative. Write a clear migration guide showing
    our proxy model is identical (change base URL). Blog post for SEO + docs
    page. Target: capture orphaned users while the window is open.
+8. **Mobile responsiveness** — sidebar collapse, responsive grids, tab overflow (identified in UI/UX audit 2026-03-25)
 
 #### Acceptance criteria
 
@@ -289,6 +291,7 @@ schema migration required.
 - HN post is ready to submit
 - Helicone migration guide is published and SEO-indexed
 - Free tier works without credit card
+- Dashboard is usable on tablet/mobile screens
 
 ---
 
@@ -326,30 +329,19 @@ These phases have concrete scope and are next in the build queue.
 ### Phase 6: Post-Launch Hardening (week 1-2 after launch)
 
 Fix whatever real users surface. Extract common patterns from support
-questions into better docs. Add the cost events log page to the dashboard
-(paginated table with filters — it's in the frontend gap analysis as
-pending). Wire up Stripe for Pro tier if demand warrants it, or stay free
-to maximize adoption. Build the signup/onboarding flow if not completed
-in Phase 5.
+questions into better docs. ~~Add the cost events log page to the dashboard~~
+(done — Activity page). ~~Wire up Stripe for Pro tier~~ (done — org-level
+billing with Stripe Checkout). Continue UI/UX polish (mobile responsiveness,
+inbox badge counts, table row clickability).
 
 ---
 
-### Phase 7: MCP Tool Cost Proxy — Option C (week 3-4)
+### ~~Phase 7: MCP Tool Cost Proxy — DONE~~
 
-Modify the existing stdio MCP proxy: strip the approval gate, add duration
-tracking, add HTTP calls to the CF Workers proxy for cost reporting and
-budget pre-checks. New endpoint on the proxy: `POST /v1/mcp/track`. Cost
-events logged with `provider: "mcp"`, `model: tool_name`. Shared Redis
-budget pool — an agent's LLM calls and tool calls draw from the same
-budget. This is the feature nobody else offers at our price point.
-
-**Market timing note:** The MCP spec is still evolving. Option C (stdio
-proxy modification) is low-risk because it builds on our existing MCP proxy
-code. But this implementation may need to adapt as the spec stabilizes. We
-accept this trade-off to ship MCP tracking early while competitors don't
-have it.
-
-**Reference:** `docs/technical-outlines/mcp-tool-tracking/MCP tool cost tracking.md`
+MCP tool cost tracking shipped (zero-until-priced model, suggested prices
+from annotations, per-tool cost configuration dashboard). See priority
+roadmap items 2.6-2.8 for details. Remaining: retroactive backfill on
+reprice (2.7) and bulk pricing UI (2.8).
 
 ---
 
@@ -370,17 +362,12 @@ compliance.
 
 ---
 
-### Phase 9: Webhook Event Stream (month 2)
+### ~~Phase 9: Webhook Event Stream — DONE~~
 
-Expose every cost event as a real-time webhook to customer-configured
-endpoints. This is the Lithic pattern — customers build their own
-integrations (PagerDuty alerts, Slack bots, internal accounting) on top
-of the event stream. We don't build every integration; we expose the
-primitive. Low engineering cost (~2 days), high platform leverage.
-
-This also enables the JIT authorization pattern — customer's endpoint
-decides per-request whether to approve, deny, or modify. But that's an
-advanced use case we document, not something we build UI for initially.
+Webhook system fully shipped: per-endpoint configuration, 14 event types,
+thin/full payload modes, HMAC signing, secret rotation with dual-signing,
+Cloudflare Queue-based delivery (QStash removed), KV-cached endpoint lookup.
+See priority roadmap items 2.2 (thin events) and `qstash-to-queue-migration.md`.
 
 ---
 
@@ -503,13 +490,14 @@ attestations, access logging.
 **EU AI Act** — by 2027, relevant for European customers. Audit trails
 and enforcement proof map to governance requirements.
 
-### Phase 18: Multi-Tenant Isolation + Team Hierarchies
+### ~~Phase 18: Multi-Tenant Isolation + Team Hierarchies — PARTIALLY DONE~~
 
-Organization → team → user → agent budget hierarchies where each level
-inherits and constrains the level below. Team A gets $500/month, User 1
-gets $100/month, Agent X gets $25/day. Redis Lua scripts already check all
-entity budgets independently — extending to deeper hierarchies is evolution,
-not rewrite.
+**Shipped (2026-03-25):** Org/team model with 4 roles (owner/admin/member/viewer),
+org-scoped data isolation, per-org billing, feature gating by tier, invitation system,
+org switcher. See [`org-team-implementation-plan.md`](technical-outlines/org-team-implementation-plan.md).
+
+**Remaining:** Deeper budget hierarchies (org → team → user → agent). Currently
+flat entity types + tag budgets. Hierarchical delegation deferred to enterprise demand.
 
 ### Phase 19: Agent Identity + Access Control
 
@@ -582,5 +570,8 @@ features and priorities adapt.
 | Kill receipts timing | Phase 8 (early) | 2-3 days of work, maximum differentiation. Complete whitespace — no competitor does this. Ship before policies or optimization. |
 | Post-launch prioritization | User-feedback-driven | Phases 10+ scope and timing determined by what real users ask for, not by a predetermined calendar. |
 | Helicone migration | Elevated to Phase 5 critical path | Helicone acquired by Mintlify (Mar 3, 2026), 16K orgs orphaned. Time-sensitive acquisition channel. Same proxy integration model = easy migration narrative. |
-| Pricing model | Usage-based tiers (proxied spend caps) | Free ($1K/mo spend), Pro $49/mo ($50K), Team $199/mo ($250K), Enterprise custom. Natural unit is proxied spend. Flat rate per tier avoids "percentage tax" misalignment. Matches Portkey Pro price but includes budget enforcement. See Pricing Model section above. |
+| Pricing model | Usage-based tiers (proxied spend caps) | Free ($5K/mo spend, 3 members), Pro $49/mo ($50K, unlimited), Enterprise custom. Natural unit is proxied spend. Flat rate per tier avoids "percentage tax" misalignment. Matches Portkey Pro price but includes budget enforcement. See Pricing Model section above. |
 | Primary competitive position | "Budget enforcement at startup pricing" | Portkey gates enforcement behind enterprise. LiteLLM requires self-hosting. We offer enforcement at $49 (or usage-based) with zero infrastructure. This is the wedge. |
+| Team tier removed | Free + Pro + Enterprise only | Research (GitHub, Vercel, Supabase, Clerk) showed: give away features, gate on scale. Free tier gets team orgs (3 members), viewer seats unlimited. Dropped Team tier — simpler pricing, less decision friction. |
+| Org/team model | Flat roles, org-scoped data | owner/admin/member/viewer. Personal org auto-created on signup. All data scoped by orgId. Billing per-org. Custom RBAC deferred to enterprise demand. |
+| Budget state store | Durable Objects (SQLite), keyed by ownerId | Migrated from Redis Lua to DO SQLite. ownerId = orgId ?? userId. Single DO per org holds all budget/velocity state. |

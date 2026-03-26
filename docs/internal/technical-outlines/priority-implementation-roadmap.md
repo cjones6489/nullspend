@@ -1,16 +1,16 @@
 # NullSpend Priority Implementation Roadmap
 
 **Created:** 2026-03-20
-**Last updated:** 2026-03-24 (telemetry Phase 1-4, hasBudgets, schema future-proofing, unknown model fallback)
+**Last updated:** 2026-03-25 (org/team Phases 0-4 complete, Phase 4a-4c shipped, P0/P1 hardening fixes, UI/UX quick wins)
 **Purpose:** Forward-looking architecture, infrastructure, and feature roadmap for NullSpend. Derived from the post-audit deep research and competitive analysis. Prioritized by impact on platform positioning as the best financial infrastructure for AI agents.
 
-**Predecessor:** [`nullspend-prelaunch-design-audit.md`](nullspend-prelaunch-design-audit.md) — completed 2026-03-19 (8/8 items shipped). Contains detailed implementation notes, design decisions, and three-pass audit findings for all completed items.
+**Predecessor:** [`nullspend-prelaunch-design-audit.md`](../archive/nullspend-prelaunch-design-audit.md) — completed 2026-03-19 (8/8 items shipped). Contains detailed implementation notes, design decisions, and three-pass audit findings for all completed items.
 
 **Research sources:**
 - [`docs/research/architecture-review-2026-03-20.md`](../research/architecture-review-2026-03-20.md) — comprehensive architecture review comparing NullSpend against Portkey, LiteLLM, Helicone, Stripe Issuing, Marqeta, Svix, FOCUS spec, OpenTelemetry GenAI, MCP ecosystem, and recent YC companies
 - [`docs/research/cost-events-source-column.md`](../research/cost-events-source-column.md) — source column deep research (completed)
 - [`docs/research/api-versioning.md`](../research/api-versioning.md) — API versioning deep research (completed)
-- [`docs/technical-outlines/agent-tracing-architecture.md`](agent-tracing-architecture.md) — agent tracing five-phase spec
+- [`docs/technical-outlines/agent-tracing-architecture.md`](../archive/agent-tracing-architecture.md) — agent tracing five-phase spec
 - Multi-entity budget research (2026-03-21) — competitive analysis of LiteLLM, Portkey, OpenRouter, Bifrost, Brex, Ramp, FOCUS v1.3, AgentBudget, SatGate
 
 **Strategic context:** NullSpend has zero external users. The API surface, schema, and architecture can still change freely. Every decision should be evaluated against the platform vision: **best financial infrastructure for AI agents — the Stripe of AI FinOps.**
@@ -21,7 +21,7 @@
 
 ## Completed (Prelaunch Audit — 2026-03-18 to 2026-03-19)
 
-All items below are shipped, tested, and documented in [`nullspend-prelaunch-design-audit.md`](nullspend-prelaunch-design-audit.md).
+All items below are shipped, tested, and documented in [`nullspend-prelaunch-design-audit.md`](../archive/nullspend-prelaunch-design-audit.md).
 
 | Item | Shipped | Reference |
 |---|---|---|
@@ -60,7 +60,7 @@ The #1 FinOps request universally. LiteLLM, FOCUS spec, and CloudZero all emphas
 Includes: sliding window counter in DO, circuit breaker with configurable cooldown, `velocity.exceeded` + `velocity.recovered` webhooks, dashboard create/edit velocity config, live cooldown badge via 10s polling, `Zap` icon indicator.
 
 ### 1.3 W3C `traceparent` Propagation + `trace_id` Column — **Done** (2026-03-19)
-**Effort:** ~1h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 2; [Agent Tracing Architecture](agent-tracing-architecture.md) — Phase 1
+**Effort:** ~1h | **Source:** [Architecture Review](../research/architecture-review-2026-03-20.md) — Priority 2; [Agent Tracing Architecture](../archive/agent-tracing-architecture.md) — Phase 1
 
 Low effort, high enterprise value. Agent frameworks (AG2, LangChain) are starting to emit `traceparent` headers natively. This enables cost-per-task queries across multiple LLM calls.
 
@@ -91,7 +91,7 @@ Per-session spend caps enforced in the DO. When enabled on a budget entity, the 
 - 17 DO runtime tests, 10 route/orchestrator tests, 6 validation tests, 4 E2E smoke tests
 
 ### 1.5 Configurable Budget Thresholds — ✅ Done
-**Effort:** ~1.5h | **Source:** [Prelaunch Audit Section 6](nullspend-prelaunch-design-audit.md) — last remaining medium-priority item
+**Effort:** ~1.5h | **Source:** [Prelaunch Audit Section 6](../archive/nullspend-prelaunch-design-audit.md) — last remaining medium-priority item
 
 Thresholds currently hardcoded at `[50, 80, 90, 95]` in the proxy. Users cannot configure or discover them.
 
@@ -451,7 +451,7 @@ Tag budget management UI, tag-spend analytics, and `__untagged__` visibility.
 `app/api/tag-budgets/route.ts` (new), `lib/validations/tag-budgets.ts` (new), `lib/cost-events/aggregate-cost-events.ts`, `app/api/cost-events/summary/route.ts`, migration file, dashboard components, + test files
 
 ### 2.5 GitHub Secret Scanning Registration
-**Effort:** External action | **Source:** [Prelaunch Audit Section 2](nullspend-prelaunch-design-audit.md)
+**Effort:** External action | **Source:** [Prelaunch Audit Section 2](../archive/nullspend-prelaunch-design-audit.md)
 
 Email `secret-scanning@github.com` with the regex `ns_(live|test)_sk_[a-f0-9]{32}`. Free service that protects users from accidentally committing keys to public repos.
 
@@ -616,7 +616,7 @@ Items evaluated and rejected based on the architecture review. See [Architecture
 
 ## Roadmap Summary
 
-Last updated: 2026-03-22 (MCP tool cost Part 1 shipped)
+Last updated: 2026-03-25 (org/team Phases 0-4 shipped, P0/P1 hardening, UI/UX fixes)
 
 | Priority | Item | Status | Effort | Source |
 |---|---|---|---|---|
@@ -668,12 +668,29 @@ Last updated: 2026-03-22 (MCP tool cost Part 1 shipped)
 | Item | Shipped | Notes |
 |---|---|---|
 | `hasBudgets` auth flag | 2026-03-24 | EXISTS subquery on budgets table, 17ms → 2-3ms for tracking-only users |
-| Telemetry Phase 1-4 | 2026-03-24 | Full observability stack — see `docs/internal/telemetry-roadmap.md` |
+| Telemetry Phase 1-4 | 2026-03-24 | Full observability stack — see `docs/internal/archive/telemetry-roadmap.md` |
 | Budget unique constraint fix | 2026-03-24 | `(user_id, entity_type, entity_id)`, user_id NOT NULL |
 | Future-proofing columns | 2026-03-24 | `org_id` on 3 tables, `parent_request_id` on cost_events |
 | cost_events.userId NOT NULL | 2026-03-24 | Aggregation queries simplified, leftJoin eliminated from 7/8 functions |
 | Raw body passthrough | 2026-03-24 | Avoid re-serialize for non-streaming requests |
 | Unknown model fallback | 2026-03-24 | No hard 400 reject, pass-through with `_ns_unpriced` tag |
+
+## Completed (2026-03-25 Session)
+
+| Item | Shipped | Notes |
+|---|---|---|
+| Org/team Phase 0 | 2026-03-24 | Schema prep, settings restructure, tier-driven limits, PREFIX_MAP |
+| Org/team Phase 1 | 2026-03-24 | Org tables, personal org auto-creation, cookie-based session context |
+| Org/team Phase 2 | 2026-03-24 | All queries migrated from userId to orgId, org_id NOT NULL on all 8 tables |
+| Org/team Phase 3a-3h | 2026-03-25 | Viewer role, feature gating, DO keying (ownerId), org CRUD, invitations, member UI, org switcher |
+| Org/team Phase 4a | 2026-03-25 | Role-based permission enforcement on ~20 dashboard routes |
+| Org/team Phase 4b | 2026-03-25 | Frontend role enforcement (API keys, webhooks, budgets, billing) |
+| Org/team Phase 4c | 2026-03-25 | Billing migrated from per-user to per-org (Stripe Customer/checkout/webhook all use orgId) |
+| P0 hardening fixes | 2026-03-25 | Stripe cancel on org delete, ownership transfer, member leave, resource cleanup |
+| P1 hardening fixes | 2026-03-25 | Cache invalidation, rate limiting, cookie signing, audit logs |
+| UI/UX quick wins | 2026-03-25 | Activity skeleton loader, home page typography/tabs consistency, billing button fix |
+
+See [`org-team-implementation-plan.md`](org-team-implementation-plan.md) for full implementation details.
 
 ---
 
