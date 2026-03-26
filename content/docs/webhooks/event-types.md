@@ -61,14 +61,16 @@ Fires when a cost event is recorded — once per proxied request.
 | Field | Type | Description |
 |---|---|---|
 | `request_id` | string | Unique request identifier |
-| `event_type` | string | `"llm"`, `"tool"`, or `"custom"` |
+| `event_type` | string | Request type: `"llm"` (LLM API call), `"tool"` (MCP tool invocation), or `"custom"` (SDK-reported) |
 | `provider` | string | `"openai"` or `"anthropic"` |
 | `model` | string | Model name (e.g., `gpt-4o`) |
 | `input_tokens` | integer | Total input tokens |
 | `output_tokens` | integer | Output tokens |
 | `cached_input_tokens` | integer | Cached input tokens |
+| `reasoning_tokens` | integer | Reasoning/thinking tokens (o-series, extended thinking) |
 | `cost_microdollars` | integer | Total cost in microdollars |
 | `duration_ms` | integer | Request duration in milliseconds |
+| `upstream_duration_ms` | integer or null | Time spent waiting for the LLM provider |
 | `session_id` | string or null | Session ID if set |
 | `trace_id` | string or null | Trace ID |
 | `tool_name` | string or null | MCP tool name |
@@ -97,8 +99,10 @@ Fires when a cost event is recorded — once per proxied request.
       "input_tokens": 1000,
       "output_tokens": 500,
       "cached_input_tokens": 200,
+      "reasoning_tokens": 0,
       "cost_microdollars": 7,
       "duration_ms": 1234,
+      "upstream_duration_ms": 1180,
       "session_id": null,
       "trace_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
       "tool_name": null,
@@ -472,8 +476,11 @@ Fires when a human-in-the-loop approval action is created.
 |---|---|---|
 | `action_id` | string | Action identifier (`ns_act_` + UUID) |
 | `action_type` | string | Type of action |
+| `agent_id` | string | Agent that created the action |
 | `status` | string | `"pending"` |
+| `payload` | object | Action payload (the data submitted for approval) |
 | `created_at` | string | ISO 8601 timestamp |
+| `expires_at` | string or null | When the action expires if not acted on |
 
 **Example:**
 
@@ -487,8 +494,11 @@ Fires when a human-in-the-loop approval action is created.
     "object": {
       "action_id": "ns_act_550e8400-e29b-41d4-a716-446655440000",
       "action_type": "high_cost_approval",
+      "agent_id": "my-agent",
       "status": "pending",
-      "created_at": "2026-03-21T12:00:00.000Z"
+      "payload": { "amount": 500, "description": "Large purchase" },
+      "created_at": "2026-03-21T12:00:00.000Z",
+      "expires_at": "2026-03-21T13:00:00.000Z"
     }
   }
 }
@@ -496,15 +506,48 @@ Fires when a human-in-the-loop approval action is created.
 
 ### `action.approved`
 
-Fires when an action is approved. Same structure as `action.created` with `"status": "approved"`.
+Fires when an action is approved.
+
+**`data.object` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `action_id` | string | Action identifier |
+| `action_type` | string | Type of action |
+| `agent_id` | string | Agent that created the action |
+| `status` | string | `"approved"` |
+| `approved_by` | string or null | User who approved |
+| `approved_at` | string or null | ISO 8601 timestamp of approval |
 
 ### `action.rejected`
 
-Fires when an action is rejected. Same structure with `"status": "rejected"`.
+Fires when an action is rejected.
+
+**`data.object` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `action_id` | string | Action identifier |
+| `action_type` | string | Type of action |
+| `agent_id` | string | Agent that created the action |
+| `status` | string | `"rejected"` |
+| `rejected_by` | string or null | User who rejected |
+| `rejected_at` | string or null | ISO 8601 timestamp of rejection |
+| `reason` | string or null | Rejection reason |
 
 ### `action.expired`
 
-Fires when an action's TTL expires. Same structure with `"status": "expired"`.
+Fires when an action's TTL expires.
+
+**`data.object` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `action_id` | string | Action identifier |
+| `action_type` | string | Type of action |
+| `agent_id` | string | Agent that created the action |
+| `status` | string | `"expired"` |
+| `expired_at` | string or null | ISO 8601 timestamp of expiry |
 
 ---
 
@@ -524,7 +567,7 @@ Sent when you click "Test" in the dashboard. Use it to verify your endpoint is r
   "created_at": 1711036800,
   "data": {
     "object": {
-      "message": "This is a test webhook event from NullSpend."
+      "message": "Test webhook event"
     }
   }
 }
