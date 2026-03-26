@@ -236,7 +236,7 @@ describe("DELETE /api/orgs/[orgId]", () => {
     vi.clearAllMocks();
   });
 
-  it("deletes for owner", async () => {
+  it("deletes for owner — cleans up all resources in transaction", async () => {
     mockSelectResult
       .mockResolvedValueOnce([{ isPersonal: false }])  // isPersonal check
       .mockResolvedValueOnce([]);                       // budgets list (empty)
@@ -248,7 +248,11 @@ describe("DELETE /api/orgs/[orgId]", () => {
     const body = await res.json();
     expect(body.success).toBe(true);
     expect(mockAssertOrgRole).toHaveBeenCalledWith("user-1", ORG_UUID, "owner");
-    expect(mockDeleteWhere).toHaveBeenCalled();
+
+    // Verify all 10 delete calls in the transaction:
+    // webhook_deliveries, webhook_endpoints, cost_events, budgets, api_keys,
+    // actions, slack_configs, tool_costs, subscriptions, organizations
+    expect(mockDeleteWhere).toHaveBeenCalledTimes(10);
   });
 
   it("returns 403 for admin (not owner)", async () => {

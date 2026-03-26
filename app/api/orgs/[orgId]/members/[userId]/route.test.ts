@@ -18,12 +18,14 @@ const {
   mockSelectLimit,
   mockReturning,
   mockDeleteWhere,
+  mockUpdateSetWhere,
   mockReadJsonBody,
 } = vi.hoisted(() => ({
   mockAssertOrgRole: vi.fn(),
   mockSelectLimit: vi.fn(),
   mockReturning: vi.fn(),
   mockDeleteWhere: vi.fn().mockResolvedValue(undefined),
+  mockUpdateSetWhere: vi.fn().mockResolvedValue(undefined),
   mockReadJsonBody: vi.fn(),
 }));
 
@@ -61,9 +63,10 @@ vi.mock("@/lib/db/client", () => ({
       }),
       update: () => ({
         set: () => ({
-          where: () => ({
-            returning: mockReturning,
-          }),
+          where: (...args: unknown[]) => {
+            mockUpdateSetWhere(...args);
+            return { returning: mockReturning };
+          },
         }),
       }),
       delete: () => ({
@@ -228,7 +231,7 @@ describe("DELETE /api/orgs/[orgId]/members/[userId]", () => {
     vi.clearAllMocks();
   });
 
-  it("admin removes member — returns success", async () => {
+  it("admin removes member — revokes API keys and deletes membership", async () => {
     mockAssertOrgRole.mockResolvedValue({ userId: REQUESTER_ID, orgId: ORG_UUID, role: "admin" });
     mockSelectLimit.mockResolvedValue([{ role: "member" }]);
 
@@ -237,6 +240,11 @@ describe("DELETE /api/orgs/[orgId]/members/[userId]", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
+
+    // Verify API keys were revoked (update called inside transaction)
+    expect(mockUpdateSetWhere).toHaveBeenCalled();
+    // Verify membership was deleted (delete called inside transaction)
+    expect(mockDeleteWhere).toHaveBeenCalled();
   });
 
   it("owner removes admin — returns success", async () => {
