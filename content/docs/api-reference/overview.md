@@ -58,6 +58,18 @@ Session-authenticated endpoints require a browser session cookie from the NullSp
 | `POST /api/webhooks/:id/test` | Test webhook | Session |
 | `POST /api/webhooks/:id/rotate-secret` | Rotate secret | Session |
 | `GET /api/webhooks/:id/deliveries` | Delivery history | Session |
+| `GET /api/orgs` | List user's orgs | Session |
+| `POST /api/orgs` | Create team org | Session |
+| `GET /api/orgs/:orgId` | Get org details | Session (member+) |
+| `PATCH /api/orgs/:orgId` | Update org | Session (admin+) |
+| `DELETE /api/orgs/:orgId` | Delete org | Session (owner) |
+| `GET /api/orgs/:orgId/members` | List members | Session (member+) |
+| `PATCH /api/orgs/:orgId/members/:userId` | Change role | Session (admin+) |
+| `DELETE /api/orgs/:orgId/members/:userId` | Remove member | Session (admin+) |
+| `GET /api/orgs/:orgId/invitations` | List invitations | Session (admin+) |
+| `POST /api/orgs/:orgId/invitations` | Invite member | Session (admin+) |
+| `DELETE /api/orgs/:orgId/invitations/:id` | Revoke invitation | Session (admin+) |
+| `POST /api/invite/accept` | Accept invitation | Session |
 
 ---
 

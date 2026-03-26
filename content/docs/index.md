@@ -41,6 +41,7 @@ Add an `X-NullSpend-Key` header and every request is tracked, budgeted, and visi
 | **[Tracing](features/tracing.md)** | W3C `traceparent` propagation and custom trace IDs for request correlation |
 | **[Webhooks](webhooks/overview.md)** | 15 event types with HMAC-SHA256 signing — cost events, budget exceeded, velocity alerts, threshold crossings |
 | **[HITL approvals](features/human-in-the-loop.md)** | Human-in-the-loop approval workflow for high-cost or sensitive operations |
+| **[Organizations](features/organizations.md)** | Team collaboration with roles (owner, admin, member, viewer), per-org billing, and invitation management |
 | **Multi-provider** | OpenAI and Anthropic in a single dashboard with provider breakdown |
 | **MCP support** | Budget enforcement for Model Context Protocol servers and proxies |
 
