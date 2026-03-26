@@ -152,15 +152,14 @@ models and agents drive the most cost.
 
 ## Pricing tier limits
 
-| Tier | Budgets |
-|---|---|
-| Free | 1 |
-| Pro | Unlimited |
-| Team | Unlimited |
-| Enterprise | Unlimited |
+| Tier | Budgets | API Keys | Webhooks | Team Members |
+|---|---|---|---|---|
+| Free | 3 | 10 | 2 | 3 (viewers unlimited) |
+| Pro ($49/mo) | Unlimited | Unlimited | 25 | Unlimited |
+| Enterprise | Unlimited | Unlimited | Unlimited | Unlimited |
 
-The Free tier includes one budget, which is enough for a single production key.
-Upgrade to Pro for unlimited budgets across multiple keys and environments.
+The Free tier includes 3 budgets — enough for separate production, staging, and development keys.
+Upgrade to Pro for unlimited budgets across all keys and environments.
 
 ## API Reference
 

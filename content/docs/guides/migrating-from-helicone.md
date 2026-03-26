@@ -161,9 +161,9 @@ should appear within seconds of your first LLM call.
 
 | Feature | Helicone (was) | NullSpend |
 |---|---|---|
-| Free tier | 10K logs, 3-day retention | $1K/mo proxied spend, 7-day retention |
+| Free tier | 10K logs, 3-day retention | $5K/mo proxied spend, 3 budgets, 3 team members, 30-day retention |
 | Budget enforcement | Alerts only | Hard enforcement (all tiers) |
-| Starting paid tier | $20/mo (limited) | $49/mo (unlimited budgets, 30-day retention) |
+| Starting paid tier | $20/mo (limited) | $49/mo (unlimited budgets/keys/members, 90-day retention) |
 
 ## FAQ
 
