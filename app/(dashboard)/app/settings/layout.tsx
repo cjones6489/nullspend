@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Key, Puzzle, Users, Webhook } from "lucide-react";
+import { Building2, History, Key, Puzzle, Users, Webhook } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -12,6 +12,7 @@ const settingsNav = [
   { href: "/app/settings/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/app/settings/integrations", label: "Integrations", icon: Puzzle },
   { href: "/app/settings/members", label: "Members", icon: Users },
+  { href: "/app/settings/audit-log", label: "Audit Log", icon: History },
 ] as const;
 
 export default function SettingsLayout({
