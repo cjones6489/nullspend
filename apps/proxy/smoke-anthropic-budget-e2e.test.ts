@@ -79,7 +79,7 @@ describe("Anthropic end-to-end budget enforcement", () => {
 
     // Force Postgres→DO sync via internal endpoint.
     // Under DO-first architecture, no Worker-level cache to invalidate.
-    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "user", userId);
   }
 
   async function cleanupBudget() {

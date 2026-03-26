@@ -98,12 +98,13 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
   /**
    * Insert budget(s) into Postgres, wait for Hyperdrive cache to expire,
    * then sync to DO. Call this AFTER all insertBudget() calls are done.
+   * Accepts entity type/id pairs to sync — defaults to user entity.
    */
-  async function syncAfterInsert() {
+  async function syncAfterInsert(entityType = "user", entityId = NULLSPEND_SMOKE_USER_ID!) {
     // Wait for Hyperdrive query cache to expire (max_age=5s)
     // so the sync reads fresh Postgres data including all inserted rows.
     await new Promise((r) => setTimeout(r, 5_500));
-    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, entityType, entityId);
   }
 
   /** Insert a single budget and sync. Convenience wrapper for single-entity tests. */
@@ -114,7 +115,7 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     spendMicrodollars = 0,
   ) {
     await insertBudget(entityType, entityId, maxBudgetMicrodollars, spendMicrodollars);
-    await syncAfterInsert();
+    await syncAfterInsert(entityType, entityId);
   }
 
   /** Remove any existing budgets so the user/key is non-budgeted */
@@ -170,10 +171,11 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
 
   it("both user and key budgets checked — tightest one blocks", async () => {
     // User budget generous, key budget exhausted.
-    // Insert both BEFORE syncing so the single sync picks up both rows.
+    // Insert both BEFORE syncing, then sync each entity to its own DO.
     await insertBudget("user", NULLSPEND_SMOKE_USER_ID!, 10_000_000);
     await insertBudget("api_key", NULLSPEND_SMOKE_KEY_ID!, 1);
-    await syncAfterInsert();
+    await syncAfterInsert("user", NULLSPEND_SMOKE_USER_ID!);
+    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",

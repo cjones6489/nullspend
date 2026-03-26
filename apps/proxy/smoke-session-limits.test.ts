@@ -101,7 +101,7 @@ describe("End-to-end session limit enforcement", () => {
     await new Promise((r) => setTimeout(r, 500));
 
     // 4. Sync: Postgres → DO (populateIfEmpty creates fresh budget with session_limit)
-    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "user", userId);
   }
 
   /**
@@ -124,7 +124,7 @@ describe("End-to-end session limit enforcement", () => {
     `;
 
     await new Promise((r) => setTimeout(r, 500));
-    await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
+    await syncBudget(orgId, "user", userId);
   }
 
   // ── Core enforcement ──────────────────────────────────────────────
