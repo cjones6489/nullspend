@@ -122,9 +122,7 @@ function registerProposeAction(
           throw err;
         }
       } catch (err) {
-        return errorResult(
-          `NullSpend API error: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        return errorResult(classifiedError(err));
       }
     },
   );
@@ -178,9 +176,9 @@ function registerGetBudgets(server: McpServer, sdk: NullSpend) {
           entityId: b.entityId,
           limitDollars: b.maxBudgetMicrodollars / 1_000_000,
           spendDollars: b.spendMicrodollars / 1_000_000,
-          remainingDollars: (b.maxBudgetMicrodollars - b.spendMicrodollars) / 1_000_000,
+          remainingDollars: Math.max(0, (b.maxBudgetMicrodollars - b.spendMicrodollars)) / 1_000_000,
           percentUsed: b.maxBudgetMicrodollars > 0
-            ? Math.round((b.spendMicrodollars / b.maxBudgetMicrodollars) * 100)
+            ? Math.min(100, Math.round((b.spendMicrodollars / b.maxBudgetMicrodollars) * 100))
             : 0,
           policy: b.policy,
           resetInterval: b.resetInterval,
@@ -265,7 +263,7 @@ function registerGetRecentCosts(server: McpServer, sdk: NullSpend) {
           events: formatted,
           count: formatted.length,
           totalCostDollars: totalCost,
-          message: `${formatted.length} recent cost event(s). Total: $${totalCost.toFixed(4)}.`,
+          message: `${formatted.length} recent cost event(s). Total: $${totalCost.toFixed(2)}.`,
         });
       } catch (err) {
         return errorResult(classifiedError(err));
