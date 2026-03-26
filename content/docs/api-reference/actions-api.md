@@ -13,7 +13,7 @@ See [API Overview](overview.md) for authentication, pagination, errors, and ID f
 
 `GET /api/actions`
 
-Retrieve actions for the authenticated user with optional status filtering.
+Retrieve actions for the current organization with optional status filtering.
 
 ### Authentication
 

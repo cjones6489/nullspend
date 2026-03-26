@@ -243,7 +243,7 @@ curl -X POST https://nullspend.com/api/cost-events/batch \
 
 `GET /api/cost-events`
 
-Retrieve cost events for the authenticated user with filtering and pagination.
+Retrieve cost events for the current organization with filtering and pagination.
 
 ### Authentication
 

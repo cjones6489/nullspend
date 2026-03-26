@@ -146,7 +146,7 @@ See [Event Types](../webhooks/event-types.md) for the full JSON example.
 - **No header = no enforcement.** Session limits only apply when `X-NullSpend-Session` is present on the request.
 - **Client-defined sessions.** The proxy never creates, invalidates, or manages session IDs — your agent decides when to start a new session.
 - **Independent of budget resets.** Session spend does NOT reset when the budget period resets. A session that spans a daily reset carries its full cumulative spend.
-- **Always strict.** Session limits are hard caps regardless of the budget policy (`warn_only` does not apply).
+- **Always strict.** Session limits are hard caps regardless of the budget policy (`warn` does not apply).
 - **24-hour cleanup.** Stale session data is automatically cleaned up after 24 hours of inactivity via the DO alarm.
 
 ## Enforcement Order

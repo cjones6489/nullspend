@@ -13,7 +13,7 @@ See [API Overview](overview.md) for authentication, pagination, errors, and ID f
 
 `GET /api/keys`
 
-Retrieve all active (non-revoked) API keys for the authenticated user.
+Retrieve all active (non-revoked) API keys for the current organization.
 
 ### Authentication
 
@@ -112,7 +112,7 @@ curl -X POST https://nullspend.com/api/keys \
 |---|---|---|
 | `validation_error` | 400 | Name missing or too long |
 | `authentication_required` | 401 | No valid session |
-| `limit_exceeded` | 409 | User has reached the 20-key limit |
+| `limit_exceeded` | 409 | Organization has reached the key limit for its tier (Free: 10, Pro+: unlimited) |
 
 ---
 

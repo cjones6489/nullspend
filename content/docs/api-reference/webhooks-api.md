@@ -13,7 +13,7 @@ See [API Overview](overview.md) for authentication, pagination, errors, and ID f
 
 `GET /api/webhooks`
 
-Retrieve all webhook endpoints for the authenticated user.
+Retrieve all webhook endpoints for the current organization.
 
 ### Authentication
 
@@ -124,7 +124,7 @@ curl -X POST https://nullspend.com/api/webhooks \
 |---|---|---|
 | `validation_error` | 400 | Invalid URL, invalid event types, or other field errors |
 | `authentication_required` | 401 | No valid session |
-| `limit_exceeded` | 409 | User has reached the 10-endpoint limit |
+| `limit_exceeded` | 409 | Organization has reached the endpoint limit for its tier (Free: 2, Pro: 25, Enterprise: unlimited) |
 
 ---
 

@@ -13,7 +13,7 @@ See [API Overview](overview.md) for authentication, pagination, errors, and ID f
 
 `GET /api/budgets`
 
-Retrieve all budgets owned by the authenticated user, including API key budgets for keys the user owns.
+Retrieve all budgets for the current organization, including API key and tag budgets.
 
 ### Authentication
 
@@ -40,7 +40,7 @@ curl https://nullspend.com/api/budgets \
       "entityId": "ns_usr_aabbccdd-eeff-0011-2233-445566778899",
       "maxBudgetMicrodollars": 10000000,
       "spendMicrodollars": 2450000,
-      "policy": "enforce",
+      "policy": "strict_block",
       "resetInterval": "monthly",
       "currentPeriodStart": "2026-03-01T00:00:00.000Z",
       "thresholdPercentages": [50, 80, 90],
@@ -57,7 +57,7 @@ curl https://nullspend.com/api/budgets \
       "entityId": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
       "maxBudgetMicrodollars": 5000000,
       "spendMicrodollars": 800000,
-      "policy": "enforce",
+      "policy": "strict_block",
       "resetInterval": null,
       "currentPeriodStart": null,
       "thresholdPercentages": [75, 90],
@@ -96,9 +96,10 @@ Session (dashboard)
 
 | Name | In | Type | Required | Description |
 |---|---|---|---|---|
-| `entityType` | body | string | Yes | `"user"` or `"api_key"`. |
-| `entityId` | body | string | Yes | Entity ID (`ns_usr_*` or `ns_key_*`). Must be owned by the session user. |
+| `entityType` | body | string | Yes | `"user"`, `"api_key"`, or `"tag"`. |
+| `entityId` | body | string | Yes | Entity ID. For `"user"`: `ns_usr_*`, for `"api_key"`: `ns_key_*`, for `"tag"`: `key=value` format. |
 | `maxBudgetMicrodollars` | body | integer | Yes | Spending limit in microdollars. Must be positive. |
+| `policy` | body | string | No | `"strict_block"` (default), `"soft_block"`, or `"warn"`. Controls behavior when budget is exceeded. |
 | `resetInterval` | body | string | No | `"daily"`, `"weekly"`, or `"monthly"`. Omit for no auto-reset. |
 | `thresholdPercentages` | body | integer[] | No | Alert thresholds (1–100). Max 10 values, ascending, no duplicates. |
 | `velocityLimitMicrodollars` | body | integer \| null | No | Max spend per velocity window. `null` removes the limit. |
@@ -133,7 +134,7 @@ curl -X POST https://nullspend.com/api/budgets \
   "entityId": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
   "maxBudgetMicrodollars": 5000000,
   "spendMicrodollars": 0,
-  "policy": "enforce",
+  "policy": "strict_block",
   "resetInterval": "monthly",
   "currentPeriodStart": "2026-03-20T14:30:00.000Z",
   "thresholdPercentages": [50, 80, 90],
@@ -239,7 +240,7 @@ curl -X POST https://nullspend.com/api/budgets/ns_bgt_aabbccdd-eeff-0011-2233-44
   "entityId": "ns_usr_aabbccdd-eeff-0011-2233-445566778899",
   "maxBudgetMicrodollars": 10000000,
   "spendMicrodollars": 0,
-  "policy": "enforce",
+  "policy": "strict_block",
   "resetInterval": "monthly",
   "currentPeriodStart": "2026-03-20T15:00:00.000Z",
   "thresholdPercentages": [50, 80, 90],
@@ -308,7 +309,7 @@ curl https://nullspend.com/api/budgets/status \
       "limitMicrodollars": 10000000,
       "spendMicrodollars": 2450000,
       "remainingMicrodollars": 7550000,
-      "policy": "enforce",
+      "policy": "strict_block",
       "resetInterval": "monthly",
       "currentPeriodStart": "2026-03-01T00:00:00.000Z",
       "thresholdPercentages": [50, 80, 90],
@@ -323,7 +324,7 @@ curl https://nullspend.com/api/budgets/status \
       "limitMicrodollars": 5000000,
       "spendMicrodollars": 800000,
       "remainingMicrodollars": 4200000,
-      "policy": "enforce",
+      "policy": "strict_block",
       "resetInterval": null,
       "currentPeriodStart": null,
       "thresholdPercentages": [75, 90],
