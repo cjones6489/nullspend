@@ -34,6 +34,8 @@ vi.mock("@/lib/db/client", () => ({
         from: () => ({
           where: () => ({
             limit: mockSelectResult,
+            then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) =>
+              mockSelectResult().then(resolve, reject),
           }),
         }),
       }),
@@ -51,6 +53,18 @@ vi.mock("@/lib/db/client", () => ({
     };
     return dbMethods;
   }),
+}));
+
+vi.mock("@/lib/stripe/subscription", () => ({
+  getSubscriptionByOrgId: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/stripe/client", () => ({
+  getStripe: vi.fn().mockReturnValue({ subscriptions: { cancel: vi.fn() } }),
+}));
+
+vi.mock("@/lib/proxy-invalidate", () => ({
+  invalidateProxyCache: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/utils/http", async (importOriginal) => {
@@ -219,7 +233,9 @@ describe("DELETE /api/orgs/[orgId]", () => {
   });
 
   it("deletes for owner", async () => {
-    mockSelectResult.mockResolvedValue([{ isPersonal: false }]);
+    mockSelectResult
+      .mockResolvedValueOnce([{ isPersonal: false }])  // isPersonal check
+      .mockResolvedValueOnce([]);                       // budgets list (empty)
 
     const req = new Request("http://localhost/api/orgs/" + ORG_ID, { method: "DELETE" });
     const res = await DELETE(req, makeContext(ORG_ID));

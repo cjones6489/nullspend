@@ -19,6 +19,9 @@ import {
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema, updateOrgSchema, orgRecordSchema } from "@/lib/validations/orgs";
 import { ForbiddenError } from "@/lib/auth/errors";
+import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
+import { getStripe } from "@/lib/stripe/client";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
 type RouteContext = { params: Promise<{ orgId: string }> };
 
@@ -151,6 +154,26 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     if (existing?.isPersonal) {
       throw new ForbiddenError("Personal organizations cannot be deleted.");
+    }
+
+    // Cancel Stripe subscription if one exists (before deleting the DB row)
+    const sub = await getSubscriptionByOrgId(orgId);
+    if (sub?.stripeSubscriptionId) {
+      try {
+        const stripe = getStripe();
+        await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
+      } catch (err) {
+        // Log but don't block deletion — the subscription may already be canceled
+        console.error("[org-delete] Failed to cancel Stripe subscription:", err);
+      }
+    }
+
+    // Invalidate proxy DO budget state for all the org's budgets
+    const orgBudgets = await db.select({ entityType: budgets.entityType, entityId: budgets.entityId }).from(budgets).where(eq(budgets.orgId, orgId));
+    for (const b of orgBudgets) {
+      invalidateProxyCache({ action: "remove", ownerId: orgId, entityType: b.entityType, entityId: b.entityId }).catch((err) =>
+        console.error("[org-delete] Proxy cache invalidation failed:", err),
+      );
     }
 
     // Delete all org resources, then the org itself (which FK-cascades memberships + invitations)
