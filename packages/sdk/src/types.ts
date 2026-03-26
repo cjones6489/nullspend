@@ -219,3 +219,77 @@ export interface BudgetEntity {
 export interface BudgetStatus {
   entities: BudgetEntity[];
 }
+
+// ---------------------------------------------------------------------------
+// Budget list (full detail)
+// ---------------------------------------------------------------------------
+
+export interface BudgetRecord {
+  id: string;
+  entityType: string;
+  entityId: string;
+  maxBudgetMicrodollars: number;
+  spendMicrodollars: number;
+  policy: string;
+  resetInterval: string | null;
+  currentPeriodStart: string | null;
+  thresholdPercentages: number[];
+  velocityLimitMicrodollars: number | null;
+  velocityWindowSeconds: number | null;
+  velocityCooldownSeconds: number | null;
+  sessionLimitMicrodollars: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListBudgetsResponse {
+  data: BudgetRecord[];
+}
+
+// ---------------------------------------------------------------------------
+// Cost events (read)
+// ---------------------------------------------------------------------------
+
+export interface CostEventRecord {
+  id: string;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costMicrodollars: number;
+  durationMs: number | null;
+  sessionId: string | null;
+  traceId: string | null;
+  eventType: string;
+  toolName: string | null;
+  tags: Record<string, string> | null;
+  createdAt: string;
+}
+
+export interface ListCostEventsResponse {
+  data: CostEventRecord[];
+  cursor: { createdAt: string; id: string } | null;
+}
+
+export interface ListCostEventsOptions {
+  limit?: number;
+  cursor?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Cost summary
+// ---------------------------------------------------------------------------
+
+export interface CostSummaryResponse {
+  daily: Array<{ date: string; totalCostMicrodollars: number }>;
+  models: Record<string, number>;
+  providers: Record<string, number>;
+  totals: {
+    totalCostMicrodollars: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalRequests: number;
+  };
+}
+
+export type CostSummaryPeriod = "7d" | "30d" | "90d";

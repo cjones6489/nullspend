@@ -12,6 +12,11 @@ import {
 import type {
   ActionRecord,
   BudgetStatus,
+  CostSummaryPeriod,
+  CostSummaryResponse,
+  ListBudgetsResponse,
+  ListCostEventsOptions,
+  ListCostEventsResponse,
   NullSpendConfig,
   CostEventInput,
   CreateActionInput,
@@ -154,6 +159,30 @@ export class NullSpend {
 
   async checkBudget(): Promise<BudgetStatus> {
     return this.request<BudgetStatus>("GET", "/api/budgets/status");
+  }
+
+  // -------------------------------------------------------------------------
+  // Read APIs — budgets, cost events, spend summary
+  // -------------------------------------------------------------------------
+
+  /** List all budgets for the authenticated org. */
+  async listBudgets(): Promise<ListBudgetsResponse> {
+    return this.request<ListBudgetsResponse>("GET", "/api/budgets");
+  }
+
+  /** Get a spend summary for the given period (7d, 30d, or 90d). */
+  async getCostSummary(period: CostSummaryPeriod = "30d"): Promise<CostSummaryResponse> {
+    const res = await this.request<{ data: CostSummaryResponse }>("GET", `/api/cost-events/summary?period=${period}`);
+    return res.data;
+  }
+
+  /** List recent cost events with optional pagination. */
+  async listCostEvents(options?: ListCostEventsOptions): Promise<ListCostEventsResponse> {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.cursor) params.set("cursor", options.cursor);
+    const qs = params.toString();
+    return this.request<ListCostEventsResponse>("GET", `/api/cost-events${qs ? `?${qs}` : ""}`);
   }
 
   // -------------------------------------------------------------------------
