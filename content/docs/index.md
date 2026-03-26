@@ -50,13 +50,16 @@ The proxy never modifies your requests or responses. Your provider API keys stay
 
 ## Pricing
 
-| | Free | Pro | Team |
+| | Free | Pro | Enterprise |
 |---|---|---|---|
-| **Price** | $0/mo | $49/mo | $199/mo |
-| **Proxied spend** | $1K/mo | $50K/mo | $250K/mo |
-| **Budgets** | 1 | Unlimited | Unlimited |
-| **Data retention** | 7 days | 30 days | 90 days |
-| **Key features** | Cost tracking, 1 budget | Webhooks, API access | Multi-user, team budgets, advanced analytics |
+| **Price** | $0/mo | $49/mo | Custom |
+| **Proxied spend** | $5K/mo | $50K/mo | Unlimited |
+| **Budgets** | 3 | Unlimited | Unlimited |
+| **API keys** | 10 | Unlimited | Unlimited |
+| **Team members** | 3 (viewers unlimited) | Unlimited | Unlimited |
+| **Webhooks** | 2 endpoints | 25 endpoints | Unlimited |
+| **Data retention** | 30 days | 90 days | Unlimited |
+| **Key features** | Cost tracking, budgets, team orgs | Unlimited keys/budgets/members | SSO/SAML, custom RBAC, dedicated support |
 
 ## Get Started
 

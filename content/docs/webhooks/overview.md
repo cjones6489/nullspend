@@ -115,7 +115,7 @@ Every webhook is signed with HMAC-SHA256 using your endpoint's signing secret. A
 
 | Limit | Value |
 |---|---|
-| Max endpoints per account | 10 |
+| Max endpoints per organization | Free: 2, Pro: 25, Enterprise: unlimited |
 | URL protocol | HTTPS required |
 | Blocked URLs | Private IPs (10.x, 172.16–31.x, 192.168.x), localhost, 127.x, 0.0.0.0, IPv6 literals, `.local` domains |
 | Response timeout | 5 seconds |

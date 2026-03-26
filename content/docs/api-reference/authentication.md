@@ -26,7 +26,7 @@ Key format: `ns_live_sk_` + 32 hex characters (43 characters total). See [Custom
 
 Create keys in the dashboard under **Settings → API Keys**, or programmatically via `POST /api/keys` (see [API Keys API](api-keys-api.md)).
 
-The raw key is shown **once** at creation — store it immediately. Maximum **20 keys** per user.
+The raw key is shown **once** at creation — store it immediately. Free tier: **10 keys** per organization. Pro and above: unlimited.
 
 ### Key-Level Settings
 

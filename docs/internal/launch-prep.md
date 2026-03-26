@@ -103,9 +103,9 @@ One line change. See every dollar your agents spend. Set hard limits so they can
 
 ## Pricing
 
-Free: $1K/mo proxied spend, unlimited budgets, 7-day retention
-Pro ($49/mo): $50K/mo, 30-day retention, priority support
-Team ($199/mo): $250K/mo, 90-day retention, team features
+Free: $5K/mo proxied spend, 3 budgets, 3 team members, 30-day retention
+Pro ($49/mo): $50K/mo, unlimited budgets/keys/members, 90-day retention
+Enterprise: custom pricing, unlimited everything, SSO/SAML
 
 ## How it works
 

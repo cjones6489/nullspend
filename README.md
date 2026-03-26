@@ -121,6 +121,20 @@ based on demand.
 calculation happens asynchronously after the stream completes. Your latency is
 unchanged.
 
+**Velocity limits** — Detect runaway agent loops in real time. Sliding window
+cost-rate detection with automatic circuit breaker and cooldown. Webhook
+notification when triggered and when recovered.
+
+**Session limits** — Per-conversation spend caps tied to a session ID. Block a
+single chat session from exceeding its allocation without affecting other sessions.
+
+**Tags & tracing** — Attribute costs to teams, projects, or environments via
+`X-NullSpend-Tags`. Correlate multi-call agent runs with W3C `traceparent` or
+custom trace IDs.
+
+**Team orgs** — Invite team members with role-based access (owner, admin, member,
+viewer). Per-org billing, shared budgets, and feature gating by tier.
+
 **Dashboard** — Analytics with daily spend trends, per-model and per-key
 breakdown, provider comparison, activity log, and budget management. Webhook
 notifications when budgets cross thresholds.
@@ -155,8 +169,8 @@ RLS on all database tables. Rate limiting (per-IP and per-key). Nonce-based CSP.
        ┌───────┴───────┐
        ▼               ▼
 ┌─────────────┐  ┌──────────────────┐
-│  Supabase   │  │  Upstash         │
-│  Postgres   │  │  Redis + QStash  │
+│  Supabase   │  │  Durable Objects │
+│  Postgres   │  │  (SQLite)        │
 │  (ledger)   │  │  (budget state)  │
 └─────────────┘  └──────────────────┘
                │
@@ -172,12 +186,11 @@ pass-through that meters and enforces. Your provider keys stay with you (BYOK).
 
 ## Pricing
 
-| Tier | Price | Proxied Spend Cap | Budgets | Retention |
-|---|---|---|---|---|
-| **Free** | $0/mo | $1,000/mo | 1 | 7 days |
-| **Pro** | $49/mo | $50,000/mo | Unlimited | 30 days |
-| **Team** | $199/mo | $250,000/mo | Unlimited | 90 days |
-| **Enterprise** | Custom | Unlimited | Unlimited | Custom |
+| Tier | Price | Proxied Spend Cap | Budgets | Team Members | Retention |
+|---|---|---|---|---|---|
+| **Free** | $0/mo | $5,000/mo | 3 | 3 (viewers unlimited) | 30 days |
+| **Pro** | $49/mo | $50,000/mo | Unlimited | Unlimited | 90 days |
+| **Enterprise** | Custom | Unlimited | Unlimited | Unlimited | Unlimited |
 
 **Zero markup on LLM tokens.** We charge for the metering and enforcement layer,
 never for the tokens themselves. Free tier requires no credit card.
@@ -211,7 +224,7 @@ nullspend/
 │   ├── sdk/               # @nullspend/sdk — TypeScript client
 │   ├── mcp-server/        # MCP server adapter (approval tools)
 │   └── mcp-proxy/         # MCP tool gating proxy
-├── drizzle/               # 18 numbered SQL migrations
+├── drizzle/               # SQL migrations (Drizzle ORM)
 └── docs/                  # Architecture, roadmap, competitive analysis
 ```
 
@@ -254,13 +267,13 @@ when changes span dashboard and proxy.
 
 ## Test suite
 
-~1,600 tests across 4 tiers:
+~2,900+ tests across 4 tiers:
 
-- **Tier 1 — Unit tests:** 650+ dashboard tests, 560+ proxy tests, 627
-  cost-engine tests. All mocked, runs in <15s.
-- **Tier 2 — Integration tests:** Real Redis Lua script validation against live
-  Upstash.
-- **Tier 3 — Smoke tests:** 23 files hitting the deployed proxy with real
+- **Tier 1 — Unit tests:** 1,080+ dashboard tests, 1,210+ proxy tests, 627
+  cost-engine tests. All mocked, runs in <20s.
+- **Tier 2 — Integration tests:** Currently empty — budget enforcement moved
+  from Redis Lua to Durable Objects (tested in Tier 1).
+- **Tier 3 — Smoke tests:** 25 files hitting the deployed proxy with real
   OpenAI/Anthropic API calls. Manual pre-deploy verification.
 - **Tier 4 — CI:** GitHub Actions runs typecheck + lint + all Tier 1 tests on
   every push/PR to main.
@@ -272,7 +285,7 @@ when changes span dashboard and proxy.
 | **Proxy** | Cloudflare Workers + Durable Objects |
 | **Dashboard** | Next.js 16 (App Router) on Vercel |
 | **Database** | Supabase Postgres via Drizzle ORM |
-| **Budget state** | Upstash Redis + QStash (async reconciliation) |
+| **Budget state** | Cloudflare Durable Objects (SQLite) |
 | **UI** | Tailwind CSS 4 + shadcn/ui |
 | **Auth** | Supabase Auth (session) + SHA-256 API keys (proxy) |
 | **Payments** | Stripe (subscription management) |
@@ -282,14 +295,9 @@ when changes span dashboard and proxy.
 
 ## Documentation
 
-- [Quickstart](docs/guides/quickstart.md)
-- [OpenAI Provider Setup](docs/guides/provider-setup-openai.md)
-- [Anthropic Provider Setup](docs/guides/provider-setup-anthropic.md)
 - [Budget Configuration](docs/guides/budget-configuration.md)
-- [Architecture](docs/architecture.md)
-- [Roadmap](docs/finops-pivot-roadmap.md)
-- [Competitive Landscape](docs/competitive-landscape-march-2026.md)
 - [Migrating from Helicone](docs/guides/migrating-from-helicone.md)
+- Full docs at [nullspend.com/docs](https://nullspend.com/docs)
 
 ## License
 
