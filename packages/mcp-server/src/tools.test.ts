@@ -5,6 +5,9 @@ import type { McpServerConfig } from "./config.js";
 
 let mockCreateAction = vi.fn();
 let mockGetAction = vi.fn();
+let mockListBudgets = vi.fn();
+let mockGetCostSummary = vi.fn();
+let mockListCostEvents = vi.fn();
 
 vi.mock("@nullspend/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@nullspend/sdk")>();
@@ -12,6 +15,9 @@ vi.mock("@nullspend/sdk", async (importOriginal) => {
     constructor() {}
     createAction(...args: unknown[]) { return mockCreateAction(...args); }
     getAction(...args: unknown[]) { return mockGetAction(...args); }
+    listBudgets(...args: unknown[]) { return mockListBudgets(...args); }
+    getCostSummary(...args: unknown[]) { return mockGetCostSummary(...args); }
+    listCostEvents(...args: unknown[]) { return mockListCostEvents(...args); }
   }
   return {
     ...actual,
@@ -344,6 +350,170 @@ describe("registerTools", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("Not found");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // get_budgets
+  // -------------------------------------------------------------------------
+  describe("get_budgets", () => {
+    it("returns formatted budget list", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_budgets")!;
+
+      mockListBudgets.mockResolvedValue({
+        data: [{
+          id: "b-1",
+          entityType: "user",
+          entityId: "user-1",
+          maxBudgetMicrodollars: 10_000_000_000,
+          spendMicrodollars: 3_500_000_000,
+          policy: "strict_block",
+          resetInterval: "monthly",
+          currentPeriodStart: "2026-03-01T00:00:00Z",
+          thresholdPercentages: [50, 80, 90, 95],
+          velocityLimitMicrodollars: null,
+          velocityWindowSeconds: null,
+          velocityCooldownSeconds: null,
+          sessionLimitMicrodollars: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+        }],
+      });
+
+      const result = await tool.cb({});
+      expect(result.isError).toBeUndefined();
+
+      const data = JSON.parse(result.content[0].text);
+      expect(data.budgets).toHaveLength(1);
+      expect(data.budgets[0].limitDollars).toBe(10_000);
+      expect(data.budgets[0].spendDollars).toBe(3_500);
+      expect(data.budgets[0].remainingDollars).toBe(6_500);
+      expect(data.budgets[0].percentUsed).toBe(35);
+    });
+
+    it("returns empty message when no budgets", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_budgets")!;
+      mockListBudgets.mockResolvedValue({ data: [] });
+
+      const result = await tool.cb({});
+      const data = JSON.parse(result.content[0].text);
+      expect(data.budgets).toEqual([]);
+      expect(data.message).toContain("No budgets configured");
+    });
+
+    it("returns error on API failure", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_budgets")!;
+      mockListBudgets.mockRejectedValue(new Error("connection refused"));
+
+      const result = await tool.cb({});
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("NullSpend API error");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // get_spend_summary
+  // -------------------------------------------------------------------------
+  describe("get_spend_summary", () => {
+    it("returns spend summary with default period", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_spend_summary")!;
+
+      mockGetCostSummary.mockResolvedValue({
+        daily: [{ date: "2026-03-01", totalCostMicrodollars: 1_000_000 }],
+        models: { "gpt-4o": 800_000, "gpt-4o-mini": 200_000 },
+        providers: { openai: 1_000_000 },
+        totals: {
+          totalCostMicrodollars: 1_000_000,
+          totalRequests: 50,
+          totalInputTokens: 10_000,
+          totalOutputTokens: 5_000,
+        },
+      });
+
+      const result = await tool.cb({});
+      expect(result.isError).toBeUndefined();
+
+      const data = JSON.parse(result.content[0].text);
+      expect(data.period).toBe("30d");
+      expect(data.totalCostDollars).toBe(1);
+      expect(data.totalRequests).toBe(50);
+      expect(data.costByModel["gpt-4o"]).toBe(0.8);
+      expect(mockGetCostSummary).toHaveBeenCalledWith("30d");
+    });
+
+    it("passes explicit period", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_spend_summary")!;
+
+      mockGetCostSummary.mockResolvedValue({
+        daily: [],
+        models: {},
+        providers: {},
+        totals: { totalCostMicrodollars: 0, totalRequests: 0, totalInputTokens: 0, totalOutputTokens: 0 },
+      });
+
+      await tool.cb({ period: "7d" });
+      expect(mockGetCostSummary).toHaveBeenCalledWith("7d");
+    });
+
+    it("returns error on API failure", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_spend_summary")!;
+      mockGetCostSummary.mockRejectedValue(new Error("timeout"));
+
+      const result = await tool.cb({});
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("timeout");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // get_recent_costs
+  // -------------------------------------------------------------------------
+  describe("get_recent_costs", () => {
+    it("returns recent cost events with default limit", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_recent_costs")!;
+
+      mockListCostEvents.mockResolvedValue({
+        data: [
+          { id: "e-1", model: "gpt-4o", provider: "openai", inputTokens: 500, outputTokens: 150, costMicrodollars: 4625, durationMs: 800, createdAt: "2026-03-01T12:00:00Z" },
+          { id: "e-2", model: "gpt-4o-mini", provider: "openai", inputTokens: 1000, outputTokens: 300, costMicrodollars: 225, durationMs: 400, createdAt: "2026-03-01T11:00:00Z" },
+        ],
+        cursor: null,
+      });
+
+      const result = await tool.cb({});
+      expect(result.isError).toBeUndefined();
+
+      const data = JSON.parse(result.content[0].text);
+      expect(data.count).toBe(2);
+      expect(data.events[0].model).toBe("gpt-4o");
+      expect(data.events[0].costDollars).toBeCloseTo(0.004625);
+      expect(data.totalCostDollars).toBeCloseTo(0.00485);
+      expect(mockListCostEvents).toHaveBeenCalledWith({ limit: 10 });
+    });
+
+    it("clamps limit to max 50", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_recent_costs")!;
+      mockListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+      await tool.cb({ limit: 100 });
+      expect(mockListCostEvents).toHaveBeenCalledWith({ limit: 50 });
+    });
+
+    it("returns error on API failure", async () => {
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = tools.find((t) => t.name === "get_recent_costs")!;
+      mockListCostEvents.mockRejectedValue(new Error("network error"));
+
+      const result = await tool.cb({});
+      expect(result.isError).toBe(true);
     });
   });
 });
