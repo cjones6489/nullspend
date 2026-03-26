@@ -173,9 +173,9 @@ describe("POST /api/keys", () => {
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.rawKey).toBe("ns_live_sk_abcdef1234567890abcdef1234567890");
-    expect(body.name).toBe("Production Key");
-    expect(body.defaultTags).toEqual({});
+    expect(body.data.rawKey).toBe("ns_live_sk_abcdef1234567890abcdef1234567890");
+    expect(body.data.name).toBe("Production Key");
+    expect(body.data.defaultTags).toEqual({});
   });
 
   it("creates key with defaultTags and returns them", async () => {
@@ -204,8 +204,8 @@ describe("POST /api/keys", () => {
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.name).toBe("Tagged Key");
-    expect(body.defaultTags).toEqual({ project: "openclaw", team: "backend" });
+    expect(body.data.name).toBe("Tagged Key");
+    expect(body.data.defaultTags).toEqual({ project: "openclaw", team: "backend" });
   });
 
   it("returns 409 when max keys per user reached", async () => {

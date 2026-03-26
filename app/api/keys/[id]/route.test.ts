@@ -57,8 +57,8 @@ describe("DELETE /api/keys/[id]", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.id).toBe(TEST_KEY_PREFIXED);
-    expect(body.revokedAt).toBe(now.toISOString());
+    expect(body.data.id).toBe(TEST_KEY_PREFIXED);
+    expect(body.data.revokedAt).toBe(now.toISOString());
   });
 
   it("returns 404 when key is not found or already revoked", async () => {
@@ -113,7 +113,7 @@ describe("PATCH /api/keys/[id]", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.defaultTags).toEqual({ project: "openclaw" });
+    expect(body.data.defaultTags).toEqual({ project: "openclaw" });
   });
 
   it("updates name", async () => {
@@ -137,7 +137,7 @@ describe("PATCH /api/keys/[id]", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.name).toBe("New Name");
+    expect(body.data.name).toBe("New Name");
   });
 
   it("returns 400 with empty body (no fields to update)", async () => {
@@ -174,7 +174,7 @@ describe("PATCH /api/keys/[id]", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.defaultTags).toEqual({});
+    expect(body.data.defaultTags).toEqual({});
   });
 
   it("returns 404 for revoked key", async () => {

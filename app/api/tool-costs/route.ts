@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     console.info(`[NullSpend] Tool cost updated: ${input.serverName}/${input.toolName} → ${input.costMicrodollars} microdollars (user: ${userId})`);
 
-    return NextResponse.json(toResponse(row), { status: 200 });
+    return NextResponse.json({ data: toResponse(row) }, { status: 200 });
   } catch (error) {
     return handleRouteError(error);
   }

@@ -132,21 +132,21 @@ describe("GET /api/cost-events/summary", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.daily).toEqual(mockDailyData);
-    expect(body.models).toEqual(mockModelData);
-    expect(body.providers).toEqual(mockProviderData);
-    expect(body.keys).toEqual([
+    expect(body.data.daily).toEqual(mockDailyData);
+    expect(body.data.models).toEqual(mockModelData);
+    expect(body.data.providers).toEqual(mockProviderData);
+    expect(body.data.keys).toEqual([
       {
         ...mockKeyData[0],
         apiKeyId: "ns_key_550e8400-e29b-41d4-a716-446655440000",
       },
     ]);
-    expect(body.tools).toEqual([]);
-    expect(body.sources).toEqual(mockSourceData);
-    expect(body.costBreakdown).toEqual(mockCostBreakdown);
-    expect(body.totals.totalCostMicrodollars).toBe(8_000_000);
-    expect(body.totals.totalRequests).toBe(40);
-    expect(body.totals.period).toBe("30d");
+    expect(body.data.tools).toEqual([]);
+    expect(body.data.sources).toEqual(mockSourceData);
+    expect(body.data.costBreakdown).toEqual(mockCostBreakdown);
+    expect(body.data.totals.totalCostMicrodollars).toBe(8_000_000);
+    expect(body.data.totals.totalRequests).toBe(40);
+    expect(body.data.totals.period).toBe("30d");
   });
 
   it("uses default period 30d when no query param provided", async () => {
@@ -170,7 +170,7 @@ describe("GET /api/cost-events/summary", () => {
     expect(res.status).toBe(200);
     expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_ORG_ID, 7, undefined);
     const body = await res.json();
-    expect(body.totals.period).toBe("7d");
+    expect(body.data.totals.period).toBe("7d");
   });
 
   it("parses 90d period correctly", async () => {
@@ -182,7 +182,7 @@ describe("GET /api/cost-events/summary", () => {
     expect(res.status).toBe(200);
     expect(mockedGetDailySpend).toHaveBeenCalledWith(MOCK_ORG_ID, 90, undefined);
     const body = await res.json();
-    expect(body.totals.period).toBe("90d");
+    expect(body.data.totals.period).toBe("90d");
   });
 
   it("returns 400 for invalid period value", async () => {
@@ -241,16 +241,16 @@ describe("GET /api/cost-events/summary", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.daily).toEqual([]);
-    expect(body.models).toEqual([]);
-    expect(body.providers).toEqual([]);
-    expect(body.keys).toEqual([]);
-    expect(body.tools).toEqual([]);
-    expect(body.sources).toEqual([]);
-    expect(body.traces).toEqual([]);
-    expect(body.costBreakdown).toEqual({ inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 });
-    expect(body.totals.totalCostMicrodollars).toBe(0);
-    expect(body.totals.totalRequests).toBe(0);
+    expect(body.data.daily).toEqual([]);
+    expect(body.data.models).toEqual([]);
+    expect(body.data.providers).toEqual([]);
+    expect(body.data.keys).toEqual([]);
+    expect(body.data.tools).toEqual([]);
+    expect(body.data.sources).toEqual([]);
+    expect(body.data.traces).toEqual([]);
+    expect(body.data.costBreakdown).toEqual({ inputCost: 0, outputCost: 0, cachedCost: 0, reasoningCost: 0 });
+    expect(body.data.totals.totalCostMicrodollars).toBe(0);
+    expect(body.data.totals.totalRequests).toBe(0);
   });
 
   it("returns 500 when an aggregation function throws", async () => {

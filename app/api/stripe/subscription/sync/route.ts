@@ -68,7 +68,7 @@ export async function POST(request: Request) {
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     });
 
-    return NextResponse.json({
+    return NextResponse.json({ data: {
       id: row.id,
       tier: row.tier,
       status: row.status,
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: row.cancelAtPeriodEnd,
       createdAt: row.createdAt.toISOString(),
-    });
+    } });
   } catch (error) {
     return handleRouteError(error);
   }

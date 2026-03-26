@@ -46,10 +46,10 @@ export async function DELETE(
     );
 
     return NextResponse.json(
-      deleteApiKeyResponseSchema.parse({
+      { data: deleteApiKeyResponseSchema.parse({
         id: revoked.id,
         revokedAt: (revoked.revokedAt as Date).toISOString(),
-      }),
+      }) },
     );
   } catch (error) {
     return handleRouteError(error);
@@ -113,11 +113,11 @@ export async function PATCH(
     );
 
     return NextResponse.json(
-      apiKeyRecordSchema.parse({
+      { data: apiKeyRecordSchema.parse({
         ...updated,
         lastUsedAt: updated.lastUsedAt?.toISOString() ?? null,
         createdAt: updated.createdAt.toISOString(),
-      }),
+      }) },
     );
   } catch (error) {
     return handleRouteError(error);

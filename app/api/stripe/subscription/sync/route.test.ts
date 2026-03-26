@@ -87,8 +87,8 @@ describe("POST /api/stripe/subscription/sync", () => {
     expect(res.status).toBe(200);
 
     const body = await res.json();
-    expect(body.tier).toBe("pro");
-    expect(body.status).toBe("active");
+    expect(body.data.tier).toBe("pro");
+    expect(body.data.status).toBe("active");
 
     expect(mockedUpsertSubscription).toHaveBeenCalledWith(
       expect.objectContaining({

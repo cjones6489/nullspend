@@ -31,7 +31,10 @@ export function useUpsertToolCost() {
   const queryClient = useQueryClient();
 
   return useMutation<ToolCostResponse, Error, UpsertToolCostInput>({
-    mutationFn: (input) => apiPost("/api/tool-costs", input),
+    mutationFn: async (input) => {
+      const res = await apiPost<{ data: ToolCostResponse }>("/api/tool-costs", input);
+      return res.data;
+    },
     onSuccess: (created) => {
       queryClient.setQueryData<ListToolCostsResponse | undefined>(
         toolCostKeys.list(),

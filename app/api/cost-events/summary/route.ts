@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       costBreakdown,
     });
 
-    const res = NextResponse.json(response);
+    const res = NextResponse.json({ data: response });
     res.headers.set("NullSpend-Version", CURRENT_VERSION);
     return res;
   } catch (error) {

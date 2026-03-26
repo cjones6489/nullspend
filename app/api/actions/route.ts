@@ -28,7 +28,7 @@ export const GET = withRequestContext(async (request: Request) => {
   });
   const result = await listActions({ ...query, orgId });
 
-  return NextResponse.json(listActionsResponseSchema.parse(result));
+  return NextResponse.json({ data: listActionsResponseSchema.parse(result) });
 });
 
 export const POST = withRequestContext(async (request: Request) => {
@@ -52,11 +52,11 @@ export const POST = withRequestContext(async (request: Request) => {
 
     return applyRateLimitHeaders(
       NextResponse.json(
-        createActionResponseSchema.parse({
+        { data: createActionResponseSchema.parse({
           id: action.id,
           status: action.status,
           expiresAt: action.expiresAt,
-        }),
+        }) },
         { status: 201 },
       ),
       authResult.rateLimit,

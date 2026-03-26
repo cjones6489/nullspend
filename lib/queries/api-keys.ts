@@ -35,7 +35,10 @@ export function useCreateApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation<CreateApiKeyResponse, Error, { name: string; defaultTags?: Record<string, string> }>({
-    mutationFn: (input) => apiPost("/api/keys", input),
+    mutationFn: async (input) => {
+      const res = await apiPost<{ data: CreateApiKeyResponse }>("/api/keys", input);
+      return res.data;
+    },
     onSuccess: (createdKey) => {
       queryClient.setQueryData<ListApiKeysResponse | undefined>(
         apiKeyKeys.list(),

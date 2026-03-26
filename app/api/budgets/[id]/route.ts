@@ -94,12 +94,12 @@ export async function POST(_request: Request, { params }: RouteParams) {
     }).catch((err) => console.error("[budgets] Proxy cache reset_spend failed:", err));
 
     return NextResponse.json(
-      budgetResponseSchema.parse({
+      { data: budgetResponseSchema.parse({
         ...updated,
         currentPeriodStart: updated.currentPeriodStart?.toISOString() ?? null,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
-      }),
+      }) },
     );
   } catch (error) {
     if (error instanceof NotFoundError) {

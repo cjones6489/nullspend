@@ -62,7 +62,10 @@ export function useCreateBudget() {
   const queryClient = useQueryClient();
 
   return useMutation<BudgetRecord, Error, CreateBudgetInput>({
-    mutationFn: (input) => apiPost("/api/budgets", input),
+    mutationFn: async (input) => {
+      const res = await apiPost<{ data: BudgetRecord }>("/api/budgets", input);
+      return res.data;
+    },
     onSuccess: (created) => {
       queryClient.setQueryData<ListBudgetsResponse | undefined>(
         budgetKeys.list(),

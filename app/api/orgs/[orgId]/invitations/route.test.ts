@@ -193,15 +193,15 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
     const body = await res.json();
 
     // invitationRecordSchema fields
-    expect(body.id).toBe(SAMPLE_INVITATION.id);
-    expect(body.email).toBe("alice@example.com");
-    expect(body.role).toBe("member");
-    expect(body.status).toBe("pending");
-    expect(body.invitedBy).toBe("user-1");
-    expect(body.tokenPrefix).toBe("tok_raw_");
+    expect(body.data.id).toBe(SAMPLE_INVITATION.id);
+    expect(body.data.email).toBe("alice@example.com");
+    expect(body.data.role).toBe("member");
+    expect(body.data.status).toBe("pending");
+    expect(body.data.invitedBy).toBe("user-1");
+    expect(body.data.tokenPrefix).toBe("tok_raw_");
 
     // Raw token is included only in create response
-    expect(body.token).toBe("tok_raw_abc123");
+    expect(body.data.token).toBe("tok_raw_abc123");
 
     expect(mockAssertOrgRole).toHaveBeenCalledWith("user-1", ORG_UUID, "admin");
     expect(mockGenerateInviteToken).toHaveBeenCalled();
@@ -285,7 +285,7 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.role).toBe("viewer");
+    expect(body.data.role).toBe("viewer");
 
     // The key assertion: seat limit helpers should NOT have been called
     expect(mockResolveOrgTier).not.toHaveBeenCalled();

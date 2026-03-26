@@ -77,7 +77,10 @@ export function useActionsInfinite(options: {
 export function useAction(id: string) {
   return useQuery<ActionRecord>({
     queryKey: actionKeys.detail(id),
-    queryFn: () => apiGet(`/api/actions/${id}`),
+    queryFn: async () => {
+      const res = await apiGet<{ data: ActionRecord }>(`/api/actions/${id}`);
+      return res.data;
+    },
     enabled: !!id,
   });
 }
@@ -86,7 +89,10 @@ export function useApproveAction() {
   const queryClient = useQueryClient();
 
   return useMutation<MutateActionResponse, Error, string>({
-    mutationFn: (id: string) => apiPost(`/api/actions/${id}/approve`),
+    mutationFn: async (id: string) => {
+      const res = await apiPost<{ data: MutateActionResponse }>(`/api/actions/${id}/approve`);
+      return res.data;
+    },
     onSuccess: (updatedAction, id) => {
       queryClient.setQueryData<ActionRecord | undefined>(
         actionKeys.detail(id),
@@ -108,7 +114,10 @@ export function useRejectAction() {
   const queryClient = useQueryClient();
 
   return useMutation<MutateActionResponse, Error, string>({
-    mutationFn: (id: string) => apiPost(`/api/actions/${id}/reject`),
+    mutationFn: async (id: string) => {
+      const res = await apiPost<{ data: MutateActionResponse }>(`/api/actions/${id}/reject`);
+      return res.data;
+    },
     onSuccess: (updatedAction, id) => {
       queryClient.setQueryData<ActionRecord | undefined>(
         actionKeys.detail(id),

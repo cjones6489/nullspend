@@ -106,7 +106,7 @@ export const POST = withRequestContext(async (request: Request) => {
     const status = result.deduplicated ? 200 : 201;
     return applyRateLimitHeaders(
       NextResponse.json(
-        { id: toExternalId("evt", result.id), createdAt: result.createdAt },
+        { data: { id: toExternalId("evt", result.id), createdAt: result.createdAt } },
         { status },
       ),
       authResult.rateLimit,

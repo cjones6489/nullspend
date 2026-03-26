@@ -47,8 +47,8 @@ describe("POST /api/actions/[id]/reject", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.id).toBe("ns_act_00000000-0000-4000-a000-000000000001");
-    expect(body.status).toBe("rejected");
+    expect(body.data.id).toBe("ns_act_00000000-0000-4000-a000-000000000001");
+    expect(body.data.status).toBe("rejected");
     expect(mockedRejectAction).toHaveBeenCalledWith(
       "00000000-0000-4000-a000-000000000001",
       { rejectedBy: "user-1" },

@@ -19,5 +19,5 @@ export const GET = withRequestContext(async (
   const { id } = actionIdParamsSchema.parse(params);
   const action = await getAction(id, authResult.orgId);
 
-  return NextResponse.json(actionRecordSchema.parse(action));
+  return NextResponse.json({ data: actionRecordSchema.parse(action) });
 });

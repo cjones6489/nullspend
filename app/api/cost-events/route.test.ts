@@ -99,7 +99,7 @@ describe("POST /api/cost-events", () => {
     const json = await res.json();
 
     expect(res.status).toBe(201);
-    expect(json).toEqual({
+    expect(json.data).toEqual({
       id: "ns_evt_ce-1",
       createdAt: "2026-03-18T00:00:00.000Z",
     });

@@ -34,7 +34,7 @@ export const POST = withRequestContext(async (
     const action = await markResult(id, input, authResult.orgId);
 
     return applyRateLimitHeaders(
-      NextResponse.json(mutateActionResponseSchema.parse(action)),
+      NextResponse.json({ data: mutateActionResponseSchema.parse(action) }),
       authResult.rateLimit,
     );
   });

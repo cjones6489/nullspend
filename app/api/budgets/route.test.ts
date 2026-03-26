@@ -279,7 +279,7 @@ describe("POST /api/budgets — proxy invalidation", () => {
     const response = await POST(request);
     expect(response.status).toBe(201);
     const json = await response.json();
-    expect(json.thresholdPercentages).toEqual([25, 50, 75]);
+    expect(json.data.thresholdPercentages).toEqual([25, 50, 75]);
   });
 
   it("upsert without thresholdPercentages preserves existing custom value", async () => {
@@ -320,7 +320,7 @@ describe("POST /api/budgets — proxy invalidation", () => {
     expect(response.status).toBe(201);
     const json = await response.json();
     // DB returns the existing custom value since we didn't override it
-    expect(json.thresholdPercentages).toEqual([25, 50, 75]);
+    expect(json.data.thresholdPercentages).toEqual([25, 50, 75]);
 
     // Verify thresholdPercentages was NOT in the .values() or .set() calls
     const valuesArg = (mockValues.mock.calls as any)[0][0];

@@ -8,8 +8,10 @@ import type { SubscriptionResponse } from "@/lib/validations/subscription";
 export function useSubscription() {
   return useQuery({
     queryKey: ["subscription"],
-    queryFn: () =>
-      apiGet<SubscriptionResponse | null>("/api/stripe/subscription"),
+    queryFn: async () => {
+      const res = await apiGet<{ data: SubscriptionResponse | null }>("/api/stripe/subscription");
+      return res.data;
+    },
   });
 }
 
@@ -35,11 +37,13 @@ export function usePortalSession() {
 export function useSyncCheckout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (sessionId: string) =>
-      apiPost<SubscriptionResponse>(
+    mutationFn: async (sessionId: string) => {
+      const res = await apiPost<{ data: SubscriptionResponse }>(
         "/api/stripe/subscription/sync",
         { sessionId },
-      ),
+      );
+      return res.data;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subscription"] });
     },

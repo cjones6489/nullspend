@@ -119,12 +119,12 @@ export const POST = withRequestContext(async (request: Request) => {
   }).catch((err) => console.error("[budgets] Proxy cache sync failed:", err));
 
   return NextResponse.json(
-    budgetResponseSchema.parse({
+    { data: budgetResponseSchema.parse({
       ...budget,
       currentPeriodStart: budget.currentPeriodStart?.toISOString() ?? null,
       createdAt: budget.createdAt.toISOString(),
       updatedAt: budget.updatedAt.toISOString(),
-    }),
+    }) },
     { status: 201 },
   );
 });

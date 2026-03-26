@@ -36,7 +36,7 @@ describe("GET /api/stripe/subscription", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toBeNull();
+    expect(body.data).toBeNull();
   });
 
   it("returns subscription data when it exists", async () => {
@@ -56,12 +56,12 @@ describe("GET /api/stripe/subscription", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.id).toBe("sub-uuid-123");
-    expect(body.tier).toBe("pro");
-    expect(body.status).toBe("active");
-    expect(body.cancelAtPeriodEnd).toBe(false);
-    expect(body.currentPeriodStart).toBe(now.toISOString());
-    expect(body.currentPeriodEnd).toBe(later.toISOString());
+    expect(body.data.id).toBe("sub-uuid-123");
+    expect(body.data.tier).toBe("pro");
+    expect(body.data.status).toBe("active");
+    expect(body.data.cancelAtPeriodEnd).toBe(false);
+    expect(body.data.currentPeriodStart).toBe(now.toISOString());
+    expect(body.data.currentPeriodEnd).toBe(later.toISOString());
   });
 
   it("returns null dates when period dates are null", async () => {
@@ -78,7 +78,7 @@ describe("GET /api/stripe/subscription", () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.currentPeriodStart).toBeNull();
-    expect(body.currentPeriodEnd).toBeNull();
+    expect(body.data.currentPeriodStart).toBeNull();
+    expect(body.data.currentPeriodEnd).toBeNull();
   });
 });

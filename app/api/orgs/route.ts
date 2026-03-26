@@ -91,14 +91,14 @@ export const POST = withRequestContext(async (request: Request) => {
   logAuditEvent({ orgId: org.id, actorId: userId, action: "org.created", resourceType: "org", resourceId: org.id, metadata: { name: org.name, slug: org.slug } });
 
   return NextResponse.json(
-    orgRecordSchema.parse({
+    { data: orgRecordSchema.parse({
       id: org.id,
       name: org.name,
       slug: org.slug,
       isPersonal: org.isPersonal,
       createdAt: org.createdAt.toISOString(),
       updatedAt: org.updatedAt.toISOString(),
-    }),
+    }) },
     { status: 201 },
   );
 });

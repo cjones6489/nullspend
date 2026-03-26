@@ -12,10 +12,10 @@ export async function GET() {
     const row = await getSubscriptionByOrgId(orgId);
 
     if (!row) {
-      return NextResponse.json(null);
+      return NextResponse.json({ data: null });
     }
 
-    return NextResponse.json({
+    return NextResponse.json({ data: {
       id: row.id,
       tier: row.tier,
       status: row.status,
@@ -23,7 +23,7 @@ export async function GET() {
       currentPeriodEnd: row.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: row.cancelAtPeriodEnd,
       createdAt: row.createdAt.toISOString(),
-    });
+    } });
   } catch (error) {
     return handleRouteError(error);
   }

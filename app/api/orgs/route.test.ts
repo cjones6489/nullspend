@@ -175,12 +175,12 @@ describe("POST /api/orgs", () => {
 
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.id).toBe("ns_org_a0000000-0000-4000-a000-000000000010");
-    expect(body.name).toBe("My Team");
-    expect(body.slug).toBe("my-team");
-    expect(body.isPersonal).toBe(false);
-    expect(body.createdAt).toBe("2026-03-01T00:00:00.000Z");
-    expect(body.updatedAt).toBe("2026-03-01T00:00:00.000Z");
+    expect(body.data.id).toBe("ns_org_a0000000-0000-4000-a000-000000000010");
+    expect(body.data.name).toBe("My Team");
+    expect(body.data.slug).toBe("my-team");
+    expect(body.data.isPersonal).toBe(false);
+    expect(body.data.createdAt).toBe("2026-03-01T00:00:00.000Z");
+    expect(body.data.updatedAt).toBe("2026-03-01T00:00:00.000Z");
   });
 
   it("creates owner membership in same transaction", async () => {

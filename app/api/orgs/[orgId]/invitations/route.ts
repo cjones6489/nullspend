@@ -147,7 +147,7 @@ export async function POST(request: Request, context: RouteContext) {
     logAuditEvent({ orgId, actorId: userId, action: "invitation.created", resourceType: "invitation", resourceId: invitation.id, metadata: { email: invitation.email, role: invitation.role } });
 
     return NextResponse.json(
-      {
+      { data: {
         ...invitationRecordSchema.parse({
           id: invitation.id,
           email: invitation.email,
@@ -160,7 +160,7 @@ export async function POST(request: Request, context: RouteContext) {
         }),
         // Include raw token ONLY in the create response (never stored, never returned again)
         token: rawToken,
-      },
+      } },
       { status: 201 },
     );
   } catch (error) {

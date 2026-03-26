@@ -20,7 +20,7 @@ export async function POST(
     const { id } = actionIdParamsSchema.parse(params);
     const action = await rejectAction(id, { rejectedBy: userId }, orgId);
 
-    return NextResponse.json(mutateActionResponseSchema.parse(action));
+    return NextResponse.json({ data: mutateActionResponseSchema.parse(action) });
   } catch (error) {
     return handleRouteError(error);
   }

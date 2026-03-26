@@ -125,11 +125,11 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json(
-      createApiKeyResponseSchema.parse({
+      { data: createApiKeyResponseSchema.parse({
         ...created,
         rawKey,
         createdAt: created.createdAt.toISOString(),
-      }),
+      }) },
       { status: 201 },
     );
   } catch (error) {

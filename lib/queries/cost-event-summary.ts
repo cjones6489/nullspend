@@ -15,10 +15,12 @@ const PERIOD_DAYS: Record<string, number> = { "7d": 7, "30d": 30, "90d": 90 };
 export function useCostSummary(period: "7d" | "30d" | "90d") {
   return useQuery({
     queryKey: costSummaryKeys.byPeriod(period),
-    queryFn: () =>
-      apiGet<CostSummaryResponse>(
+    queryFn: async () => {
+      const res = await apiGet<{ data: CostSummaryResponse }>(
         `/api/cost-events/summary?period=${period}`,
-      ),
+      );
+      return res.data;
+    },
     staleTime: 60_000,
     select: (data) => ({
       ...data,
