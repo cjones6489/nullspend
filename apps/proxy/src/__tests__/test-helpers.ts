@@ -70,6 +70,7 @@ export function makeEnv(overrides: Record<string, unknown> = {}): Env {
     USER_BUDGET: { idFromName: vi.fn(), get: vi.fn() },
     RECONCILE_QUEUE: { send: vi.fn() },
     COST_EVENT_QUEUE: { send: vi.fn(), sendBatch: vi.fn() },
+    BODY_STORAGE: { put: vi.fn(), get: vi.fn().mockResolvedValue(null) },
     ...overrides,
   } as unknown as Env;
 }

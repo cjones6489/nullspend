@@ -1,8 +1,10 @@
 "use client";
 
-import { Copy, Key, Loader2, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Copy, Key, Loader2, Plus, Trash2, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,6 +109,7 @@ function KeyRow({
     id: string;
     name: string;
     keyPrefix: string;
+    defaultTags: Record<string, string>;
     lastUsedAt: string | null;
     createdAt: string;
   };
@@ -129,8 +132,19 @@ function KeyRow({
 
   return (
     <TableRow className="border-border/30 transition-colors hover:bg-accent/40">
-      <TableCell className="text-[13px] font-medium text-foreground">
-        {apiKey.name}
+      <TableCell>
+        <span className="text-[13px] font-medium text-foreground">
+          {apiKey.name}
+        </span>
+        {Object.keys(apiKey.defaultTags).length > 0 && (
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {Object.entries(apiKey.defaultTags).map(([k, v]) => (
+              <Badge key={k} variant="outline" className="font-mono text-[11px] px-1 py-0">
+                {k}={v}
+              </Badge>
+            ))}
+          </div>
+        )}
       </TableCell>
       <TableCell>
         <span className="inline-flex items-center gap-1">
@@ -201,14 +215,56 @@ function CreateKeyDialog({
   const createKey = useCreateApiKey();
   const [name, setName] = useState("");
   const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [tags, setTags] = useState<Record<string, string>>({});
+  const [tagKey, setTagKey] = useState("");
+  const [tagValue, setTagValue] = useState("");
+  const [tagError, setTagError] = useState<string | null>(null);
+  const tagValueRef = useRef<HTMLInputElement>(null);
+
+  function addTag() {
+    const key = tagKey.trim();
+    const value = tagValue.trim().replaceAll("\0", "");
+    setTagError(null);
+    if (!key) return;
+    if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
+      setTagError("Keys must be alphanumeric, underscore, or hyphen.");
+      return;
+    }
+    if (key.startsWith("_ns_")) {
+      setTagError("Keys starting with _ns_ are reserved.");
+      return;
+    }
+    if (key in tags) {
+      setTagError(`Tag "${key}" already exists and will be overwritten.`);
+      // Allow the overwrite — error is informational, addTag proceeds
+    }
+    if (!(key in tags) && Object.keys(tags).length >= 10) {
+      setTagError("Maximum 10 tags.");
+      return;
+    }
+    setTags({ ...tags, [key]: value });
+    setTagKey("");
+    setTagValue("");
+  }
+
+  function removeTag(key: string) {
+    const next = { ...tags };
+    delete next[key];
+    setTags(next);
+  }
 
   function handleCreate() {
+    const defaultTags = Object.keys(tags).length > 0 ? tags : undefined;
     createKey.mutate(
-      { name },
+      { name: name.trim(), defaultTags },
       {
         onSuccess: (data) => {
           setCreatedKey(data.rawKey);
           setName("");
+          setTags({});
+          setTagKey("");
+          setTagValue("");
+          setTagError(null);
           toast.success("API key created");
         },
         onError: (err) => {
@@ -226,6 +282,10 @@ function CreateKeyDialog({
     if (!nextOpen) {
       setCreatedKey(null);
       setName("");
+      setTags({});
+      setTagKey("");
+      setTagValue("");
+      setTagError(null);
     }
     onOpenChange(nextOpen);
   }
@@ -244,6 +304,10 @@ function CreateKeyDialog({
   function handleDone() {
     setCreatedKey(null);
     setName("");
+    setTags({});
+    setTagKey("");
+    setTagValue("");
+    setTagError(null);
     onOpenChange(false);
   }
 
@@ -308,6 +372,70 @@ function CreateKeyDialog({
                 className="h-9 border-border/50 bg-background text-[13px] placeholder:text-muted-foreground/50"
                 maxLength={50}
               />
+            </div>
+
+            {/* Default tags */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                Default tags <span className="text-muted-foreground/50">(optional)</span>
+              </Label>
+              <p className="text-[11px] text-muted-foreground/60">
+                Tags are automatically attached to every cost event from this key.
+              </p>
+              {Object.keys(tags).length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {Object.entries(tags).map(([k, v]) => (
+                    <Badge key={k} variant="outline" className="gap-1 font-mono text-[11px] pl-1.5 pr-0.5 py-0">
+                      {k}={v}
+                      <button
+                        type="button"
+                        onClick={() => removeTag(k)}
+                        className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label={`Remove tag ${k}`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {(Object.keys(tags).length < 10 || tagKey.trim() in tags) && (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="key"
+                    value={tagKey}
+                    onChange={(e) => { setTagKey(e.target.value); setTagError(null); }}
+                    className="h-8 w-28 border-border/50 bg-background font-mono text-[12px] placeholder:text-muted-foreground/50"
+                    maxLength={64}
+                    aria-label="Tag key"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); tagValueRef.current?.focus(); } }}
+                  />
+                  <span className="text-xs text-muted-foreground">=</span>
+                  <Input
+                    ref={tagValueRef}
+                    placeholder="value"
+                    value={tagValue}
+                    onChange={(e) => setTagValue(e.target.value)}
+                    className="h-8 flex-1 border-border/50 bg-background font-mono text-[12px] placeholder:text-muted-foreground/50"
+                    maxLength={256}
+                    aria-label="Tag value"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={addTag}
+                    disabled={!tagKey.trim()}
+                  >
+                    Add
+                  </Button>
+                </div>
+              )}
+              {tagError && (
+                <p className="text-[11px] text-red-400">{tagError}</p>
+              )}
             </div>
             <DialogFooter>
               <DialogClose

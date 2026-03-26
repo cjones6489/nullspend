@@ -7,6 +7,7 @@ export interface ApiKeyIdentity {
   keyId: string;
   hasWebhooks: boolean;
   hasBudgets: boolean;
+  requestLoggingEnabled: boolean;
   apiVersion: string;
   defaultTags: Record<string, string>;
 }
@@ -79,7 +80,11 @@ async function lookupKeyInDb(
       EXISTS(
         SELECT 1 FROM budgets b
         WHERE b.org_id = k.org_id
-      ) AS has_budgets
+      ) AS has_budgets,
+      COALESCE(
+        (SELECT s.tier IN ('pro', 'enterprise') FROM subscriptions s WHERE s.org_id = k.org_id AND s.status IN ('active', 'past_due') LIMIT 1),
+        false
+      ) AS request_logging_enabled
     FROM api_keys k
     WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
   `;
@@ -95,6 +100,7 @@ async function lookupKeyInDb(
     keyId: row.id as string,
     hasWebhooks: row.has_webhooks === true,
     hasBudgets: row.has_budgets === true,
+    requestLoggingEnabled: row.request_logging_enabled === true,
     apiVersion: row.api_version as string,
     defaultTags: (typeof row.default_tags === "object" && row.default_tags !== null && !Array.isArray(row.default_tags))
       ? row.default_tags as Record<string, string>

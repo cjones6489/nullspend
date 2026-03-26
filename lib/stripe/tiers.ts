@@ -7,6 +7,7 @@ export const TIERS = {
     maxWebhookEndpoints: 2,
     maxTeamMembers: 3,
     retentionDays: 30,
+    requestLogging: false,
     price: 0,
   },
   pro: {
@@ -17,6 +18,7 @@ export const TIERS = {
     maxWebhookEndpoints: 25,
     maxTeamMembers: Infinity,
     retentionDays: 90,
+    requestLogging: true,
     price: 49,
   },
   enterprise: {
@@ -27,6 +29,7 @@ export const TIERS = {
     maxWebhookEndpoints: Infinity,
     maxTeamMembers: Infinity,
     retentionDays: Infinity,
+    requestLogging: true,
     price: null, // custom pricing
   },
 } as const;

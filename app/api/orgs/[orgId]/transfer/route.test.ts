@@ -106,9 +106,9 @@ describe("POST /api/orgs/[orgId]/transfer", () => {
   it("owner transfers ownership to existing member — returns 200", async () => {
     mockAssertOrgRole.mockResolvedValue(undefined);
     mockReadJsonBody.mockResolvedValue({ newOwnerUserId: TARGET_ID });
-    mockSelectLimit.mockResolvedValue([{ role: "member" }]);
     mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
       const tx = {
+        execute: vi.fn().mockResolvedValue([{ role: "member" }]),
         update: () => ({
           set: () => ({
             where: vi.fn().mockResolvedValue(undefined),
@@ -161,7 +161,12 @@ describe("POST /api/orgs/[orgId]/transfer", () => {
   it("returns 404 when target user is not a member", async () => {
     mockAssertOrgRole.mockResolvedValue(undefined);
     mockReadJsonBody.mockResolvedValue({ newOwnerUserId: "user-nonexistent" });
-    mockSelectLimit.mockResolvedValue([]);
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        execute: vi.fn().mockResolvedValue([]),
+      };
+      return cb(tx);
+    });
 
     const res = await POST(
       makeRequest({ newOwnerUserId: "user-nonexistent" }),
@@ -172,5 +177,26 @@ describe("POST /api/orgs/[orgId]/transfer", () => {
     const body = await res.json();
     expect(body.error.code).toBe("not_found");
     expect(body.error.message).toContain("not a member");
+  });
+
+  it("returns 400 when target is a viewer", async () => {
+    mockAssertOrgRole.mockResolvedValue(undefined);
+    mockReadJsonBody.mockResolvedValue({ newOwnerUserId: TARGET_ID });
+    mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        execute: vi.fn().mockResolvedValue([{ role: "viewer" }]),
+      };
+      return cb(tx);
+    });
+
+    const res = await POST(
+      makeRequest({ newOwnerUserId: TARGET_ID }),
+      makeContext(ORG_ID),
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("validation_error");
+    expect(body.error.message).toContain("Viewers");
   });
 });

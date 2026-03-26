@@ -4,6 +4,7 @@ import { lookupBudgetsForDO } from "../lib/budget-do-lookup.js";
 import { errorResponse } from "../lib/errors.js";
 import { emitMetric } from "../lib/metrics.js";
 import { timingSafeStringEqual } from "../lib/timing-safe-equal.js";
+import { retrieveBodies } from "../lib/body-storage.js";
 
 interface InvalidationBody {
   action: "remove" | "reset_spend" | "sync";
@@ -189,5 +190,83 @@ export async function handleVelocityState(
     });
 
     return errorResponse("internal_error", "Velocity state lookup failed", 500);
+  }
+}
+
+/**
+ * GET /internal/request-bodies/:requestId?ownerId=...
+ *
+ * Retrieves stored request/response bodies from R2.
+ * Auth: INTERNAL_SECRET (same as other internal endpoints).
+ * The ownerId query param scopes the R2 key prefix — the dashboard
+ * must supply the ownerId that owns the cost event.
+ */
+export async function handleRequestBodies(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (!env.INTERNAL_SECRET) {
+    console.error("[internal] INTERNAL_SECRET not configured");
+    return errorResponse("internal_error", "Server misconfigured", 500);
+  }
+
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return errorResponse("unauthorized", "Missing or malformed Authorization header", 401);
+  }
+
+  const token = authHeader.slice(7);
+  if (!timingSafeStringEqual(token, env.INTERNAL_SECRET)) {
+    return errorResponse("unauthorized", "Invalid token", 401);
+  }
+
+  const url = new URL(request.url);
+  const ownerId = url.searchParams.get("ownerId");
+  if (!ownerId || ownerId.length === 0 || ownerId.length > MAX_FIELD_LENGTH) {
+    return errorResponse("bad_request", "Missing or invalid ownerId query parameter", 400);
+  }
+
+  // Extract requestId from path: /internal/request-bodies/{requestId}
+  const pathParts = url.pathname.split("/");
+  const requestId = pathParts[pathParts.length - 1];
+  if (!requestId || requestId.length === 0 || requestId.length > MAX_FIELD_LENGTH) {
+    return errorResponse("bad_request", "Missing or invalid requestId in path", 400);
+  }
+
+  // Defense-in-depth: reject path traversal characters in R2 key components
+  const SAFE_ID_RE = /^[a-zA-Z0-9_\-.:]+$/;
+  if (!SAFE_ID_RE.test(ownerId) || !SAFE_ID_RE.test(requestId)) {
+    return errorResponse("bad_request", "ownerId and requestId must be alphanumeric", 400);
+  }
+
+  const bodyBucket = (env as Record<string, unknown>).BODY_STORAGE as R2Bucket | undefined;
+  if (!bodyBucket) {
+    return errorResponse("internal_error", "Body storage not configured", 500);
+  }
+
+  try {
+    const bodies = await retrieveBodies(bodyBucket, ownerId, requestId);
+
+    emitMetric("body_storage_read", {
+      hasRequest: bodies.requestBody !== null,
+      hasResponse: bodies.responseBody !== null,
+    });
+
+    // Parse each body independently — one corrupt body should not prevent retrieval of the other
+    let requestBody: unknown = null;
+    let responseBody: unknown = null;
+    if (bodies.requestBody) {
+      try { requestBody = JSON.parse(bodies.requestBody); }
+      catch { requestBody = null; }
+    }
+    if (bodies.responseBody) {
+      try { responseBody = JSON.parse(bodies.responseBody); }
+      catch { responseBody = null; }
+    }
+
+    return Response.json({ requestBody, responseBody });
+  } catch (err) {
+    console.error("[internal] Request body retrieval failed:", err);
+    return errorResponse("internal_error", "Body retrieval failed", 500);
   }
 }

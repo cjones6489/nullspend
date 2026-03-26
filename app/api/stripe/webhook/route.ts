@@ -8,6 +8,7 @@ import {
   upsertSubscription,
 } from "@/lib/stripe/subscription";
 import { tierFromPriceId } from "@/lib/stripe/tiers";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
 // In-memory event deduplication (5-min TTL).
 // Prevents duplicate processing on Stripe webhook retries.
@@ -178,6 +179,9 @@ async function handleCheckoutCompleted(
     currentPeriodEnd: periodEnd,
   });
 
+  // Flush proxy auth cache so requestLoggingEnabled / tier changes take effect immediately
+  await invalidateProxyCache({ action: "sync", ownerId: orgId, entityType: "subscription", entityId: stripeSubscriptionId });
+
   console.log(
     `[NullSpend] Subscription created via checkout: orgId=${orgId}, tier=${tier}`,
   );
@@ -258,6 +262,8 @@ async function handleSubscriptionUpdated(
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
   });
 
+  await invalidateProxyCache({ action: "sync", ownerId: orgId, entityType: "subscription", entityId: subscription.id });
+
   console.log(
     `[NullSpend] Subscription updated: orgId=${orgId}, tier=${tier}, status=${subscription.status}`,
   );
@@ -288,6 +294,8 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     cancelAtPeriodEnd: false,
   });
 
+  await invalidateProxyCache({ action: "sync", ownerId: existing.orgId, entityType: "subscription", entityId: subscription.id });
+
   console.log(
     `[NullSpend] Subscription canceled: orgId=${existing.orgId}`,
   );
@@ -308,6 +316,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
       ...existing,
       status: "active",
     });
+    await invalidateProxyCache({ action: "sync", ownerId: existing.orgId, entityType: "subscription", entityId: existing.stripeSubscriptionId });
     console.log(
       `[NullSpend] Subscription reactivated after payment: orgId=${existing.orgId}`,
     );
@@ -328,6 +337,8 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
     ...existing,
     status: "past_due",
   });
+
+  await invalidateProxyCache({ action: "sync", ownerId: existing.orgId, entityType: "subscription", entityId: existing.stripeSubscriptionId });
 
   console.log(
     `[NullSpend] Subscription past_due after payment failure: orgId=${existing.orgId}`,

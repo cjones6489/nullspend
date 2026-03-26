@@ -39,6 +39,7 @@ import {
 } from "@/lib/queries/webhooks";
 import {
   MAX_WEBHOOK_ENDPOINTS_PER_USER,
+  PAYLOAD_MODES,
   WEBHOOK_EVENT_TYPES,
   type WebhookRecord,
 } from "@/lib/validations/webhooks";
@@ -142,6 +143,18 @@ function EndpointRow({ endpoint, canManage }: { endpoint: WebhookRecord; canMana
     );
   }
 
+  function handlePayloadModeToggle() {
+    const nextMode = endpoint.payloadMode === "full" ? "thin" : "full";
+    updateWebhook.mutate(
+      { id: endpoint.id, payloadMode: nextMode },
+      {
+        onError: (err) => {
+          toast.error(err.message || "Failed to update payload mode");
+        },
+      },
+    );
+  }
+
   function handleTest() {
     testWebhook.mutate(endpoint.id, {
       onSuccess: (result) => {
@@ -163,12 +176,31 @@ function EndpointRow({ endpoint, canManage }: { endpoint: WebhookRecord; canMana
     <TableRow className="border-border/30 transition-colors hover:bg-accent/40">
       <TableCell>
         <div>
-          <p
-            className="text-[13px] font-medium text-foreground"
-            title={endpoint.url}
-          >
-            {truncateUrl(endpoint.url)}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p
+              className="text-[13px] font-medium text-foreground"
+              title={endpoint.url}
+            >
+              {truncateUrl(endpoint.url)}
+            </p>
+            {canManage ? (
+              <button
+                type="button"
+                onClick={handlePayloadModeToggle}
+                className="shrink-0"
+                title={`Payload mode: ${endpoint.payloadMode}. Click to switch to ${endpoint.payloadMode === "full" ? "thin" : "full"}.`}
+                disabled={updateWebhook.isPending}
+              >
+                <Badge variant="outline" className="text-[10px] cursor-pointer hover:bg-accent">
+                  {endpoint.payloadMode}
+                </Badge>
+              </button>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">
+                {endpoint.payloadMode}
+              </Badge>
+            )}
+          </div>
           {endpoint.description && (
             <p className="text-[11px] text-muted-foreground">
               {endpoint.description}
@@ -277,6 +309,7 @@ function CreateEndpointDialog({
   const [url, setUrl] = useState("");
   const [description, setDescription] = useState("");
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
+  const [payloadMode, setPayloadMode] = useState<typeof PAYLOAD_MODES[number]>("full");
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
 
   function handleCreate() {
@@ -285,7 +318,7 @@ function CreateEndpointDialog({
         url,
         description: description || undefined,
         eventTypes: selectedEventTypes as typeof WEBHOOK_EVENT_TYPES[number][],
-        payloadMode: "full" as const,
+        payloadMode,
       },
       {
         onSuccess: (data) => {
@@ -293,6 +326,7 @@ function CreateEndpointDialog({
           setUrl("");
           setDescription("");
           setSelectedEventTypes([]);
+          setPayloadMode("full");
           toast.success("Webhook endpoint created");
         },
         onError: (err) => {
@@ -309,12 +343,17 @@ function CreateEndpointDialog({
       setUrl("");
       setDescription("");
       setSelectedEventTypes([]);
+      setPayloadMode("full");
     }
     onOpenChange(nextOpen);
   }
 
   function handleDone() {
     setCreatedSecret(null);
+    setUrl("");
+    setDescription("");
+    setSelectedEventTypes([]);
+    setPayloadMode("full");
     onOpenChange(false);
   }
 
@@ -403,6 +442,32 @@ function CreateEndpointDialog({
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">
+                  Payload mode
+                </Label>
+                <div className="flex gap-2">
+                  {PAYLOAD_MODES.map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setPayloadMode(mode)}
+                      className={`rounded-md border px-3 py-1.5 text-[11px] transition-colors ${
+                        payloadMode === mode
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                      }`}
+                    >
+                      {mode === "full" ? "Full" : "Thin"}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground/60">
+                  {payloadMode === "full"
+                    ? "Full payloads include all cost event fields."
+                    : "Thin payloads include only the event ID and type — fetch details via API."}
+                </p>
               </div>
             </div>
             <DialogFooter>

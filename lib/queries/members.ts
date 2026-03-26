@@ -120,3 +120,16 @@ export function useRevokeInvitation(orgId: string) {
     },
   });
 }
+
+export function useTransferOwnership(orgId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<{ success: boolean; newOwnerUserId: string }, Error, string>({
+    mutationFn: (newOwnerUserId) =>
+      apiPost(`${orgPath(orgId)}/transfer`, { newOwnerUserId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: memberKeys.all(orgId) });
+      queryClient.invalidateQueries({ queryKey: ["session"] });
+      queryClient.invalidateQueries({ queryKey: ["orgs"] });
+    },
+  });
+}

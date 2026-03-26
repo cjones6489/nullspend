@@ -17,6 +17,7 @@ import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { writeLatencyDataPoint } from "../lib/write-metric.js";
 import { handleBudgetDenials, dispatchVelocityRecoveryWebhooks, dispatchCostEventWebhooks, type Attribution, type EnrichmentFields } from "./shared.js";
+import { storeRequestBody, storeResponseBody } from "../lib/body-storage.js";
 
 export async function handleChatCompletions(
   request: Request,
@@ -130,6 +131,9 @@ export async function handleChatCompletions(
       orgId: ctx.auth.orgId,
     };
 
+    const requestId =
+      upstreamResponse.headers.get("x-request-id") ?? crypto.randomUUID();
+
     if (!upstreamResponse.ok) {
       // Fix 6: reconcile with actualCost=0 on upstream error
       if (reservationId) {
@@ -143,6 +147,12 @@ export async function handleChatCompletions(
       emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
       writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs, undefined, ctx.auth.userId);
       const sanitizedBody = await sanitizeUpstreamError(upstreamResponse, "openai");
+      // Log error request/response bodies — valuable for debugging upstream failures
+      const bodyBucket = (env as Record<string, unknown>).BODY_STORAGE as R2Bucket | undefined;
+      if (ctx.requestLoggingEnabled && bodyBucket) {
+        waitUntil(storeRequestBody(bodyBucket, ctx.ownerId, requestId, ctx.bodyText));
+        waitUntil(storeResponseBody(bodyBucket, ctx.ownerId, requestId, sanitizedBody));
+      }
       clientHeaders.set("content-type", "application/json");
       return new Response(sanitizedBody, {
         status: upstreamResponse.status,
@@ -150,13 +160,14 @@ export async function handleChatCompletions(
       });
     }
 
-    const requestId =
-      upstreamResponse.headers.get("x-request-id") ?? crypto.randomUUID();
     const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
     clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
 
     if (isStreaming) {
       if (ctx.stepTiming) ctx.stepTiming.ttfbMs = upstreamDurationMs;
+      if (ctx.requestLoggingEnabled) {
+        emitMetric("body_storage_skipped", { reason: "streaming", provider: "openai" });
+      }
       return handleStreaming(
         upstreamResponse,
         clientHeaders,
@@ -436,6 +447,13 @@ async function handleNonStreaming(
   const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, enrichment.upstreamDurationMs, ctx.stepTiming);
   emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: enrichment.upstreamDurationMs, totalMs, streaming: false });
   writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, enrichment.upstreamDurationMs, totalMs, undefined, ctx.auth.userId);
+
+  // Body logging — fire-and-forget in waitUntil (pro/enterprise only, non-streaming only)
+  const bodyBucket = (env as Record<string, unknown>).BODY_STORAGE as R2Bucket | undefined;
+  if (ctx.requestLoggingEnabled && bodyBucket) {
+    waitUntil(storeRequestBody(bodyBucket, ctx.ownerId, requestId, ctx.bodyText));
+    waitUntil(storeResponseBody(bodyBucket, ctx.ownerId, requestId, responseText));
+  }
 
   return new Response(responseText, {
     status: upstreamResponse.status,

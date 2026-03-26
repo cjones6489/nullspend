@@ -1,7 +1,13 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { apiGet } from "@/lib/api/client";
+import { apiGet, ApiError } from "@/lib/api/client";
 import type { CostEventRecord } from "@/lib/validations/cost-events";
+
+/** Only retry on server errors (5xx), not on 4xx (not found, bad request). */
+function retryOnServerError(failureCount: number, error: Error): boolean {
+  if (error instanceof ApiError && error.status < 500) return false;
+  return failureCount < 2;
+}
 
 interface CostEventsPage {
   data: CostEventRecord[];
@@ -19,6 +25,8 @@ export const costEventKeys = {
   lists: () => [...costEventKeys.all, "list"] as const,
   list: (filters: CostEventFilters = {}) =>
     [...costEventKeys.lists(), filters] as const,
+  detail: (id: string) => [...costEventKeys.all, "detail", id] as const,
+  bodies: (id: string) => [...costEventKeys.all, "bodies", id] as const,
   actionCosts: (actionId: string) =>
     [...costEventKeys.all, "action", actionId] as const,
 };
@@ -28,6 +36,31 @@ export function useActionCosts(actionId: string) {
     queryKey: costEventKeys.actionCosts(actionId),
     queryFn: () => apiGet(`/api/actions/${actionId}/costs`),
     enabled: !!actionId,
+  });
+}
+
+export function useCostEvent(id: string) {
+  return useQuery<{ data: CostEventRecord }>({
+    queryKey: costEventKeys.detail(id),
+    queryFn: () => apiGet(`/api/cost-events/${id}`),
+    enabled: !!id,
+    retry: retryOnServerError,
+  });
+}
+
+interface CostEventBodies {
+  data: {
+    requestBody: Record<string, unknown> | null;
+    responseBody: Record<string, unknown> | null;
+  };
+}
+
+export function useCostEventBodies(id: string, enabled = true) {
+  return useQuery<CostEventBodies>({
+    queryKey: costEventKeys.bodies(id),
+    queryFn: () => apiGet(`/api/cost-events/${id}/bodies`),
+    enabled: !!id && enabled,
+    retry: retryOnServerError,
   });
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Loader2, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ function SortIcon({ field, active, dir }: { field: string; active: string | null
 }
 
 export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
+  const router = useRouter();
   const [selectedKeyId, setSelectedKeyId] = useState(ALL_KEYS);
   const [selectedProvider, setSelectedProvider] = useState(initialProvider ?? ALL_PROVIDERS);
   const [sortField, setSortField] = useState<SortField | null>(null);
@@ -227,10 +229,23 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
               {events.map((event) => (
                 <TableRow
                   key={event.id}
-                  className="border-border/30 transition-colors hover:bg-accent/40"
+                  className="border-border/30 cursor-pointer transition-colors hover:bg-accent/40"
+                  onClick={(e) => {
+                    const url = `/app/cost-events/${event.id}?from=activity`;
+                    if (e.metaKey || e.ctrlKey || e.button === 1) {
+                      window.open(url, "_blank");
+                    } else {
+                      router.push(url);
+                    }
+                  }}
+                  onAuxClick={(e) => {
+                    if (e.button === 1) {
+                      window.open(`/app/cost-events/${event.id}?from=activity`, "_blank");
+                    }
+                  }}
                 >
                   <TableCell
-                    className="text-[13px] text-muted-foreground cursor-default"
+                    className="text-[13px] text-muted-foreground"
                     title={new Date(event.createdAt).toLocaleString()}
                   >
                     {formatRelativeTime(event.createdAt)}
@@ -280,7 +295,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                     {formatDuration(event.durationMs)}
                   </TableCell>
                   <TableCell
-                    className="cursor-default font-mono text-[11px] text-muted-foreground"
+                    className="font-mono text-[11px] text-muted-foreground"
                     title={event.traceId ?? undefined}
                   >
                     {event.traceId ? event.traceId.slice(0, 8) : "—"}

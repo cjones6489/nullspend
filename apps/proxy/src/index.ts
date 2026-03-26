@@ -1,7 +1,7 @@
 import { handleChatCompletions } from "./routes/openai.js";
 import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
-import { handleBudgetInvalidation, handleVelocityState } from "./routes/internal.js";
+import { handleBudgetInvalidation, handleVelocityState, handleRequestBodies } from "./routes/internal.js";
 import { handleMetrics } from "./routes/metrics.js";
 import { authenticateRequest } from "./lib/auth.js";
 import { resolveApiVersion } from "./lib/api-version.js";
@@ -169,6 +169,9 @@ export default {
       if (url.pathname === "/internal/budget/velocity-state" && request.method === "GET") {
         return handleVelocityState(request, env);
       }
+      if (url.pathname.startsWith("/internal/request-bodies/") && request.method === "GET") {
+        return handleRequestBodies(request, env);
+      }
 
       // Route lookup
       const handler = request.method === "POST" ? routes.get(url.pathname) : undefined;
@@ -251,6 +254,7 @@ export default {
         resolvedApiVersion,
         requestStartMs,
         stepTiming: { preFlightMs, bodyParseMs },
+        requestLoggingEnabled: auth.requestLoggingEnabled,
       };
 
       const response = await handler(request, env, ctx);

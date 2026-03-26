@@ -17,6 +17,7 @@ export interface RequestContext {
   resolvedApiVersion: string;
   requestStartMs: number;       // performance.now() at request entry
   stepTiming?: StepTiming;      // per-step latency for Server-Timing header
+  requestLoggingEnabled: boolean; // pro/enterprise tier — enables R2 body capture
 }
 
 export type RouteHandler = (

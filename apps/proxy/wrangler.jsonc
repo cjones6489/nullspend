@@ -30,6 +30,9 @@
   "kv_namespaces": [
     { "binding": "CACHE_KV", "id": "a1c41950606849ccbfc4c044d80bbca4" }
   ],
+  "r2_buckets": [
+    { "binding": "BODY_STORAGE", "bucket_name": "nullspend-request-bodies" }
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "USER_BUDGET", "class_name": "UserBudgetDO" }

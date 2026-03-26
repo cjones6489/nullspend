@@ -19,11 +19,15 @@ async function handleResponse<T>(response: Response): Promise<T> {
     } catch {
       body = undefined;
     }
+    // API error format: { error: { code, message, details } }
+    const err = body && typeof body === "object" && "error" in body
+      ? (body as { error: unknown }).error
+      : null;
     const message =
-      body && typeof body === "object" && "message" in body
-        ? String((body as { message: string }).message)
-        : body && typeof body === "object" && "error" in body
-          ? String((body as { error: string }).error)
+      err && typeof err === "object" && err !== null && "message" in err
+        ? String((err as { message: string }).message)
+        : body && typeof body === "object" && "message" in body
+          ? String((body as { message: string }).message)
           : `Request failed with status ${response.status}`;
     throw new ApiError(message, response.status, body);
   }
