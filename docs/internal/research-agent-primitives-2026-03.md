@@ -53,17 +53,77 @@ The agent economy is transitioning from "agents that call APIs" to "agents that 
 | IETF (draft)            | Agent Name Service (ANS) — DNS for agents                                       |
 | Agentic AI Foundation   | Co-founded by Anthropic, Block, OpenAI — December 2025                          |
 
-Key stat: Non-human identities outnumber humans ~50:1 in the average enterprise. 80% of IT leaders report agents acting outside expected behavior.
+Key stats:
+- Non-human identities outnumber humans ~50:1 in the average enterprise
+- 80% of IT leaders report agents acting outside expected behavior
+- 93% of agent projects use unscoped API keys — the governance gap everyone is racing to close
+- Only 28% of orgs can trace agent actions back to a human sponsor
+- Only 21% maintain a real-time inventory of active agents
+
+### Agent Auth Startups
+
+| Company | Focus | Funding |
+|---|---|---|
+| Stytch (acquired by Twilio) | Connected Apps, agent OAuth, MCP auth, IsAgent detection | Acquired Nov 2025 |
+| Scalekit | MCP server OAuth 2.1, token vault, agent-as-first-class-identity | $5.5M seed (Sep 2025) |
+| Arcade.dev | Auth-first tool execution — agents act *as the user* via OAuth | $12M seed |
+| Composio | Auth-to-action middleware, 500+ app integrations, MCP gateway | SOC 2 compliant |
+| StackOne | Agent-first unified API, Unified Permissions API, prompt injection defense | $20M Series A (GV) |
+| Nango | Code-first integration infra, 700+ APIs, managed OAuth | Used by Replit, Ramp |
+| Keycard | Agent identity primitives (certificates), acquired Anchor.dev | Feb 2026 |
+
+### Six Authorization Primitives (Emerging Industry Consensus)
+
+| Authorization Primitive | NullSpend Equivalent |
+|---|---|
+| Scoped permissions | Budgets |
+| Per-agent identity | API keys |
+| User consent | HITL approval |
+| Token/credential revocation | Key management |
+| Audit trails | Cost events |
+| Delegation control | Org-scoped access |
+
+### Protocols
+
+- **MCP** (Model Context Protocol) — de facto standard for agent-to-tool connections. 10,000+ public servers, 97M+ monthly SDK downloads. Donated to AAIF/Linux Foundation (Dec 2025).
+- **A2A** (Agent2Agent) — Google-led, Linux Foundation governed. Agent-to-agent communication. 150+ supporting orgs.
+- **XAA** (Cross App Access) — Okta's open protocol extending OAuth for agent-to-app access at scale.
+- **Microsoft Entra Agent ID** — unique agent identities distinct from users and service principals. Public preview March 2026.
 
 ---
 
 ## 3. Agent-First Vertical Platforms
 
-| Company   | Primitive                 | Why Essential                                                                                                                         |
-| --------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| AgentMail | Email inboxes for agents  | $6M seed (General Catalyst). Email = identity on the internet. Agents need it for signup, 2FA, communication. 100M+ emails delivered. |
-| Stripe    | Commerce primitives       | SPTs, product catalogs, payment links — all agent-accessible                                                                          |
-| Coinbase  | Onchain wallet primitives | Trade, earn, deploy contracts — all via AgentKit                                                                                      |
+| Company | Primitive | Why Essential |
+|---|---|---|
+| AgentMail | Email inboxes for agents | $6M seed (General Catalyst). Email = identity on the internet. Agents need it for signup, 2FA, communication. 100M+ emails delivered. |
+| Stripe | Commerce primitives | SPTs, product catalogs, payment links — all agent-accessible |
+| Coinbase | Onchain wallet primitives | Trade, earn, deploy contracts — all via AgentKit |
+| Toolhouse | Pre-built tool library + execution | 40+ tools, deploy agents as APIs, framework-agnostic tool definitions |
+| Letta | Agent memory (tiered: core/recall/archival) | Agents self-edit their own memory. 74% accuracy on LoCoMo benchmark. Stateful agents = massive switching costs |
+| E2B | Sandboxed code execution | Open-source Linux VMs, 150ms cold start. Used by Manus |
+
+### Additional Payment Players
+
+| Company | Focus | Funding |
+|---|---|---|
+| Natural | B2B agentic payments, traditional rails | $9.8M seed |
+| Kite | Cryptographic agent identity + programmable permissions + stablecoin payments | $18M Series A (PayPal Ventures) |
+
+### What Makes Agent Infra "Painkiller" (Not Vitamin)
+
+1. **Solves something agents literally cannot do without** — AgentMail (email identity), Skyfire (payments), Arcade (authenticated actions). Without these, the workflow is blocked.
+2. **Eliminates the hardest repeated engineering work** — Composio (tool plumbing), E2B (sandboxing), LangSmith (observability). Every team rebuilds this.
+3. **Creates compounding data assets** — Letta (memory), LangSmith (eval datasets), Braintrust (scored traces). More usage = more value = harder to leave.
+4. **Sits on the critical path of every request** — NullSpend (cost/budget), auth layers, observability. Processing every action = load-bearing infrastructure.
+
+### Defensibility Hierarchy (Strongest → Weakest)
+
+1. Stateful data that compounds (memory, eval datasets, audit trails)
+2. Critical-path infrastructure with switching costs (auth, payments, identity)
+3. Network effects (tool marketplaces, community integrations)
+4. Compliance/trust credentials (SOC 2, deliverability reputation, bank partnerships)
+5. Developer ecosystem/mindshare (weakest — can be disrupted by better DX)
 
 ---
 
@@ -195,3 +255,18 @@ The market is moving from "how much did my API calls cost?" to "my agents are ma
 - Agent Tools Landscape: https://www.stackone.com/blog/ai-agent-tools-landscape-2026/
 - Agentic Commerce Protocol: https://docs.stripe.com/agentic-commerce/protocol
 - a16z Agent Payments: https://a16z.com/newsletter/agent-payments-stack/
+- Stytch Agent Ready: https://stytch.com/ai-agent-ready
+- Stytch Agent-to-Agent OAuth: https://stytch.com/blog/agent-to-agent-oauth-guide/
+- Twilio Acquired Stytch: https://www.twilio.com/en-us/blog/company/news/twilio-to-acquire-stytch
+- Auth0 for AI Agents: https://auth0.com/blog/announcing-auth0-for-ai-agents-powering-the-future-of-ai-securely/
+- Okta for AI Agents: https://www.okta.com/blog/ai/okta-ai-agents-early-access-announcement/
+- Microsoft Entra Agent ID: https://learn.microsoft.com/en-us/entra/agent-id/identity-platform/what-is-agent-id
+- Google A2A Protocol: https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability/
+- AAIF / MCP Donation: https://www.anthropic.com/news/donating-the-model-context-protocol-and-establishing-of-the-agentic-ai-foundation
+- Arcade.dev: https://finance.yahoo.com/news/arcade-dev-scores-12m-solve-160600987.html
+- Kite / PayPal Ventures: https://newsroom.paypal-corp.com/2025-09-02-Kite-Raises-18M-in-Series-A-Funding-To-Enforce-Trust-in-the-Agentic-Web
+- OpenID Agent Identity Whitepaper: https://openid.net/new-whitepaper-tackles-ai-agent-identity-challenges/
+- YC W26 Agent Infrastructure: https://www.buildmvpfast.com/blog/yc-w26-batch-agent-infrastructure-boom
+- Agent Security State 2026: https://grantex.dev/report/state-of-agent-security-2026
+- Nango Agent Auth Guide: https://nango.dev/blog/guide-to-secure-ai-agent-api-authentication
+- AI Agent Payments Landscape: https://www.useproxy.ai/blog/ai-agent-payments-landscape-2026
