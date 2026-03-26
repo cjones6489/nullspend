@@ -14,6 +14,7 @@ import {
 } from "@/lib/validations/orgs";
 import { generateInviteToken, hashInviteToken, extractTokenPrefix } from "@/lib/auth/invitation";
 import { resolveOrgTier, assertCountBelowLimit } from "@/lib/stripe/feature-gate";
+import { logAuditEvent } from "@/lib/audit/log";
 
 type RouteContext = { params: Promise<{ orgId: string }> };
 
@@ -142,6 +143,8 @@ export async function POST(request: Request, context: RouteContext) {
       }
       throw err;
     }
+
+    logAuditEvent({ orgId, actorId: userId, action: "invitation.created", resourceType: "invitation", resourceId: invitation.id, metadata: { email: invitation.email, role: invitation.role } });
 
     return NextResponse.json(
       {

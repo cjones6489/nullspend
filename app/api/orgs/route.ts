@@ -7,6 +7,7 @@ import { organizations, orgMemberships } from "@nullspend/db";
 import { readJsonBody } from "@/lib/utils/http";
 import { createOrgSchema, orgRecordSchema } from "@/lib/validations/orgs";
 import { withRequestContext } from "@/lib/observability";
+import { logAuditEvent } from "@/lib/audit/log";
 
 /**
  * GET /api/orgs — list all orgs the user is a member of.
@@ -86,6 +87,8 @@ export const POST = withRequestContext(async (request: Request) => {
     }
     throw err;
   }
+
+  logAuditEvent({ orgId: org.id, actorId: userId, action: "org.created", resourceType: "org", resourceId: org.id, metadata: { name: org.name, slug: org.slug } });
 
   return NextResponse.json(
     orgRecordSchema.parse({

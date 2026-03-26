@@ -22,6 +22,7 @@ import { ForbiddenError } from "@/lib/auth/errors";
 import { getSubscriptionByOrgId } from "@/lib/stripe/subscription";
 import { getStripe } from "@/lib/stripe/client";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
+import { logAuditEvent } from "@/lib/audit/log";
 
 type RouteContext = { params: Promise<{ orgId: string }> };
 
@@ -193,6 +194,8 @@ export async function DELETE(request: Request, context: RouteContext) {
       // Finally delete the org — cascades memberships + invitations via FK
       await tx.delete(organizations).where(eq(organizations.id, orgId));
     });
+
+    logAuditEvent({ orgId, actorId: userId, action: "org.deleted", resourceType: "org", resourceId: orgId });
 
     return NextResponse.json({ success: true });
   } catch (error) {

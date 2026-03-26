@@ -8,6 +8,7 @@ import { POST } from "./route";
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "personal-org", role: "owner" }),
   setActiveOrgCookie: vi.fn().mockResolvedValue(undefined),
+  invalidateMembershipCache: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/invitation", () => ({
@@ -21,6 +22,10 @@ vi.mock("@/lib/db/client", () => ({
 vi.mock("@/lib/observability/sentry", () => ({
   captureExceptionWithContext: vi.fn(),
   addSentryBreadcrumb: vi.fn(),
+}));
+
+vi.mock("@/lib/audit/log", () => ({
+  logAuditEvent: vi.fn(),
 }));
 
 vi.mock("@/lib/utils/http", async (importOriginal) => {

@@ -329,3 +329,24 @@ export const orgInvitations = pgTable("org_invitations", {
 
 export type OrgInvitationRow = typeof orgInvitations.$inferSelect;
 export type NewOrgInvitationRow = typeof orgInvitations.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Audit Events
+// ---------------------------------------------------------------------------
+
+export const auditEvents = pgTable("audit_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull(),
+  actorId: text("actor_id").notNull(),
+  action: text("action").notNull(),
+  resourceType: text("resource_type").notNull(),
+  resourceId: text("resource_id"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("audit_events_org_id_idx").on(table.orgId),
+  index("audit_events_created_at_idx").on(table.createdAt),
+]);
+
+export type AuditEventRow = typeof auditEvents.$inferSelect;
+export type NewAuditEventRow = typeof auditEvents.$inferInsert;

@@ -1,20 +1,32 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
-import { resolveSessionContext, setActiveOrgCookie } from "@/lib/auth/session";
+import { resolveSessionContext, setActiveOrgCookie, invalidateMembershipCache } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { orgInvitations, orgMemberships } from "@nullspend/db";
 import { readJsonBody } from "@/lib/utils/http";
 import { acceptInviteSchema } from "@/lib/validations/orgs";
 import { hashInviteToken } from "@/lib/auth/invitation";
+import { checkInviteRateLimit } from "@/lib/auth/invite-rate-limit";
 import { withRequestContext } from "@/lib/observability";
 import type { OrgRole } from "@/lib/validations/orgs";
+import { logAuditEvent } from "@/lib/audit/log";
 
 /**
  * POST /api/invite/accept — accept an invitation via raw token.
+ * Rate limited: 10 attempts per minute per IP.
  * Creates membership, marks invitation accepted, sets active org cookie.
  */
 export const POST = withRequestContext(async (request: Request) => {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? request.headers.get("x-real-ip");
+  const rateCheck = checkInviteRateLimit(ip);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: { code: "rate_limited", message: "Too many attempts. Try again later.", details: null } },
+      { status: 429, headers: { "Retry-After": String(rateCheck.retryAfterSeconds ?? 60) } },
+    );
+  }
+
   const { userId } = await resolveSessionContext();
   const body = await readJsonBody(request);
   const { token } = acceptInviteSchema.parse(body);
@@ -99,8 +111,12 @@ export const POST = withRequestContext(async (request: Request) => {
     throw err;
   }
 
+  invalidateMembershipCache(userId, invitation.orgId);
+
   // Switch active org to the newly joined org
   await setActiveOrgCookie(invitation.orgId, invitation.role as OrgRole);
+
+  logAuditEvent({ orgId: invitation.orgId, actorId: userId, action: "invitation.accepted", resourceType: "invitation", resourceId: invitation.id });
 
   return NextResponse.json({
     orgId: invitation.orgId,

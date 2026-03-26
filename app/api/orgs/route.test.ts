@@ -17,6 +17,10 @@ vi.mock("@/lib/observability/sentry", () => ({
   addSentryBreadcrumb: vi.fn(),
 }));
 
+vi.mock("@/lib/audit/log", () => ({
+  logAuditEvent: vi.fn(),
+}));
+
 vi.mock("@/lib/utils/http", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/utils/http")>();
   return {

@@ -137,6 +137,14 @@ const membershipCache = new Map<string, CachedMembership>();
 export const _membershipCacheForTesting = membershipCache;
 
 /**
+ * Invalidate cached membership for a user in a specific org.
+ * Call after role changes, member removal, or ownership transfer.
+ */
+export function invalidateMembershipCache(userId: string, orgId: string): void {
+  membershipCache.delete(`${userId}:${orgId}`);
+}
+
+/**
  * Create a personal org for a new user.
  * Uses a partial unique index to prevent duplicates from concurrent requests.
  * If the INSERT violates the constraint, re-queries the existing org.
@@ -195,12 +203,37 @@ async function ensurePersonalOrg(
   }
 }
 
+// Cookie signing — HMAC-SHA256
+function getCookieSecret(): string {
+  return process.env.COOKIE_SECRET ?? process.env.NEXTAUTH_SECRET ?? "nullspend-dev-cookie-secret";
+}
+
+/** @internal Expose for testing only. */
+export function _signCookieValueForTesting(payload: string): string {
+  return signCookieValue(payload);
+}
+
+function signCookieValue(payload: string): string {
+  const { createHmac } = require("node:crypto");
+  const sig = createHmac("sha256", getCookieSecret()).update(payload).digest("hex").slice(0, 16);
+  return `${payload}.${sig}`;
+}
+
+function verifyCookieValue(signed: string): string | null {
+  const dotIdx = signed.lastIndexOf(".");
+  if (dotIdx < 1) return null;
+  const payload = signed.slice(0, dotIdx);
+  if (signCookieValue(payload) !== signed) return null;
+  return payload;
+}
+
 /**
  * Set the active org cookie. Called after ensurePersonalOrg or org switch.
+ * Cookie value is HMAC-signed: `orgId:role.signature`
  */
 export async function setActiveOrgCookie(orgId: string, role: OrgRole): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(ORG_COOKIE, `${orgId}:${role}`, {
+  cookieStore.set(ORG_COOKIE, signCookieValue(`${orgId}:${role}`), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -210,13 +243,16 @@ export async function setActiveOrgCookie(orgId: string, role: OrgRole): Promise<
 }
 
 /**
- * Parse the active org cookie. Returns null if missing or malformed.
+ * Parse and verify the active org cookie. Returns null if missing, malformed, or tampered.
  */
 async function readActiveOrgCookie(): Promise<{ orgId: string; role: OrgRole } | null> {
   try {
     const cookieStore = await cookies();
-    const value = cookieStore.get(ORG_COOKIE)?.value;
-    if (!value) return null;
+    const raw = cookieStore.get(ORG_COOKIE)?.value;
+    if (!raw) return null;
+
+    const value = verifyCookieValue(raw);
+    if (!value) return null; // Signature mismatch — tampered or stale
 
     const sep = value.indexOf(":");
     if (sep < 1) return null;

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
-import { resolveSessionContext, setActiveOrgCookie } from "@/lib/auth/session";
+import { resolveSessionContext, setActiveOrgCookie, invalidateMembershipCache } from "@/lib/auth/session";
 import { assertOrgMember } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, orgMemberships } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema } from "@/lib/validations/orgs";
 import { ForbiddenError } from "@/lib/auth/errors";
+import { logAuditEvent } from "@/lib/audit/log";
 
 type RouteContext = { params: Promise<{ orgId: string }> };
 
@@ -50,10 +51,14 @@ export async function POST(request: Request, context: RouteContext) {
         .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, userId)));
     });
 
+    invalidateMembershipCache(userId, orgId);
+
     // Switch active org cookie to personal org (resolveSessionContext will handle this on next request,
     // but let's be explicit by letting it fall through to the personal org path)
     // The simplest approach: clear the cookie so next request creates/finds the personal org
     await setActiveOrgCookie("", "viewer");
+
+    logAuditEvent({ orgId, actorId: userId, action: "member.left", resourceType: "membership", resourceId: userId });
 
     return NextResponse.json({ success: true });
   } catch (error) {

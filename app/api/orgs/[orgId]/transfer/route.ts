@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { resolveSessionContext } from "@/lib/auth/session";
+import { resolveSessionContext, invalidateMembershipCache } from "@/lib/auth/session";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
 import { orgMemberships } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema } from "@/lib/validations/orgs";
 import { ForbiddenError } from "@/lib/auth/errors";
+import { logAuditEvent } from "@/lib/audit/log";
 
 const transferSchema = z.object({
   newOwnerUserId: z.string().min(1, "New owner user ID is required."),
@@ -66,6 +67,11 @@ export async function POST(request: Request, context: RouteContext) {
         .set({ role: "owner", updatedAt: sql`NOW()` })
         .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, newOwnerUserId)));
     });
+
+    invalidateMembershipCache(userId, orgId);
+    invalidateMembershipCache(newOwnerUserId, orgId);
+
+    logAuditEvent({ orgId, actorId: userId, action: "org.ownership_transferred", resourceType: "org", resourceId: orgId, metadata: { newOwnerUserId } });
 
     return NextResponse.json({ success: true, newOwnerUserId });
   } catch (error) {

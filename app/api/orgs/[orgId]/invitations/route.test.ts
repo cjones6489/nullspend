@@ -15,6 +15,10 @@ vi.mock("@/lib/observability/sentry", () => ({
   captureExceptionWithContext: vi.fn(),
 }));
 
+vi.mock("@/lib/audit/log", () => ({
+  logAuditEvent: vi.fn(),
+}));
+
 const mockAssertOrgRole = vi.fn().mockResolvedValue({ userId: "user-1", orgId: ORG_UUID, role: "admin" });
 
 vi.mock("@/lib/auth/org-authorization", () => ({

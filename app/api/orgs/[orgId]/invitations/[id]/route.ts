@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db/client";
 import { orgInvitations } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema } from "@/lib/validations/orgs";
+import { logAuditEvent } from "@/lib/audit/log";
 
 type RouteContext = { params: Promise<{ orgId: string; id: string }> };
 
@@ -49,6 +50,8 @@ export async function DELETE(request: Request, context: RouteContext) {
       .update(orgInvitations)
       .set({ status: "revoked", revokedAt: sql`NOW()` })
       .where(eq(orgInvitations.id, invitationId));
+
+    logAuditEvent({ orgId, actorId: userId, action: "invitation.revoked", resourceType: "invitation", resourceId: invitationId });
 
     return NextResponse.json({ success: true });
   } catch (error) {

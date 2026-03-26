@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
-import { resolveSessionContext } from "@/lib/auth/session";
+import { resolveSessionContext, invalidateMembershipCache } from "@/lib/auth/session";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
 import { apiKeys, orgMemberships } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema, changeRoleSchema, memberRecordSchema } from "@/lib/validations/orgs";
 import { ForbiddenError } from "@/lib/auth/errors";
+import { logAuditEvent } from "@/lib/audit/log";
 
 type RouteContext = { params: Promise<{ orgId: string; userId: string }> };
 
@@ -61,6 +62,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       .set({ role: input.role, updatedAt: sql`NOW()` })
       .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, targetUserId)))
       .returning();
+
+    invalidateMembershipCache(targetUserId, orgId);
+
+    logAuditEvent({ orgId, actorId: session.userId, action: "member.role_changed", resourceType: "membership", resourceId: targetUserId, metadata: { newRole: input.role } });
 
     return NextResponse.json({
       data: memberRecordSchema.parse({
@@ -132,6 +137,10 @@ export async function DELETE(request: Request, context: RouteContext) {
         .delete(orgMemberships)
         .where(and(eq(orgMemberships.orgId, orgId), eq(orgMemberships.userId, targetUserId)));
     });
+
+    invalidateMembershipCache(targetUserId, orgId);
+
+    logAuditEvent({ orgId, actorId: session.userId, action: "member.removed", resourceType: "membership", resourceId: targetUserId });
 
     return NextResponse.json({ success: true });
   } catch (error) {

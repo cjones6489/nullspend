@@ -55,7 +55,7 @@ vi.mock("next/headers", () => ({
 }));
 
 // --- Import after mocks ---
-import { resolveSessionContext, setActiveOrgCookie, _membershipCacheForTesting } from "./session";
+import { resolveSessionContext, setActiveOrgCookie, _membershipCacheForTesting, _signCookieValueForTesting } from "./session";
 
 describe("resolveSessionContext", () => {
   beforeEach(() => {
@@ -64,7 +64,7 @@ describe("resolveSessionContext", () => {
   });
 
   it("returns orgId and role from cookie on hot path (no DB hit for org)", async () => {
-    mockCookieGet.mockReturnValue({ value: "org-uuid-123:owner" });
+    mockCookieGet.mockReturnValue({ value: _signCookieValueForTesting("org-uuid-123:owner") });
 
     // Membership validation — cache miss, hits DB
     mockSelectLimit.mockResolvedValueOnce([{ role: "owner" }]);
@@ -89,10 +89,10 @@ describe("resolveSessionContext", () => {
     expect(ctx.userId).toBe("user-test-123");
     expect(ctx.orgId).toBe("new-org-uuid");
     expect(ctx.role).toBe("owner");
-    // Cookie should be set
+    // Cookie should be set (signed format)
     expect(mockCookieSet).toHaveBeenCalledWith(
       "ns-active-org",
-      "new-org-uuid:owner",
+      _signCookieValueForTesting("new-org-uuid:owner"),
       expect.objectContaining({ httpOnly: true, path: "/" }),
     );
   });
@@ -114,7 +114,7 @@ describe("resolveSessionContext", () => {
   });
 
   it("falls back to personal org when cookie org membership is invalid", async () => {
-    mockCookieGet.mockReturnValue({ value: "invalid-org:admin" });
+    mockCookieGet.mockReturnValue({ value: _signCookieValueForTesting("invalid-org:admin") });
 
     // Membership validation — user is NOT a member of this org
     mockSelectLimit.mockResolvedValueOnce([]);
@@ -157,12 +157,12 @@ describe("setActiveOrgCookie", () => {
     vi.clearAllMocks();
   });
 
-  it("sets httpOnly cookie with orgId:role format", async () => {
+  it("sets httpOnly cookie with signed orgId:role format", async () => {
     await setActiveOrgCookie("org-123", "admin");
 
     expect(mockCookieSet).toHaveBeenCalledWith(
       "ns-active-org",
-      "org-123:admin",
+      _signCookieValueForTesting("org-123:admin"),
       expect.objectContaining({
         httpOnly: true,
         sameSite: "lax",

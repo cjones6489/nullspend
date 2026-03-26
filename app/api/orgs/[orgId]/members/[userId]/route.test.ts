@@ -33,10 +33,15 @@ const {
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-requester", orgId: "00000000-0000-4000-a000-000000000001", role: "owner" }),
+  invalidateMembershipCache: vi.fn(),
 }));
 
 vi.mock("@/lib/observability/sentry", () => ({
   captureExceptionWithContext: vi.fn(),
+}));
+
+vi.mock("@/lib/audit/log", () => ({
+  logAuditEvent: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/org-authorization", () => ({
