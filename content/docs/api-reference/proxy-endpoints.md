@@ -95,6 +95,8 @@ Enforced in two places:
 
 Exceeding either check returns `413 payload_too_large`.
 
+Response body logging (Pro/Enterprise) also caps at 1 MB. Streaming responses exceeding 1 MB are truncated in the stored body; the client receives the full response regardless.
+
 ---
 
 ## Request Processing Pipeline

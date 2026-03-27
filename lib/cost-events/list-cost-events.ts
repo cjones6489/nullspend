@@ -14,6 +14,7 @@ interface ListCostEventsOptions {
   provider?: string;
   source?: CostEventSource;
   traceId?: string;
+  sessionId?: string;
   tags?: Record<string, string>;
 }
 
@@ -40,6 +41,9 @@ export async function listCostEvents(options: ListCostEventsOptions) {
   }
   if (options.traceId) {
     conditions.push(eq(costEvents.traceId, options.traceId));
+  }
+  if (options.sessionId) {
+    conditions.push(eq(costEvents.sessionId, options.sessionId));
   }
   if (options.tags && Object.keys(options.tags).length > 0) {
     conditions.push(sql`${costEvents.tags} @> ${JSON.stringify(options.tags)}::jsonb`);
@@ -73,6 +77,7 @@ export async function listCostEvents(options: ListCostEventsOptions) {
       durationMs: costEvents.durationMs,
       createdAt: costEvents.createdAt,
       traceId: costEvents.traceId,
+      sessionId: costEvents.sessionId,
       source: costEvents.source,
       tags: costEvents.tags,
       keyName: apiKeys.name,

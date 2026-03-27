@@ -64,6 +64,19 @@ vi.mock("../lib/webhook-thresholds.js", () => ({
   detectThresholdCrossings: vi.fn().mockReturnValue([]),
 }));
 
+const { mockStoreRequestBody, mockStoreStreamingResponseBody } = vi.hoisted(() => ({
+  mockStoreRequestBody: vi.fn().mockResolvedValue(undefined),
+  mockStoreStreamingResponseBody: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../lib/body-storage.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/body-storage.js")>();
+  return {
+    ...actual,
+    storeRequestBody: (...args: unknown[]) => mockStoreRequestBody(...args),
+    storeStreamingResponseBody: (...args: unknown[]) => mockStoreStreamingResponseBody(...args),
+  };
+});
+
 import { handleChatCompletions } from "../routes/openai.js";
 
 function makeRequest(
@@ -1212,5 +1225,55 @@ describe("handleChatCompletions", () => {
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain("[DONE]");
+  });
+
+  it("stores streaming response body in R2 when requestLoggingEnabled", async () => {
+    const sseChunks = [
+      'data: {"id":"chatcmpl-1","model":"gpt-4o-mini","choices":[{"delta":{"content":"hi"}}]}\n\n',
+      'data: {"id":"chatcmpl-1","model":"gpt-4o-mini","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":1}}\n\n',
+      "data: [DONE]\n\n",
+    ];
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(makeSSEStream(sseChunks), {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "x-request-id": "req-body-log",
+        },
+      }),
+    );
+
+    const body = {
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    };
+
+    const mockBucket = { put: vi.fn().mockResolvedValue(undefined), get: vi.fn().mockResolvedValue(null) };
+    const res = await handleChatCompletions(
+      makeRequest(body),
+      makeEnv({ BODY_STORAGE: mockBucket }),
+      makeCtx(body, { requestLoggingEnabled: true }),
+    );
+
+    expect(res.status).toBe(200);
+    // Consume the stream so the waitUntil callback fires
+    await res.text();
+    // Allow waitUntil microtasks to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockStoreStreamingResponseBody).toHaveBeenCalledWith(
+      mockBucket,
+      "user-1",
+      "req-body-log",
+      expect.stringContaining("data:"),
+    );
+    expect(mockStoreRequestBody).toHaveBeenCalledWith(
+      mockBucket,
+      "user-1",
+      "req-body-log",
+      expect.stringContaining('"model":"gpt-4o-mini"'),
+    );
   });
 });

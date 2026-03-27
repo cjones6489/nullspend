@@ -142,6 +142,10 @@ notifications when budgets cross thresholds.
 **Slack integration** — Get notified on budget events. Approve or reject
 human-in-the-loop actions directly from Slack.
 
+**Request logging** — Opt-in capture of full request and response bodies for
+debugging and audit (Pro/Enterprise). Both streaming (SSE) and non-streaming
+responses are captured. Bodies are stored in R2 with a 1 MB cap per object.
+
 **Security** — API keys SHA-256 hashed before storage. Timing-safe comparison.
 RLS on all database tables. Rate limiting (per-IP and per-key). Nonce-based CSP.
 91-point security audit completed.
@@ -183,14 +187,16 @@ RLS on all database tables. Rate limiting (per-IP and per-key). Nonce-based CSP.
 
 The proxy never modifies your requests or responses. It's a transparent
 pass-through that meters and enforces. Your provider keys stay with you (BYOK).
+Pro/Enterprise plans can opt in to request/response body logging for debugging —
+bodies are stored in R2 with per-org retention policies.
 
 ## Pricing
 
-| Tier | Price | Proxied Spend Cap | Budgets | Team Members | Retention |
-|---|---|---|---|---|---|
-| **Free** | $0/mo | $5,000/mo | 3 | 3 (viewers unlimited) | 30 days |
-| **Pro** | $49/mo | $50,000/mo | Unlimited | Unlimited | 90 days |
-| **Enterprise** | Custom | Unlimited | Unlimited | Unlimited | Unlimited |
+| Tier | Price | Proxied Spend Cap | Budgets | Team Members | Retention | Request Logging |
+|---|---|---|---|---|---|---|
+| **Free** | $0/mo | $5,000/mo | 3 | 3 (viewers unlimited) | 30 days | -- |
+| **Pro** | $49/mo | $50,000/mo | Unlimited | Unlimited | 90 days | Request/response bodies |
+| **Enterprise** | Custom | Unlimited | Unlimited | Unlimited | Unlimited | Request/response bodies |
 
 **Zero markup on LLM tokens.** We charge for the metering and enforcement layer,
 never for the tokens themselves. Free tier requires no credit card.

@@ -98,6 +98,7 @@ describe("handleRequestBodies", () => {
     mockRetrieveBodies.mockResolvedValueOnce({
       requestBody: '{"model":"gpt-4"}',
       responseBody: '{"choices":[{"message":{"content":"Hello"}}]}',
+      responseFormat: "json",
     });
 
     const req = makeRequest("/internal/request-bodies/req-123?ownerId=org_1");
@@ -109,10 +110,28 @@ describe("handleRequestBodies", () => {
     expect(body.responseBody).toEqual({ choices: [{ message: { content: "Hello" } }] });
   });
 
+  it("returns SSE body wrapped with _format when responseFormat is sse", async () => {
+    const sseText = "data: {\"id\":\"1\"}\n\ndata: [DONE]\n\n";
+    mockRetrieveBodies.mockResolvedValueOnce({
+      requestBody: '{"model":"gpt-4","stream":true}',
+      responseBody: sseText,
+      responseFormat: "sse",
+    });
+
+    const req = makeRequest("/internal/request-bodies/req-123?ownerId=org_1");
+    const res = await handleRequestBodies(req, makeEnv());
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as { requestBody: unknown; responseBody: unknown };
+    expect(body.requestBody).toEqual({ model: "gpt-4", stream: true });
+    expect(body.responseBody).toEqual({ _format: "sse", text: sseText });
+  });
+
   it("returns nulls when no bodies stored", async () => {
     mockRetrieveBodies.mockResolvedValueOnce({
       requestBody: null,
       responseBody: null,
+      responseFormat: null,
     });
 
     const req = makeRequest("/internal/request-bodies/req-123?ownerId=org_1");

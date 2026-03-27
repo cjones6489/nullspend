@@ -314,6 +314,18 @@ export default function CostEventDetailPage({
                   copyable
                 />
               )}
+              {event.sessionId && (
+                <div className="flex items-start justify-between gap-2 py-1.5">
+                  <span className="shrink-0 text-xs text-muted-foreground">Session</span>
+                  <Link
+                    href={`/app/sessions/${encodeURIComponent(event.sessionId)}`}
+                    className="truncate text-right text-sm font-mono text-xs text-primary underline-offset-2 hover:underline"
+                    title={event.sessionId}
+                  >
+                    {event.sessionId}
+                  </Link>
+                </div>
+              )}
             </CardContent>
           </Card>
 

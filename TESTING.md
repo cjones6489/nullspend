@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~2,800+ tests across ~168 files organized into four tiers.
+NullSpend has ~2,900+ tests across ~175 files organized into four tiers.
 
 ## Quick Reference
 
@@ -42,7 +42,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-70 files, ~1,202 tests. All mock `cloudflare:workers` and external dependencies.
+73 files, ~1,254 tests. All mock `cloudflare:workers` and external dependencies.
 
 ### Naming Convention
 
@@ -89,6 +89,13 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `cost-event-queue.test.ts` | `enqueueCostEvent`, `enqueueCostEventsBatch`, `getCostEventQueue`, queue-first fallback helpers, timeout behavior, fallback metric emission |
 | `cost-event-queue-handler.test.ts` | Queue consumer: batch INSERT + ack, per-message fallback on failure, poison message isolation, empty batch, connectionString from env |
 | `cost-event-dlq-handler.test.ts` | DLQ consumer: always-ack, metric emission, best-effort write, null userId, HYPERDRIVE unavailable guard |
+
+**Body Storage (Request/Response Logging)**
+| File | What it tests |
+|---|---|
+| `body-storage.test.ts` | `storeRequestBody`, `storeResponseBody`, `storeStreamingResponseBody` — R2 key layout, content types, 1MB cap, error resilience; `retrieveBodies` — JSON/SSE format detection, preference, null handling |
+| `stream-body-accumulator.test.ts` | `createStreamBodyAccumulator` — passthrough integrity, text accumulation, 1MB overflow truncation, empty stream, multi-byte UTF-8, cancellation partial buffer, overflow metric emission |
+| `request-bodies-internal.test.ts` | `handleRequestBodies` — auth, validation, path traversal defense, R2 retrieval, JSON parsing, SSE format `_format` wrapper, corrupt body isolation |
 
 **Budget System**
 | File | What it tests |
@@ -190,7 +197,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Smoke Tests (`apps/proxy/smoke*.test.ts`)
 
-25 files. Require a deployed worker and API keys. Organized by provider and concern:
+26 files. Require a deployed worker and API keys. Organized by provider and concern:
 
 | Pattern | Files |
 |---|---|
@@ -200,8 +207,9 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `smoke-session-limits.test.ts` | Session limit enforcement E2E |
 | `smoke-trace.test.ts` | W3C traceparent propagation E2E |
 | `smoke-metrics.test.ts` | AE metrics endpoint + latency headers E2E |
+| `smoke-body-capture.test.ts` | Streaming + non-streaming body capture, R2 storage, internal retrieval endpoint E2E |
 
-Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace, session-limits, metrics.
+Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace, session-limits, metrics, body-capture.
 
 ---
 

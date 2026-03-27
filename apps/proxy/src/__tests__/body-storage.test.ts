@@ -7,6 +7,7 @@ vi.mock("cloudflare:workers", () => ({
 import {
   storeRequestBody,
   storeResponseBody,
+  storeStreamingResponseBody,
   retrieveBodies,
 } from "../lib/body-storage.js";
 
@@ -108,11 +109,55 @@ describe("body-storage", () => {
     });
   });
 
+  describe("storeStreamingResponseBody", () => {
+    it("stores SSE body at correct R2 key with text/event-stream content type", async () => {
+      const sseBody = "data: {\"id\":\"1\"}\n\ndata: [DONE]\n\n";
+      await storeStreamingResponseBody(
+        mockBucket as unknown as R2Bucket,
+        "org_123",
+        "req_abc",
+        sseBody,
+      );
+
+      expect(mockBucket.put).toHaveBeenCalledWith(
+        "org_123/req_abc/response.sse",
+        sseBody,
+        { httpMetadata: { contentType: "text/event-stream" } },
+      );
+    });
+
+    it("skips bodies exceeding 1MB", async () => {
+      const largeBody = "x".repeat(1_048_577);
+      await storeStreamingResponseBody(
+        mockBucket as unknown as R2Bucket,
+        "org_123",
+        "req_abc",
+        largeBody,
+      );
+
+      expect(mockBucket.put).not.toHaveBeenCalled();
+    });
+
+    it("does not throw on R2 error", async () => {
+      mockBucket.put.mockRejectedValueOnce(new Error("R2 unavailable"));
+
+      await expect(
+        storeStreamingResponseBody(
+          mockBucket as unknown as R2Bucket,
+          "org_123",
+          "req_abc",
+          "data: test\n\n",
+        ),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   describe("retrieveBodies", () => {
-    it("returns both bodies when present", async () => {
+    it("returns JSON response body with format when present", async () => {
       mockBucket.get
-        .mockResolvedValueOnce({ text: () => Promise.resolve('{"model":"gpt-4"}') })
-        .mockResolvedValueOnce({ text: () => Promise.resolve('{"choices":[]}') });
+        .mockResolvedValueOnce({ text: () => Promise.resolve('{"model":"gpt-4"}') })  // request.json
+        .mockResolvedValueOnce({ text: () => Promise.resolve('{"choices":[]}') })      // response.json
+        .mockResolvedValueOnce(null);                                                   // response.sse
 
       const result = await retrieveBodies(
         mockBucket as unknown as R2Bucket,
@@ -123,13 +168,59 @@ describe("body-storage", () => {
       expect(result).toEqual({
         requestBody: '{"model":"gpt-4"}',
         responseBody: '{"choices":[]}',
+        responseFormat: "json",
       });
 
       expect(mockBucket.get).toHaveBeenCalledWith("org_123/req_abc/request.json");
       expect(mockBucket.get).toHaveBeenCalledWith("org_123/req_abc/response.json");
+      expect(mockBucket.get).toHaveBeenCalledWith("org_123/req_abc/response.sse");
     });
 
-    it("returns null for missing bodies", async () => {
+    it("returns SSE response body when no JSON body exists", async () => {
+      const sseText = "data: {\"id\":\"1\"}\n\ndata: [DONE]\n\n";
+      mockBucket.get
+        .mockResolvedValueOnce({ text: () => Promise.resolve('{"model":"gpt-4"}') })  // request.json
+        .mockResolvedValueOnce(null)                                                    // response.json
+        .mockResolvedValueOnce({ text: () => Promise.resolve(sseText) });              // response.sse
+
+      const result = await retrieveBodies(
+        mockBucket as unknown as R2Bucket,
+        "org_123",
+        "req_abc",
+      );
+
+      expect(result).toEqual({
+        requestBody: '{"model":"gpt-4"}',
+        responseBody: sseText,
+        responseFormat: "sse",
+      });
+    });
+
+    it("prefers JSON over SSE when both exist", async () => {
+      mockBucket.get
+        .mockResolvedValueOnce(null)                                                    // request.json
+        .mockResolvedValueOnce({ text: () => Promise.resolve('{"choices":[]}') })      // response.json
+        .mockResolvedValueOnce({ text: () => Promise.resolve("data: ...\n\n") });      // response.sse
+
+      const result = await retrieveBodies(
+        mockBucket as unknown as R2Bucket,
+        "org_123",
+        "req_abc",
+      );
+
+      expect(result).toEqual({
+        requestBody: null,
+        responseBody: '{"choices":[]}',
+        responseFormat: "json",
+      });
+    });
+
+    it("returns null for missing bodies with null format", async () => {
+      mockBucket.get
+        .mockResolvedValueOnce(null)   // request.json
+        .mockResolvedValueOnce(null)   // response.json
+        .mockResolvedValueOnce(null);  // response.sse
+
       const result = await retrieveBodies(
         mockBucket as unknown as R2Bucket,
         "org_123",
@@ -139,12 +230,14 @@ describe("body-storage", () => {
       expect(result).toEqual({
         requestBody: null,
         responseBody: null,
+        responseFormat: null,
       });
     });
 
     it("returns partial when only request exists", async () => {
       mockBucket.get
         .mockResolvedValueOnce({ text: () => Promise.resolve('{"model":"gpt-4"}') })
+        .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(null);
 
       const result = await retrieveBodies(
@@ -156,6 +249,7 @@ describe("body-storage", () => {
       expect(result).toEqual({
         requestBody: '{"model":"gpt-4"}',
         responseBody: null,
+        responseFormat: null,
       });
     });
   });

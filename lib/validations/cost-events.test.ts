@@ -20,3 +20,27 @@ describe("listCostEventsQuerySchema — requestId filter", () => {
     expect(result.requestId).toBeUndefined();
   });
 });
+
+describe("listCostEventsQuerySchema — sessionId filter", () => {
+  it("accepts sessionId filter", () => {
+    const result = listCostEventsQuerySchema.parse({ sessionId: "session-abc-123" });
+    expect(result.sessionId).toBe("session-abc-123");
+  });
+
+  it("rejects empty sessionId", () => {
+    expect(() =>
+      listCostEventsQuerySchema.parse({ sessionId: "" }),
+    ).toThrow(ZodError);
+  });
+
+  it("rejects sessionId exceeding 200 characters", () => {
+    expect(() =>
+      listCostEventsQuerySchema.parse({ sessionId: "x".repeat(201) }),
+    ).toThrow(ZodError);
+  });
+
+  it("sessionId is optional", () => {
+    const result = listCostEventsQuerySchema.parse({});
+    expect(result.sessionId).toBeUndefined();
+  });
+});

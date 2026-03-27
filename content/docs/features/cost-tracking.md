@@ -130,6 +130,23 @@ Every request produces a **cost event** with these fields:
 
 Cost events are deduplicated by `(requestId, provider)` — reprocessing the same request is safe.
 
+## Request / Response Body Logging
+
+**Pro and Enterprise plans** can capture the full request and response bodies for every proxied LLM call. This is useful for debugging agent behavior, auditing prompts, and replaying requests.
+
+| Aspect | Detail |
+|---|---|
+| **Activation** | Automatic when your org has a Pro or Enterprise subscription |
+| **Storage** | Cloudflare R2, scoped by org ID and request ID |
+| **Size cap** | 1 MB per object (request body and response body are stored separately) |
+| **Streaming** | Streaming (SSE) responses are captured in full — the raw SSE text is accumulated during streaming and stored after the stream completes |
+| **Cancelled streams** | Partial response bodies are stored for cancelled streams (valuable for debugging why clients abort) |
+| **Non-streaming** | JSON request and response bodies are stored as-is |
+| **Viewing** | Request and response bodies are visible on the cost event detail page in the dashboard |
+| **Latency impact** | Zero — the accumulator passes chunks through immediately; storage happens asynchronously after the response is delivered |
+
+Body logging is an observability feature. It does **not** affect cost calculation, budget enforcement, or webhook dispatch. If R2 storage fails, the cost event and budget reconciliation proceed normally.
+
 ## Cost Sources
 
 | Source | How It Works |

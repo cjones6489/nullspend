@@ -58,6 +58,13 @@ pnpm deploy           # Deploy to Cloudflare
 - `src/lib/anthropic-cost-estimator.ts` — Anthropic pre-request estimation
 - `src/lib/cost-logger.ts` — async DB write via `waitUntil()`
 
+**Body Storage (Request/Response Logging)**
+- `src/lib/body-storage.ts` — R2 storage for request/response bodies (Pro/Enterprise tier-gated via `requestLoggingEnabled`)
+  - `storeRequestBody` / `storeResponseBody` — non-streaming JSON bodies
+  - `storeStreamingResponseBody` — raw SSE text stored at `{ownerId}/{requestId}/response.sse`
+  - `createStreamBodyAccumulator()` — passthrough TransformStream that accumulates decoded text up to 1MB; sits between upstream body and SSE parser: `upstream → accumulator → SSE parser → client`
+  - `retrieveBodies()` — fetches request.json + response.json + response.sse from R2, prefers JSON over SSE
+
 **Request/Response Processing**
 - `src/lib/request-utils.ts` — `ensureStreamOptions`, `extractModelFromBody`
 - `src/lib/sse-parser.ts` — OpenAI streaming response parser for usage extraction
@@ -100,9 +107,9 @@ Request → Resolve trace ID → Auth → Forward to provider → Parse response
 
 Cost events are enqueued to Cloudflare Queues via `logCostEventQueued()` / `logCostEventsBatchQueued()`. The queue consumer batch-INSERTs with `onConflictDoNothing` for idempotent re-delivery. Falls back to direct `logCostEvent()` when queue binding is absent (local dev).
 
-Non-streaming: parse JSON response for `usage` field.
-Streaming: SSE parser accumulates chunks, extracts final `usage` from `[DONE]`-adjacent message.
-Cancelled streams: when the client aborts mid-stream, the SSE parser resolves with `cancelled: true` and no usage. The route writes an estimated cost event (tokens=0, cost=pre-request estimate) tagged with `_ns_estimated: "true"` and `_ns_cancelled: "true"` in the JSONB `tags` column, then reconciles the budget reservation with the estimate. The cost event write is try/catch-wrapped so failures cannot block budget reconciliation.
+Non-streaming: parse JSON response for `usage` field. Body stored as `response.json` in R2.
+Streaming: SSE parser accumulates chunks, extracts final `usage` from `[DONE]`-adjacent message. When body logging is enabled, a `StreamBodyAccumulator` TransformStream sits between upstream and SSE parser (`upstream → accumulator → SSE parser → client`), passing chunks through immediately while accumulating text. After stream completes, the accumulated SSE text is stored as `response.sse` in R2 via `waitUntil`.
+Cancelled streams: when the client aborts mid-stream, the SSE parser resolves with `cancelled: true` and no usage. The route writes an estimated cost event (tokens=0, cost=pre-request estimate) tagged with `_ns_estimated: "true"` and `_ns_cancelled: "true"` in the JSONB `tags` column, then reconciles the budget reservation with the estimate. Partial streaming bodies are stored for debugging. The cost event write is try/catch-wrapped so failures cannot block budget reconciliation.
 
 ## Telemetry
 

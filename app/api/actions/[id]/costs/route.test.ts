@@ -76,6 +76,7 @@ describe("GET /api/actions/[id]/costs", () => {
         durationMs: 1500,
         createdAt: "2026-03-07T12:02:00.000Z",
         traceId: null,
+        sessionId: null,
         source: "proxy",
         keyName: "My Key",
       },

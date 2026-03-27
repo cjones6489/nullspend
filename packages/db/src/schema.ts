@@ -169,7 +169,7 @@ export const costEvents = pgTable("cost_events", {
   index("cost_events_provider_model_created_at_idx").on(table.provider, table.model, table.createdAt),
   index("cost_events_action_id_idx").on(table.actionId),
   index("cost_events_event_type_idx").on(table.eventType),
-  index("cost_events_session_id_idx").on(table.sessionId),
+  index("cost_events_org_session_created_idx").on(table.orgId, table.sessionId, table.createdAt).where(sql`session_id IS NOT NULL`),
   index("cost_events_trace_id_idx").on(table.traceId).where(sql`trace_id IS NOT NULL`),
   index("cost_events_tags_idx").using("gin", table.tags),
   index("cost_events_org_id_created_at_idx").on(table.orgId, table.createdAt),

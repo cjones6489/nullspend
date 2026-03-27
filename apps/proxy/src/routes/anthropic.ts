@@ -21,7 +21,7 @@ import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { writeLatencyDataPoint } from "../lib/write-metric.js";
 import { handleBudgetDenials, dispatchVelocityRecoveryWebhooks, dispatchCostEventWebhooks, type Attribution, type EnrichmentFields } from "./shared.js";
-import { storeRequestBody, storeResponseBody } from "../lib/body-storage.js";
+import { storeRequestBody, storeResponseBody, storeStreamingResponseBody, createStreamBodyAccumulator } from "../lib/body-storage.js";
 
 const UPSTREAM_TIMEOUT_MS = 120_000;
 
@@ -150,9 +150,7 @@ export async function handleAnthropicMessages(
 
     if (isStreaming) {
       if (ctx.stepTiming) ctx.stepTiming.ttfbMs = upstreamDurationMs;
-      if (ctx.requestLoggingEnabled) {
-        emitMetric("body_storage_skipped", { reason: "streaming", provider: "anthropic" });
-      }
+      const bodyBucket = (env as Record<string, unknown>).BODY_STORAGE as R2Bucket | undefined;
       return handleStreaming(
         upstreamResponse,
         clientHeaders,
@@ -167,6 +165,7 @@ export async function handleAnthropicMessages(
         enrichment,
         ctx,
         estimate,
+        ctx.requestLoggingEnabled && bodyBucket ? bodyBucket : null,
       );
     }
 
@@ -214,6 +213,7 @@ function handleStreaming(
   enrichment: EnrichmentFields,
   ctx: RequestContext,
   estimate: number,
+  bodyBucket: R2Bucket | null,
 ): Response {
   const upstreamBody = upstreamResponse.body;
   if (!upstreamBody) {
@@ -227,7 +227,13 @@ function handleStreaming(
     return noBodyResp;
   }
 
-  const { readable, resultPromise } = createAnthropicSSEParser(upstreamBody);
+  // Insert body accumulator between upstream and SSE parser when logging is enabled
+  const accumulator = bodyBucket ? createStreamBodyAccumulator() : null;
+  const parserInput = accumulator
+    ? upstreamBody.pipeThrough(accumulator.transform)
+    : upstreamBody;
+
+  const { readable, resultPromise } = createAnthropicSSEParser(parserInput);
 
   waitUntil(
     resultPromise.then(async (result) => {
@@ -275,6 +281,18 @@ function handleStreaming(
             await reconcileBudgetQueued(
               getReconcileQueue(env), env, ctx.ownerId, reservationId, reconcileCost, budgetEntities, connectionString,
             );
+          }
+          // Store streaming body for all no-usage exits (cancelled or malformed — both are valuable for debugging)
+          try {
+            if (accumulator && bodyBucket) {
+              const sseBody = accumulator.getBody();
+              if (sseBody.length > 0) {
+                await storeRequestBody(bodyBucket, ctx.ownerId, requestId, ctx.bodyText);
+                await storeStreamingResponseBody(bodyBucket, ctx.ownerId, requestId, sseBody);
+              }
+            }
+          } catch (bodyErr) {
+            console.error("[anthropic-route] Failed to store streaming body:", bodyErr);
           }
           return;
         }
@@ -330,6 +348,19 @@ function handleStreaming(
           await dispatchCostEventWebhooks(ctx, env, "anthropic", costEvent, enrichment, budgetEntities, result.toolCalls);
         } catch (err) {
           console.error("[anthropic-route] Webhook dispatch failed:", err);
+        }
+
+        // Store streaming body after all cost processing is complete
+        try {
+          if (accumulator && bodyBucket) {
+            const sseBody = accumulator.getBody();
+            if (sseBody.length > 0) {
+              await storeRequestBody(bodyBucket, ctx.ownerId, requestId, ctx.bodyText);
+              await storeStreamingResponseBody(bodyBucket, ctx.ownerId, requestId, sseBody);
+            }
+          }
+        } catch (bodyErr) {
+          console.error("[anthropic-route] Failed to store streaming body:", bodyErr);
         }
       } catch (err) {
         console.error(

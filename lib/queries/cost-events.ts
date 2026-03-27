@@ -27,6 +27,7 @@ export const costEventKeys = {
     [...costEventKeys.lists(), filters] as const,
   detail: (id: string) => [...costEventKeys.all, "detail", id] as const,
   bodies: (id: string) => [...costEventKeys.all, "bodies", id] as const,
+  session: (sessionId: string) => [...costEventKeys.all, "session", sessionId] as const,
   actionCosts: (actionId: string) =>
     [...costEventKeys.all, "action", actionId] as const,
 };
@@ -60,6 +61,29 @@ export function useCostEventBodies(id: string, enabled = true) {
     queryKey: costEventKeys.bodies(id),
     queryFn: () => apiGet(`/api/cost-events/${id}/bodies`),
     enabled: !!id && enabled,
+    retry: retryOnServerError,
+  });
+}
+
+interface SessionResponse {
+  sessionId: string;
+  summary: {
+    eventCount: number;
+    totalCostMicrodollars: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalDurationMs: number;
+    startedAt: string | null;
+    endedAt: string | null;
+  };
+  events: CostEventRecord[];
+}
+
+export function useSession(sessionId: string) {
+  return useQuery<SessionResponse>({
+    queryKey: costEventKeys.session(sessionId),
+    queryFn: () => apiGet(`/api/cost-events/sessions/${encodeURIComponent(sessionId)}`),
+    enabled: !!sessionId,
     retry: retryOnServerError,
   });
 }

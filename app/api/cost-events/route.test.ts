@@ -267,4 +267,20 @@ describe("GET /api/cost-events", () => {
       }),
     );
   });
+
+  it("filters by sessionId when provided", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request(
+      "http://localhost:3000/api/cost-events?sessionId=session-abc-123",
+    );
+    await GET(request);
+
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: "org-test-1",
+        sessionId: "session-abc-123",
+      }),
+    );
+  });
 });

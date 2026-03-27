@@ -48,6 +48,7 @@ function makeCostEventRow(overrides: Record<string, unknown> = {}) {
     durationMs: 320,
     createdAt: new Date("2026-03-18T00:00:00.000Z"),
     traceId: null,
+    sessionId: null,
     source: "proxy",
     tags: {},
     keyName: "My Key",

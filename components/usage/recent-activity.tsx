@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Loader2, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
@@ -221,6 +222,9 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                   Latency <SortIcon field="latency" active={sortField} dir={sortDir} />
                 </TableHead>
                 <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Session
+                </TableHead>
+                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Trace
                 </TableHead>
               </TableRow>
@@ -293,6 +297,18 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-[13px] text-muted-foreground">
                     {formatDuration(event.durationMs)}
+                  </TableCell>
+                  <TableCell className="font-mono text-[11px] text-muted-foreground">
+                    {event.sessionId ? (
+                      <Link
+                        href={`/app/sessions/${encodeURIComponent(event.sessionId)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-primary underline-offset-2 hover:underline"
+                        title={event.sessionId}
+                      >
+                        {event.sessionId.length > 16 ? event.sessionId.slice(0, 16) + "..." : event.sessionId}
+                      </Link>
+                    ) : "—"}
                   </TableCell>
                   <TableCell
                     className="font-mono text-[11px] text-muted-foreground"

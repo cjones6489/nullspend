@@ -39,6 +39,19 @@ vi.mock("../lib/budget-orchestrator.js", () => ({
   getReconcileQueue: vi.fn().mockReturnValue(undefined),
 }));
 
+const { mockStoreRequestBody, mockStoreStreamingResponseBody } = vi.hoisted(() => ({
+  mockStoreRequestBody: vi.fn().mockResolvedValue(undefined),
+  mockStoreStreamingResponseBody: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../lib/body-storage.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/body-storage.js")>();
+  return {
+    ...actual,
+    storeRequestBody: (...args: unknown[]) => mockStoreRequestBody(...args),
+    storeStreamingResponseBody: (...args: unknown[]) => mockStoreStreamingResponseBody(...args),
+  };
+});
+
 import { handleAnthropicMessages } from "../routes/anthropic.js";
 
 function makeRequest(
@@ -561,5 +574,57 @@ describe("handleAnthropicMessages", () => {
 
     expect(res.headers.get("x-request-id")).toBe("req_018EeWyXxfu5pfWkrYcMdjWG");
     await res.text();
+  });
+
+  it("stores streaming response body in R2 when requestLoggingEnabled", async () => {
+    const sseChunks = [
+      'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_01","type":"message","role":"assistant","model":"claude-sonnet-4-20250514","usage":{"input_tokens":25,"output_tokens":0}}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}\n\n',
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":10}}\n\n',
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(makeAnthropicSSEStream(sseChunks), {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "request-id": "req-body-log",
+        },
+      }),
+    );
+
+    const body = {
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 100,
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    };
+
+    const mockBucket = { put: vi.fn().mockResolvedValue(undefined), get: vi.fn().mockResolvedValue(null) };
+    const res = await handleAnthropicMessages(
+      makeRequest(body),
+      makeEnv({ BODY_STORAGE: mockBucket }),
+      makeCtx(body, { requestLoggingEnabled: true }),
+    );
+
+    expect(res.status).toBe(200);
+    // Consume the stream so the waitUntil callback fires
+    await res.text();
+    // Allow waitUntil microtasks to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockStoreStreamingResponseBody).toHaveBeenCalledWith(
+      mockBucket,
+      "user-1",
+      "req-body-log",
+      expect.stringContaining("message_start"),
+    );
+    expect(mockStoreRequestBody).toHaveBeenCalledWith(
+      mockBucket,
+      "user-1",
+      "req-body-log",
+      JSON.stringify(body),
+    );
   });
 });

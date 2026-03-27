@@ -250,6 +250,7 @@ export async function handleRequestBodies(
     emitMetric("body_storage_read", {
       hasRequest: bodies.requestBody !== null,
       hasResponse: bodies.responseBody !== null,
+      responseFormat: bodies.responseFormat,
     });
 
     // Parse each body independently — one corrupt body should not prevent retrieval of the other
@@ -260,8 +261,13 @@ export async function handleRequestBodies(
       catch { requestBody = null; }
     }
     if (bodies.responseBody) {
-      try { responseBody = JSON.parse(bodies.responseBody); }
-      catch { responseBody = null; }
+      if (bodies.responseFormat === "sse") {
+        // Wrap raw SSE text so the dashboard can detect and render it appropriately
+        responseBody = { _format: "sse", text: bodies.responseBody };
+      } else {
+        try { responseBody = JSON.parse(bodies.responseBody); }
+        catch { responseBody = null; }
+      }
     }
 
     return Response.json({ requestBody, responseBody });

@@ -42,12 +42,13 @@ Add an `X-NullSpend-Key` header and every request is tracked, budgeted, and visi
 | **[Webhooks](webhooks/overview.md)** | 15 event types with HMAC-SHA256 signing — cost events, budget exceeded, velocity alerts, threshold crossings |
 | **[HITL approvals](features/human-in-the-loop.md)** | Human-in-the-loop approval workflow for high-cost or sensitive operations |
 | **[Organizations](features/organizations.md)** | Team collaboration with roles (owner, admin, member, viewer), per-org billing, and invitation management |
+| **[Request logging](features/cost-tracking.md#request--response-body-logging)** | Opt-in capture of full request/response bodies (including streaming) for debugging and audit (Pro/Enterprise) |
 | **Multi-provider** | OpenAI and Anthropic in a single dashboard with provider breakdown |
 | **MCP support** | Budget enforcement for Model Context Protocol servers and proxies |
 
 ## Trust Model
 
-The proxy never modifies your requests or responses. Your provider API keys stay with you — they pass through to the upstream provider and are never stored. NullSpend sees the token counts in the response to calculate cost; it does not log prompt content.
+The proxy never modifies your requests or responses. Your provider API keys stay with you — they pass through to the upstream provider and are never stored. By default, NullSpend sees only the token counts in the response to calculate cost — prompt content is not logged. Pro and Enterprise plans can opt in to **request/response body logging** for debugging and audit purposes; bodies are stored encrypted in R2 with per-org lifecycle policies.
 
 ## Pricing
 
@@ -60,7 +61,8 @@ The proxy never modifies your requests or responses. Your provider API keys stay
 | **Team members** | 3 (viewers unlimited) | Unlimited | Unlimited |
 | **Webhooks** | 2 endpoints | 25 endpoints | Unlimited |
 | **Data retention** | 30 days | 90 days | Unlimited |
-| **Key features** | Cost tracking, budgets, team orgs | Unlimited keys/budgets/members | SSO/SAML, custom RBAC, dedicated support |
+| **Request logging** | -- | Full request/response bodies | Full request/response bodies |
+| **Key features** | Cost tracking, budgets, team orgs | Unlimited keys/budgets/members, request logging | SSO/SAML, custom RBAC, dedicated support |
 
 ## Get Started
 
