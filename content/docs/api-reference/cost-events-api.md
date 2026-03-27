@@ -261,6 +261,7 @@ Session (dashboard)
 | `provider` | query | string | No | Filter by provider. |
 | `source` | query | string | No | Filter by source: `"proxy"`, `"api"`, or `"mcp"`. |
 | `traceId` | query | string | No | Filter by trace ID (32 hex chars). |
+| `sessionId` | query | string | No | Filter by session ID. 1–200 chars. Returns events for a specific [session](../features/cost-tracking.md#session-replay). |
 | `tag.*` | query | string | No | JSONB containment filter. Example: `tag.environment=production`. |
 
 ### Request
@@ -293,6 +294,7 @@ curl https://nullspend.com/api/cost-events?limit=10&provider=openai \
       "createdAt": "2026-03-20T14:30:00.000Z",
       "source": "proxy",
       "traceId": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
+      "sessionId": "research-task-47",
       "tags": { "environment": "production" },
       "keyName": "production-key"
     }
@@ -360,6 +362,7 @@ curl https://nullspend.com/api/cost-events/ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234
     "createdAt": "2026-03-20T14:30:00.000Z",
     "source": "proxy",
     "traceId": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
+    "sessionId": "research-task-47",
     "tags": { "environment": "production" },
     "keyName": "production-key"
   }
@@ -373,6 +376,76 @@ curl https://nullspend.com/api/cost-events/ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234
 | `validation_error` | 400 | Invalid ID format |
 | `authentication_required` | 401 | No valid session |
 | `not_found` | 404 | Event not found or not owned by user |
+
+---
+
+## Get Session
+
+`GET /api/cost-events/sessions/:sessionId`
+
+Retrieve all cost events for a session, in chronological order, with aggregate summary stats. Use this to build session replay views.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `sessionId` | path | string | Yes | Session ID. 1–200 chars. |
+
+### Request
+
+```bash
+# Requires dashboard session cookie
+curl https://nullspend.com/api/cost-events/sessions/research-task-47 \
+  -H "Cookie: session=..."
+```
+
+### Response
+
+**200 OK**:
+
+```json
+{
+  "sessionId": "research-task-47",
+  "summary": {
+    "eventCount": 12,
+    "totalCostMicrodollars": 43000,
+    "totalInputTokens": 15200,
+    "totalOutputTokens": 4800,
+    "totalDurationMs": 8340,
+    "startedAt": "2026-03-20T14:21:05.000Z",
+    "endedAt": "2026-03-20T14:23:39.000Z"
+  },
+  "events": [
+    {
+      "id": "ns_evt_...",
+      "requestId": "req-001",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "inputTokens": 1200,
+      "outputTokens": 350,
+      "costMicrodollars": 5250,
+      "durationMs": 680,
+      "createdAt": "2026-03-20T14:21:05.000Z",
+      "sessionId": "research-task-47",
+      "tags": {},
+      "keyName": "production-key"
+    }
+  ]
+}
+```
+
+Events are ordered chronologically (oldest first). Maximum 200 events per session. If a session has no events, `events` is an empty array and `summary.startedAt`/`endedAt` are null.
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `validation_error` | 400 | Invalid or empty session ID |
+| `authentication_required` | 401 | No valid session |
 
 ---
 

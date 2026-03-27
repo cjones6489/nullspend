@@ -147,6 +147,52 @@ Cost events are deduplicated by `(requestId, provider)` — reprocessing the sam
 
 Body logging is an observability feature. It does **not** affect cost calculation, budget enforcement, or webhook dispatch. If R2 storage fails, the cost event and budget reconciliation proceed normally.
 
+## Session Replay
+
+Group cost events by session to see the full sequence of LLM calls your agent made. This is the primary tool for debugging agent behavior in production.
+
+### How to Use
+
+1. **Set the session header** on your agent's requests:
+
+```
+X-NullSpend-Session: research-task-47
+```
+
+Any string up to 200 characters. Typically a conversation ID, task ID, or run ID from your agent framework.
+
+2. **View in the dashboard.** Session IDs appear as clickable links in the Activity table and on individual cost event detail pages. Click to open the session replay page.
+
+3. **Session replay page** shows:
+   - **Summary stats** — total cost, event count, duration, total tokens
+   - **Chronological timeline** — every LLM call in the session, ordered by timestamp
+   - **Expandable events** — click any event to load the full request and response bodies (requires Pro/Enterprise body logging)
+
+### What You See
+
+```
+Session: research-task-47
+Total cost: $4.30 | Events: 12 | Duration: 2m 34s | Tokens: 18,400
+
+Timeline:
+  14:21:05  GPT-4o        100 → 50 tokens    $0.15    680ms
+  14:21:08  GPT-4o        900 → 380 tokens   $0.12    450ms
+  14:21:15  Claude Sonnet 600 → 200 tokens   $0.08    320ms
+  14:21:22  GPT-4o        2,100 → 1,200      $0.45    1.2s
+  ...
+```
+
+Click any row to expand and see the full request/response bodies — what the agent sent and what the provider returned.
+
+### API Access
+
+Query session events programmatically:
+
+- **List events for a session:** `GET /api/cost-events?sessionId=research-task-47`
+- **Full session with summary:** `GET /api/cost-events/sessions/research-task-47`
+
+See [Cost Events API](../api-reference/cost-events-api.md#get-session) for details.
+
 ## Cost Sources
 
 | Source | How It Works |
