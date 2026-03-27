@@ -162,4 +162,31 @@ describe("GET /api/cost-events/sessions/[sessionId]", () => {
 
     expect(body.events[0].sessionId).toBe("session-abc");
   });
+
+  it("handles null durationMs in summary calculation", async () => {
+    const row1 = makeCostEventRow({ durationMs: 320 });
+    const row2 = makeCostEventRow({
+      id: "a0000000-0000-4000-a000-000000000002",
+      durationMs: null,
+    });
+    const row3 = makeCostEventRow({
+      id: "a0000000-0000-4000-a000-000000000003",
+      durationMs: 150,
+    });
+    mockDbChain([row1, row2, row3]);
+
+    const response = await GET(makeRequest(), makeContext("session-abc"));
+    const body = await response.json();
+
+    expect(body.summary.totalDurationMs).toBe(470); // 320 + 0 + 150
+    expect(body.summary.eventCount).toBe(3);
+  });
+
+  it("respects 200-event limit", async () => {
+    const chain = mockDbChain([]);
+
+    await GET(makeRequest(), makeContext("session-abc"));
+
+    expect(chain.limit).toHaveBeenCalledWith(200);
+  });
 });

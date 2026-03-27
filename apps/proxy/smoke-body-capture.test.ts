@@ -139,6 +139,10 @@ describe("Streaming body capture E2E", () => {
     expect(responseBody.text as string).toContain("message_start");
   }, 30_000);
 
+  // NOTE: The tests above require requestLoggingEnabled=true (pro/enterprise subscription).
+  // The test below verifies the negative case — bodies are NOT stored when logging is disabled.
+  // To run the positive tests, temporarily insert a pro subscription for the smoke test org.
+
   it("non-streaming request still stores JSON response body", async () => {
     const res = await fetch(`${BASE}/v1/chat/completions`, {
       method: "POST",
@@ -173,5 +177,60 @@ describe("Streaming body capture E2E", () => {
     const responseBody = bodies!.responseBody as Record<string, unknown>;
     expect(responseBody._format).toBeUndefined(); // NOT SSE format
     expect(responseBody).toHaveProperty("choices");
+  }, 30_000);
+});
+
+describe("Body capture disabled (no pro subscription)", () => {
+  let sql: postgres.Sql;
+
+  beforeAll(async () => {
+    const up = await isServerUp();
+    if (!up) throw new Error("Proxy is not reachable.");
+    if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY required.");
+    if (!DATABASE_URL) throw new Error("DATABASE_URL required.");
+    if (!INTERNAL_SECRET) throw new Error("INTERNAL_SECRET required.");
+
+    sql = postgres(DATABASE_URL, { max: 3, idle_timeout: 10 });
+  });
+
+  afterAll(async () => {
+    if (sql) await sql.end();
+  });
+
+  it("does not store bodies when requestLoggingEnabled is false", async () => {
+    // This test assumes the smoke test org does NOT have a pro/enterprise subscription.
+    // If it does, this test will fail (bodies WILL be stored).
+    const res = await fetch(`${BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "Say 'no-logging-test' and nothing else." }],
+        stream: false,
+        max_tokens: 5,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    const requestId = res.headers.get("x-request-id") ?? (body as { id?: string }).id;
+    expect(requestId).toBeTruthy();
+
+    // Wait for cost event to confirm request was processed
+    const costEvent = await waitForCostEvent(sql, requestId!);
+    expect(costEvent).not.toBeNull();
+
+    // Wait a bit for any async R2 writes to complete
+    await new Promise((r) => setTimeout(r, 2000));
+
+    // Fetch bodies — should both be null since logging is disabled
+    const bodiesRes = await fetch(
+      `${BASE}/internal/request-bodies/${requestId}?ownerId=a6262022-9666-43af-b258-c870c8feb6be`,
+      { headers: { Authorization: `Bearer ${INTERNAL_SECRET}` } },
+    );
+    expect(bodiesRes.ok).toBe(true);
+    const bodies = await bodiesRes.json() as { requestBody: unknown; responseBody: unknown };
+    expect(bodies.requestBody).toBeNull();
+    expect(bodies.responseBody).toBeNull();
   }, 30_000);
 });

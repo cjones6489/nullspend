@@ -4,6 +4,11 @@ vi.mock("cloudflare:workers", () => ({
   waitUntil: vi.fn((p: Promise<unknown>) => { p.catch(() => {}); }),
 }));
 
+const mockEmitMetric = vi.fn();
+vi.mock("../lib/metrics.js", () => ({
+  emitMetric: (...args: unknown[]) => mockEmitMetric(...args),
+}));
+
 import {
   storeRequestBody,
   storeResponseBody,
@@ -126,7 +131,18 @@ describe("body-storage", () => {
       );
     });
 
-    it("skips bodies exceeding 1MB", async () => {
+    it("emits body_storage_write metric on success", async () => {
+      await storeStreamingResponseBody(
+        mockBucket as unknown as R2Bucket,
+        "org_123",
+        "req_abc",
+        "data: test\n\n",
+      );
+
+      expect(mockEmitMetric).toHaveBeenCalledWith("body_storage_write", { type: "response_sse" });
+    });
+
+    it("skips bodies exceeding 1MB and emits skipped metric", async () => {
       const largeBody = "x".repeat(1_048_577);
       await storeStreamingResponseBody(
         mockBucket as unknown as R2Bucket,
@@ -136,6 +152,20 @@ describe("body-storage", () => {
       );
 
       expect(mockBucket.put).not.toHaveBeenCalled();
+      expect(mockEmitMetric).toHaveBeenCalledWith("body_storage_skipped", { type: "response_sse", reason: "too_large" });
+    });
+
+    it("emits body_storage_error metric on R2 failure", async () => {
+      mockBucket.put.mockRejectedValueOnce(new Error("R2 unavailable"));
+
+      await storeStreamingResponseBody(
+        mockBucket as unknown as R2Bucket,
+        "org_123",
+        "req_abc",
+        "data: test\n\n",
+      );
+
+      expect(mockEmitMetric).toHaveBeenCalledWith("body_storage_error", { type: "response_sse" });
     });
 
     it("does not throw on R2 error", async () => {
