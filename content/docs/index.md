@@ -89,6 +89,7 @@ Build programmatic integrations with the NullSpend API:
 Client libraries and adapters for integrating NullSpend into your stack:
 
 - [JavaScript SDK](sdks/javascript.md) — `@nullspend/sdk` — TypeScript/JavaScript client for the NullSpend API
+- [Python SDK](sdks/python.md) — `nullspend` — Python client for the NullSpend API
 - [Claude Agent Adapter](sdks/claude-agent.md) — `@nullspend/claude-agent` — routes Claude Agent SDK calls through the proxy
 - [MCP Server](sdks/mcp-server.md) — `@nullspend/mcp-server` — exposes approval tools to any MCP client
 - [MCP Proxy](sdks/mcp-proxy.md) — `@nullspend/mcp-proxy` — gates upstream MCP tool calls through approval and budget enforcement
