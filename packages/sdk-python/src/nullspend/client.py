@@ -30,27 +30,15 @@ from nullspend.types import (
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _MAX_RETRY_DELAY_S = 5.0
 _API_KEY_HEADER = "x-nullspend-key"
+_SAFE_PATH_SEGMENT_RE = __import__("re").compile(r"^[a-zA-Z0-9_\-.:]+$")
 
 
-def _camel_to_snake(name: str) -> str:
-    """Convert camelCase to snake_case."""
-    result: list[str] = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            result.append("_")
-        result.append(ch.lower())
-    return "".join(result)
+def _validate_path_segment(value: str, name: str) -> str:
+    """Validate a value is safe to use in a URL path segment."""
+    if not value or not _SAFE_PATH_SEGMENT_RE.match(value):
+        raise NullSpendError(f"Invalid {name}: must be alphanumeric (got {value!r})")
+    return value
 
-
-def _snake_to_camel(name: str) -> str:
-    """Convert snake_case to camelCase."""
-    parts = name.split("_")
-    return parts[0] + "".join(p.capitalize() for p in parts[1:])
-
-
-def _to_camel_dict(data: dict[str, Any]) -> dict[str, Any]:
-    """Convert a dict with snake_case keys to camelCase keys (one level)."""
-    return {_snake_to_camel(k): v for k, v in data.items() if v is not None}
 
 
 def _retry_delay_s(attempt: int, base_delay_s: float) -> float:
@@ -225,10 +213,12 @@ class NullSpend:
         )
 
     def get_action(self, action_id: str) -> ActionRecord:
+        _validate_path_segment(action_id, "action_id")
         data = self._request("GET", f"/api/actions/{action_id}")
         return _parse_action_record(data.get("data", data))
 
     def mark_result(self, action_id: str, input: MarkResultInput) -> dict[str, Any]:
+        _validate_path_segment(action_id, "action_id")
         body: dict[str, Any] = {"status": input.status}
         if input.result is not None:
             body["result"] = input.result
@@ -329,6 +319,8 @@ class NullSpend:
     def get_cost_summary(
         self, period: str = "30d",
     ) -> CostSummaryResponse:
+        if period not in ("7d", "30d", "90d"):
+            raise NullSpendError(f"Invalid period: must be '7d', '30d', or '90d' (got {period!r})")
         data = self._request("GET", f"/api/cost-events/summary?period={period}")
         inner = data.get("data", data)
         return CostSummaryResponse(
@@ -400,9 +392,9 @@ class NullSpend:
             else:
                 raise
 
-        # Execute
+        # Execute — pass context dict matching JS SDK's { actionId: id } pattern
         try:
-            result = options.execute(response.id)
+            result = options.execute({"action_id": response.id})
         except Exception as err:
             try:
                 self.mark_result(
@@ -478,7 +470,13 @@ class NullSpend:
                 raise last_error from err
 
             if response.is_success:
-                return response.json()
+                data = response.json()
+                if not isinstance(data, dict):
+                    raise NullSpendError(
+                        f"{method} {path} returned unexpected JSON type: {type(data).__name__}",
+                        response.status_code,
+                    )
+                return data
 
             if (
                 response.status_code in _RETRYABLE_STATUS_CODES
