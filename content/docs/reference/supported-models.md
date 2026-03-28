@@ -1,9 +1,9 @@
 ---
 title: "Supported Models"
-description: "NullSpend supports 38 models across OpenAI, Anthropic, and Google. The proxy calculates cost using exact per-token rates from each provider."
+description: "NullSpend has pricing data for 38 models across OpenAI, Anthropic, and Google. The proxy routes requests to OpenAI and Anthropic; Google models are supported for cost calculation only."
 ---
 
-NullSpend supports 38 models across OpenAI, Anthropic, and Google. The proxy calculates cost using exact per-token rates from each provider.
+NullSpend has pricing data for 38 models across OpenAI, Anthropic, and Google. The proxy routes requests to OpenAI and Anthropic. Google models are supported for cost calculation (via API ingest or the cost-engine package) but are not routable through the proxy.
 
 ## Cost Formula
 
@@ -98,9 +98,9 @@ Anthropic offers two cache write tiers:
 
 If the response includes `ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`, each is priced at its respective rate. Otherwise, all cache creation tokens use the 5-minute rate.
 
-## Google Models
+## Google Models (cost calculation only)
 
-2 models. Rates in $/MTok.
+2 models. Rates in $/MTok. These models are supported for cost calculation via API ingest and the cost-engine package, but the proxy does not route requests to Google.
 
 | Model | Input | Cached Input | Output |
 |---|---|---|---|

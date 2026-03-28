@@ -159,7 +159,7 @@ Group cost events by session to see the full sequence of LLM calls your agent ma
 X-NullSpend-Session: research-task-47
 ```
 
-Any string up to 200 characters. Typically a conversation ID, task ID, or run ID from your agent framework.
+Any string up to 256 characters. Typically a conversation ID, task ID, or run ID from your agent framework.
 
 2. **View in the dashboard.** Session IDs appear as clickable links in the Activity table and on individual cost event detail pages. Click to open the session replay page.
 

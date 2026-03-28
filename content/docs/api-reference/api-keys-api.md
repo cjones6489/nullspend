@@ -45,6 +45,7 @@ curl https://nullspend.com/api/keys?limit=10 \
       "id": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
       "name": "production-key",
       "keyPrefix": "ns_live_",
+      "defaultTags": {},
       "lastUsedAt": "2026-03-20T14:30:00.000Z",
       "createdAt": "2026-03-01T09:00:00.000Z"
     }
@@ -79,6 +80,7 @@ Session (dashboard)
 | Name | In | Type | Required | Description |
 |---|---|---|---|---|
 | `name` | body | string | Yes | Human-readable name. 1–50 chars, trimmed. |
+| `defaultTags` | body | object | No | Default tags merged into every request made with this key. Max 10 keys (`[a-zA-Z0-9_-]+`, max 64 chars), values max 256 chars. Keys starting with `_ns_` are reserved. Defaults to `{}`. |
 
 ### Request
 
@@ -87,7 +89,7 @@ Session (dashboard)
 curl -X POST https://nullspend.com/api/keys \
   -H "Cookie: session=..." \
   -H "Content-Type: application/json" \
-  -d '{"name": "production-key"}'
+  -d '{"name": "production-key", "defaultTags": {"team": "billing"}}'
 ```
 
 ### Response
@@ -99,6 +101,7 @@ curl -X POST https://nullspend.com/api/keys \
   "id": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
   "name": "production-key",
   "keyPrefix": "ns_live_",
+  "defaultTags": { "team": "billing" },
   "rawKey": "ns_live_sk_a1b2c3d4e5f67890...",
   "createdAt": "2026-03-20T14:30:00.000Z"
 }

@@ -52,7 +52,7 @@ Groups requests into a session for session-level spend limits.
 | Property | Value |
 |---|---|
 | Format | String |
-| Max length | 256 characters (truncated if longer) |
+| Max length | 256 characters (`400` if longer) |
 | If omitted | Session limits are not enforced for this request |
 
 ```bash
