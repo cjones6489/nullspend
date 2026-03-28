@@ -40,7 +40,7 @@ curl https://nullspend.com/api/webhooks \
       "description": "Production webhook",
       "eventTypes": ["cost_event.created", "budget.exceeded"],
       "enabled": true,
-      "apiVersion": "2024-01",
+      "apiVersion": "2026-04-01",
       "payloadMode": "full",
       "createdAt": "2026-03-01T09:00:00.000Z",
       "updatedAt": "2026-03-15T12:00:00.000Z"
@@ -107,7 +107,7 @@ curl -X POST https://nullspend.com/api/webhooks \
     "description": "Production webhook",
     "eventTypes": ["cost_event.created", "budget.exceeded"],
     "enabled": true,
-    "apiVersion": "2024-01",
+    "apiVersion": "2026-04-01",
     "payloadMode": "full",
     "createdAt": "2026-03-20T14:30:00.000Z",
     "updatedAt": "2026-03-20T14:30:00.000Z",
@@ -171,7 +171,7 @@ curl -X PATCH https://nullspend.com/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-e
     "description": "Production webhook",
     "eventTypes": ["cost_event.created", "budget.exceeded"],
     "enabled": false,
-    "apiVersion": "2024-01",
+    "apiVersion": "2026-04-01",
     "payloadMode": "full",
     "createdAt": "2026-03-01T09:00:00.000Z",
     "updatedAt": "2026-03-20T14:30:00.000Z"

@@ -33,6 +33,7 @@ Session-authenticated endpoints require a browser session cookie from the NullSp
 | `POST /api/cost-events/batch` | Batch ingest | API key |
 | `GET /api/cost-events` | List events | Session |
 | `GET /api/cost-events/:id` | Get event | Session |
+| `GET /api/cost-events/sessions/:sessionId` | Get session | Session |
 | `GET /api/cost-events/summary` | Analytics | Session |
 | `GET /api/budgets/status` | Budget status | API key |
 | `GET /api/auth/introspect` | Key introspection | API key |

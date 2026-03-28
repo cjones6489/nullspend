@@ -291,7 +291,7 @@ for (const event of events) {
 
 // Paginate with cursor
 if (cursor) {
-  const nextPage = await ns.listCostEvents({ limit: 10, cursor: `${cursor.createdAt},${cursor.id}` });
+  const nextPage = await ns.listCostEvents({ limit: 10, cursor: JSON.stringify(cursor) });
 }
 ```
 
