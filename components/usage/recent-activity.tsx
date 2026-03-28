@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Loader2, RefreshCw } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -111,6 +111,22 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (selectedProvider !== ALL_PROVIDERS) params.set("provider", selectedProvider);
+            if (modelFilter) params.set("model", modelFilter);
+            if (selectedKeyId !== ALL_KEYS) params.set("apiKeyId", selectedKeyId);
+            const qs = params.toString();
+            window.location.href = `/api/cost-events/export${qs ? `?${qs}` : ""}`;
+          }}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          title="Export as CSV"
+          aria-label="Export as CSV"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => refetch()}
