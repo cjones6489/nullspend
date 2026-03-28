@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -54,6 +55,8 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
   const router = useRouter();
   const [selectedKeyId, setSelectedKeyId] = useState(ALL_KEYS);
   const [selectedProvider, setSelectedProvider] = useState(initialProvider ?? ALL_PROVIDERS);
+  const [modelFilter, setModelFilter] = useState("");
+  const [modelInput, setModelInput] = useState("");
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -71,6 +74,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
     ...(selectedProvider !== ALL_PROVIDERS
       ? { provider: selectedProvider }
       : {}),
+    ...(modelFilter ? { model: modelFilter } : {}),
   };
   const {
     data,
@@ -102,7 +106,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
     return sorted;
   }, [data, sortField, sortDir]);
   const hasFilter =
-    selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS;
+    selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS || !!modelFilter;
 
   return (
     <div className="space-y-3">
@@ -135,6 +139,27 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
             <SelectItem value="anthropic">Anthropic</SelectItem>
           </SelectContent>
         </Select>
+        <Input
+          type="text"
+          placeholder="Filter by model..."
+          value={modelInput}
+          onChange={(e) => setModelInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") setModelFilter(modelInput.trim());
+          }}
+          onBlur={() => setModelFilter(modelInput.trim())}
+          className="h-8 w-[160px] text-xs"
+        />
+        {modelFilter && (
+          <button
+            type="button"
+            onClick={() => { setModelFilter(""); setModelInput(""); }}
+            className="text-xs text-muted-foreground hover:text-foreground"
+            title="Clear model filter"
+          >
+            &times;
+          </button>
+        )}
         {keys.length > 0 && (
           <Select
             value={selectedKeyId}

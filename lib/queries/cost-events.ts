@@ -17,6 +17,7 @@ interface CostEventsPage {
 interface CostEventFilters {
   apiKeyId?: string;
   provider?: string;
+  model?: string;
   source?: "proxy" | "api" | "mcp";
 }
 
@@ -96,6 +97,7 @@ export function useCostEvents(filters: CostEventFilters = {}) {
       params.set("limit", "25");
       if (filters.apiKeyId) params.set("apiKeyId", filters.apiKeyId);
       if (filters.provider) params.set("provider", filters.provider);
+      if (filters.model) params.set("model", filters.model);
       if (filters.source) params.set("source", filters.source);
       if (pageParam) params.set("cursor", JSON.stringify(pageParam));
       return apiGet(`/api/cost-events?${params.toString()}`);
