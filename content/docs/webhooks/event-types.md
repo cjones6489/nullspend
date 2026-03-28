@@ -491,7 +491,7 @@ Fires when a human-in-the-loop approval action is created.
   "data": {
     "object": {
       "action_id": "ns_act_550e8400-e29b-41d4-a716-446655440000",
-      "action_type": "high_cost_approval",
+      "action_type": "http_post",
       "agent_id": "my-agent",
       "status": "pending",
       "payload": { "amount": 500, "description": "Large purchase" },

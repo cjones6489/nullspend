@@ -119,7 +119,7 @@ Every request produces a **cost event** with these fields:
 | `cachedInputTokens` | integer | Cached input tokens (OpenAI: cached_tokens; Anthropic: cache_read_tokens) |
 | `reasoningTokens` | integer | Reasoning/thinking tokens (OpenAI o-series, Anthropic extended thinking) |
 | `costMicrodollars` | integer | Total cost in microdollars |
-| `costBreakdown` | object | Per-component costs: `{ input, cached, output, reasoning }` |
+| `costBreakdown` | object | Per-component costs: `{ input, cached, output, reasoning }`. Available in the summary aggregation (`GET /api/cost-events/summary`) but not in individual event responses. |
 | `durationMs` | integer | Total request duration in milliseconds |
 | `sessionId` | string? | Session ID from `X-NullSpend-Session` header |
 | `traceId` | string? | [Trace ID](tracing.md) (from `traceparent`, `X-NullSpend-Trace-Id`, or auto-generated) |
