@@ -61,6 +61,8 @@ X-NullSpend-Session: conv_abc123
 
 When a session limit is configured on the budget and this header is present, the proxy tracks cumulative spend per session ID. Once the limit is reached, the proxy returns `429` with `error.code: "session_limit_exceeded"` and details including `session_id`, `session_spend_microdollars`, and `session_limit_microdollars`.
 
+The proxy echoes `X-NullSpend-Session` in the response headers when present, so agent frameworks can confirm the session ID was captured.
+
 ---
 
 ### `X-NullSpend-Trace-Id`

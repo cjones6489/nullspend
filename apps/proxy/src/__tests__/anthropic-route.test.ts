@@ -627,4 +627,44 @@ describe("handleAnthropicMessages", () => {
       JSON.stringify(body),
     );
   });
+
+  it("echoes X-NullSpend-Session header when session ID is present", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(ANTHROPIC_NON_STREAMING_RESPONSE), {
+        status: 200,
+        headers: { "content-type": "application/json", "request-id": "req-session" },
+      }),
+    );
+
+    const body = { model: "claude-sonnet-4-20250514", max_tokens: 100, messages: [{ role: "user", content: "hi" }] };
+    const res = await handleAnthropicMessages(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body, { sessionId: "session-echo-test" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-NullSpend-Session")).toBe("session-echo-test");
+    await res.text();
+  });
+
+  it("does not include X-NullSpend-Session when session ID is null", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(ANTHROPIC_NON_STREAMING_RESPONSE), {
+        status: 200,
+        headers: { "content-type": "application/json", "request-id": "req-no-session" },
+      }),
+    );
+
+    const body = { model: "claude-sonnet-4-20250514", max_tokens: 100, messages: [{ role: "user", content: "hi" }] };
+    const res = await handleAnthropicMessages(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body, { sessionId: null }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-NullSpend-Session")).toBeNull();
+    await res.text();
+  });
 });

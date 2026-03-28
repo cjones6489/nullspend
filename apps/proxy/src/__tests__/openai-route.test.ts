@@ -1276,4 +1276,54 @@ describe("handleChatCompletions", () => {
       expect.stringContaining('"model":"gpt-4o-mini"'),
     );
   });
+
+  it("echoes X-NullSpend-Session header when session ID is present", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        id: "chatcmpl-test",
+        model: "gpt-4o-mini",
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+        choices: [{ message: { role: "assistant", content: "hi" } }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-request-id": "req-session" },
+      }),
+    );
+
+    const body = { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] };
+    const res = await handleChatCompletions(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body, { sessionId: "session-echo-test" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-NullSpend-Session")).toBe("session-echo-test");
+    await res.text();
+  });
+
+  it("does not include X-NullSpend-Session when session ID is null", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        id: "chatcmpl-test",
+        model: "gpt-4o-mini",
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+        choices: [{ message: { role: "assistant", content: "hi" } }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-request-id": "req-no-session" },
+      }),
+    );
+
+    const body = { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] };
+    const res = await handleChatCompletions(
+      makeRequest(body),
+      makeEnv(),
+      makeCtx(body, { sessionId: null }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-NullSpend-Session")).toBeNull();
+    await res.text();
+  });
 });

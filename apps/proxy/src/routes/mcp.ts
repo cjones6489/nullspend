@@ -53,6 +53,7 @@ export async function handleMcpBudgetCheck(
       400,
     );
     resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    if (ctx.sessionId) resp.headers.set("X-NullSpend-Session", ctx.sessionId);
     return resp;
   }
 
@@ -95,6 +96,7 @@ export async function handleMcpBudgetCheck(
           "NullSpend-Version": ctx.resolvedApiVersion,
           "Retry-After": String(outcome.retryAfterSeconds ?? 60),
           "X-NullSpend-Trace-Id": ctx.traceId,
+          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });
     }
@@ -125,6 +127,7 @@ export async function handleMcpBudgetCheck(
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,
+          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });
     }
@@ -157,6 +160,7 @@ export async function handleMcpBudgetCheck(
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,
+          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });
     }
@@ -172,6 +176,7 @@ export async function handleMcpBudgetCheck(
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,
+          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });
     }
@@ -186,11 +191,13 @@ export async function handleMcpBudgetCheck(
       headers: {
         "NullSpend-Version": ctx.resolvedApiVersion,
         "X-NullSpend-Trace-Id": ctx.traceId,
+        ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
       },
     });
   } catch {
     const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
     budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    if (ctx.sessionId) budgetUnavailResp.headers.set("X-NullSpend-Session", ctx.sessionId);
     return budgetUnavailResp;
   }
 }
@@ -249,6 +256,7 @@ export async function handleMcpEvents(
       400,
     );
     resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    if (ctx.sessionId) resp.headers.set("X-NullSpend-Session", ctx.sessionId);
     return resp;
   }
 
@@ -370,6 +378,7 @@ export async function handleMcpEvents(
     headers: {
       "NullSpend-Version": ctx.resolvedApiVersion,
       "X-NullSpend-Trace-Id": ctx.traceId,
+      ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
     },
   });
 }
