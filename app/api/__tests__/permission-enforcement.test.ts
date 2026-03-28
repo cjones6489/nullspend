@@ -97,6 +97,34 @@ describe("Permission enforcement — member cannot admin", () => {
   });
 });
 
+describe("Permission enforcement — viewer routes reject without viewer role", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("GET /api/cost-events/attribution → 403 (requires viewer)", async () => {
+    reject("viewer");
+    const { GET } = await import("@/app/api/cost-events/attribution/route");
+    const res = await GET(new Request("http://localhost/api/cost-events/attribution?groupBy=api_key"));
+    expect(res.status).toBe(403);
+  });
+
+  it("GET /api/cost-events/attribution/[key] → 403 (requires viewer)", async () => {
+    reject("viewer");
+    const { GET } = await import("@/app/api/cost-events/attribution/[key]/route");
+    const res = await GET(
+      new Request("http://localhost/api/cost-events/attribution/test-key?groupBy=api_key"),
+      { params: Promise.resolve({ key: "test-key" }) },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("GET /api/cost-events/tag-keys → 403 (requires viewer)", async () => {
+    reject("viewer");
+    const { GET } = await import("@/app/api/cost-events/tag-keys/route");
+    const res = await GET();
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("Permission enforcement — admin cannot owner", () => {
   beforeEach(() => vi.clearAllMocks());
 

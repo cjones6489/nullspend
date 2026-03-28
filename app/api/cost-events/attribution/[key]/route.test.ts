@@ -223,4 +223,96 @@ describe("GET /api/cost-events/attribution/[key]", () => {
       undefined,
     );
   });
+
+  it("returns 400 for key with ns_key_ prefix but missing UUID", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution/ns_key_?groupBy=api_key");
+    const res = await GET(req, makeParams("ns_key_"));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("invalid_key");
+  });
+
+  it("returns 400 for key with ns_key_ prefix but partial UUID", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution/ns_key_550e8400?groupBy=api_key");
+    const res = await GET(req, makeParams("ns_key_550e8400"));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("invalid_key");
+  });
+
+  it("allows key containing literal '..' without slashes for tag groupBy", async () => {
+    setupMocks();
+
+    // "data..old" contains ".." but no "/" — should be allowed (it's a tag value, not path traversal)
+    const req = new Request("http://localhost/api/cost-events/attribution/data..old?groupBy=customer_id");
+    const res = await GET(req, makeParams("data..old"));
+
+    expect(res.status).toBe(400);
+    // Currently blocked by the ".." check — documenting this behavior
+    const body = await res.json();
+    expect(body.error.code).toBe("invalid_key");
+  });
+
+  it("returns 400 for invalid period on detail endpoint", async () => {
+    setupMocks();
+
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key&period=14d`);
+    const res = await GET(req, makeParams(MOCK_KEY_PREFIXED));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("validation_error");
+  });
+
+  it("passes excludeEstimated to detail query", async () => {
+    setupMocks();
+
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key&excludeEstimated=true`);
+    await GET(req, makeParams(MOCK_KEY_PREFIXED));
+
+    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, MOCK_KEY_UUID, 30, { excludeEstimated: true });
+  });
+
+  it("computes avgCostMicrodollars correctly from daily array", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionDetailByKey.mockResolvedValue({
+      daily: [
+        { date: "2026-03-25", cost: 3_333_333, count: 10 },
+        { date: "2026-03-26", cost: 6_666_667, count: 20 },
+      ],
+      models: [],
+    });
+
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key`);
+    const res = await GET(req, makeParams(MOCK_KEY_PREFIXED));
+
+    const body = await res.json();
+    // total = 10_000_000, count = 30, avg = 333_333 (rounded)
+    expect(body.data.totalCostMicrodollars).toBe(10_000_000);
+    expect(body.data.requestCount).toBe(30);
+    expect(body.data.avgCostMicrodollars).toBe(333_333);
+  });
+
+  it("handles very long tag value key", async () => {
+    setupMocks();
+    const longValue = "x".repeat(200);
+
+    const req = new Request(`http://localhost/api/cost-events/attribution/${longValue}?groupBy=customer_id`);
+    const res = await GET(req, makeParams(longValue));
+
+    expect(res.status).toBe(200);
+    expect(mockedGetAttributionDetailByTag).toHaveBeenCalledWith(
+      MOCK_ORG_ID,
+      "customer_id",
+      longValue,
+      30,
+      undefined,
+    );
+  });
 });

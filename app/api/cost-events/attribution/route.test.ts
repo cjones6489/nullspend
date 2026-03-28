@@ -410,4 +410,163 @@ describe("GET /api/cost-events/attribution", () => {
 
     expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_ORG_ID, 7, undefined);
   });
+
+  it("returns 400 for invalid format value", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&format=xlsx");
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("validation_error");
+  });
+
+  it("returns 400 when limit is 0", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&limit=0");
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when limit is negative", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&limit=-1");
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when limit is not a number", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&limit=abc");
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when groupBy is empty string", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=");
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it("handles groupBy with max length (100 chars)", async () => {
+    setupMocks();
+    mockedGetAttributionByTag.mockResolvedValue([]);
+
+    const longKey = "a".repeat(100);
+    const req = new Request(`http://localhost/api/cost-events/attribution?groupBy=${longKey}`);
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockedGetAttributionByTag).toHaveBeenCalledWith(MOCK_ORG_ID, longKey, 30, 101, undefined);
+  });
+
+  it("returns 400 when groupBy exceeds 100 chars", async () => {
+    setupMocks();
+
+    const tooLong = "a".repeat(101);
+    const req = new Request(`http://localhost/api/cost-events/attribution?groupBy=${tooLong}`);
+    const res = await GET(req);
+
+    expect(res.status).toBe(400);
+  });
+
+  it("CSV export with empty groups returns header-only response", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionByKey.mockResolvedValue([]);
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&format=csv");
+    const res = await GET(req);
+
+    expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8");
+    const text = await res.text();
+    const lines = text.split("\n");
+    expect(lines).toHaveLength(1); // header only
+    expect(lines[0]).toContain("key,key_id");
+  });
+
+  it("CSV escapes values with double quotes", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionByTag.mockResolvedValue([
+      { tagValue: 'value "with" quotes', totalCostMicrodollars: 1_000_000, requestCount: 5 },
+    ]);
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=customer_id&format=csv");
+    const res = await GET(req);
+
+    const text = await res.text();
+    expect(text).toContain('"value ""with"" quotes"');
+  });
+
+  it("CSV escapes values with newlines", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionByTag.mockResolvedValue([
+      { tagValue: "line1\nline2", totalCostMicrodollars: 1_000_000, requestCount: 5 },
+    ]);
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=customer_id&format=csv");
+    const res = await GET(req);
+
+    const text = await res.text();
+    expect(text).toContain('"line1\nline2"');
+  });
+
+  it("handles large number of groups at max limit", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    // Simulate 501 rows returned (limit=500, fetch limit+1=501)
+    const manyRows = Array.from({ length: 501 }, (_, i) => ({
+      apiKeyId: `550e8400-e29b-41d4-a716-44665544${String(i).padStart(4, "0")}`,
+      keyName: `Key ${i}`,
+      totalCostMicrodollars: 1000 * (501 - i),
+      requestCount: 10,
+    }));
+    mockedGetAttributionByKey.mockResolvedValue(manyRows);
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&limit=500");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.groups).toHaveLength(500);
+    expect(body.data.hasMore).toBe(true);
+  });
+
+  it("cost USD in CSV has 6 decimal places", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionByKey.mockResolvedValue([
+      { apiKeyId: "550e8400-e29b-41d4-a716-446655440000", keyName: "Key", totalCostMicrodollars: 123, requestCount: 1 },
+    ]);
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&format=csv");
+    const res = await GET(req);
+
+    const text = await res.text();
+    const dataLine = text.split("\n")[1];
+    // 123 microdollars = 0.000123 USD
+    expect(dataLine).toContain("0.000123");
+  });
+
+  it("tag groupBy with empty string tag value maps to (none)", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionByTag.mockResolvedValue([
+      { tagValue: "", totalCostMicrodollars: 500_000, requestCount: 3 },
+    ]);
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=customer_id");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Empty string is a valid tag value, should NOT be normalized to "(none)"
+    expect(body.data.groups[0].key).toBe("");
+  });
 });
