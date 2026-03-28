@@ -107,11 +107,10 @@ Every request follows this exact order:
 2. **Health routes** — No auth. Returns immediately for `/health`, `/health/metrics`, `/health/ready`.
 3. **Internal routes** — Shared secret auth. Returns immediately for `/internal/*`.
 4. **Route lookup** — POST only. Unknown `/v1/*` paths return `404`.
-5. **Rate limiting** — IP limit first, then key limit. See [Rate Limits](rate-limits.md).
-6. **Body parsing** — JSON validation and size check.
-7. **API key authentication** — SHA-256 hash lookup. See [Authentication](authentication.md).
-8. **Context construction** — Resolves webhooks, API version, session ID, tags, and trace context.
-9. **Route handler** — Budget check → upstream call → cost tracking → reconciliation.
+5. **Rate limiting + API key authentication** — Run in parallel via `Promise.all`. Rate limiting checks IP then key limits ([Rate Limits](rate-limits.md)). Auth does SHA-256 hash lookup ([Authentication](authentication.md)).
+6. **Body parsing** — JSON validation and size check. Runs sequentially after auth and rate limiting complete.
+7. **Context construction** — Resolves webhooks, API version, session ID, tags, and trace context.
+8. **Route handler** — Budget check → upstream call → cost tracking → reconciliation.
 
 ---
 

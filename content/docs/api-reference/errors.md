@@ -108,6 +108,14 @@ Validation error details include an `issues` array:
 | `stale_action` | 409 | The action was modified by another actor since you last fetched it | Re-fetch the action and retry |
 | `action_expired` | 409 | The action's TTL has expired | Create a new action |
 
+### Rate Limiting
+
+| Code | HTTP | When | Fix |
+|---|---|---|---|
+| `rate_limit_exceeded` | 429 | Too many requests (per-IP or per-key) | Reduce request rate. Check the `Retry-After` header |
+
+> **Note:** The proxy uses `rate_limited` while the dashboard API uses `rate_limit_exceeded`. Handle both codes if your application calls both services.
+
 ### Authentication & Authorization
 
 | Code | HTTP | When | Fix |

@@ -67,7 +67,6 @@ Fires when a cost event is recorded — once per proxied request.
 | `input_tokens` | integer | Total input tokens |
 | `output_tokens` | integer | Output tokens |
 | `cached_input_tokens` | integer | Cached input tokens |
-| `reasoning_tokens` | integer | Reasoning/thinking tokens (o-series, extended thinking) |
 | `cost_microdollars` | integer | Total cost in microdollars |
 | `duration_ms` | integer | Request duration in milliseconds |
 | `upstream_duration_ms` | integer or null | Time spent waiting for the LLM provider |
@@ -75,8 +74,8 @@ Fires when a cost event is recorded — once per proxied request.
 | `trace_id` | string or null | Trace ID |
 | `tool_name` | string or null | MCP tool name |
 | `tool_server` | string or null | MCP tool server |
-| `tool_calls_requested` | integer or null | Number of tool calls |
-| `tool_definition_tokens` | integer or null | Token count for tool definitions |
+| `tool_calls_requested` | array or null | Array of `{name, id}` objects representing tool calls, or `null` |
+| `tool_definition_tokens` | integer | Token count for tool definitions (defaults to 0) |
 | `api_key_id` | string | API key that made the request |
 | `source` | string | `"proxy"`, `"api"`, or `"mcp"` |
 | `tags` | object | Key-value pairs from `X-NullSpend-Tags` |
@@ -99,7 +98,6 @@ Fires when a cost event is recorded — once per proxied request.
       "input_tokens": 1000,
       "output_tokens": 500,
       "cached_input_tokens": 200,
-      "reasoning_tokens": 0,
       "cost_microdollars": 7,
       "duration_ms": 1234,
       "upstream_duration_ms": 1180,
@@ -108,7 +106,7 @@ Fires when a cost event is recorded — once per proxied request.
       "tool_name": null,
       "tool_server": null,
       "tool_calls_requested": null,
-      "tool_definition_tokens": null,
+      "tool_definition_tokens": 0,
       "api_key_id": "ns_key_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "source": "proxy",
       "tags": { "team": "billing", "env": "production" },

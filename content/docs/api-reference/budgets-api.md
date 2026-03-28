@@ -340,6 +340,8 @@ curl https://nullspend.com/api/budgets/status \
 
 `remainingMicrodollars` is always >= 0 (clamped, never negative).
 
+> **Note:** The API response includes additional budget configuration fields (e.g., `policy`, `resetInterval`, `thresholdPercentages`, velocity and session limit settings) beyond what the SDK's `BudgetEntity` type surfaces.
+
 Headers: `NullSpend-Version: 2026-04-01`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
 
 ### Errors

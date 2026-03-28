@@ -76,12 +76,13 @@ response = requests.post(
 **Claude Agent SDK:**
 
 ```typescript
-const client = withNullSpend(baseClient, {
+const options = withNullSpend({
+  apiKey: "ns_live_sk_...",
   budgetSessionId: "task-042",  // NOT the SDK's conversation sessionId
 });
 ```
 
-The header value is truncated to 256 characters (not rejected). Choose short, meaningful IDs.
+The proxy rejects the request with `400 bad_request` if the session ID exceeds 256 characters. Choose short, meaningful IDs.
 
 ## Session Tracking
 
