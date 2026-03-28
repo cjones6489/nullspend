@@ -198,3 +198,139 @@ export async function getTotals(orgId: string, periodDays: number, options?: Agg
 
   return row ?? { totalCostMicrodollars: 0, totalRequests: 0 };
 }
+
+export async function getAttributionByKey(orgId: string, periodDays: number, limit: number, options?: AggregateOptions) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+
+  return db
+    .select({
+      apiKeyId: costEvents.apiKeyId,
+      keyName: sql<string>`coalesce(${apiKeys.name}, '(no key)')`.mapWith(String),
+      totalCostMicrodollars:
+        sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
+    })
+    .from(costEvents)
+    .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .where(baseConditions(orgId, cutoff, options))
+    .groupBy(costEvents.apiKeyId, apiKeys.name)
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(limit);
+}
+
+export async function getAttributionByTag(orgId: string, tagKey: string, periodDays: number, limit: number, options?: AggregateOptions) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+  const tagExpr = sql<string>`${costEvents.tags}->>${tagKey}`;
+
+  return db
+    .select({
+      tagValue: tagExpr.mapWith(String),
+      totalCostMicrodollars:
+        sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
+    })
+    .from(costEvents)
+    .where(baseConditions(orgId, cutoff, options))
+    .groupBy(tagExpr)
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(limit);
+}
+
+export async function getAttributionDetailByKey(
+  orgId: string,
+  apiKeyId: string | null,
+  periodDays: number,
+  options?: AggregateOptions,
+) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+  const keyCondition = apiKeyId
+    ? eq(costEvents.apiKeyId, apiKeyId)
+    : sql`${costEvents.apiKeyId} IS NULL`;
+
+  const baseWhere = and(baseConditions(orgId, cutoff, options), keyCondition);
+
+  const [daily, models] = await Promise.all([
+    db
+      .select({
+        date: dateExpr,
+        cost: sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+        count: sql`cast(count(*) as int)`.mapWith(Number),
+      })
+      .from(costEvents)
+      .where(baseWhere)
+      .groupBy(dateExpr)
+      .orderBy(dateExpr),
+    db
+      .select({
+        model: costEvents.model,
+        cost: sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+        count: sql`cast(count(*) as int)`.mapWith(Number),
+      })
+      .from(costEvents)
+      .where(baseWhere)
+      .groupBy(costEvents.model)
+      .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`)),
+  ]);
+
+  return { daily, models };
+}
+
+export async function getAttributionDetailByTag(
+  orgId: string,
+  tagKey: string,
+  tagValue: string,
+  periodDays: number,
+  options?: AggregateOptions,
+) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+  const tagCondition = sql`${costEvents.tags}->>${tagKey} = ${tagValue}`;
+  const baseWhere = and(baseConditions(orgId, cutoff, options), tagCondition);
+
+  const [daily, models] = await Promise.all([
+    db
+      .select({
+        date: dateExpr,
+        cost: sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+        count: sql`cast(count(*) as int)`.mapWith(Number),
+      })
+      .from(costEvents)
+      .where(baseWhere)
+      .groupBy(dateExpr)
+      .orderBy(dateExpr),
+    db
+      .select({
+        model: costEvents.model,
+        cost: sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+        count: sql`cast(count(*) as int)`.mapWith(Number),
+      })
+      .from(costEvents)
+      .where(baseWhere)
+      .groupBy(costEvents.model)
+      .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`)),
+  ]);
+
+  return { daily, models };
+}
+
+export async function getDistinctTagKeys(orgId: string) {
+  const db = getDb();
+  const cutoff = makeCutoff(7);
+
+  const rows = await db.execute<{ key: string }>(
+    sql`SELECT DISTINCT key FROM (
+      SELECT jsonb_object_keys(${costEvents.tags}) AS key
+      FROM ${costEvents}
+      WHERE ${costEvents.orgId} = ${orgId}
+        AND ${costEvents.createdAt} >= ${cutoff}
+    ) sub
+    WHERE key NOT LIKE '_ns_%'
+    ORDER BY key
+    LIMIT 50`
+  );
+
+  return Array.from(rows, (r) => r.key);
+}
