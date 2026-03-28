@@ -92,7 +92,7 @@ export default function AttributionDetailPage() {
               {data.key || <span className="italic text-muted-foreground">(no key)</span>}
             </h1>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              {groupBy.startsWith("tag:") ? `Tag: ${groupBy.slice(4)}` : groupBy.replace("_", " ")}
+              {groupBy === "api_key" ? "API Key" : groupBy}
               {" "}&middot;{" "}
               {formatMicrodollars(data.totalCostMicrodollars)} total
               {" "}&middot;{" "}

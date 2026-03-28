@@ -22,6 +22,10 @@ export const attributionResponseSchema = z.object({
   groupBy: z.string(),
   totalGroups: z.number().int().nonnegative(),
   hasMore: z.boolean(),
+  totals: z.object({
+    totalCostMicrodollars: z.number().nonnegative(),
+    totalRequests: z.number().int().nonnegative(),
+  }),
 });
 
 export const attributionDetailQuerySchema = z.object({

@@ -39,6 +39,11 @@ function SortIcon({ field, active, dir }: { field: string; active: string; dir: 
     : <ArrowDown className="ml-1 inline h-3 w-3" />;
 }
 
+function ariaSort(field: SortField, active: SortField, dir: SortDir): "ascending" | "descending" | "none" {
+  if (active !== field) return "none";
+  return dir === "asc" ? "ascending" : "descending";
+}
+
 export default function AttributionPage() {
   const router = useRouter();
   const [period, setPeriod] = useState<Period>("30d");
@@ -58,8 +63,8 @@ export default function AttributionPage() {
     }
   }
 
-  const totalCost = data?.groups.reduce((sum, g) => sum + g.totalCostMicrodollars, 0) ?? 0;
-  const totalRequests = data?.groups.reduce((sum, g) => sum + g.requestCount, 0) ?? 0;
+  const totalCost = data?.totals.totalCostMicrodollars ?? 0;
+  const totalRequests = data?.totals.totalRequests ?? 0;
 
   const sorted = useMemo(() => {
     if (!data) return [];
@@ -91,10 +96,7 @@ export default function AttributionPage() {
 
   const groupByOptions = [
     { value: "api_key", label: "API Key" },
-    { value: "model", label: "Model" },
-    { value: "provider", label: "Provider" },
-    { value: "session", label: "Session" },
-    ...(tagKeys ?? []).map((k) => ({ value: `tag:${k}`, label: `Tag: ${k}` })),
+    ...(tagKeys ?? []).map((k) => ({ value: k, label: `Tag: ${k}` })),
   ];
 
   return (
@@ -230,6 +232,7 @@ export default function AttributionPage() {
                   </TableHead>
                   <TableHead
                     className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                    aria-sort={ariaSort("cost", sortField, sortDir)}
                     onClick={() => toggleSort("cost")}
                   >
                     Cost <SortIcon field="cost" active={sortField} dir={sortDir} />
@@ -239,12 +242,14 @@ export default function AttributionPage() {
                   </TableHead>
                   <TableHead
                     className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                    aria-sort={ariaSort("requests", sortField, sortDir)}
                     onClick={() => toggleSort("requests")}
                   >
                     Requests <SortIcon field="requests" active={sortField} dir={sortDir} />
                   </TableHead>
                   <TableHead
                     className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                    aria-sort={ariaSort("avg", sortField, sortDir)}
                     onClick={() => toggleSort("avg")}
                   >
                     Avg Cost <SortIcon field="avg" active={sortField} dir={sortDir} />
@@ -259,13 +264,20 @@ export default function AttributionPage() {
                   return (
                     <TableRow
                       key={group.keyId ?? group.key}
-                      className="border-border/30 cursor-pointer transition-colors hover:bg-accent/40"
+                      tabIndex={0}
+                      className="border-border/30 cursor-pointer transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                       onClick={(e) => {
                         const url = `/app/attribution/${encodeURIComponent(group.keyId || group.key)}?groupBy=${encodeURIComponent(groupBy)}`;
                         if (e.metaKey || e.ctrlKey || e.button === 1) {
                           window.open(url, "_blank");
                         } else {
                           router.push(url);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/app/attribution/${encodeURIComponent(group.keyId || group.key)}?groupBy=${encodeURIComponent(groupBy)}`);
                         }
                       }}
                       onAuxClick={(e) => {
@@ -278,10 +290,10 @@ export default function AttributionPage() {
                       }}
                     >
                       <TableCell className="text-[13px] text-foreground">
-                        {group.key ? (
-                          <span className="font-mono">{group.key}</span>
+                        {group.key === "(no key)" || group.key === "(none)" ? (
+                          <span className="italic text-muted-foreground">{group.key}</span>
                         ) : (
-                          <span className="italic text-muted-foreground">(no key)</span>
+                          <span className="font-mono">{group.key}</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums text-[13px] text-foreground">

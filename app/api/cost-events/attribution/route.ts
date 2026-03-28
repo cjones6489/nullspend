@@ -6,6 +6,7 @@ import { resolveSessionContext } from "@/lib/auth/session";
 import {
   getAttributionByKey,
   getAttributionByTag,
+  getTotals,
 } from "@/lib/cost-events/aggregate-cost-events";
 import { escapeCSV } from "@/lib/utils/csv";
 import { handleRouteError } from "@/lib/utils/http";
@@ -47,69 +48,48 @@ export async function GET(request: Request) {
     const periodDays = parseInt(period, 10);
     const opts = excludeEstimatedRaw === "true" ? { excludeEstimated: true } : undefined;
 
-    let groups: Array<{
-      key: string;
-      keyId: string | null;
-      totalCostMicrodollars: number;
-      requestCount: number;
-      avgCostMicrodollars: number;
-    }>;
+    const groupsPromise = groupBy === "api_key"
+      ? getAttributionByKey(orgId, periodDays, limit + 1, opts)
+      : getAttributionByTag(orgId, groupBy, periodDays, limit + 1, opts);
 
-    if (groupBy === "api_key") {
-      const rows = await getAttributionByKey(orgId, periodDays, limit + 1, opts);
-      groups = rows.slice(0, limit).map((r) => ({
-        key: r.keyName,
-        keyId: r.apiKeyId,
-        totalCostMicrodollars: r.totalCostMicrodollars,
-        requestCount: r.requestCount,
-        avgCostMicrodollars:
-          r.requestCount > 0 ? Math.round(r.totalCostMicrodollars / r.requestCount) : 0,
-      }));
-      const hasMore = rows.length > limit;
+    const [rawRows, totals] = await Promise.all([
+      groupsPromise,
+      getTotals(orgId, periodDays, opts),
+    ]);
 
-      if (format === "csv") {
-        return buildCSVResponse(groups, groupBy);
-      }
+    const groups = rawRows.slice(0, limit).map((r) => {
+      const isKeyRow = "keyName" in r;
+      const cost = r.totalCostMicrodollars;
+      const count = r.requestCount;
+      return {
+        key: isKeyRow ? (r as { keyName: string }).keyName : ((r as { tagValue: string | null }).tagValue ?? "(none)"),
+        keyId: isKeyRow ? (r as { apiKeyId: string | null }).apiKeyId : null,
+        totalCostMicrodollars: cost,
+        requestCount: count,
+        avgCostMicrodollars: count > 0 ? Math.round(cost / count) : 0,
+      };
+    });
+    const hasMore = rawRows.length > limit;
 
-      const response = attributionResponseSchema.parse({
-        groups,
-        period,
-        groupBy,
-        totalGroups: groups.length,
-        hasMore,
-      });
-
-      const res = NextResponse.json({ data: response });
-      res.headers.set("NullSpend-Version", CURRENT_VERSION);
-      return res;
-    } else {
-      const rows = await getAttributionByTag(orgId, groupBy, periodDays, limit + 1, opts);
-      groups = rows.slice(0, limit).map((r) => ({
-        key: r.tagValue ?? "(none)",
-        keyId: null,
-        totalCostMicrodollars: r.totalCostMicrodollars,
-        requestCount: r.requestCount,
-        avgCostMicrodollars:
-          r.requestCount > 0 ? Math.round(r.totalCostMicrodollars / r.requestCount) : 0,
-      }));
-      const hasMore = rows.length > limit;
-
-      if (format === "csv") {
-        return buildCSVResponse(groups, groupBy);
-      }
-
-      const response = attributionResponseSchema.parse({
-        groups,
-        period,
-        groupBy,
-        totalGroups: groups.length,
-        hasMore,
-      });
-
-      const res = NextResponse.json({ data: response });
-      res.headers.set("NullSpend-Version", CURRENT_VERSION);
-      return res;
+    if (format === "csv") {
+      return buildCSVResponse(groups, groupBy);
     }
+
+    const response = attributionResponseSchema.parse({
+      groups,
+      period,
+      groupBy,
+      totalGroups: groups.length,
+      hasMore,
+      totals: {
+        totalCostMicrodollars: totals.totalCostMicrodollars,
+        totalRequests: totals.totalRequests,
+      },
+    });
+
+    const res = NextResponse.json({ data: response });
+    res.headers.set("NullSpend-Version", CURRENT_VERSION);
+    return res;
   } catch (error) {
     return handleRouteError(error);
   }

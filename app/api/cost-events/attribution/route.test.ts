@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSessionContext } from "@/lib/auth/session";
 import {
   getAttributionByKey,
   getAttributionByTag,
+  getTotals,
 } from "@/lib/cost-events/aggregate-cost-events";
 import { GET } from "./route";
 
@@ -19,11 +20,13 @@ vi.mock("@/lib/auth/org-authorization", () => ({
 vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
   getAttributionByKey: vi.fn(),
   getAttributionByTag: vi.fn(),
+  getTotals: vi.fn(),
 }));
 
 const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
 const mockedGetAttributionByKey = vi.mocked(getAttributionByKey);
 const mockedGetAttributionByTag = vi.mocked(getAttributionByTag);
+const mockedGetTotals = vi.mocked(getTotals);
 
 const MOCK_USER_ID = "user-abc-123";
 const MOCK_ORG_ID = "org-mock-1";
@@ -56,13 +59,20 @@ const mockTagRows = [
   },
 ];
 
+const mockTotals = { totalCostMicrodollars: 10_000_000, totalRequests: 50 };
+
 function setupMocks() {
   mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
   mockedGetAttributionByKey.mockResolvedValue(mockKeyRows);
   mockedGetAttributionByTag.mockResolvedValue(mockTagRows);
+  mockedGetTotals.mockResolvedValue(mockTotals);
 }
 
 describe("GET /api/cost-events/attribution", () => {
+  beforeEach(() => {
+    mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
+  });
+
   afterEach(() => {
     vi.resetAllMocks();
   });
@@ -84,6 +94,8 @@ describe("GET /api/cost-events/attribution", () => {
     expect(body.data.groups[1].key).toBe("Dev Key");
     expect(body.data.groupBy).toBe("api_key");
     expect(body.data.period).toBe("30d");
+    expect(body.data.totals.totalCostMicrodollars).toBe(10_000_000);
+    expect(body.data.totals.totalRequests).toBe(50);
   });
 
   it("returns 200 with groups for groupBy=customer_id (tag)", async () => {
