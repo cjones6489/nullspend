@@ -172,8 +172,7 @@ export class NullSpend {
 
   /** Get a spend summary for the given period (7d, 30d, or 90d). */
   async getCostSummary(period: CostSummaryPeriod = "30d"): Promise<CostSummaryResponse> {
-    const res = await this.request<{ data: CostSummaryResponse }>("GET", `/api/cost-events/summary?period=${period}`);
-    return res.data;
+    return this.request<CostSummaryResponse>("GET", `/api/cost-events/summary?period=${period}`);
   }
 
   /** List recent cost events with optional pagination. */
@@ -370,7 +369,12 @@ export class NullSpend {
 
       if (response.ok) {
         try {
-          return (await response.json()) as T;
+          const json = await response.json();
+          // Unwrap { data: T } envelope used by all NullSpend API routes
+          if (json && typeof json === "object" && "data" in json) {
+            return json.data as T;
+          }
+          return json as T;
         } catch {
           throw new NullSpendError(
             `${method} ${path} returned invalid JSON`,

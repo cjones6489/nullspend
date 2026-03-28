@@ -54,14 +54,14 @@ The SDK provides methods for the full [HITL approval workflow](../features/human
 Create a new action for human approval.
 
 ```typescript
-const { data } = await ns.createAction({
+const action = await ns.createAction({
   agentId: "support-agent",
   actionType: "send_email",
   payload: { to: "user@example.com", subject: "Refund" },
   metadata: { ticketId: "T-1234" },
   expiresInSeconds: 1800,
 });
-console.log(data.id, data.status, data.expiresAt);
+console.log(action.id, action.status, action.expiresAt);
 ```
 
 ### `getAction(id)`
@@ -143,7 +143,7 @@ Three approaches for reporting cost events.
 ### `reportCost(event)` — Single Event
 
 ```typescript
-const { data } = await ns.reportCost({
+const result = await ns.reportCost({
   provider: "anthropic",
   model: "claude-sonnet-4-20250514",
   inputTokens: 1000,
@@ -158,7 +158,7 @@ const { data } = await ns.reportCost({
   eventType: "llm",        // "llm" | "tool" | "custom"
   tags: { team: "backend" },
 });
-console.log(data.id, data.createdAt);
+console.log(result.id, result.createdAt);
 ```
 
 ### `reportCostBatch(events)` — Batch

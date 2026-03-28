@@ -280,16 +280,70 @@ export interface ListCostEventsOptions {
 // Cost summary
 // ---------------------------------------------------------------------------
 
+export interface ModelBreakdown {
+  provider: string;
+  model: string;
+  totalCostMicrodollars: number;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+}
+
+export interface ProviderBreakdown {
+  provider: string;
+  totalCostMicrodollars: number;
+  requestCount: number;
+}
+
+export interface KeyBreakdown {
+  apiKeyId: string;
+  keyName: string;
+  totalCostMicrodollars: number;
+  requestCount: number;
+}
+
+export interface ToolBreakdown {
+  model: string;
+  totalCostMicrodollars: number;
+  requestCount: number;
+  avgDurationMs: number;
+}
+
+export interface SourceBreakdown {
+  source: string;
+  totalCostMicrodollars: number;
+  requestCount: number;
+}
+
+export interface TraceBreakdown {
+  traceId: string;
+  totalCostMicrodollars: number;
+  requestCount: number;
+}
+
+export interface CostBreakdownTotals {
+  inputCost: number;
+  outputCost: number;
+  cachedCost: number;
+  reasoningCost: number;
+}
+
 export interface CostSummaryResponse {
   daily: Array<{ date: string; totalCostMicrodollars: number }>;
-  models: Record<string, number>;
-  providers: Record<string, number>;
+  models: ModelBreakdown[];
+  providers: ProviderBreakdown[];
+  keys: KeyBreakdown[];
+  tools: ToolBreakdown[];
+  sources: SourceBreakdown[];
+  traces: TraceBreakdown[];
   totals: {
     totalCostMicrodollars: number;
-    totalInputTokens: number;
-    totalOutputTokens: number;
     totalRequests: number;
+    period: CostSummaryPeriod;
   };
+  costBreakdown: CostBreakdownTotals;
 }
 
 export type CostSummaryPeriod = "7d" | "30d" | "90d";
