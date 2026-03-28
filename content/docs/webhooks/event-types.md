@@ -109,7 +109,7 @@ Fires when a cost event is recorded — once per proxied request.
       "tool_server": null,
       "tool_calls_requested": null,
       "tool_definition_tokens": null,
-      "api_key_id": "ns_live_sk_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "api_key_id": "ns_key_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "source": "proxy",
       "tags": { "team": "billing", "env": "production" },
       "created_at": "2026-03-21T12:00:00.000Z"
@@ -149,7 +149,7 @@ Fires when spend crosses a threshold percentage **below 90%** (e.g., 50%, 80%).
   "data": {
     "object": {
       "budget_entity_type": "api_key",
-      "budget_entity_id": "ns_live_sk_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "budget_entity_id": "ns_key_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "threshold_percent": 80,
       "budget_spend_microdollars": 40500000,
       "budget_limit_microdollars": 50000000,
@@ -212,7 +212,7 @@ Fires when a request is blocked because the budget ceiling was hit.
   "data": {
     "object": {
       "budget_entity_type": "api_key",
-      "budget_entity_id": "ns_live_sk_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "budget_entity_id": "ns_key_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "budget_limit_microdollars": 50000000,
       "budget_spend_microdollars": 49800000,
       "estimated_request_cost_microdollars": 500000,
@@ -291,7 +291,7 @@ Fires when a request is blocked for any reason.
       "reason": "budget",
       "model": "gpt-4o",
       "provider": "openai",
-      "api_key_id": "ns_live_sk_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "api_key_id": "ns_key_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "details": null
     }
   }
@@ -327,7 +327,7 @@ Fires when a velocity limit trips the circuit breaker.
   "data": {
     "object": {
       "budget_entity_type": "api_key",
-      "budget_entity_id": "ns_live_sk_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "budget_entity_id": "ns_key_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "velocity_limit_microdollars": 10000000,
       "velocity_window_seconds": 60,
       "velocity_current_microdollars": 10500000,
@@ -366,7 +366,7 @@ Fires when the velocity circuit breaker closes after cooldown.
   "data": {
     "object": {
       "budget_entity_type": "api_key",
-      "budget_entity_id": "ns_live_sk_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "budget_entity_id": "ns_key_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "velocity_limit_microdollars": 10000000,
       "velocity_window_seconds": 60,
       "velocity_cooldown_seconds": 60,

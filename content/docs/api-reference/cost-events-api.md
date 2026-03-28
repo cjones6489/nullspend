@@ -97,8 +97,10 @@ curl -X POST https://nullspend.com/api/cost-events \
 
 ```json
 {
-  "id": "ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "createdAt": "2026-03-20T14:30:00.000Z"
+  "data": {
+    "id": "ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "createdAt": "2026-03-20T14:30:00.000Z"
+  }
 }
 ```
 

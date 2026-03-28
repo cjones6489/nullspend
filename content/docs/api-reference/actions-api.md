@@ -467,12 +467,10 @@ Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-R
 
 ```
 pending → approved → executing → executed
-                  ↘            ↘ failed
-                   → executed
-                   → failed
+                                ↘ failed
 ```
 
-- `approved` → `executing`, `executed`, or `failed`
+- `approved` → `executing`
 - `executing` → `executed` or `failed`
 - Terminal states (`executed`, `failed`, `rejected`, `expired`) cannot transition further.
 

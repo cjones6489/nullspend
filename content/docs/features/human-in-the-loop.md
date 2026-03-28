@@ -58,7 +58,7 @@ Terminal states (`rejected`, `expired`, `executed`, `failed`) cannot transition 
 | `file_write` | Write to a file |
 | `file_delete` | Delete a file |
 
-Action types are informational labels — NullSpend does not enforce or validate what the agent actually does after approval. You can also pass any custom string as the action type.
+Action types are informational labels — NullSpend does not enforce or validate what the agent actually does after approval. Only the values listed above are accepted; arbitrary strings are rejected by validation.
 
 ## Quick Start with the SDK
 
@@ -252,7 +252,7 @@ The Actions page in the dashboard shows all actions with their current status. Y
 | Code | Status | Meaning |
 |---|---|---|
 | `invalid_action_transition` | 409 | Invalid state transition (e.g., approving an already-rejected action) |
-| `action_expired` | 410 | Action has expired |
+| `action_expired` | 409 | Action has expired |
 | `stale_action` | 409 | Concurrent modification detected |
 | `not_found` | 404 | Action doesn't exist or belongs to another user |
 
