@@ -323,7 +323,7 @@ Headers: `NullSpend-Version: 2026-04-01`
 
 `GET /api/cost-events/:id`
 
-Retrieve a single cost event by ID. The event must belong to the authenticated user.
+Retrieve a single cost event by ID. The event must belong to the authenticated user's organization.
 
 ### Authentication
 
@@ -377,7 +377,7 @@ curl https://nullspend.com/api/cost-events/ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234
 |---|---|---|
 | `validation_error` | 400 | Invalid ID format |
 | `authentication_required` | 401 | No valid session |
-| `not_found` | 404 | Event not found or not owned by user |
+| `not_found` | 404 | Event not found or not in user's organization |
 
 ---
 

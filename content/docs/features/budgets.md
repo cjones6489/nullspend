@@ -14,11 +14,11 @@ Request arrives
     │
     ├─ 1. Estimate cost (input tokens + max output tokens × 1.1 safety margin)
     │
-    ├─ 2. Session limit check ─── exceeds? ──► 429 session_limit_exceeded
+    ├─ 2. Period reset ────────── due? ───────► Reset spend to 0, start new period
     │
-    ├─ 3. Velocity check ──────── tripped? ───► 429 velocity_exceeded + Retry-After
+    ├─ 3. Session limit check ─── exceeds? ──► 429 session_limit_exceeded
     │
-    ├─ 4. Period reset ────────── due? ───────► Reset spend to 0, start new period
+    ├─ 4. Velocity check ──────── tripped? ───► 429 velocity_exceeded + Retry-After
     │
     ├─ 5. Budget check ────────── exceeds? ──► 429 budget_exceeded
     │

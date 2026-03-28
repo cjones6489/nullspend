@@ -101,7 +101,6 @@ Session (dashboard)
 
 > **Note:** Tag-level budgets are managed through the proxy-side budget system (Durable Objects), not through this API endpoint.
 | `maxBudgetMicrodollars` | body | integer | Yes | Spending limit in microdollars. Must be positive. |
-| `policy` | body | string | No | `"strict_block"` (default), `"soft_block"`, or `"warn"`. Controls behavior when budget is exceeded. |
 | `resetInterval` | body | string | No | `"daily"`, `"weekly"`, or `"monthly"`. Omit for no auto-reset. |
 | `thresholdPercentages` | body | integer[] | No | Alert thresholds (1–100). Max 10 values, ascending, no duplicates. |
 | `velocityLimitMicrodollars` | body | integer \| null | No | Max spend per velocity window. `null` removes the limit. |
