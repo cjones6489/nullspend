@@ -123,7 +123,7 @@ export const budgets = pgTable("budgets", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
-  uniqueIndex("budgets_user_entity_idx").on(table.userId, table.entityType, table.entityId),
+  uniqueIndex("budgets_org_entity_idx").on(table.orgId, table.entityType, table.entityId),
   index("budgets_user_id_idx").on(table.userId),
   index("budgets_org_id_idx").on(table.orgId),
 ]);

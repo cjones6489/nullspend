@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 import { resolveSessionContext } from "@/lib/auth/session";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
-import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
-import { apiKeys, budgets } from "@nullspend/db";
+import { budgets } from "@nullspend/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 import { budgetIdParamsSchema, budgetResponseSchema } from "@/lib/validations/budgets";
@@ -32,7 +31,8 @@ export async function DELETE(_request: Request, { params }: RouteParams) {
       }
 
       const budget = rows[0];
-      await verifyBudgetOwnership(tx, userId, budget.entityType, budget.entityId);
+      // Admin role already verified via assertOrgRole; budget is org-scoped via the WHERE clause.
+      // No additional ownership check needed — admins can manage any budget in their org.
 
       await tx.delete(budgets).where(eq(budgets.id, id));
       return { entityType: budget.entityType, entityId: budget.entityId };
@@ -71,7 +71,6 @@ export async function POST(_request: Request, { params }: RouteParams) {
       }
 
       const budget = rows[0];
-      await verifyBudgetOwnership(tx, userId, budget.entityType, budget.entityId);
 
       const [result] = await tx
         .update(budgets)
@@ -116,38 +115,3 @@ class NotFoundError extends Error {
   }
 }
 
-type TxOrDb = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
-
-async function verifyBudgetOwnership(
-  tx: TxOrDb,
-  userId: string,
-  entityType: string,
-  entityId: string,
-): Promise<void> {
-  if (entityType === "user") {
-    if (entityId !== userId) {
-      throw new ForbiddenError("Cannot manage budgets for other users.");
-    }
-    return;
-  }
-
-  if (entityType === "api_key") {
-    const rows = await tx
-      .select({ id: apiKeys.id })
-      .from(apiKeys)
-      .where(
-        and(
-          eq(apiKeys.id, entityId),
-          eq(apiKeys.userId, userId),
-          isNull(apiKeys.revokedAt),
-        ),
-      );
-
-    if (rows.length === 0) {
-      throw new ForbiddenError("API key not found or not owned by you.");
-    }
-    return;
-  }
-
-  throw new ForbiddenError(`Unsupported entity type: ${entityType}`);
-}

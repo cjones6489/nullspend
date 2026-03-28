@@ -93,9 +93,8 @@ export const POST = withRequestContext(async (request: Request) => {
         ...(input.sessionLimitMicrodollars !== undefined && { sessionLimitMicrodollars: input.sessionLimitMicrodollars }),
       })
       .onConflictDoUpdate({
-        target: [budgets.userId, budgets.entityType, budgets.entityId],
+        target: [budgets.orgId, budgets.entityType, budgets.entityId],
         set: {
-          orgId,
           maxBudgetMicrodollars: input.maxBudgetMicrodollars,
           resetInterval: input.resetInterval ?? null,
           ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),

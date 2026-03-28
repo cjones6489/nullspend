@@ -366,7 +366,7 @@ describe("GET /api/cost-events/attribution", () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
     mockedGetAttributionByTag.mockResolvedValue([
       { tagValue: "null", totalCostMicrodollars: 2_000_000, requestCount: 10 },
-      { tagValue: null, totalCostMicrodollars: 1_000_000, requestCount: 5 },
+      { tagValue: null as unknown as string, totalCostMicrodollars: 1_000_000, requestCount: 5 },
     ]);
 
     const req = new Request("http://localhost/api/cost-events/attribution?groupBy=customer_id");
