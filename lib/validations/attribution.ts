@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { nsIdOutputNullable } from "@/lib/ids/prefixed-id";
+
 export const attributionQuerySchema = z.object({
   groupBy: z.string().min(1).max(100),
   period: z.enum(["7d", "30d", "90d"]).default("30d"),
@@ -10,7 +12,7 @@ export const attributionQuerySchema = z.object({
 
 export const attributionGroupSchema = z.object({
   key: z.string(),
-  keyId: z.string().nullable(),
+  keyId: nsIdOutputNullable("key"),
   totalCostMicrodollars: z.number().nonnegative(),
   requestCount: z.number().int().nonnegative(),
   avgCostMicrodollars: z.number().nonnegative(),

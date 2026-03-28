@@ -27,6 +27,8 @@ const mockedGetAttributionDetailByTag = vi.mocked(getAttributionDetailByTag);
 
 const MOCK_USER_ID = "user-abc-123";
 const MOCK_ORG_ID = "org-mock-1";
+const MOCK_KEY_UUID = "550e8400-e29b-41d4-a716-446655440000";
+const MOCK_KEY_PREFIXED = `ns_key_${MOCK_KEY_UUID}`;
 
 const mockDetailResult = {
   daily: [
@@ -57,17 +59,26 @@ describe("GET /api/cost-events/attribution/[key]", () => {
   it("returns 200 with API key detail including daily and models", async () => {
     setupMocks();
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc?groupBy=api_key");
-    const res = await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key`);
+    const res = await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data.key).toBe("key-abc");
+    expect(body.data.key).toBe(MOCK_KEY_PREFIXED);
     expect(body.data.daily).toEqual(mockDetailResult.daily);
     expect(body.data.models).toEqual(mockDetailResult.models);
     expect(body.data.totalCostMicrodollars).toBe(8_000_000);
     expect(body.data.requestCount).toBe(40);
     expect(body.data.avgCostMicrodollars).toBe(200_000);
+  });
+
+  it("strips ns_key_ prefix and passes raw UUID to aggregation", async () => {
+    setupMocks();
+
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key`);
+    await GET(req, makeParams(MOCK_KEY_PREFIXED));
+
+    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, MOCK_KEY_UUID, 30, undefined);
   });
 
   it("returns 200 with tag value detail", async () => {
@@ -91,36 +102,36 @@ describe("GET /api/cost-events/attribution/[key]", () => {
   it("uses default period 30d", async () => {
     setupMocks();
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc?groupBy=api_key");
-    await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key`);
+    await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
-    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, "key-abc", 30, undefined);
+    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, MOCK_KEY_UUID, 30, undefined);
   });
 
   it("parses 7d period correctly", async () => {
     setupMocks();
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc?groupBy=api_key&period=7d");
-    await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key&period=7d`);
+    await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
-    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, "key-abc", 7, undefined);
+    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, MOCK_KEY_UUID, 7, undefined);
   });
 
   it("parses 90d period correctly", async () => {
     setupMocks();
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc?groupBy=api_key&period=90d");
-    await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key&period=90d`);
+    await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
-    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, "key-abc", 90, undefined);
+    expect(mockedGetAttributionDetailByKey).toHaveBeenCalledWith(MOCK_ORG_ID, MOCK_KEY_UUID, 90, undefined);
   });
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
     mockedResolveSessionContext.mockRejectedValue(new AuthenticationRequiredError());
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc?groupBy=api_key");
-    const res = await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key`);
+    const res = await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
     expect(res.status).toBe(401);
   });
@@ -131,8 +142,8 @@ describe("GET /api/cost-events/attribution/[key]", () => {
 
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc?groupBy=api_key");
-    const res = await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key`);
+    const res = await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
     expect(res.status).toBe(500);
     const body = await res.json();
@@ -142,8 +153,8 @@ describe("GET /api/cost-events/attribution/[key]", () => {
   it("returns 400 when groupBy is missing", async () => {
     setupMocks();
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc");
-    const res = await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}`);
+    const res = await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -155,6 +166,17 @@ describe("GET /api/cost-events/attribution/[key]", () => {
 
     const req = new Request("http://localhost/api/cost-events/attribution/..%2F..%2Fetc?groupBy=api_key");
     const res = await GET(req, makeParams("../etc"));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("invalid_key");
+  });
+
+  it("returns 400 for invalid API key ID format", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution/not-a-valid-key?groupBy=api_key");
+    const res = await GET(req, makeParams("not-a-valid-key"));
 
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -174,8 +196,8 @@ describe("GET /api/cost-events/attribution/[key]", () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
     mockedGetAttributionDetailByKey.mockResolvedValue({ daily: [], models: [] });
 
-    const req = new Request("http://localhost/api/cost-events/attribution/key-abc?groupBy=api_key");
-    const res = await GET(req, makeParams("key-abc"));
+    const req = new Request(`http://localhost/api/cost-events/attribution/${MOCK_KEY_PREFIXED}?groupBy=api_key`);
+    const res = await GET(req, makeParams(MOCK_KEY_PREFIXED));
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -184,5 +206,21 @@ describe("GET /api/cost-events/attribution/[key]", () => {
     expect(body.data.totalCostMicrodollars).toBe(0);
     expect(body.data.requestCount).toBe(0);
     expect(body.data.avgCostMicrodollars).toBe(0);
+  });
+
+  it("handles tag values with special characters", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution/100%25%20discount?groupBy=promo_code");
+    const res = await GET(req, makeParams("100% discount"));
+
+    expect(res.status).toBe(200);
+    expect(mockedGetAttributionDetailByTag).toHaveBeenCalledWith(
+      MOCK_ORG_ID,
+      "promo_code",
+      "100% discount",
+      30,
+      undefined,
+    );
   });
 });

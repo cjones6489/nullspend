@@ -87,7 +87,7 @@ describe("GET /api/cost-events/attribution", () => {
     const body = await res.json();
     expect(body.data.groups).toHaveLength(2);
     expect(body.data.groups[0].key).toBe("Production Key");
-    expect(body.data.groups[0].keyId).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(body.data.groups[0].keyId).toBe("ns_key_550e8400-e29b-41d4-a716-446655440000");
     expect(body.data.groups[0].totalCostMicrodollars).toBe(8_000_000);
     expect(body.data.groups[0].requestCount).toBe(40);
     expect(body.data.groups[0].avgCostMicrodollars).toBe(200_000);
@@ -302,9 +302,9 @@ describe("GET /api/cost-events/attribution", () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
     // Return 3 rows with limit=2 → hasMore=true (route fetches limit+1=3, gets 3, slices to 2)
     const threeRows = [
-      { apiKeyId: "k1", keyName: "Key 1", totalCostMicrodollars: 3_000_000, requestCount: 10 },
-      { apiKeyId: "k2", keyName: "Key 2", totalCostMicrodollars: 2_000_000, requestCount: 5 },
-      { apiKeyId: "k3", keyName: "Key 3", totalCostMicrodollars: 1_000_000, requestCount: 2 },
+      { apiKeyId: "550e8400-e29b-41d4-a716-446655440001", keyName: "Key 1", totalCostMicrodollars: 3_000_000, requestCount: 10 },
+      { apiKeyId: "550e8400-e29b-41d4-a716-446655440002", keyName: "Key 2", totalCostMicrodollars: 2_000_000, requestCount: 5 },
+      { apiKeyId: "550e8400-e29b-41d4-a716-446655440003", keyName: "Key 3", totalCostMicrodollars: 1_000_000, requestCount: 2 },
     ];
     mockedGetAttributionByKey.mockResolvedValue(threeRows);
 
@@ -321,7 +321,7 @@ describe("GET /api/cost-events/attribution", () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
     // Return 1 row with limit=2 → hasMore=false (route fetches limit+1=3, gets 1)
     mockedGetAttributionByKey.mockResolvedValue([
-      { apiKeyId: "k1", keyName: "Key 1", totalCostMicrodollars: 3_000_000, requestCount: 10 },
+      { apiKeyId: "550e8400-e29b-41d4-a716-446655440001", keyName: "Key 1", totalCostMicrodollars: 3_000_000, requestCount: 10 },
     ]);
 
     const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&limit=2");
@@ -336,7 +336,7 @@ describe("GET /api/cost-events/attribution", () => {
   it("avgCostMicrodollars is 0 when requestCount is 0", async () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
     mockedGetAttributionByKey.mockResolvedValue([
-      { apiKeyId: "k1", keyName: "Idle Key", totalCostMicrodollars: 0, requestCount: 0 },
+      { apiKeyId: "550e8400-e29b-41d4-a716-446655440001", keyName: "Idle Key", totalCostMicrodollars: 0, requestCount: 0 },
     ]);
 
     const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key");

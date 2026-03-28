@@ -102,7 +102,7 @@ describe("attributionGroupSchema", () => {
     });
 
     expect(result.key).toBe("Production Key");
-    expect(result.keyId).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(result.keyId).toBe("ns_key_550e8400-e29b-41d4-a716-446655440000");
     expect(result.totalCostMicrodollars).toBe(8_000_000);
   });
 

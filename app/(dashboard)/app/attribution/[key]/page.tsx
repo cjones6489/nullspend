@@ -56,7 +56,7 @@ export default function AttributionDetailPage() {
   const searchParams = useSearchParams();
   const [period, setPeriod] = useState<Period>("30d");
 
-  const key = decodeURIComponent(params.key);
+  const key = params.key;
   const groupBy = searchParams.get("groupBy") ?? "api_key";
 
   const { data, isLoading, isError } = useAttributionDetail(groupBy, key, period);

@@ -7,6 +7,7 @@ import {
   getAttributionDetailByKey,
   getAttributionDetailByTag,
 } from "@/lib/cost-events/aggregate-cost-events";
+import { fromExternalIdOfType } from "@/lib/ids/prefixed-id";
 import { handleRouteError } from "@/lib/utils/http";
 import {
   attributionDetailQuerySchema,
@@ -43,18 +44,27 @@ export async function GET(
 
     const periodDays = parseInt(period, 10);
     const opts = excludeEstimatedRaw === "true" ? { excludeEstimated: true } : undefined;
-    const decodedKey = decodeURIComponent(key);
 
     let daily: Array<{ date: string; cost: number; count: number }>;
     let models: Array<{ model: string; cost: number; count: number }>;
 
     if (groupBy === "api_key") {
-      const apiKeyId = decodedKey === "(no key)" ? null : decodedKey;
+      let apiKeyId: string | null = null;
+      if (key !== "(no key)") {
+        try {
+          apiKeyId = fromExternalIdOfType("key", key);
+        } catch {
+          return NextResponse.json(
+            { error: { code: "invalid_key", message: "Invalid API key ID format.", details: null } },
+            { status: 400 },
+          );
+        }
+      }
       const result = await getAttributionDetailByKey(orgId, apiKeyId, periodDays, opts);
       daily = result.daily;
       models = result.models;
     } else {
-      const result = await getAttributionDetailByTag(orgId, groupBy, decodedKey, periodDays, opts);
+      const result = await getAttributionDetailByTag(orgId, groupBy, key, periodDays, opts);
       daily = result.daily;
       models = result.models;
     }
@@ -65,7 +75,7 @@ export async function GET(
       requestCount > 0 ? Math.round(totalCostMicrodollars / requestCount) : 0;
 
     const response = attributionDetailResponseSchema.parse({
-      key: decodedKey,
+      key,
       totalCostMicrodollars,
       requestCount,
       avgCostMicrodollars,
