@@ -92,22 +92,25 @@ export class NullSpend {
   // -------------------------------------------------------------------------
 
   async createAction(input: CreateActionInput): Promise<CreateActionResponse> {
-    return this.request<CreateActionResponse>("POST", "/api/actions", input);
+    const res = await this.request<{ data: CreateActionResponse }>("POST", "/api/actions", input);
+    return res.data;
   }
 
   async getAction(id: string): Promise<ActionRecord> {
-    return this.request<ActionRecord>("GET", `/api/actions/${id}`);
+    const res = await this.request<{ data: ActionRecord }>("GET", `/api/actions/${id}`);
+    return res.data;
   }
 
   async markResult(
     id: string,
     input: MarkResultInput,
   ): Promise<MutateActionResponse> {
-    return this.request<MutateActionResponse>(
+    const res = await this.request<{ data: MutateActionResponse }>(
       "POST",
       `/api/actions/${id}/result`,
       input,
     );
+    return res.data;
   }
 
   // -------------------------------------------------------------------------
@@ -115,11 +118,12 @@ export class NullSpend {
   // -------------------------------------------------------------------------
 
   async reportCost(event: CostEventInput): Promise<ReportCostResponse> {
-    return this.request<ReportCostResponse>(
+    const res = await this.request<{ data: ReportCostResponse }>(
       "POST",
       "/api/cost-events",
       event,
     );
+    return res.data;
   }
 
   async reportCostBatch(
@@ -172,7 +176,8 @@ export class NullSpend {
 
   /** Get a spend summary for the given period (7d, 30d, or 90d). */
   async getCostSummary(period: CostSummaryPeriod = "30d"): Promise<CostSummaryResponse> {
-    return this.request<CostSummaryResponse>("GET", `/api/cost-events/summary?period=${period}`);
+    const res = await this.request<{ data: CostSummaryResponse }>("GET", `/api/cost-events/summary?period=${period}`);
+    return res.data;
   }
 
   /** List recent cost events with optional pagination. */
@@ -369,12 +374,7 @@ export class NullSpend {
 
       if (response.ok) {
         try {
-          const json = await response.json();
-          // Unwrap { data: T } envelope used by all NullSpend API routes
-          if (json && typeof json === "object" && "data" in json) {
-            return json.data as T;
-          }
-          return json as T;
+          return (await response.json()) as T;
         } catch {
           throw new NullSpendError(
             `${method} ${path} returned invalid JSON`,

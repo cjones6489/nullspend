@@ -81,7 +81,7 @@ describe("NullSpend constructor", () => {
   });
 
   it("strips trailing slashes from baseUrl", () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "1", status: "pending" }));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: { id: "1", status: "pending" } }));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000///",
       apiKey: "ns_live_sk_x",
@@ -102,7 +102,7 @@ describe("NullSpend constructor", () => {
 describe("createAction", () => {
   it("sends correct request and returns id + status", async () => {
     const expected: CreateActionResponse = { id: "act-1", status: "pending" };
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(expected, 201));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: expected }, 201));
     const client = createClient(fetchFn);
 
     const result = await client.createAction({
@@ -129,7 +129,7 @@ describe("createAction", () => {
   });
 
   it("sends default NullSpend-Version header", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "pending" }));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: { id: "act-1", status: "pending" } }));
     const client = createClient(fetchFn);
 
     await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
@@ -139,7 +139,7 @@ describe("createAction", () => {
   });
 
   it("sends custom apiVersion when configured", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "pending" }));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: { id: "act-1", status: "pending" } }));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
       apiKey: "ns_live_sk_test0001",
@@ -157,7 +157,7 @@ describe("createAction", () => {
   it("persists NullSpend-Version header across retries", async () => {
     const fetchFn = vi.fn()
       .mockResolvedValueOnce(new Response("", { status: 500, statusText: "Internal Server Error" }))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "pending" }));
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "pending" } }));
     const client = createRetryClient(fetchFn);
 
     await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
@@ -202,7 +202,7 @@ describe("createAction", () => {
 describe("getAction", () => {
   it("fetches action by id", async () => {
     const action = mockAction({ id: "act-42", status: "approved" });
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(action));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: action }));
     const client = createClient(fetchFn);
 
     const result = await client.getAction("act-42");
@@ -221,7 +221,7 @@ describe("getAction", () => {
 describe("markResult", () => {
   it("posts result for executed action", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ id: "act-1", status: "executed" }),
+      jsonResponse({ data: { id: "act-1", status: "executed" } }),
     );
     const client = createClient(fetchFn);
 
@@ -238,7 +238,7 @@ describe("markResult", () => {
 
   it("posts error for failed action", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ id: "act-1", status: "failed" }),
+      jsonResponse({ data: { id: "act-1", status: "failed" } }),
     );
     const client = createClient(fetchFn);
 
@@ -260,7 +260,7 @@ describe("markResult", () => {
 describe("waitForDecision", () => {
   it("returns immediately when action is already approved", async () => {
     const approved = mockAction({ status: "approved" });
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(approved));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: approved }));
     const client = createClient(fetchFn);
 
     const result = await client.waitForDecision("act-1", {
@@ -278,9 +278,9 @@ describe("waitForDecision", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(pending))
-      .mockResolvedValueOnce(jsonResponse(pending))
-      .mockResolvedValueOnce(jsonResponse(approved));
+      .mockResolvedValueOnce(jsonResponse({ data: pending }))
+      .mockResolvedValueOnce(jsonResponse({ data: pending }))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }));
 
     const client = createClient(fetchFn);
     const onPoll = vi.fn();
@@ -298,7 +298,7 @@ describe("waitForDecision", () => {
 
   it("throws TimeoutError when deadline passes", async () => {
     const fetchFn = vi.fn().mockImplementation(() =>
-      Promise.resolve(jsonResponse(mockAction({ status: "pending" }))),
+      Promise.resolve(jsonResponse({ data: mockAction({ status: "pending" }) })),
     );
     const client = createClient(fetchFn);
 
@@ -312,7 +312,7 @@ describe("waitForDecision", () => {
 
   it("returns on terminal statuses like rejected", async () => {
     const rejected = mockAction({ status: "rejected" });
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(rejected));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: rejected }));
     const client = createClient(fetchFn);
 
     const result = await client.waitForDecision("act-1", {
@@ -337,13 +337,13 @@ describe("proposeAndWait", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision poll 1
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult (executing)
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult (executed)
-      .mockResolvedValueOnce(jsonResponse(markResp));
+      .mockResolvedValueOnce(jsonResponse({ data: markResp }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockResolvedValue({ sent: true });
@@ -368,8 +368,8 @@ describe("proposeAndWait", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
-      .mockResolvedValueOnce(jsonResponse(rejected));
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: rejected }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn();
@@ -395,13 +395,13 @@ describe("proposeAndWait", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult (executing)
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult (failed)
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "failed" }));
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "failed" } }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockRejectedValue(new Error("SMTP timeout"));
@@ -430,9 +430,9 @@ describe("proposeAndWait", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
-      .mockResolvedValueOnce(jsonResponse(approved))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult(failed) also fails
       .mockResolvedValueOnce(jsonResponse({ error: { code: "server_down", message: "server down", details: null } }, 500));
 
@@ -457,10 +457,10 @@ describe("proposeAndWait", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
-      .mockResolvedValueOnce(jsonResponse(approved))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-ctx-1", status: "executing" }))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-ctx-1", status: "executed" }));
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-ctx-1", status: "executing" } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-ctx-1", status: "executed" } }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockResolvedValue({ done: true });
@@ -483,10 +483,10 @@ describe("proposeAndWait", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
-      .mockResolvedValueOnce(jsonResponse(approved))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-compat", status: "executing" }))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-compat", status: "executed" }));
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-compat", status: "executing" } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-compat", status: "executed" } }));
 
     const client = createClient(fetchFn);
 
@@ -508,10 +508,10 @@ describe("proposeAndWait", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
-      .mockResolvedValueOnce(jsonResponse(approved))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executed" }));
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executed" } }));
 
     const client = createClient(fetchFn);
     const result = await client.proposeAndWait({
@@ -537,11 +537,11 @@ describe("proposeAndWait", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult(executing) → ok
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult(executed) → 500
       .mockResolvedValueOnce(jsonResponse({ error: { code: "server_down", message: "server down", details: null } }, 500));
 
@@ -610,7 +610,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ status: "approved" }) }));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -624,7 +624,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, status))
-      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ status: "approved" }) }));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -638,7 +638,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "rate_limited", message: "rate limited", details: null } }, 429, { "Retry-After": "1" }))
-      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ status: "approved" }) }));
 
     const client = createRetryClient(fetchFn);
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -654,7 +654,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockRejectedValueOnce(new TypeError("fetch failed"))
-      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ status: "approved" }) }));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -668,7 +668,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockRejectedValueOnce(new DOMException("signal timed out", "TimeoutError"))
-      .mockResolvedValueOnce(jsonResponse(mockAction({ status: "approved" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ status: "approved" }) }));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -732,7 +732,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "wait", message: "wait", details: null } }, 429, { "Retry-After": "2" }))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn);
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -745,7 +745,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "wait", message: "wait", details: null } }, 429, { "Retry-After": "60" }))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn);
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -758,7 +758,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "wait", message: "wait", details: null } }, 429, { "Retry-After": "0" }))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn);
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -780,7 +780,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(retryResponse)
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -795,7 +795,7 @@ describe("Retry behavior", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: 200 });
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -843,7 +843,7 @@ describe("Config validation", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: -100 });
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -857,7 +857,7 @@ describe("Config validation", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: 0 });
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -873,7 +873,7 @@ describe("Config validation", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn, { retryBaseDelayMs: NaN });
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -892,7 +892,7 @@ describe("Config validation", () => {
   });
 
   it("requestTimeoutMs: NaN → falls back to default (30000)", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: mockAction() }));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
       apiKey: "ns_live_sk_test0001",
@@ -909,7 +909,7 @@ describe("Config validation", () => {
   });
 
   it("requestTimeoutMs: Infinity → falls back to default (30000)", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: mockAction() }));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
       apiKey: "ns_live_sk_test0001",
@@ -926,7 +926,7 @@ describe("Config validation", () => {
   });
 
   it("requestTimeoutMs: 0 → disables timeout (no signal)", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: mockAction() }));
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
       apiKey: "ns_live_sk_test0001",
@@ -953,7 +953,7 @@ describe("onRetry callback", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 502))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
@@ -984,7 +984,7 @@ describe("onRetry callback", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
@@ -1004,7 +1004,7 @@ describe("onRetry callback", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
@@ -1042,7 +1042,7 @@ describe("onRetry callback", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
@@ -1158,7 +1158,7 @@ describe("Retry delay progression", () => {
 
 describe("Idempotency", () => {
   it("POST (createAction) includes Idempotency-Key matching /^ns_/", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "pending" }, 201));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: { id: "act-1", status: "pending" } }, 201));
     const client = createClient(fetchFn);
 
     await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
@@ -1168,7 +1168,7 @@ describe("Idempotency", () => {
   });
 
   it("GET (getAction) does NOT include Idempotency-Key", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse(mockAction()));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: mockAction() }));
     const client = createClient(fetchFn);
 
     await client.getAction("act-1");
@@ -1181,7 +1181,7 @@ describe("Idempotency", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "pending" }, 201));
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "pending" } }, 201));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -1196,8 +1196,8 @@ describe("Idempotency", () => {
 
   it("different createAction calls get different keys", async () => {
     const fetchFn = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "pending" }, 201))
-      .mockResolvedValueOnce(jsonResponse({ id: "act-2", status: "pending" }, 201));
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "pending" } }, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-2", status: "pending" } }, 201));
     const client = createClient(fetchFn);
 
     await client.createAction({ agentId: "a", actionType: "send_email", payload: {} });
@@ -1209,7 +1209,7 @@ describe("Idempotency", () => {
   });
 
   it("markResult includes Idempotency-Key", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ id: "act-1", status: "executed" }));
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ data: { id: "act-1", status: "executed" } }));
     const client = createClient(fetchFn);
 
     await client.markResult("act-1", { status: "executed" });
@@ -1232,13 +1232,13 @@ describe("Integration", () => {
       .fn()
       // createAction: 500 first, then success
       .mockResolvedValueOnce(jsonResponse({ error: { code: "fail", message: "fail", details: null } }, 500))
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult (executing)
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult (executed)
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executed" }));
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executed" } }));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -1263,10 +1263,10 @@ describe("Integration", () => {
     const fetchFn = vi
       .fn()
       // poll 1: pending
-      .mockResolvedValueOnce(jsonResponse(pending))
+      .mockResolvedValueOnce(jsonResponse({ data: pending }))
       // poll 2: 502 then approved on retry
       .mockResolvedValueOnce(jsonResponse({ error: { code: "bad_gateway", message: "bad gateway", details: null } }, 502))
-      .mockResolvedValueOnce(jsonResponse(approved));
+      .mockResolvedValueOnce(jsonResponse({ data: approved }));
 
     const client = createRetryClient(fetchFn);
     vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -1305,15 +1305,15 @@ describe("proposeAndWait 409 resilience", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult(executing) → 409
       .mockResolvedValueOnce(jsonResponse({ error: { code: "already_executing", message: "already executing", details: null } }, 409))
       // getAction fallback → executing
-      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executing" })))
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ id: "act-1", status: "executing" }) }))
       // markResult(executed)
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executed" }));
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executed" } }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockResolvedValue({ done: true });
@@ -1338,15 +1338,15 @@ describe("proposeAndWait 409 resilience", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult(executing) → ok
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult(executed) → 409
       .mockResolvedValueOnce(jsonResponse({ error: { code: "already_executed", message: "already executed", details: null } }, 409))
       // getAction fallback → executed
-      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executed" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ id: "act-1", status: "executed" }) }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockResolvedValue("result-value");
@@ -1370,13 +1370,13 @@ describe("proposeAndWait 409 resilience", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult(executing) → 409
       .mockResolvedValueOnce(jsonResponse({ error: { code: "conflict", message: "conflict", details: null } }, 409))
       // getAction fallback → approved (not executing!)
-      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "approved" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ id: "act-1", status: "approved" }) }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn();
@@ -1402,15 +1402,15 @@ describe("proposeAndWait 409 resilience", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult(executing) → ok
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult(executed) → 409
       .mockResolvedValueOnce(jsonResponse({ error: { code: "conflict", message: "conflict", details: null } }, 409))
       // getAction fallback → executing (not executed!)
-      .mockResolvedValueOnce(jsonResponse(mockAction({ id: "act-1", status: "executing" })));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction({ id: "act-1", status: "executing" }) }));
 
     const client = createClient(fetchFn);
     const execute = vi.fn().mockResolvedValue("result");
@@ -1438,11 +1438,11 @@ describe("proposeAndWait 409 resilience", () => {
     const fetchFn = vi
       .fn()
       // createAction
-      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
       // waitForDecision
-      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
       // markResult(executing) → ok
-      .mockResolvedValueOnce(jsonResponse({ id: "act-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-1", status: "executing" } }))
       // markResult(executed) → 409
       .mockResolvedValueOnce(jsonResponse({ error: { code: "conflict", message: "conflict", details: null } }, 409))
       // getAction fallback → network error
@@ -1478,7 +1478,7 @@ describe("Retry-After on 503", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "maintenance", message: "maintenance", details: null } }, 503, { "Retry-After": "2" }))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn);
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -1493,7 +1493,7 @@ describe("Retry-After on 503", () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "maintenance", message: "maintenance", details: null } }, 503))
-      .mockResolvedValueOnce(jsonResponse(mockAction()));
+      .mockResolvedValueOnce(jsonResponse({ data: mockAction() }));
 
     const client = createRetryClient(fetchFn);
     const sleepSpy = vi.spyOn(client as any, "sleep").mockResolvedValue(undefined);
@@ -1533,7 +1533,7 @@ describe("Non-JSON error body", () => {
 describe("reportCost", () => {
   it("sends POST to /api/cost-events with correct body", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ id: "ce-1", createdAt: "2026-03-18T00:00:00Z" }, 201),
+      jsonResponse({ data: { id: "ce-1", createdAt: "2026-03-18T00:00:00Z" } }, 201),
     );
     const client = createClient(fetchFn);
 
@@ -1564,7 +1564,7 @@ describe("reportCost", () => {
 
   it("includes Idempotency-Key header", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ id: "ce-1", createdAt: "2026-03-18T00:00:00Z" }, 201),
+      jsonResponse({ data: { id: "ce-1", createdAt: "2026-03-18T00:00:00Z" } }, 201),
     );
     const client = createClient(fetchFn);
 
@@ -1582,7 +1582,7 @@ describe("reportCost", () => {
 
   it("includes optional fields when provided", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ id: "ce-2", createdAt: "2026-03-18T00:00:00Z" }, 201),
+      jsonResponse({ data: { id: "ce-2", createdAt: "2026-03-18T00:00:00Z" } }, 201),
     );
     const client = createClient(fetchFn);
 
@@ -1612,7 +1612,7 @@ describe("reportCost", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: { code: "rate_limit", message: "rate limit", details: null } }, 429, { "Retry-After": "1" }))
       .mockResolvedValueOnce(
-        jsonResponse({ id: "ce-3", createdAt: "2026-03-18T00:00:00Z" }, 201),
+        jsonResponse({ data: { id: "ce-3", createdAt: "2026-03-18T00:00:00Z" } }, 201),
       );
 
     const client = createRetryClient(fetchFn);
@@ -1942,7 +1942,7 @@ describe("client-side batching", () => {
 
   it("reportCost() still works normally with batching configured", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ id: "ce-1", createdAt: "2026-01-01T00:00:00Z" }),
+      jsonResponse({ data: { id: "ce-1", createdAt: "2026-01-01T00:00:00Z" } }),
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
@@ -1963,7 +1963,7 @@ describe("client-side batching", () => {
 
   it("reportCost() still returns ReportCostResponse with batching configured", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
-      jsonResponse({ id: "ce-2", createdAt: "2026-03-18T00:00:00Z" }),
+      jsonResponse({ data: { id: "ce-2", createdAt: "2026-03-18T00:00:00Z" } }),
     );
     const client = new NullSpend({
       baseUrl: "http://localhost:3000",
