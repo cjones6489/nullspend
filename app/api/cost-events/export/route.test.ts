@@ -121,6 +121,37 @@ describe("GET /api/cost-events/export", () => {
     expect(csv).toContain('"gpt-4o,""special"""');
   });
 
+  it("escapes commas in session IDs and other string fields", async () => {
+    mockDbChain([
+      {
+        id: "evt-3",
+        requestId: "req-003",
+        provider: "openai",
+        model: "gpt-4o",
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedInputTokens: 0,
+        reasoningTokens: 0,
+        costMicrodollars: 0,
+        durationMs: null,
+        source: "proxy",
+        sessionId: "task,with,commas",
+        traceId: null,
+        keyName: 'Key "Production"',
+        createdAt: new Date("2026-03-27T14:00:00.000Z"),
+      },
+    ]);
+
+    const res = await GET(new Request("http://localhost:3000/api/cost-events/export"));
+    const csv = await res.text();
+    const dataLine = csv.split("\n")[1];
+
+    // Session ID with commas should be quoted
+    expect(dataLine).toContain('"task,with,commas"');
+    // Key name with quotes should be double-escaped
+    expect(dataLine).toContain('"Key ""Production"""');
+  });
+
   it("passes filters through to query", async () => {
     const chain = mockDbChain([]);
 

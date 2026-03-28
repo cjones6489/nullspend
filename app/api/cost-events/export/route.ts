@@ -52,9 +52,9 @@ function rowToCSV(row: {
   createdAt: Date;
 }): string {
   return [
-    row.id,
-    row.requestId,
-    row.provider,
+    escapeCSV(row.id),
+    escapeCSV(row.requestId),
+    escapeCSV(row.provider),
     escapeCSV(row.model),
     String(row.inputTokens),
     String(row.outputTokens),
@@ -63,10 +63,10 @@ function rowToCSV(row: {
     String(row.costMicrodollars),
     (row.costMicrodollars / 1_000_000).toFixed(6),
     row.durationMs != null ? String(row.durationMs) : "",
-    row.source,
-    row.sessionId ?? "",
-    row.traceId ?? "",
-    row.keyName ? escapeCSV(row.keyName) : "",
+    escapeCSV(row.source),
+    escapeCSV(row.sessionId ?? ""),
+    escapeCSV(row.traceId ?? ""),
+    escapeCSV(row.keyName ?? ""),
     row.createdAt.toISOString(),
   ].join(",");
 }
