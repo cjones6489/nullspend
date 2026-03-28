@@ -562,9 +562,238 @@ Headers: `NullSpend-Version: 2026-04-01`
 
 ---
 
+## Cost Attribution
+
+`GET /api/cost-events/attribution`
+
+Group cost events by API key or any tag value. Returns ranked groups with total cost, request count, and average cost per request. Supports JSON and CSV export.
+
+See [Cost Attribution](../features/cost-attribution.md) for the feature overview and common patterns.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `groupBy` | query | string | Yes | `"api_key"` for API key grouping, or any tag key name (e.g., `"customer_id"`). 1–100 chars. |
+| `period` | query | string | No | `"7d"`, `"30d"`, or `"90d"`. Default `"30d"`. |
+| `limit` | query | integer | No | Max groups returned. 1–500, default 100. |
+| `excludeEstimated` | query | string | No | `"true"` or `"false"`. Default `"false"`. Excludes cancelled stream estimates. |
+| `format` | query | string | No | `"json"` (default) or `"csv"`. CSV returns a downloadable file. |
+
+### Request
+
+```bash
+# Group by API key (requires dashboard session)
+curl "https://nullspend.com/api/cost-events/attribution?groupBy=api_key&period=30d" \
+  -H "Cookie: session=..."
+
+# Group by customer_id tag
+curl "https://nullspend.com/api/cost-events/attribution?groupBy=customer_id&period=30d" \
+  -H "Cookie: session=..."
+
+# CSV export
+curl "https://nullspend.com/api/cost-events/attribution?groupBy=api_key&format=csv" \
+  -H "Cookie: session=..." \
+  -o attribution.csv
+```
+
+### Response
+
+**200 OK** (JSON):
+
+```json
+{
+  "data": {
+    "groups": [
+      {
+        "key": "production-key",
+        "keyId": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
+        "totalCostMicrodollars": 8500000,
+        "requestCount": 4200,
+        "avgCostMicrodollars": 2024
+      },
+      {
+        "key": "staging-key",
+        "keyId": "ns_key_aabbccdd-eeff-0011-2233-445566778899",
+        "totalCostMicrodollars": 1200000,
+        "requestCount": 800,
+        "avgCostMicrodollars": 1500
+      }
+    ],
+    "period": "30d",
+    "groupBy": "api_key",
+    "totalGroups": 2,
+    "hasMore": false,
+    "totals": {
+      "totalCostMicrodollars": 9700000,
+      "totalRequests": 5000
+    }
+  }
+}
+```
+
+When `groupBy` is a tag key, `keyId` is `null` for all groups:
+
+```json
+{
+  "data": {
+    "groups": [
+      {
+        "key": "acme-corp",
+        "keyId": null,
+        "totalCostMicrodollars": 6000000,
+        "requestCount": 3000,
+        "avgCostMicrodollars": 2000
+      }
+    ],
+    "period": "30d",
+    "groupBy": "customer_id",
+    "totalGroups": 1,
+    "hasMore": false,
+    "totals": {
+      "totalCostMicrodollars": 9700000,
+      "totalRequests": 5000
+    }
+  }
+}
+```
+
+`totals` contains org-wide aggregates for the period (not just the visible groups). `hasMore` is `true` when more groups exist beyond the limit.
+
+**200 OK** (CSV, when `format=csv`):
+
+```
+key,key_id,total_cost_microdollars,total_cost_usd,request_count,avg_cost_microdollars,avg_cost_usd
+production-key,ns_key_11223344-5566-7788-99aa-bbccddeeff00,8500000,8.500000,4200,2024,0.002024
+staging-key,ns_key_aabbccdd-eeff-0011-2233-445566778899,1200000,1.200000,800,1500,0.001500
+```
+
+Headers: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="nullspend-attribution-api_key-2026-03-28.csv"`
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `validation_error` | 400 | Missing groupBy, invalid period, limit out of range, invalid format |
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
+
+---
+
+## Attribution Detail
+
+`GET /api/cost-events/attribution/:key`
+
+Retrieve daily spend trend and model breakdown for a single attribution group.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `key` | path | string | Yes | API key ID (`ns_key_*`) or tag value. Use `(no key)` for events without an API key. |
+| `groupBy` | query | string | Yes | Must match the groupBy used in the list endpoint. `"api_key"` or a tag key name. |
+| `period` | query | string | No | `"7d"`, `"30d"`, or `"90d"`. Default `"30d"`. |
+| `excludeEstimated` | query | string | No | `"true"` or `"false"`. Default `"false"`. |
+
+### Request
+
+```bash
+# API key detail (requires dashboard session)
+curl "https://nullspend.com/api/cost-events/attribution/ns_key_11223344-5566-7788-99aa-bbccddeeff00?groupBy=api_key" \
+  -H "Cookie: session=..."
+
+# Tag value detail
+curl "https://nullspend.com/api/cost-events/attribution/acme-corp?groupBy=customer_id" \
+  -H "Cookie: session=..."
+```
+
+### Response
+
+**200 OK**:
+
+```json
+{
+  "data": {
+    "key": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
+    "totalCostMicrodollars": 8500000,
+    "requestCount": 4200,
+    "avgCostMicrodollars": 2024,
+    "daily": [
+      { "date": "2026-03-27", "cost": 285000, "count": 140 },
+      { "date": "2026-03-26", "cost": 310000, "count": 155 }
+    ],
+    "models": [
+      { "model": "gpt-4o", "cost": 7200000, "count": 3600 },
+      { "model": "gpt-4o-mini", "cost": 1300000, "count": 600 }
+    ]
+  }
+}
+```
+
+`daily` is sorted by date ascending. `models` is sorted by cost descending.
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `invalid_key` | 400 | Key contains `/` or `..` (path traversal), or invalid `ns_key_*` format |
+| `validation_error` | 400 | Missing groupBy or invalid period |
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
+
+---
+
+## Tag Keys
+
+`GET /api/cost-events/tag-keys`
+
+Returns distinct non-internal tag key names from the last 7 days of cost events. Used to populate the Attribution page's groupBy dropdown.
+
+### Authentication
+
+Session (dashboard)
+
+### Request
+
+```bash
+# Requires dashboard session
+curl "https://nullspend.com/api/cost-events/tag-keys" \
+  -H "Cookie: session=..."
+```
+
+### Response
+
+**200 OK**:
+
+```json
+{
+  "data": ["customer_id", "environment", "feature", "team"]
+}
+```
+
+Keys starting with `_ns_` (internal tags) are excluded. Maximum 50 keys returned. Sorted alphabetically.
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
+
+---
+
 ## Related
 
-- [Cost Tracking](../features/cost-tracking.md) — feature overview
+- [Cost Attribution](../features/cost-attribution.md) — feature overview and common patterns
+- [Cost Tracking](../features/cost-tracking.md) — how costs are calculated
 - [Tags](../features/tags.md) — tagging and filtering
 - [Error Reference](errors.md) — full error catalog
 - [Custom Headers](custom-headers.md) — header reference

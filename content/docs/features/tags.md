@@ -82,11 +82,17 @@ NullSpend uses the `_ns_` prefix for internal tags. You cannot set these — the
 | `_ns_estimated` | `"true"` | Cost is an estimate (stream was cancelled before completion) |
 | `_ns_cancelled` | `"true"` | The streaming response was cancelled by the client |
 
+## Cost Attribution by Tags
+
+The [Attribution](cost-attribution.md) page lets you group costs by any tag value. Select a tag key from the dropdown and see a ranked breakdown of spend per value — with daily trends, model breakdowns, and CSV export.
+
+This is the primary way to answer "how much does each customer cost me?" when you're tagging requests with `customer_id` or similar keys.
+
 ## Querying by Tags
 
 ### Dashboard
 
-Filter cost events by tag key-value pairs in the analytics view.
+Filter cost events by tag key-value pairs in the analytics view, or use the [Attribution](cost-attribution.md) page for aggregated per-tag-value breakdowns.
 
 ### API
 
@@ -154,6 +160,7 @@ Tag budgets support the same features as user and API key budgets: reset interva
 
 ## Related
 
+- [Cost Attribution](cost-attribution.md) — group and drill into costs by any tag dimension
 - [Custom Headers Reference](../api-reference/custom-headers.md#x-nullspend-tags) — header format and validation
 - [Cost Tracking](cost-tracking.md) — how costs are calculated
 - [Budgets](budgets.md) — enforce spending limits including per-tag budgets

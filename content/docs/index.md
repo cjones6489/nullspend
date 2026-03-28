@@ -34,6 +34,7 @@ Add an `X-NullSpend-Key` header and every request is tracked, budgeted, and visi
 | Feature | What It Does |
 |---|---|
 | **[Cost tracking](features/cost-tracking.md)** | Per-request cost calculation for every model — input, output, cached, and reasoning tokens |
+| **[Cost attribution](features/cost-attribution.md)** | Break down AI spend by customer, team, or feature. Group by API key or any tag, drill into daily trends, export CSV for finance |
 | **[Budget enforcement](features/budgets.md)** | Hard spending ceilings. The proxy returns `429` before the request reaches the provider |
 | **[Velocity limits](features/budgets.md#velocity-limits)** | Detect runaway loops — block when spend rate exceeds a threshold within a time window |
 | **[Session limits](features/budgets.md#session-limits)** | Per-conversation spend caps tied to a session ID |

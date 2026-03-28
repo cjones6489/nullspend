@@ -2,6 +2,7 @@
   "title": "Features",
   "pages": [
     "cost-tracking",
+    "cost-attribution",
     "budgets",
     "velocity-limits",
     "session-limits",
