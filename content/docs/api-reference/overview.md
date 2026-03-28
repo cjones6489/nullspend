@@ -71,6 +71,29 @@ Session-authenticated endpoints require a browser session cookie from the NullSp
 | `POST /api/orgs/:orgId/invitations` | Invite member | Session (admin+) |
 | `DELETE /api/orgs/:orgId/invitations/:id` | Revoke invitation | Session (admin+) |
 | `POST /api/invite/accept` | Accept invitation | Session |
+| `GET /api/cost-events/attribution` | Cost attribution | Session (viewer) |
+| `GET /api/cost-events/attribution/:key` | Attribution detail | Session (viewer) |
+| `GET /api/cost-events/tag-keys` | Distinct tag keys | Session (viewer) |
+| `GET /api/cost-events/export` | CSV export | Session (viewer) |
+| `GET /api/cost-events/:id/bodies` | Request/response bodies | Session (viewer) |
+| `GET /api/audit-log` | Audit log | Session (admin) |
+| `GET /api/tool-costs` | List tool costs | API key or Session (viewer) |
+| `POST /api/tool-costs` | Create/update tool cost | Session (admin) |
+| `DELETE /api/tool-costs/:id` | Reset tool cost | Session (admin) |
+| `POST /api/tool-costs/discover` | Discover tools | API key |
+| `PATCH /api/keys/:id` | Update key | Session (admin) |
+| `POST /api/orgs/:orgId/leave` | Leave org | Session (member) |
+| `POST /api/orgs/:orgId/transfer` | Transfer ownership | Session (owner) |
+| `GET /api/auth/session` | Current session | Session |
+| `POST /api/auth/switch-org` | Switch active org | Session |
+| `GET /api/slack/config` | Get Slack config | Session (admin) |
+| `POST /api/slack/config` | Set Slack config | Session (admin) |
+| `POST /api/slack/test` | Test Slack webhook | Session (admin) |
+| `POST /api/stripe/checkout` | Create checkout | Session (owner) |
+| `POST /api/stripe/portal` | Billing portal | Session (owner) |
+| `GET /api/stripe/subscription` | Get subscription | Session (viewer) |
+| `POST /api/stripe/subscription/sync` | Sync subscription | Session |
+| `GET /api/health` | Health check | Public |
 
 ---
 
@@ -87,7 +110,8 @@ All NullSpend IDs use the `ns_` prefix followed by a type identifier and a UUID:
 | `ns_wh_` | Webhook endpoint |
 | `ns_del_` | Webhook delivery |
 | `ns_usr_` | User |
-| `ns_tc_` | Trace |
+| `ns_tc_` | Tool cost |
+| `ns_org_` | Organization |
 
 ---
 

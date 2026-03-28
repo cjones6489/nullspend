@@ -33,7 +33,7 @@ API key
 | `durationMs` | body | integer | No | Request duration in milliseconds. |
 | `sessionId` | body | string | No | Session identifier. Max 200 chars. |
 | `traceId` | body | string | No | 128-bit hex trace ID (`^[0-9a-f]{32}$`). |
-| `eventType` | body | string | No | `"llm"`, `"tool"`, or `"custom"`. Default `"custom"`. |
+| `eventType` | body | string | No | `"llm"`, `"tool"`, or `"custom"`. Default `"custom"`. Stored but not returned in list/detail responses — used for internal filtering and analytics. |
 | `toolName` | body | string | No | Tool name for tool-use events. Max 200 chars. |
 | `toolServer` | body | string | No | Tool server name. Max 200 chars. |
 | `tags` | body | object | No | Key-value metadata. Max 10 keys, key 1–64 chars (`^[a-zA-Z0-9_-]+$`), value max 256 chars. |
@@ -561,6 +561,56 @@ Headers: `NullSpend-Version: 2026-04-01`
 |---|---|---|
 | `validation_error` | 400 | Invalid period or excludeEstimated value |
 | `authentication_required` | 401 | No valid session |
+
+---
+
+## Export Cost Events
+
+`GET /api/cost-events/export`
+
+Export cost events as a CSV file. Returns up to 10,000 rows sorted by `createdAt DESC`. Supports the same filters as the list endpoint.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `provider` | query | string | No | Filter by provider. |
+| `model` | query | string | No | Filter by model name. |
+| `apiKeyId` | query | string | No | Filter by API key (`ns_key_*`). |
+| `source` | query | string | No | Filter by source: `"proxy"`, `"api"`, or `"mcp"`. |
+| `sessionId` | query | string | No | Filter by session ID. |
+| `traceId` | query | string | No | Filter by trace ID (32 hex chars). |
+| `tag.*` | query | string | No | JSONB containment filter. Example: `tag.environment=production`. |
+
+### Request
+
+```bash
+# Requires dashboard session cookie
+curl "https://nullspend.com/api/cost-events/export?provider=openai" \
+  -H "Cookie: session=..." \
+  -o cost-events.csv
+```
+
+### Response
+
+**200 OK** — CSV file download.
+
+Headers: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="nullspend-cost-events-2026-03-28.csv"`
+
+CSV columns: `id`, `request_id`, `provider`, `model`, `input_tokens`, `output_tokens`, `cached_input_tokens`, `reasoning_tokens`, `cost_microdollars`, `cost_usd`, `duration_ms`, `source`, `session_id`, `trace_id`, `key_name`, `created_at`.
+
+The `cost_usd` column is a convenience conversion (`cost_microdollars / 1,000,000`).
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
 
 ---
 
