@@ -361,4 +361,53 @@ describe("GET /api/cost-events/attribution", () => {
     expect(body.data.groups[0].keyId).toBeNull();
     expect(body.data.groups[0].key).toBe("(no key)");
   });
+
+  it('maps null and "null" tag values to "(none)" for tag groupBy', async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionByTag.mockResolvedValue([
+      { tagValue: "null", totalCostMicrodollars: 2_000_000, requestCount: 10 },
+      { tagValue: null, totalCostMicrodollars: 1_000_000, requestCount: 5 },
+    ]);
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=customer_id");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Both null and "null" (from .mapWith(String)) should normalize to "(none)"
+    expect(body.data.groups[0].key).toBe("(none)");
+    expect(body.data.groups[1].key).toBe("(none)");
+  });
+
+  it("returns 500 when getTotals throws but group query would succeed", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID, role: "owner" });
+    mockedGetAttributionByKey.mockResolvedValue(mockKeyRows);
+    mockedGetTotals.mockRejectedValue(new Error("totals query failed"));
+
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key");
+    const res = await GET(req);
+
+    // Currently fails the whole request — documenting existing behavior
+    expect(res.status).toBe(500);
+  });
+
+  it("passes excludeEstimated option to getTotals", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&excludeEstimated=true");
+    await GET(req);
+
+    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_ORG_ID, 30, { excludeEstimated: true });
+  });
+
+  it("passes matching period to getTotals", async () => {
+    setupMocks();
+
+    const req = new Request("http://localhost/api/cost-events/attribution?groupBy=api_key&period=7d");
+    await GET(req);
+
+    expect(mockedGetTotals).toHaveBeenCalledWith(MOCK_ORG_ID, 7, undefined);
+  });
 });

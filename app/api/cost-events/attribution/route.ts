@@ -15,6 +15,11 @@ import {
   attributionResponseSchema,
 } from "@/lib/validations/attribution";
 
+function normalizeTagValue(v: string | null): string {
+  if (v == null || v === "null") return "(none)";
+  return v;
+}
+
 const CSV_HEADERS = [
   "key",
   "key_id",
@@ -62,7 +67,9 @@ export async function GET(request: Request) {
       const cost = r.totalCostMicrodollars;
       const count = r.requestCount;
       return {
-        key: isKeyRow ? (r as { keyName: string }).keyName : ((r as { tagValue: string | null }).tagValue ?? "(none)"),
+        key: isKeyRow
+          ? (r as { keyName: string }).keyName
+          : normalizeTagValue((r as { tagValue: string | null }).tagValue),
         keyId: isKeyRow ? (r as { apiKeyId: string | null }).apiKeyId : null,
         totalCostMicrodollars: cost,
         requestCount: count,

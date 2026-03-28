@@ -96,7 +96,7 @@ export default function AttributionPage() {
 
   const groupByOptions = [
     { value: "api_key", label: "API Key" },
-    ...(tagKeys ?? []).map((k) => ({ value: k, label: `Tag: ${k}` })),
+    ...(tagKeys ?? []).filter((k) => k !== "api_key").map((k) => ({ value: k, label: `Tag: ${k}` })),
   ];
 
   return (
