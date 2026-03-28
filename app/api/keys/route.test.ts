@@ -31,28 +31,33 @@ const mockSelectList = vi.fn();
 const mockSelectCount = vi.fn().mockResolvedValue([{ value: 0 }]);
 const mockInsertReturning = vi.fn();
 
+const makeTxLike = () => ({
+  select: () => ({
+    from: () => ({
+      where: () => {
+        // Must be both thenable (for POST count query) and chainable (for GET list query)
+        const countPromise = mockSelectCount();
+        return {
+          then: countPromise.then.bind(countPromise),
+          catch: countPromise.catch.bind(countPromise),
+          orderBy: () => ({
+            limit: mockSelectList,
+          }),
+        };
+      },
+    }),
+  }),
+  insert: () => ({
+    values: () => ({
+      returning: mockInsertReturning,
+    }),
+  }),
+});
+
 vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(() => ({
-    select: () => ({
-      from: () => ({
-        where: () => {
-          // Must be both thenable (for POST count query) and chainable (for GET list query)
-          const countPromise = mockSelectCount();
-          return {
-            then: countPromise.then.bind(countPromise),
-            catch: countPromise.catch.bind(countPromise),
-            orderBy: () => ({
-              limit: mockSelectList,
-            }),
-          };
-        },
-      }),
-    }),
-    insert: () => ({
-      values: () => ({
-        returning: mockInsertReturning,
-      }),
-    }),
+    ...makeTxLike(),
+    transaction: vi.fn(async (cb: (tx: ReturnType<typeof makeTxLike>) => Promise<unknown>) => cb(makeTxLike())),
   })),
 }));
 

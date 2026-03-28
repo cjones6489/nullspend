@@ -90,35 +90,36 @@ export async function POST(request: Request) {
     const input = createApiKeyInputSchema.parse(body);
 
     const db = getDb();
-
-    const [{ value: activeKeyCount }] = await db
-      .select({ value: count() })
-      .from(apiKeys)
-      .where(and(eq(apiKeys.orgId, orgId), isNull(apiKeys.revokedAt)));
-
     const tierInfo = await resolveOrgTier(orgId);
-    assertCountBelowLimit(tierInfo, "maxApiKeys", activeKeyCount, "active API keys");
-
     const rawKey = generateRawKey();
 
-    const [created] = await db
-      .insert(apiKeys)
-      .values({
-        userId,
-        orgId,
-        name: input.name,
-        keyHash: hashKey(rawKey),
-        keyPrefix: extractPrefix(rawKey),
-        apiVersion: CURRENT_VERSION,
-        defaultTags: input.defaultTags,
-      })
-      .returning({
-        id: apiKeys.id,
-        name: apiKeys.name,
-        keyPrefix: apiKeys.keyPrefix,
-        defaultTags: apiKeys.defaultTags,
-        createdAt: apiKeys.createdAt,
-      });
+    const [created] = await db.transaction(async (tx) => {
+      const [{ value: activeKeyCount }] = await tx
+        .select({ value: count() })
+        .from(apiKeys)
+        .where(and(eq(apiKeys.orgId, orgId), isNull(apiKeys.revokedAt)));
+
+      assertCountBelowLimit(tierInfo, "maxApiKeys", activeKeyCount, "active API keys");
+
+      return tx
+        .insert(apiKeys)
+        .values({
+          userId,
+          orgId,
+          name: input.name,
+          keyHash: hashKey(rawKey),
+          keyPrefix: extractPrefix(rawKey),
+          apiVersion: CURRENT_VERSION,
+          defaultTags: input.defaultTags,
+        })
+        .returning({
+          id: apiKeys.id,
+          name: apiKeys.name,
+          keyPrefix: apiKeys.keyPrefix,
+          defaultTags: apiKeys.defaultTags,
+          createdAt: apiKeys.createdAt,
+        });
+    });
 
     console.info(
       `[NullSpend] API key created: userId=${userId}, keyId=${created.id}, name="${created.name}"`,
