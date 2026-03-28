@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
+import { escapeCSV } from "@/lib/utils/csv";
 import { handleRouteError } from "@/lib/utils/http";
 import { apiKeys, costEvents } from "@nullspend/db";
 
@@ -26,13 +27,6 @@ const CSV_HEADERS = [
   "key_name",
   "created_at",
 ] as const;
-
-function escapeCSV(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
 
 function rowToCSV(row: {
   id: string;
