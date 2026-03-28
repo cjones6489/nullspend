@@ -143,6 +143,7 @@ export async function handleChatCompletions(
       }
       const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
       clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
+      if (ctx.sessionId) clientHeaders.set("X-NullSpend-Session", ctx.sessionId);
       const { totalMs, overheadMs } = appendTimingHeaders(clientHeaders, ctx.requestStartMs, upstreamDurationMs, ctx.stepTiming);
       emitMetric("proxy_latency", { provider: "openai", model: requestModel, overheadMs, upstreamMs: upstreamDurationMs, totalMs, streaming: false });
       writeLatencyDataPoint(env, "openai", requestModel, false, upstreamResponse.status, overheadMs, upstreamDurationMs, totalMs, undefined, ctx.auth.userId);
@@ -162,6 +163,7 @@ export async function handleChatCompletions(
 
     const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
     clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
+    if (ctx.sessionId) clientHeaders.set("X-NullSpend-Session", ctx.sessionId);
 
     if (isStreaming) {
       if (ctx.stepTiming) ctx.stepTiming.ttfbMs = upstreamDurationMs;
