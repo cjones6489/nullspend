@@ -1,5 +1,5 @@
 from nullspend.client import NullSpend
-from nullspend.errors import NullSpendError, TimeoutError, RejectedError
+from nullspend.errors import NullSpendError, PollTimeoutError, TimeoutError, RejectedError
 from nullspend.types import (
     ActionRecord,
     ActionStatus,
@@ -23,7 +23,8 @@ from nullspend.types import (
 __all__ = [
     "NullSpend",
     "NullSpendError",
-    "TimeoutError",
+    "PollTimeoutError",
+    "TimeoutError",  # backward-compatible alias for PollTimeoutError
     "RejectedError",
     "ActionRecord",
     "ActionStatus",

@@ -121,15 +121,21 @@ class CostEventInput:
 @dataclass
 class CostEventRecord:
     id: str
+    request_id: str
+    api_key_id: str | None
     provider: str
     model: str
     input_tokens: int
     output_tokens: int
+    cached_input_tokens: int
+    reasoning_tokens: int
     cost_microdollars: int
     duration_ms: int | None
     session_id: str | None
     trace_id: str | None
+    source: str
     tags: dict[str, str] | None
+    key_name: str | None
     created_at: str
 
 

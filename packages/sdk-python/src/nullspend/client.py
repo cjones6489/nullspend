@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import asyncio
 import json
-import math
 import random
 import uuid
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
-from nullspend.errors import NullSpendError, RejectedError, TimeoutError
+from nullspend.errors import NullSpendError, RejectedError, PollTimeoutError
 from nullspend.types import (
     ActionRecord,
     BudgetStatus,
@@ -86,15 +85,21 @@ def _parse_action_record(data: dict[str, Any]) -> ActionRecord:
 def _parse_cost_event(data: dict[str, Any]) -> CostEventRecord:
     return CostEventRecord(
         id=data["id"],
+        request_id=data.get("requestId", ""),
+        api_key_id=data.get("apiKeyId"),
         provider=data["provider"],
         model=data["model"],
         input_tokens=data.get("inputTokens", 0),
         output_tokens=data.get("outputTokens", 0),
+        cached_input_tokens=data.get("cachedInputTokens", 0),
+        reasoning_tokens=data.get("reasoningTokens", 0),
         cost_microdollars=data.get("costMicrodollars", 0),
         duration_ms=data.get("durationMs"),
         session_id=data.get("sessionId"),
         trace_id=data.get("traceId"),
+        source=data.get("source", ""),
         tags=data.get("tags"),
+        key_name=data.get("keyName"),
         created_at=data.get("createdAt", ""),
     )
 
@@ -234,41 +239,58 @@ class NullSpend:
     # ---- Cost Reporting ----
 
     def report_cost(self, event: CostEventInput) -> dict[str, Any]:
-        body = _to_camel_dict({
+        body: dict[str, Any] = {
             "provider": event.provider,
             "model": event.model,
-            "input_tokens": event.input_tokens,
-            "output_tokens": event.output_tokens,
-            "cost_microdollars": event.cost_microdollars,
-            "cached_input_tokens": event.cached_input_tokens or None,
-            "reasoning_tokens": event.reasoning_tokens or None,
-            "duration_ms": event.duration_ms,
-            "session_id": event.session_id,
-            "trace_id": event.trace_id,
-            "event_type": event.event_type,
-            "tool_name": event.tool_name,
-            "tool_server": event.tool_server,
-            "tags": event.tags,
-        })
+            "inputTokens": event.input_tokens,
+            "outputTokens": event.output_tokens,
+            "costMicrodollars": event.cost_microdollars,
+        }
+        if event.cached_input_tokens:
+            body["cachedInputTokens"] = event.cached_input_tokens
+        if event.reasoning_tokens:
+            body["reasoningTokens"] = event.reasoning_tokens
+        if event.duration_ms is not None:
+            body["durationMs"] = event.duration_ms
+        if event.session_id is not None:
+            body["sessionId"] = event.session_id
+        if event.trace_id is not None:
+            body["traceId"] = event.trace_id
+        if event.event_type is not None:
+            body["eventType"] = event.event_type
+        if event.tool_name is not None:
+            body["toolName"] = event.tool_name
+        if event.tool_server is not None:
+            body["toolServer"] = event.tool_server
+        if event.tags is not None:
+            body["tags"] = event.tags
         return self._request("POST", "/api/cost-events", body)
 
     def report_cost_batch(self, events: list[CostEventInput]) -> dict[str, Any]:
         batch = []
         for event in events:
-            batch.append(_to_camel_dict({
+            item: dict[str, Any] = {
                 "provider": event.provider,
                 "model": event.model,
-                "input_tokens": event.input_tokens,
-                "output_tokens": event.output_tokens,
-                "cost_microdollars": event.cost_microdollars,
-                "cached_input_tokens": event.cached_input_tokens or None,
-                "reasoning_tokens": event.reasoning_tokens or None,
-                "duration_ms": event.duration_ms,
-                "session_id": event.session_id,
-                "trace_id": event.trace_id,
-                "event_type": event.event_type,
-                "tags": event.tags,
-            }))
+                "inputTokens": event.input_tokens,
+                "outputTokens": event.output_tokens,
+                "costMicrodollars": event.cost_microdollars,
+            }
+            if event.cached_input_tokens:
+                item["cachedInputTokens"] = event.cached_input_tokens
+            if event.reasoning_tokens:
+                item["reasoningTokens"] = event.reasoning_tokens
+            if event.duration_ms is not None:
+                item["durationMs"] = event.duration_ms
+            if event.session_id is not None:
+                item["sessionId"] = event.session_id
+            if event.trace_id is not None:
+                item["traceId"] = event.trace_id
+            if event.event_type is not None:
+                item["eventType"] = event.event_type
+            if event.tags is not None:
+                item["tags"] = event.tags
+            batch.append(item)
         return self._request("POST", "/api/cost-events/batch", {"events": batch})
 
     # ---- Budget Status ----
@@ -296,7 +318,7 @@ class NullSpend:
                 params["limit"] = str(options.limit)
             if options.cursor is not None:
                 params["cursor"] = options.cursor
-        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        qs = urlencode(params) if params else ""
         path = f"/api/cost-events?{qs}" if qs else "/api/cost-events"
         data = self._request("GET", path)
         return ListCostEventsResponse(
@@ -344,7 +366,7 @@ class NullSpend:
                 break
             time.sleep(min(poll_interval_s, remaining))
 
-        raise TimeoutError(action_id, timeout_ms)
+        raise PollTimeoutError(action_id, timeout_ms)
 
     # ---- High-level Orchestrator ----
 

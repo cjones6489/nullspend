@@ -12,7 +12,7 @@ class NullSpendError(Exception):
         self.code = code
 
 
-class TimeoutError(NullSpendError):
+class PollTimeoutError(NullSpendError):
     """Raised when polling for a decision exceeds the timeout."""
 
     def __init__(self, action_id: str, timeout_ms: int):
@@ -21,6 +21,10 @@ class TimeoutError(NullSpendError):
         )
         self.action_id = action_id
         self.timeout_ms = timeout_ms
+
+
+# Backward-compatible alias — prefer PollTimeoutError to avoid shadowing builtins
+TimeoutError = PollTimeoutError
 
 
 class RejectedError(NullSpendError):

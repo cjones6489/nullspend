@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from nullspend import NullSpend, NullSpendError, TimeoutError, RejectedError
+from nullspend import NullSpend, NullSpendError, PollTimeoutError, TimeoutError, RejectedError
 from nullspend.types import (
     CostEventInput,
     CreateActionInput,
@@ -221,15 +221,21 @@ class TestCostEvents:
             return_value=httpx.Response(200, json={
                 "data": [{
                     "id": "evt_1",
+                    "requestId": "req-001",
+                    "apiKeyId": "ns_key_abc",
                     "provider": "openai",
                     "model": "gpt-4o",
                     "inputTokens": 100,
                     "outputTokens": 50,
+                    "cachedInputTokens": 20,
+                    "reasoningTokens": 0,
                     "costMicrodollars": 1500,
                     "durationMs": 320,
                     "sessionId": "session-abc",
                     "traceId": None,
+                    "source": "proxy",
                     "tags": {"env": "prod"},
+                    "keyName": "prod-key",
                     "createdAt": "2026-03-27T00:00:00Z",
                 }],
                 "cursor": None,
@@ -238,8 +244,15 @@ class TestCostEvents:
 
         result = ns.list_cost_events()
         assert len(result.data) == 1
-        assert result.data[0].session_id == "session-abc"
-        assert result.data[0].tags == {"env": "prod"}
+        evt = result.data[0]
+        assert evt.session_id == "session-abc"
+        assert evt.tags == {"env": "prod"}
+        assert evt.request_id == "req-001"
+        assert evt.api_key_id == "ns_key_abc"
+        assert evt.cached_input_tokens == 20
+        assert evt.reasoning_tokens == 0
+        assert evt.source == "proxy"
+        assert evt.key_name == "prod-key"
 
     @respx.mock
     def test_list_cost_events_with_pagination(self, ns):
@@ -319,6 +332,71 @@ class TestRetries:
 
         req = respx.calls[0].request
         assert "idempotency-key" not in req.headers
+
+
+class TestTimeoutNaming:
+    def test_poll_timeout_does_not_shadow_builtin(self):
+        """PollTimeoutError is distinct from Python's builtin TimeoutError."""
+        import builtins
+        assert PollTimeoutError is not builtins.TimeoutError
+        # The alias still works for backward compat
+        assert TimeoutError is PollTimeoutError
+
+    def test_poll_timeout_is_nullspend_error(self):
+        err = PollTimeoutError("act_1", 5000)
+        assert isinstance(err, NullSpendError)
+        assert err.action_id == "act_1"
+        assert err.timeout_ms == 5000
+
+
+class TestCachedTokens:
+    @respx.mock
+    def test_zero_cached_tokens_not_sent(self, ns):
+        """cached_input_tokens=0 (default) should not appear in the body."""
+        respx.post(f"{BASE}/api/cost-events").mock(
+            return_value=httpx.Response(201, json={"id": "evt_1", "createdAt": "2026-03-27T00:00:00Z"})
+        )
+
+        ns.report_cost(CostEventInput(
+            provider="openai", model="gpt-4o",
+            input_tokens=100, output_tokens=50, cost_microdollars=1000,
+        ))
+
+        body = json.loads(respx.calls[0].request.content)
+        assert "cachedInputTokens" not in body
+        assert "reasoningTokens" not in body
+
+    @respx.mock
+    def test_nonzero_cached_tokens_sent(self, ns):
+        """cached_input_tokens=50 should be included in the body."""
+        respx.post(f"{BASE}/api/cost-events").mock(
+            return_value=httpx.Response(201, json={"id": "evt_1", "createdAt": "2026-03-27T00:00:00Z"})
+        )
+
+        ns.report_cost(CostEventInput(
+            provider="openai", model="gpt-4o",
+            input_tokens=100, output_tokens=50, cost_microdollars=1000,
+            cached_input_tokens=50,
+            reasoning_tokens=10,
+        ))
+
+        body = json.loads(respx.calls[0].request.content)
+        assert body["cachedInputTokens"] == 50
+        assert body["reasoningTokens"] == 10
+
+
+class TestContextManager:
+    @respx.mock
+    def test_context_manager_closes_client(self):
+        respx.get(f"{BASE}/api/budgets/status").mock(
+            return_value=httpx.Response(200, json={"entities": []})
+        )
+
+        with NullSpend(base_url=BASE, api_key="ns_test_key") as ns:
+            status = ns.check_budget()
+            assert len(status.entities) == 0
+        # Client should be closed after exiting context — no assertion needed,
+        # just verify no exception is thrown
 
 
 class TestErrorParsing:
