@@ -72,7 +72,10 @@ Set up cost tracking in under 2 minutes:
 
 - [OpenAI Quickstart](quickstart/openai.md)
 - [Anthropic Quickstart](quickstart/anthropic.md)
+- [Use with AI Coding Assistants](guides/ai-coding-assistant.md) — copy-paste blocks for Cursor, Claude Code, Copilot
 - [Migrating from Helicone](guides/migrating-from-helicone.md)
+
+**For AI agents:** fetch [`/llms.txt`](https://nullspend.com/llms.txt) for the complete machine-readable API reference.
 
 ## API Reference
 
