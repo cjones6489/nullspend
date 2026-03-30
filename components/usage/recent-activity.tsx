@@ -165,7 +165,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
           onValueChange={(v) => setSelectedBudgetStatus(v ?? ALL_BUDGET_STATUS)}
         >
           <SelectTrigger className="h-8 w-[130px] text-xs">
-            <SelectValue />
+            <SelectValue placeholder="All status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL_BUDGET_STATUS}>All status</SelectItem>
