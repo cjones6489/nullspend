@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, History, Key, Puzzle, Users, Webhook } from "lucide-react";
+import { Building2, History, Puzzle, Users, Webhook } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 
 const settingsNav = [
   { href: "/app/settings/general", label: "General", icon: Building2 },
-  { href: "/app/settings/api-keys", label: "API Keys", icon: Key },
   { href: "/app/settings/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/app/settings/integrations", label: "Integrations", icon: Puzzle },
   { href: "/app/settings/members", label: "Members", icon: Users },
@@ -29,7 +28,7 @@ export default function SettingsLayout({
           Settings
         </h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Manage your API keys, webhooks, and integrations.
+          Manage your webhooks, integrations, and team.
         </p>
       </div>
 

@@ -1,7 +1,5 @@
-"use client";
-
-import { ApiKeysSection } from "@/components/settings/api-keys-section";
+import { redirect } from "next/navigation";
 
 export default function ApiKeysPage() {
-  return <ApiKeysSection />;
+  redirect("/app/keys");
 }
