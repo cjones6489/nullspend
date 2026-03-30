@@ -39,8 +39,8 @@ function useSessionList() {
       const qs = params.toString();
       return apiGet(`/api/cost-events/sessions${qs ? `?${qs}` : ""}`);
     },
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.cursor,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.cursor ?? undefined,
   });
 }
 
