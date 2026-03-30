@@ -2,13 +2,17 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Loader2, Plus, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useUpdateApiKey, useRevokeApiKey } from "@/lib/queries/api-keys";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { PolicyEditor } from "@/components/keys/policy-editor";
+import { KeyBudgetSection } from "@/components/keys/key-budget-section";
 import { RevokeKeyDialog } from "@/components/keys/revoke-key-dialog";
 import type { ApiKeyRecord } from "@/lib/validations/api-keys";
 
@@ -37,6 +41,18 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
       toast.success("Policy updated");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update policy");
+    }
+  };
+
+  const handleUpdateTags = async (tags: Record<string, string>) => {
+    try {
+      await updateKey.mutateAsync({
+        id: apiKey.id,
+        input: { defaultTags: tags },
+      });
+      toast.success("Tags updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update tags");
     }
   };
 
@@ -76,27 +92,7 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </div>
         </div>
 
-        {/* Default Tags */}
-        {Object.keys(apiKey.defaultTags).length > 0 && (
-          <Card className="border-border/50 bg-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Default Tags
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(apiKey.defaultTags).map(([k, v]) => (
-                  <Badge key={k} variant="secondary" className="font-mono text-[11px]">
-                    {k}={v}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Policy */}
+        {/* Policy (providers + models) */}
         <Card className="border-border/50 bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -114,9 +110,29 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </CardContent>
         </Card>
 
+        {/* Budget + Velocity + Session */}
+        <KeyBudgetSection keyId={apiKey.id} canManage={canManage} />
+
+        {/* Default Tags */}
+        <Card className="border-border/50 bg-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Default Tags
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TagEditor
+              tags={apiKey.defaultTags}
+              onSave={handleUpdateTags}
+              disabled={!canManage}
+              saving={updateKey.isPending}
+            />
+          </CardContent>
+        </Card>
+
         {/* Actions */}
         {canManage && (
-          <div className="flex gap-3">
+          <div className="flex gap-3 border-t border-border/30 pt-4">
             <RevokeKeyDialog
               open={revokeOpen}
               onOpenChange={setRevokeOpen}
@@ -127,6 +143,163 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tag Editor (inline)
+// ---------------------------------------------------------------------------
+
+function TagEditor({
+  tags,
+  onSave,
+  disabled,
+  saving,
+}: {
+  tags: Record<string, string>;
+  onSave: (tags: Record<string, string>) => Promise<void>;
+  disabled?: boolean;
+  saving?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [localTags, setLocalTags] = useState<Record<string, string>>(tags);
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+
+  const tagsKey = JSON.stringify(tags);
+  const [prevTagsKey, setPrevTagsKey] = useState(tagsKey);
+  if (tagsKey !== prevTagsKey) {
+    setPrevTagsKey(tagsKey);
+    setLocalTags(tags);
+    setEditing(false);
+  }
+
+  const entries = Object.entries(editing ? localTags : tags);
+
+  const addTag = () => {
+    const k = newKey.trim();
+    const v = newValue.trim();
+    if (!k) return;
+    if (k.startsWith("_ns_")) {
+      toast.error("Tags starting with _ns_ are reserved");
+      return;
+    }
+    setLocalTags((prev) => ({ ...prev, [k]: v }));
+    setNewKey("");
+    setNewValue("");
+  };
+
+  const removeTag = (key: string) => {
+    setLocalTags((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  if (!editing) {
+    return (
+      <div>
+        {entries.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground">
+            No default tags. Tags are merged into every request from this key.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {entries.map(([k, v]) => (
+              <Badge key={k} variant="secondary" className="font-mono text-[11px]">
+                {k}={v}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {!disabled && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={() => setEditing(true)}
+          >
+            {entries.length === 0 ? "Add Tags" : "Edit Tags"}
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {entries.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {entries.map(([k, v]) => (
+            <Badge key={k} variant="secondary" className="gap-1 font-mono text-[11px]">
+              {k}={v}
+              <button
+                type="button"
+                onClick={() => removeTag(k)}
+                className="ml-0.5 rounded-full p-0.5 hover:bg-foreground/10"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Input
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          placeholder="key"
+          className="h-8 w-32 font-mono text-xs"
+        />
+        <Input
+          value={newValue}
+          onChange={(e) => setNewValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addTag();
+            }
+          }}
+          placeholder="value"
+          className="h-8 flex-1 font-mono text-xs"
+        />
+        <Button type="button" variant="outline" size="sm" className="h-8 gap-1" onClick={addTag}>
+          <Plus className="h-3 w-3" />
+        </Button>
+      </div>
+
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          onClick={async () => {
+            await onSave(localTags);
+            setEditing(false);
+          }}
+          disabled={saving}
+          className="gap-1.5"
+        >
+          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+          Save Tags
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setLocalTags(tags);
+            setEditing(false);
+          }}
+          disabled={saving}
+        >
+          Cancel
+        </Button>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground">
+        Max 10 tags. Keys must be alphanumeric/underscore/hyphen. Tags starting with _ns_ are reserved.
+      </p>
     </div>
   );
 }
