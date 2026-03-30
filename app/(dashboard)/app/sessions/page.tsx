@@ -53,7 +53,7 @@ export default function SessionsPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-foreground">Sessions</h1>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Agent sessions tracked via the x-nullspend-session header.
+          Track cost and usage across agent conversations.
         </p>
       </div>
 
