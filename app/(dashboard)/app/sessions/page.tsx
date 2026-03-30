@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { MessageSquare } from "lucide-react";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { Loader2, MessageSquare } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -24,16 +25,28 @@ interface SessionSummary {
   lastEventAt: string;
 }
 
+interface SessionsPage {
+  data: SessionSummary[];
+  cursor: string | null;
+}
+
 function useSessionList() {
-  return useQuery<{ data: SessionSummary[] }>({
+  return useInfiniteQuery({
     queryKey: ["sessions", "list"],
-    queryFn: () => apiGet("/api/cost-events/sessions"),
+    queryFn: ({ pageParam }): Promise<SessionsPage> => {
+      const params = new URLSearchParams();
+      if (pageParam) params.set("cursor", pageParam);
+      const qs = params.toString();
+      return apiGet(`/api/cost-events/sessions${qs ? `?${qs}` : ""}`);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.cursor,
   });
 }
 
 export default function SessionsPage() {
-  const { data, isLoading, error } = useSessionList();
-  const sessions = data?.data ?? [];
+  const { data, isLoading, error, hasNextPage, fetchNextPage, isFetchingNextPage } = useSessionList();
+  const sessions = data?.pages.flatMap((p) => p.data) ?? [];
 
   return (
     <div className="space-y-6">
@@ -69,51 +82,68 @@ export default function SessionsPage() {
       )}
 
       {sessions.length > 0 && (
-        <div className="rounded-md border border-border/50">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border/30 hover:bg-transparent">
-                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Session ID
-                </TableHead>
-                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Requests
-                </TableHead>
-                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Cost
-                </TableHead>
-                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Last Activity
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sessions.map((session) => (
-                <TableRow key={session.sessionId} className="border-border/30">
-                  <TableCell>
-                    <Link
-                      href={`/app/sessions/${encodeURIComponent(session.sessionId)}`}
-                      className="font-mono text-[13px] text-foreground hover:text-primary transition-colors"
-                    >
-                      {session.sessionId.length > 40
-                        ? `${session.sessionId.slice(0, 40)}...`
-                        : session.sessionId}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="tabular-nums text-[13px]">
-                    {session.eventCount}
-                  </TableCell>
-                  <TableCell className="font-mono tabular-nums text-[13px]">
-                    {formatMicrodollars(session.totalCostMicrodollars)}
-                  </TableCell>
-                  <TableCell className="text-[13px] text-muted-foreground">
-                    {formatRelativeTime(session.lastEventAt)}
-                  </TableCell>
+        <>
+          <div className="rounded-md border border-border/50">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border/30 hover:bg-transparent">
+                  <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Session ID
+                  </TableHead>
+                  <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Requests
+                  </TableHead>
+                  <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Cost
+                  </TableHead>
+                  <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Last Activity
+                  </TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {sessions.map((session) => (
+                  <TableRow key={session.sessionId} className="border-border/30">
+                    <TableCell>
+                      <Link
+                        href={`/app/sessions/${encodeURIComponent(session.sessionId)}`}
+                        className="font-mono text-[13px] text-foreground hover:text-primary transition-colors"
+                      >
+                        {session.sessionId.length > 40
+                          ? `${session.sessionId.slice(0, 40)}...`
+                          : session.sessionId}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="tabular-nums text-[13px]">
+                      {session.eventCount}
+                    </TableCell>
+                    <TableCell className="font-mono tabular-nums text-[13px]">
+                      {formatMicrodollars(session.totalCostMicrodollars)}
+                    </TableCell>
+                    <TableCell className="text-[13px] text-muted-foreground">
+                      {formatRelativeTime(session.lastEventAt)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {hasNextPage && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className="gap-1.5"
+              >
+                {isFetchingNextPage && <Loader2 className="h-3 w-3 animate-spin" />}
+                Load more
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
