@@ -126,16 +126,29 @@ export default function BudgetsPage() {
             Budgets
           </h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            Manage spending limits for your account and API keys.
+            Manage spending limits for your account, API keys, and tags.
           </p>
         </div>
-        {canCreate && <BudgetDialog open={createOpen} onOpenChange={setCreateOpen} />}
+        {canCreate && budgets.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Set Budget
+          </button>
+        )}
       </div>
 
-      {canManage && (
+      {/* Create dialog (no trigger — opened by header button or empty state CTA) */}
+      <BudgetDialog open={createOpen} onOpenChange={setCreateOpen} />
+
+      {/* Edit dialog (no trigger — opened by row menu) */}
+      {canManage && editBudget && (
         <BudgetDialog
-          key={editBudget?.entityId ?? "edit-closed"}
-          open={!!editBudget}
+          key={editBudget.entityId}
+          open={true}
           onOpenChange={(open) => { if (!open) setEditBudget(undefined); }}
           editBudget={editBudget}
         />
@@ -665,18 +678,14 @@ function BudgetDialog({
   const canSubmit =
     limitDollars.trim() !== "" &&
     parseFloat(limitDollars) > 0 &&
-    (isEdit || (entityType === "user" ? !!userId : !!selectedKeyId));
+    (isEdit || (
+      entityType === "user" ? !!userId :
+      entityType === "tag" ? !!(tagKey.trim() && tagValue.trim()) :
+      !!selectedKeyId
+    ));
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      {!isEdit && (
-        <DialogTrigger
-          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Set Budget
-        </DialogTrigger>
-      )}
       <DialogContent>
         <DialogTitle>{isEdit ? "Edit Budget" : "Set Budget"}</DialogTitle>
         <DialogDescription>
