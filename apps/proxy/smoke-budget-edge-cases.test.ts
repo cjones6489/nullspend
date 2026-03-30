@@ -87,10 +87,9 @@ describe("Budget edge cases (LiteLLM bug avoidance)", () => {
     await sql`
       INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
       VALUES (${NULLSPEND_SMOKE_USER_ID!}, ${orgId}, ${entityType}, ${entityId}, ${maxBudgetMicrodollars}, ${spendMicrodollars}, 'strict_block')
-      ON CONFLICT (user_id, entity_type, entity_id)
+      ON CONFLICT (org_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = ${spendMicrodollars},
-                    org_id = ${orgId},
                     updated_at = NOW()
     `;
   }

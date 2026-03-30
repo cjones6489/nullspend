@@ -89,11 +89,10 @@ describe("End-to-end session limit enforcement", () => {
     await sql`
       INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
       VALUES (${userId}, ${orgId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', ${sessionLimitMicrodollars})
-      ON CONFLICT (user_id, entity_type, entity_id)
+      ON CONFLICT (org_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = 0,
                     session_limit_microdollars = ${sessionLimitMicrodollars},
-                    org_id = ${orgId},
                     updated_at = NOW()
     `;
 
@@ -115,11 +114,10 @@ describe("End-to-end session limit enforcement", () => {
     await sql`
       INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy, session_limit_microdollars)
       VALUES (${userId}, ${orgId}, 'user', ${userId}, ${maxBudgetMicrodollars}, 0, 'strict_block', NULL)
-      ON CONFLICT (user_id, entity_type, entity_id)
+      ON CONFLICT (org_id, entity_type, entity_id)
       DO UPDATE SET max_budget_microdollars = ${maxBudgetMicrodollars},
                     spend_microdollars = 0,
                     session_limit_microdollars = NULL,
-                    org_id = ${orgId},
                     updated_at = NOW()
     `;
 

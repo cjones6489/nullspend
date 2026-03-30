@@ -77,9 +77,10 @@ describe("Mandate enforcement smoke tests", () => {
     allowedModels: string[] | null,
     allowedProviders: string[] | null,
   ) {
+    // postgres.js: pass arrays directly for text[] columns; pass null for NULL
     await sql`
       UPDATE api_keys
-      SET allowed_models = ${allowedModels as any}, allowed_providers = ${allowedProviders as any}
+      SET allowed_models = ${allowedModels}, allowed_providers = ${allowedProviders}
       WHERE id = ${NULLSPEND_SMOKE_KEY_ID!}
     `;
     // Flush proxy auth cache
@@ -281,7 +282,7 @@ describe("Policy endpoint smoke tests", () => {
   it("returns restrictions after setting them", async () => {
     await sql`
       UPDATE api_keys
-      SET allowed_models = ${{"{gpt-4o-mini,gpt-4o}"}}, allowed_providers = ${{"{openai}"}}
+      SET allowed_models = ${["gpt-4o-mini", "gpt-4o"]}, allowed_providers = ${["openai"]}
       WHERE id = ${NULLSPEND_SMOKE_KEY_ID!}
     `;
     await syncBudget(orgId, "api_key", NULLSPEND_SMOKE_KEY_ID!);
