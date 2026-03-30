@@ -473,7 +473,7 @@ export function MembersSection() {
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
-              {membersData?.data.length ?? 0} members
+              {membersData?.data.length ?? 0} {(membersData?.data.length ?? 0) === 1 ? "member" : "members"}
             </span>
           </div>
         </CardHeader>

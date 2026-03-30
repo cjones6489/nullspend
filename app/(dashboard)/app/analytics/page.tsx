@@ -59,15 +59,13 @@ export default function AnalyticsPage() {
         </TabsList>
       </Tabs>
 
-      {isLoading && <AnalyticsSkeleton />}
-
       {isError && (
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
           Failed to load analytics. Please try again.
         </div>
       )}
 
-      {isEmpty && (
+      {(isEmpty || (isLoading && !data)) && !isError && (
         <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border/50 py-20 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/50">
             <BarChart3 className="h-5 w-5 text-muted-foreground" />
@@ -82,7 +80,7 @@ export default function AnalyticsPage() {
             </p>
           </div>
           <Link
-            href="/app/settings/api-keys"
+            href="/app/keys"
             className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Create API Key
