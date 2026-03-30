@@ -6,6 +6,7 @@ import { KeyList } from "@/components/keys/key-list";
 import { KeyDetail } from "@/components/keys/key-detail";
 import { CreateKeyDialog } from "@/components/keys/create-key-dialog";
 import { useApiKeys } from "@/lib/queries/api-keys";
+import { useBudgets } from "@/lib/queries/budgets";
 import { useSession } from "@/lib/queries/session";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -14,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function KeysPage() {
   const { data, isLoading, error } = useApiKeys();
   const { data: session } = useSession();
+  const { data: budgetsData } = useBudgets();
   const searchParams = useSearchParams();
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(
     searchParams.get("selected"),
@@ -88,6 +90,7 @@ export default function KeysPage() {
         <div className="flex flex-1 gap-4 overflow-hidden">
           <KeyList
             keys={keys}
+            budgets={budgetsData?.data ?? []}
             selectedKeyId={selectedKeyId}
             onSelect={setSelectedKeyId}
           />
