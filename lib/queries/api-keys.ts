@@ -4,10 +4,11 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { apiGet, apiPost, apiDelete } from "@/lib/api/client";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api/client";
 import type {
   ApiKeyRecord,
   CreateApiKeyResponse,
+  UpdateApiKeyInput,
 } from "@/lib/validations/api-keys";
 
 interface ListApiKeysResponse {
@@ -57,6 +58,31 @@ export function useCreateApiKey() {
             ...(existing?.data ?? []),
           ],
         }),
+      );
+      queryClient.invalidateQueries({ queryKey: apiKeyKeys.all });
+    },
+  });
+}
+
+export function useUpdateApiKey() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ApiKeyRecord, Error, { id: string; input: UpdateApiKeyInput }>({
+    mutationFn: async ({ id, input }) => {
+      const res = await apiPatch<{ data: ApiKeyRecord }>(`/api/keys/${id}`, input);
+      return res.data;
+    },
+    onSuccess: (updatedKey) => {
+      queryClient.setQueryData<ListApiKeysResponse | undefined>(
+        apiKeyKeys.list(),
+        (existing) =>
+          existing
+            ? {
+                data: existing.data.map((key) =>
+                  key.id === updatedKey.id ? updatedKey : key,
+                ),
+              }
+            : existing,
       );
       queryClient.invalidateQueries({ queryKey: apiKeyKeys.all });
     },

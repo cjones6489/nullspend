@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, BarChart3, BookOpen, Clock, CreditCard, DollarSign, ExternalLink, Home, Inbox, PieChart, Settings, Shield, Wrench } from "lucide-react";
+import { Activity, BarChart3, BookOpen, Clock, CreditCard, DollarSign, ExternalLink, Home, Inbox, Key, PieChart, Settings, Shield, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -20,6 +20,7 @@ const navSections: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
       { href: "/app/activity", label: "Activity", icon: Activity },
+      { href: "/app/keys", label: "Keys", icon: Key },
       { href: "/app/budgets", label: "Budgets", icon: DollarSign },
       { href: "/app/tool-costs", label: "Tool Costs", icon: Wrench },
       { href: "/app/attribution", label: "Attribution", icon: PieChart },
