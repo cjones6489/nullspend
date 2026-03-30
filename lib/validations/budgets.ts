@@ -6,11 +6,13 @@ export const budgetIdParamsSchema = z.object({
   id: nsIdInput("bgt"),
 });
 
-const entityTypeSchema = z.enum(["api_key", "user"]);
+const entityTypeSchema = z.enum(["api_key", "user", "tag"]);
 
 function entityIdPrefixForType(entityType: "api_key" | "user"): "key" | "usr" {
   return entityType === "api_key" ? "key" : "usr";
 }
+
+const TAG_ENTITY_ID_REGEX = /^[a-zA-Z0-9_-]+=.+$/;
 
 export const createBudgetInputSchema = z
   .object({
@@ -37,6 +39,33 @@ export const createBudgetInputSchema = z
     sessionLimitMicrodollars: z.number().int().positive().nullable().optional(),
   })
   .superRefine((val, ctx) => {
+    // Tag entity IDs are "key=value" strings, not prefixed UUIDs
+    if (val.entityType === "tag") {
+      if (!TAG_ENTITY_ID_REGEX.test(val.entityId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["entityId"],
+          message: 'Tag entityId must be in "key=value" format (e.g., "project=openclaw")',
+        });
+      }
+      if (val.entityId.length > 321) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["entityId"],
+          message: "Tag entityId must be 321 characters or fewer",
+        });
+      }
+      const tagKey = val.entityId.split("=")[0];
+      if (tagKey.startsWith("_ns_")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["entityId"],
+          message: "Tag keys starting with _ns_ are reserved",
+        });
+      }
+      return;
+    }
+
     const prefix = entityIdPrefixForType(val.entityType);
     try {
       fromExternalIdOfType(prefix, val.entityId);
@@ -48,16 +77,29 @@ export const createBudgetInputSchema = z
       });
     }
   })
-  .transform((val) => ({
-    ...val,
-    entityId: fromExternalIdOfType(entityIdPrefixForType(val.entityType), val.entityId),
-  }));
+  .transform((val) => {
+    // Tag entity IDs pass through as-is (not UUIDs, no prefix to strip)
+    if (val.entityType === "tag") return val;
+    return {
+      ...val,
+      entityId: fromExternalIdOfType(entityIdPrefixForType(val.entityType), val.entityId),
+    };
+  });
 
 export type CreateBudgetInput = z.infer<typeof createBudgetInputSchema>;
 
+/**
+ * Convert a raw DB entityId to the external format.
+ * - api_key: UUID → "ns_key_{uuid}"
+ * - user: UUID → "ns_usr_{uuid}"
+ * - tag: "key=value" → "key=value" (passthrough, not a UUID)
+ */
 function prefixEntityId(entityType: string, entityId: string): string {
-  const prefix = entityType === "api_key" ? "key" : "usr";
-  return toExternalId(prefix, entityId);
+  if (entityType === "tag") return entityId;
+  if (entityType === "api_key") return toExternalId("key", entityId);
+  if (entityType === "user") return toExternalId("usr", entityId);
+  // Unknown type — return as-is rather than crash the entire response
+  return entityId;
 }
 
 export const budgetResponseSchema = z

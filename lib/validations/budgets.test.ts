@@ -85,6 +85,67 @@ describe("createBudgetInputSchema", () => {
     ).toThrow(ZodError);
   });
 
+  describe("tag entity type", () => {
+    it("accepts valid tag entityId", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        entityType: "tag",
+        entityId: "project=openclaw",
+      });
+      expect(result.entityType).toBe("tag");
+      expect(result.entityId).toBe("project=openclaw");
+    });
+
+    it("passes tag entityId through without prefix transformation", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        entityType: "tag",
+        entityId: "customer=acme-corp",
+      });
+      // Tag IDs are not UUIDs, no ns_ prefix wrapping
+      expect(result.entityId).toBe("customer=acme-corp");
+    });
+
+    it("accepts tag value with equals sign", () => {
+      const result = createBudgetInputSchema.parse({
+        ...validInput,
+        entityType: "tag",
+        entityId: "query=x=1",
+      });
+      expect(result.entityId).toBe("query=x=1");
+    });
+
+    it("rejects tag entityId missing equals sign", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          entityType: "tag",
+          entityId: "no-equals-sign",
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects tag entityId with empty key", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          entityType: "tag",
+          entityId: "=value",
+        }),
+      ).toThrow(ZodError);
+    });
+
+    it("rejects tag key starting with _ns_ (reserved)", () => {
+      expect(() =>
+        createBudgetInputSchema.parse({
+          ...validInput,
+          entityType: "tag",
+          entityId: "_ns_internal=value",
+        }),
+      ).toThrow(ZodError);
+    });
+  });
+
   it("rejects unprefixed entityId", () => {
     expect(() =>
       createBudgetInputSchema.parse({ ...validInput, entityId: "not-a-uuid" }),
@@ -365,6 +426,27 @@ describe("budgetResponseSchema", () => {
   it("includes thresholdPercentages in output", () => {
     const result = budgetResponseSchema.parse(validResponse);
     expect(result.thresholdPercentages).toEqual([50, 80, 90, 95]);
+  });
+
+  it("passes tag entityId through without UUID prefix wrapping", () => {
+    const result = budgetResponseSchema.parse({
+      ...validResponse,
+      entityType: "tag",
+      entityId: "project=openclaw",
+    });
+    // Tag IDs are key=value strings, not UUIDs — no ns_ prefix
+    expect(result.entityId).toBe("project=openclaw");
+    expect(result.id).toBe("ns_bgt_550e8400-e29b-41d4-a716-446655440000");
+  });
+
+  it("handles unknown entityType without crashing", () => {
+    const result = budgetResponseSchema.parse({
+      ...validResponse,
+      entityType: "agent",
+      entityId: "some-id",
+    });
+    // Unknown types pass through rather than crash the entire response
+    expect(result.entityId).toBe("some-id");
   });
 });
 
