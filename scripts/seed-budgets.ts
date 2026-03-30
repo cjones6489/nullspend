@@ -24,7 +24,7 @@ async function main() {
   const db = drizzle(sqlClient, { schema });
 
   const existingKeys = await db
-    .select({ userId: apiKeys.userId, id: apiKeys.id, name: apiKeys.name })
+    .select({ userId: apiKeys.userId, orgId: apiKeys.orgId, id: apiKeys.id, name: apiKeys.name })
     .from(apiKeys)
     .where(isNull(apiKeys.revokedAt));
 
@@ -35,7 +35,8 @@ async function main() {
   }
 
   const userId = existingKeys[0].userId;
-  console.log(`Found user: ${userId}`);
+  const orgId = existingKeys[0].orgId;
+  console.log(`Found user: ${userId}, org: ${orgId}`);
 
   const keys = [...existingKeys];
   const seedKeyNames = ["Production Agent", "Staging Agent"];
@@ -46,6 +47,7 @@ async function main() {
       .insert(apiKeys)
       .values({
         userId,
+        orgId,
         name,
         keyHash: hashKey(rawKey),
         keyPrefix: extractPrefix(rawKey),
@@ -65,6 +67,7 @@ async function main() {
   const seedBudgets = [
     {
       userId,
+      orgId,
       entityType: "user",
       entityId: userId,
       maxBudgetMicrodollars: 50_000_000,
@@ -75,6 +78,7 @@ async function main() {
     },
     {
       userId,
+      orgId,
       entityType: "api_key",
       entityId: keys[1].id,
       maxBudgetMicrodollars: 20_000_000,
@@ -85,6 +89,7 @@ async function main() {
     },
     {
       userId,
+      orgId,
       entityType: "api_key",
       entityId: keys[2].id,
       maxBudgetMicrodollars: 100_000_000,
@@ -101,7 +106,7 @@ async function main() {
       .insert(budgets)
       .values(values)
       .onConflictDoUpdate({
-        target: [budgets.userId, budgets.entityType, budgets.entityId],
+        target: [budgets.orgId, budgets.entityType, budgets.entityId],
         set: {
           maxBudgetMicrodollars: values.maxBudgetMicrodollars,
           spendMicrodollars: values.spendMicrodollars,

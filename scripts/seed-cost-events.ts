@@ -155,7 +155,7 @@ async function main() {
   const db = drizzle(sqlClient, { schema });
 
   const existingKeys = await db
-    .select({ userId: apiKeys.userId, id: apiKeys.id, name: apiKeys.name })
+    .select({ userId: apiKeys.userId, orgId: apiKeys.orgId, id: apiKeys.id, name: apiKeys.name })
     .from(apiKeys)
     .where(isNull(apiKeys.revokedAt));
 
@@ -168,7 +168,8 @@ async function main() {
   }
 
   const userId = existingKeys[0].userId;
-  console.log(`Found user: ${userId} with ${existingKeys.length} key(s)`);
+  const orgId = existingKeys[0].orgId;
+  console.log(`Found user: ${userId}, org: ${orgId}, with ${existingKeys.length} key(s)`);
 
   const eligibleActions = await db
     .select({ id: actions.id })
@@ -232,6 +233,7 @@ async function main() {
       requestId: crypto.randomUUID(),
       apiKeyId: apiKey.id,
       userId,
+      orgId,
       provider: profile.provider,
       model: profile.model,
       inputTokens,
