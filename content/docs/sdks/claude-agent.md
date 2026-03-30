@@ -43,7 +43,8 @@ const options = withNullSpend({
 | Option | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `apiKey` | `string` | Yes | — | NullSpend API key (`ns_live_sk_...` or `ns_test_sk_...`) |
-| `budgetSessionId` | `string` | No | — | Session ID for per-conversation budget enforcement |
+| `budgetSessionId` | `string` | No | Auto-generated | Session ID for per-conversation budget enforcement. If omitted, a unique ID is auto-generated (e.g., `ses_mncqabm4_a7f3`). |
+| `autoSession` | `boolean` | No | `true` | Auto-generate a session ID when `budgetSessionId` is not provided. Set to `false` to disable session tracking entirely. |
 | `tags` | `Record<string, string>` | No | — | Key-value tags for cost attribution |
 | `traceId` | `string` | No | — | 32-char lowercase hex trace ID for request correlation |
 | `actionId` | `string` | No | — | NullSpend action ID (`ns_act_<UUID>`) to correlate costs with an approved action |
@@ -76,7 +77,7 @@ All other fields are passed through to the Claude Agent SDK as-is.
 | Header | Source | Always Present |
 |---|---|---|
 | `x-nullspend-key` | `apiKey` | Yes |
-| `x-nullspend-session` | `budgetSessionId` | Only if provided |
+| `x-nullspend-session` | `budgetSessionId` or auto-generated | Yes (unless `autoSession: false`) |
 | `x-nullspend-tags` | `JSON.stringify(tags)` | Only if provided and non-empty |
 | `x-nullspend-trace-id` | `traceId` | Only if provided |
 | `x-nullspend-action-id` | `actionId` | Only if provided |
@@ -90,6 +91,45 @@ The returned `env` object is built by layering:
 3. NullSpend's `ANTHROPIC_BASE_URL` and `ANTHROPIC_CUSTOM_HEADERS` (final layer)
 
 If the caller already set `ANTHROPIC_CUSTOM_HEADERS`, NullSpend's headers are appended after the existing value.
+
+## Session Tracking
+
+Every `withNullSpend()` call auto-generates a unique session ID by default. This means every agent invocation gets session tracking without any configuration.
+
+```typescript
+// Session tracking is automatic — no config needed
+const options = withNullSpend({
+  apiKey: process.env.NULLSPEND_API_KEY!,
+  prompt: "Debug this auth bug",
+});
+// A session ID like "ses_mncqabm4_a7f3" is generated and sent
+// with every request. View sessions at /app/sessions in the dashboard.
+```
+
+**Override with your own session ID** when you want to control the grouping:
+
+```typescript
+const options = withNullSpend({
+  apiKey: process.env.NULLSPEND_API_KEY!,
+  budgetSessionId: `task-${taskId}`,  // your own session boundary
+  prompt: "Deploy v2.3",
+});
+```
+
+**Disable session tracking** for fire-and-forget requests:
+
+```typescript
+const options = withNullSpend({
+  apiKey: process.env.NULLSPEND_API_KEY!,
+  autoSession: false,
+  prompt: "Quick one-off query",
+});
+```
+
+Session IDs are used for:
+- **Cost grouping** — see total spend per task/conversation in the Sessions page
+- **Session limits** — cap spend per session (e.g., $2 per agent invocation) via budget configuration
+- **Debugging** — trace all requests in a single agent run
 
 ## Related
 
