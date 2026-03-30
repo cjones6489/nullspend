@@ -178,8 +178,10 @@ async function ensurePersonalOrg(
 
     return { orgId: org.id, role: "owner" };
   } catch (err) {
-    // Only recover from Postgres unique_violation (23505) — rethrow everything else
-    const pgCode = (err as { code?: string }).code;
+    // Only recover from Postgres unique_violation (23505) — rethrow everything else.
+    // Drizzle wraps the original PostgresError as `cause`, so check both levels.
+    const pgCode = (err as { code?: string }).code
+      ?? (err as { cause?: { code?: string } }).cause?.code;
     if (pgCode !== "23505") throw err;
 
     // Partial unique index violation — another concurrent request created the org
