@@ -159,5 +159,11 @@ async function verifyEntityOwnership(
     return;
   }
 
+  // Tags are org-scoped (budget already scoped by orgId from resolveSessionContext).
+  // No per-user ownership check needed — any org member can manage tag budgets.
+  if (entityType === "tag") {
+    return;
+  }
+
   throw new ForbiddenError(`Unsupported entity type: ${entityType}`);
 }
