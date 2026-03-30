@@ -13,6 +13,7 @@ interface ListCostEventsOptions {
   model?: string;
   provider?: string;
   source?: CostEventSource;
+  budgetStatus?: "skipped" | "approved" | "denied";
   traceId?: string;
   sessionId?: string;
   tags?: Record<string, string>;
@@ -38,6 +39,9 @@ export async function listCostEvents(options: ListCostEventsOptions) {
   }
   if (options.source) {
     conditions.push(eq(costEvents.source, options.source));
+  }
+  if (options.budgetStatus) {
+    conditions.push(eq(costEvents.budgetStatus, options.budgetStatus));
   }
   if (options.traceId) {
     conditions.push(eq(costEvents.traceId, options.traceId));

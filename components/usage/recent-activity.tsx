@@ -40,6 +40,7 @@ interface RecentActivityProps {
 
 const ALL_KEYS = "all";
 const ALL_PROVIDERS = "all";
+const ALL_BUDGET_STATUS = "all";
 
 type SortField = "createdAt" | "cost" | "toks" | "latency" | "input" | "output";
 type SortDir = "asc" | "desc";
@@ -55,6 +56,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
   const router = useRouter();
   const [selectedKeyId, setSelectedKeyId] = useState(ALL_KEYS);
   const [selectedProvider, setSelectedProvider] = useState(initialProvider ?? ALL_PROVIDERS);
+  const [selectedBudgetStatus, setSelectedBudgetStatus] = useState(ALL_BUDGET_STATUS);
   const [modelFilter, setModelFilter] = useState("");
   const [modelInput, setModelInput] = useState("");
   const [sortField, setSortField] = useState<SortField | null>(null);
@@ -73,6 +75,9 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
     ...(selectedKeyId !== ALL_KEYS ? { apiKeyId: selectedKeyId } : {}),
     ...(selectedProvider !== ALL_PROVIDERS
       ? { provider: selectedProvider }
+      : {}),
+    ...(selectedBudgetStatus !== ALL_BUDGET_STATUS
+      ? { budgetStatus: selectedBudgetStatus as "skipped" | "approved" | "denied" }
       : {}),
     ...(modelFilter ? { model: modelFilter } : {}),
   };
@@ -106,7 +111,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
     return sorted;
   }, [data, sortField, sortDir]);
   const hasFilter =
-    selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS || !!modelFilter;
+    selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS || selectedBudgetStatus !== ALL_BUDGET_STATUS || !!modelFilter;
 
   return (
     <div className="space-y-3">
@@ -153,6 +158,20 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
             <SelectItem value={ALL_PROVIDERS}>All providers</SelectItem>
             <SelectItem value="openai">OpenAI</SelectItem>
             <SelectItem value="anthropic">Anthropic</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={selectedBudgetStatus}
+          onValueChange={(v) => setSelectedBudgetStatus(v ?? ALL_BUDGET_STATUS)}
+        >
+          <SelectTrigger className="h-8 w-[130px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_BUDGET_STATUS}>All status</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="denied">Denied</SelectItem>
+            <SelectItem value="skipped">Skipped</SelectItem>
           </SelectContent>
         </Select>
         <Input

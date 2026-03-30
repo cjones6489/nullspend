@@ -47,6 +47,7 @@ export const listCostEventsQuerySchema = z.object({
   model: z.string().optional(),
   provider: z.string().optional(),
   source: z.enum(["proxy", "api", "mcp"]).optional(),
+  budgetStatus: z.enum(["skipped", "approved", "denied"]).optional(),
   traceId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
   sessionId: z.string().min(1).max(200).optional(),
   tags: z.record(z.string(), z.string()).optional(),

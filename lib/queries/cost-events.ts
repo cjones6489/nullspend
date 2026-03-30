@@ -19,6 +19,7 @@ interface CostEventFilters {
   provider?: string;
   model?: string;
   source?: "proxy" | "api" | "mcp";
+  budgetStatus?: "skipped" | "approved" | "denied";
 }
 
 export const costEventKeys = {
@@ -99,6 +100,7 @@ export function useCostEvents(filters: CostEventFilters = {}) {
       if (filters.provider) params.set("provider", filters.provider);
       if (filters.model) params.set("model", filters.model);
       if (filters.source) params.set("source", filters.source);
+      if (filters.budgetStatus) params.set("budgetStatus", filters.budgetStatus);
       if (pageParam) params.set("cursor", JSON.stringify(pageParam));
       return apiGet(`/api/cost-events?${params.toString()}`);
     },

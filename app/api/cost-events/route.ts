@@ -43,6 +43,7 @@ export const GET = withRequestContext(async (request: Request) => {
     model: url.searchParams.get("model") ?? undefined,
     provider: url.searchParams.get("provider") ?? undefined,
     source: url.searchParams.get("source") ?? undefined,
+    budgetStatus: url.searchParams.get("budgetStatus") ?? undefined,
     traceId: url.searchParams.get("traceId") || undefined,
     sessionId: url.searchParams.get("sessionId") || undefined,
     tags: Object.keys(tags).length > 0 ? tags : undefined,
