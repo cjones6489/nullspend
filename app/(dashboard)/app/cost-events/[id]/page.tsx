@@ -295,6 +295,12 @@ export default function CostEventDetailPage({
               <DetailRow label="Provider" value={formatProviderName(event.provider)} />
               <DetailRow label="Model" value={event.model} mono />
               <DetailRow label="Source" value={event.source} />
+              {event.budgetStatus && (
+                <DetailRow label="Budget" value={event.budgetStatus} />
+              )}
+              {event.stopReason && (
+                <DetailRow label="Stop Reason" value={event.stopReason} />
+              )}
               {event.keyName && (
                 <DetailRow label="API Key" value={event.keyName} />
               )}
@@ -346,6 +352,12 @@ export default function CostEventDetailPage({
                 label="Latency"
                 value={formatDuration(event.durationMs)}
               />
+              {event.estimatedCostMicrodollars != null && (
+                <DetailRow
+                  label="Estimated"
+                  value={formatMicrodollars(event.estimatedCostMicrodollars)}
+                />
+              )}
               <DetailRow
                 label="Timestamp"
                 value={formatTimestamp(event.createdAt)}

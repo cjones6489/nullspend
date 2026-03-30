@@ -20,6 +20,9 @@ export const costEventRecordSchema = z.object({
   sessionId: z.string().nullable(),
   tags: z.record(z.string(), z.string()).default({}),
   keyName: z.string().nullable(),
+  budgetStatus: z.enum(["skipped", "approved", "denied"]).nullable().optional(),
+  stopReason: z.string().nullable().optional(),
+  estimatedCostMicrodollars: z.number().nullable().optional(),
 });
 
 const cursorInputSchema = z.object({

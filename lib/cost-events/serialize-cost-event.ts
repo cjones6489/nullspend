@@ -18,6 +18,9 @@ interface CostEventJoinRow {
   source: string;
   tags: Record<string, string>;
   keyName: string | null;
+  budgetStatus?: string | null;
+  stopReason?: string | null;
+  estimatedCostMicrodollars?: number | null;
 }
 
 export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
@@ -39,5 +42,8 @@ export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
     source: row.source,
     tags: row.tags,
     keyName: row.keyName,
+    budgetStatus: (row.budgetStatus as "skipped" | "approved" | "denied" | null) ?? null,
+    stopReason: row.stopReason ?? null,
+    estimatedCostMicrodollars: row.estimatedCostMicrodollars ?? null,
   };
 }
