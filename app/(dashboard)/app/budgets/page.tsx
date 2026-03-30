@@ -351,7 +351,11 @@ function BudgetRow({
           ) : (
             <p className="text-[13px] font-medium text-foreground">{entityName}</p>
           )}
-          <p className="text-[11px] text-muted-foreground">{budget.entityType === "tag" ? "tag" : budget.entityType}</p>
+          <p className="text-[11px] text-muted-foreground/70">
+            {budget.entityType === "user" && "All requests across your account"}
+            {budget.entityType === "api_key" && "Requests from this key only"}
+            {budget.entityType === "tag" && `All requests tagged ${budget.entityId} (any key)`}
+          </p>
         </div>
       </TableCell>
       <TableCell>
@@ -740,6 +744,11 @@ function BudgetDialog({
                 Tag
               </button>
             </div>
+            <p className="text-[10px] text-muted-foreground/70">
+              {entityType === "user" && "Caps total spend across all keys and requests."}
+              {entityType === "api_key" && "Caps spend for one specific API key."}
+              {entityType === "tag" && "Caps spend for all requests with a matching tag, regardless of which key sends them."}
+            </p>
           </div>
 
           {entityType === "api_key" && (
