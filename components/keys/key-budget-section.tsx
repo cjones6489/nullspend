@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 import { useBudgets, useCreateBudget, useDeleteBudget } from "@/lib/queries/budgets";
 import { formatMicrodollars } from "@/lib/utils/format";
 
@@ -115,6 +116,16 @@ export function KeyBudgetSection({ keyId, canManage }: KeyBudgetSectionProps) {
             value={spendPercent}
             className={isOverThreshold ? "[&>div]:bg-amber-500" : ""}
           />
+          {keyBudget.thresholdPercentages.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground/70">Alerts at</span>
+              {keyBudget.thresholdPercentages.map((p) => (
+                <span key={p} className="rounded bg-muted px-1 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+                  {p}%
+                </span>
+              ))}
+            </div>
+          )}
           {canManage && (
             <div className="flex gap-2 pt-1">
               <CreateBudgetDialog
@@ -253,6 +264,20 @@ function CreateBudgetDialog({
       : "",
   );
 
+  const isDefaultThresholds = existingBudget
+    ? existingBudget.thresholdPercentages.length === 4 &&
+      existingBudget.thresholdPercentages[0] === 50 &&
+      existingBudget.thresholdPercentages[1] === 80 &&
+      existingBudget.thresholdPercentages[2] === 90 &&
+      existingBudget.thresholdPercentages[3] === 95
+    : true;
+  const [thresholdsCustomized, setThresholdsCustomized] = useState(!isDefaultThresholds);
+  const [thresholdInput, setThresholdInput] = useState(
+    !isDefaultThresholds && existingBudget
+      ? existingBudget.thresholdPercentages.join(", ")
+      : "",
+  );
+
   const handleSubmit = async () => {
     const maxMicro = Math.round(parseFloat(maxDollars) * 1_000_000);
     if (!maxMicro || maxMicro <= 0) {
@@ -267,6 +292,28 @@ function CreateBudgetDialog({
       ? Math.round(parseFloat(sessionDollars) * 1_000_000)
       : null;
 
+    // Parse custom thresholds
+    let parsedThresholds: number[] | undefined;
+    if (thresholdsCustomized && thresholdInput.trim()) {
+      const raw = thresholdInput
+        .replace(/%/g, "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map(Number);
+      if (raw.some((n) => !Number.isInteger(n) || n < 1 || n > 100)) {
+        toast.error("Thresholds must be integers between 1 and 100");
+        return;
+      }
+      parsedThresholds = [...new Set(raw)].sort((a, b) => a - b);
+      if (parsedThresholds.length > 10) {
+        toast.error("Maximum 10 threshold values allowed");
+        return;
+      }
+    } else if (thresholdsCustomized) {
+      parsedThresholds = [];
+    }
+
     try {
       await createBudget.mutateAsync({
         entityType: "api_key",
@@ -276,6 +323,7 @@ function CreateBudgetDialog({
         velocityLimitMicrodollars: velocityMicro,
         velocityWindowSeconds: velocityMicro ? parseInt(velocityWindow) || 60 : undefined,
         velocityCooldownSeconds: velocityMicro ? parseInt(velocityCooldown) || 60 : undefined,
+        thresholdPercentages: parsedThresholds,
         sessionLimitMicrodollars: sessionMicro,
       });
       toast.success(isUpdate ? "Budget updated" : "Budget created");
@@ -377,6 +425,37 @@ function CreateBudgetDialog({
                   className="w-20"
                 />
                 <span className="text-[11px] text-muted-foreground">sec</span>
+              </div>
+            )}
+          </div>
+
+          {/* Alert Thresholds */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setThresholdsCustomized(!thresholdsCustomized)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight className={cn(
+                "h-3 w-3 transition-transform",
+                thresholdsCustomized && "rotate-90",
+              )} />
+              {thresholdsCustomized ? "Alert thresholds (custom)" : "Alert thresholds (optional)"}
+            </button>
+
+            {thresholdsCustomized && (
+              <div className="space-y-1.5 rounded-md border border-border/30 bg-secondary/20 p-3">
+                <Label className="text-xs text-muted-foreground">Threshold percentages</Label>
+                <Input
+                  type="text"
+                  placeholder="50, 80, 90, 95"
+                  value={thresholdInput}
+                  onChange={(e) => setThresholdInput(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Comma-separated percentages (1-100). Webhook alerts fire when spend crosses each threshold. Leave empty to disable.
+                </p>
               </div>
             )}
           </div>
