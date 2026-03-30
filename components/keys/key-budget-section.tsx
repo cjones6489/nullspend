@@ -242,6 +242,11 @@ function CreateBudgetDialog({
       ? String(existingBudget.velocityWindowSeconds)
       : "60",
   );
+  const [velocityCooldown, setVelocityCooldown] = useState(
+    existingBudget?.velocityCooldownSeconds != null
+      ? String(existingBudget.velocityCooldownSeconds)
+      : "60",
+  );
   const [sessionDollars, setSessionDollars] = useState(
     existingBudget?.sessionLimitMicrodollars != null
       ? String(existingBudget.sessionLimitMicrodollars / 1_000_000)
@@ -270,6 +275,7 @@ function CreateBudgetDialog({
         resetInterval: (resetInterval || undefined) as "daily" | "weekly" | "monthly" | undefined,
         velocityLimitMicrodollars: velocityMicro,
         velocityWindowSeconds: velocityMicro ? parseInt(velocityWindow) || 60 : undefined,
+        velocityCooldownSeconds: velocityMicro ? parseInt(velocityCooldown) || 60 : undefined,
         sessionLimitMicrodollars: sessionMicro,
       });
       toast.success(isUpdate ? "Budget updated" : "Budget created");
@@ -359,6 +365,20 @@ function CreateBudgetDialog({
                 <span className="text-[11px] text-muted-foreground">sec</span>
               </div>
             </div>
+            {velocityDollars && (
+              <div className="mt-2 flex items-center gap-1">
+                <span className="text-[11px] text-muted-foreground">Cooldown after breach:</span>
+                <Input
+                  type="number"
+                  min="10"
+                  max="3600"
+                  value={velocityCooldown}
+                  onChange={(e) => setVelocityCooldown(e.target.value)}
+                  className="w-20"
+                />
+                <span className="text-[11px] text-muted-foreground">sec</span>
+              </div>
+            )}
           </div>
 
           {/* Session Limit */}
