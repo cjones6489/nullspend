@@ -94,33 +94,35 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* Metric cards */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
-          label="7d Spend"
-          value={formatMicrodollars(totalSpend)}
-          icon={DollarSign}
-          href="/app/analytics"
-        />
-        <MetricCard
-          label="Requests"
-          value={totalRequests.toLocaleString()}
-          icon={Activity}
-          href="/app/activity"
-        />
-        <MetricCard
-          label="Active Keys"
-          value={String(activeKeys)}
-          icon={Key}
-          href="/app/keys"
-        />
-        <MetricCard
-          label="Budgets"
-          value={String(activeBudgets)}
-          icon={Shield}
-          href="/app/budgets"
-        />
-      </div>
+      {/* Metric cards — only show when user has keys (data exists) */}
+      {hasData && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <MetricCard
+            label="7d Spend"
+            value={formatMicrodollars(totalSpend)}
+            icon={DollarSign}
+            href="/app/analytics"
+          />
+          <MetricCard
+            label="Requests"
+            value={totalRequests.toLocaleString()}
+            icon={Activity}
+            href="/app/activity"
+          />
+          <MetricCard
+            label="Active Keys"
+            value={String(activeKeys)}
+            icon={Key}
+            href="/app/keys"
+          />
+          <MetricCard
+            label="Budgets"
+            value={String(activeBudgets)}
+            icon={Shield}
+            href="/app/budgets"
+          />
+        </div>
+      )}
 
       {/* Spend chart */}
       {daily && daily.length > 0 && (
