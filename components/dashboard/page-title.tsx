@@ -9,7 +9,10 @@ const ROUTE_TITLES: Record<string, string> = {
   "/app/budgets": "Budgets",
   "/app/tool-costs": "Tool Costs",
   "/app/activity": "Activity",
+  "/app/sessions": "Sessions",
+  "/app/keys": "Keys",
   "/app/analytics": "Analytics",
+  "/app/attribution": "Attribution",
   "/app/billing": "Billing",
   "/app/settings": "Settings",
 };
@@ -25,6 +28,18 @@ export function PageTitle() {
 
   if (!title && pathname.startsWith("/app/actions/")) {
     title = "Action Details";
+  }
+  if (!title && pathname.startsWith("/app/sessions/")) {
+    title = "Session Details";
+  }
+  if (!title && pathname.startsWith("/app/cost-events/")) {
+    title = "Cost Event";
+  }
+  if (!title && pathname.startsWith("/app/attribution/")) {
+    title = "Attribution";
+  }
+  if (!title && pathname.startsWith("/app/keys")) {
+    title = "Keys";
   }
 
   if (!title) {

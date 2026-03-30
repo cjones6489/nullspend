@@ -98,19 +98,19 @@ export default function HomePage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
           label="7d Spend"
-          value={summaryLoading ? undefined : formatMicrodollars(totalSpend)}
+          value={formatMicrodollars(totalSpend)}
           icon={DollarSign}
           href="/app/analytics"
         />
         <MetricCard
           label="Requests"
-          value={summaryLoading ? undefined : totalRequests.toLocaleString()}
+          value={totalRequests.toLocaleString()}
           icon={Activity}
           href="/app/activity"
         />
         <MetricCard
           label="Active Keys"
-          value={keysLoading ? undefined : String(activeKeys)}
+          value={String(activeKeys)}
           icon={Key}
           href="/app/keys"
         />
