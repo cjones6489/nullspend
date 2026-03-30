@@ -806,9 +806,33 @@ function BudgetDialog({
                   />
                 </div>
               )}
-              <p className="text-[10px] text-muted-foreground">
-                Budget applies to all requests with this tag. Set default tags on your API keys.
-              </p>
+              {(() => {
+                const tagId = tagKey.trim() && tagValue.trim() ? `${tagKey.trim()}=${tagValue.trim()}` : null;
+                const matchingKeys = tagId
+                  ? keys.filter((k) => k.defaultTags?.[tagKey.trim()] === tagValue.trim())
+                  : [];
+
+                return (
+                  <div className="space-y-1">
+                    {tagId && matchingKeys.length > 0 ? (
+                      <p className="text-[10px] text-emerald-400">
+                        Applies to {matchingKeys.length} key{matchingKeys.length > 1 ? "s" : ""}: {matchingKeys.map((k) => k.name).join(", ")}
+                      </p>
+                    ) : tagId ? (
+                      <p className="text-[10px] text-amber-400">
+                        No keys have this tag as a default. Requests must send it via the X-NullSpend-Tags header.
+                      </p>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">
+                        Enter a tag to see which keys it applies to.
+                      </p>
+                    )}
+                    <p className="text-[10px] text-muted-foreground/70">
+                      Tag budgets apply to all requests with this tag, from any key.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
