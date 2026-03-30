@@ -25,25 +25,14 @@ export function PolicyEditor({
   disabled,
   saving,
 }: PolicyEditorProps) {
-  // Derive initial state from props, reset when key selection changes
-  const propsKey = `${JSON.stringify(allowedProviders)}|${JSON.stringify(allowedModels)}`;
-  const [stateKey, setStateKey] = useState(propsKey);
+  // State is initialized from props. Parent uses key={apiKey.id} to
+  // remount this component when the selected key changes.
   const [editing, setEditing] = useState(false);
   const [providers, setProviders] = useState<string[]>(allowedProviders ?? []);
   const [models, setModels] = useState<string[]>(allowedModels ?? []);
   const [modelInput, setModelInput] = useState("");
   const [providersUnrestricted, setProvidersUnrestricted] = useState(allowedProviders === null);
   const [modelsUnrestricted, setModelsUnrestricted] = useState(allowedModels === null);
-
-  // Reset local state when the selected key changes (prop-driven reset)
-  if (propsKey !== stateKey) {
-    setStateKey(propsKey);
-    setProviders(allowedProviders ?? []);
-    setModels(allowedModels ?? []);
-    setProvidersUnrestricted(allowedProviders === null);
-    setModelsUnrestricted(allowedModels === null);
-    setEditing(false);
-  }
 
   const handleSave = async () => {
     await onSave(

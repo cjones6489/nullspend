@@ -101,6 +101,7 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </CardHeader>
           <CardContent>
             <PolicyEditor
+              key={apiKey.id}
               allowedProviders={apiKey.allowedProviders}
               allowedModels={apiKey.allowedModels}
               onSave={handleUpdatePolicy}
@@ -122,6 +123,7 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </CardHeader>
           <CardContent>
             <TagEditor
+              key={apiKey.id}
               tags={apiKey.defaultTags}
               onSave={handleUpdateTags}
               disabled={!canManage}
@@ -162,18 +164,12 @@ function TagEditor({
   disabled?: boolean;
   saving?: boolean;
 }) {
+  // State is initialized from props. Parent uses key={apiKey.id} to
+  // remount this component when the selected key changes.
   const [editing, setEditing] = useState(false);
   const [localTags, setLocalTags] = useState<Record<string, string>>(tags);
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
-
-  const tagsKey = JSON.stringify(tags);
-  const [prevTagsKey, setPrevTagsKey] = useState(tagsKey);
-  if (tagsKey !== prevTagsKey) {
-    setPrevTagsKey(tagsKey);
-    setLocalTags(tags);
-    setEditing(false);
-  }
 
   const entries = Object.entries(editing ? localTags : tags);
 

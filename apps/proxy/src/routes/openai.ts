@@ -122,14 +122,14 @@ export async function handleChatCompletions(
     const denialResponse = handleBudgetDenials(outcome, ctx, env, "openai", requestModel, estimate, budgetEntities);
     if (denialResponse) {
       budgetAbort.abort();
-      upstreamFetchPromise.catch(() => {});
+      upstreamFetchPromise.catch((e) => { if (e?.name !== "AbortError") console.warn("[openai-route] Upstream fetch error after budget denial:", e); });
       return denialResponse;
     }
 
     dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "openai");
   } catch {
     budgetAbort.abort();
-    upstreamFetchPromise.catch(() => {});
+    upstreamFetchPromise.catch((e) => { if (e?.name !== "AbortError") console.warn("[openai-route] Upstream fetch error after budget error:", e); });
     const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
     budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
     return budgetUnavailResp;
