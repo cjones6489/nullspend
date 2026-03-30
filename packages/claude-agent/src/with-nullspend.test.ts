@@ -40,6 +40,25 @@ describe("withNullSpend", () => {
     );
   });
 
+  it("auto-generates session ID when budgetSessionId is not provided", () => {
+    const result = withNullSpend(BASE);
+    const headers = result.env?.ANTHROPIC_CUSTOM_HEADERS ?? "";
+    expect(headers).toContain("x-nullspend-session: ses_");
+  });
+
+  it("does not auto-generate session ID when autoSession is false", () => {
+    const result = withNullSpend({ ...BASE, autoSession: false });
+    const headers = result.env?.ANTHROPIC_CUSTOM_HEADERS ?? "";
+    expect(headers).not.toContain("x-nullspend-session");
+  });
+
+  it("prefers explicit budgetSessionId over auto-generated", () => {
+    const result = withNullSpend({ ...BASE, budgetSessionId: "my-session" });
+    const headers = result.env?.ANTHROPIC_CUSTOM_HEADERS ?? "";
+    expect(headers).toContain("x-nullspend-session: my-session");
+    expect(headers).not.toContain("ses_");
+  });
+
   it("sets x-nullspend-tags header as JSON", () => {
     const result = withNullSpend({
       ...BASE,
@@ -302,7 +321,7 @@ describe("withNullSpend", () => {
     });
     const headers = result.env?.ANTHROPIC_CUSTOM_HEADERS ?? "";
     // JSON.stringify escapes the newline so it doesn't split the header
-    expect(headers.split("\n")).toHaveLength(2); // key header + tags header only
+    expect(headers.split("\n")).toHaveLength(3); // key header + session (auto) + tags header
     const match = headers.match(/x-nullspend-tags: (.+)/);
     expect(match).not.toBeNull();
     expect(JSON.parse(match![1])).toEqual({ note: "line1\nline2" });

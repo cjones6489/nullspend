@@ -20,12 +20,24 @@ function sanitizeHeaderValue(value: string, field: string): string {
   return value;
 }
 
+/**
+ * Generate a short random session ID.
+ * Format: "ses_{timestamp36}_{random}" (e.g., "ses_mncqabm4_a7f3")
+ * Short enough to read in the UI, unique enough to avoid collisions.
+ */
+function generateSessionId(): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `ses_${ts}_${rand}`;
+}
+
 export function withNullSpend(
   options: NullSpendAgentOptions & Options,
 ): Options {
   const {
     apiKey,
     budgetSessionId,
+    autoSession = true,
     tags,
     traceId,
     actionId,
@@ -34,6 +46,9 @@ export function withNullSpend(
   } = options;
 
   if (!apiKey) throw new Error("withNullSpend: apiKey is required");
+
+  // Auto-generate a session ID if not provided and autoSession is enabled
+  const resolvedSessionId = budgetSessionId ?? (autoSession ? generateSessionId() : undefined);
 
   // Validate traceId format (must match proxy's ^[0-9a-f]{32}$)
   if (traceId && !TRACE_ID_PATTERN.test(traceId)) {
@@ -79,8 +94,8 @@ export function withNullSpend(
   const safeApiKey = sanitizeHeaderValue(apiKey, "apiKey");
   const customHeaders: string[] = [`x-nullspend-key: ${safeApiKey}`];
 
-  if (budgetSessionId) {
-    const safe = sanitizeHeaderValue(budgetSessionId, "budgetSessionId");
+  if (resolvedSessionId) {
+    const safe = sanitizeHeaderValue(resolvedSessionId, "budgetSessionId");
     customHeaders.push(`x-nullspend-session: ${safe}`);
   }
   if (tags && Object.keys(tags).length > 0)

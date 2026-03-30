@@ -3,6 +3,8 @@ export interface NullSpendAgentOptions {
   apiKey: string;
   /** Session ID for budget-level cost grouping (NOT the SDK's conversation sessionId) */
   budgetSessionId?: string;
+  /** Auto-generate a session ID if budgetSessionId is not provided (default: true) */
+  autoSession?: boolean;
   /** Key-value tags for cost attribution (max 10 keys, alphanumeric/underscore/hyphen keys, 64-char keys, 256-char values) */
   tags?: Record<string, string>;
   /** 32-char lowercase hex trace ID (e.g. "abcdef0123456789abcdef0123456789") */
