@@ -34,7 +34,7 @@ export function useApiKeys() {
 export function useCreateApiKey() {
   const queryClient = useQueryClient();
 
-  return useMutation<CreateApiKeyResponse, Error, { name: string; defaultTags?: Record<string, string> }>({
+  return useMutation<CreateApiKeyResponse, Error, { name: string; defaultTags?: Record<string, string>; allowedModels?: string[]; allowedProviders?: string[] }>({
     mutationFn: async (input) => {
       const res = await apiPost<{ data: CreateApiKeyResponse }>("/api/keys", input);
       return res.data;
@@ -49,6 +49,8 @@ export function useCreateApiKey() {
               name: createdKey.name,
               keyPrefix: createdKey.keyPrefix,
               defaultTags: createdKey.defaultTags,
+              allowedModels: createdKey.allowedModels,
+              allowedProviders: createdKey.allowedProviders,
               lastUsedAt: null,
               createdAt: createdKey.createdAt,
             },

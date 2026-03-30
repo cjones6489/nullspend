@@ -11,4 +11,6 @@ export interface NullSpendAgentOptions {
   actionId?: string;
   /** Override the proxy URL (default: https://proxy.nullspend.com) */
   proxyUrl?: string;
+  /** Fetch budget policy at init and inject constraints into system prompt (default: true) */
+  budgetAwareness?: boolean;
 }

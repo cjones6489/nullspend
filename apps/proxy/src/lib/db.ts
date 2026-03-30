@@ -32,7 +32,7 @@ export function getSql(connectionString: string): ReturnType<typeof postgres> {
     idle_timeout: 20,    // seconds before idle connection is closed
     connect_timeout: 5,  // seconds to wait for connection
     prepare: false,      // required for Hyperdrive compatibility (PgBouncer-style pooling)
-    fetch_types: false,  // skip pg_type catalog round-trip — no array types used
+    fetch_types: false,  // skip pg_type catalog round-trip — built-in types (text[], int4[]) still parsed
     // Statement-level timeout: kill queries that hang beyond 10s.
     // Prevents cost-logger and budget-lookup from blocking waitUntil indefinitely.
     transform: { undefined: null },

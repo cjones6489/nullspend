@@ -136,6 +136,43 @@ describe("GET /api/keys", () => {
     expect(body.data[1].defaultTags).toEqual({});
   });
 
+  it("returns allowedModels and allowedProviders in key list response", async () => {
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    mockSelectCount.mockResolvedValue([{ value: 0 }]);
+    mockSelectList.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-a000-000000000011",
+        name: "Restricted Key",
+        keyPrefix: "ns_live_sk_abcdef12",
+        defaultTags: {},
+        allowedModels: ["gpt-4o", "gpt-4o-mini"],
+        allowedProviders: ["openai"],
+        lastUsedAt: null,
+        createdAt: new Date("2026-01-01"),
+      },
+      {
+        id: "00000000-0000-4000-a000-000000000022",
+        name: "Unrestricted Key",
+        keyPrefix: "ns_live_sk_ghijkl34",
+        defaultTags: {},
+        allowedModels: null,
+        allowedProviders: null,
+        lastUsedAt: null,
+        createdAt: new Date("2026-01-02"),
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/keys");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data[0].allowedModels).toEqual(["gpt-4o", "gpt-4o-mini"]);
+    expect(body.data[0].allowedProviders).toEqual(["openai"]);
+    expect(body.data[1].allowedModels).toBeNull();
+    expect(body.data[1].allowedProviders).toBeNull();
+  });
+
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
     vi.mocked(resolveSessionContext).mockRejectedValueOnce(new AuthenticationRequiredError());
@@ -211,6 +248,102 @@ describe("POST /api/keys", () => {
     const body = await res.json();
     expect(body.data.name).toBe("Tagged Key");
     expect(body.data.defaultTags).toEqual({ project: "openclaw", team: "backend" });
+  });
+
+  it("creates key with allowedModels and allowedProviders", async () => {
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    mockSelectCount.mockResolvedValue([{ value: 0 }]);
+    mockedGenerateRawKey.mockReturnValue("ns_live_sk_abcdef1234567890abcdef1234567890");
+    mockedHashKey.mockReturnValue("hashed_key");
+    mockedExtractPrefix.mockReturnValue("ns_live_sk_abcdef12");
+    mockInsertReturning.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-a000-000000000011",
+        name: "Restricted Key",
+        keyPrefix: "ns_live_sk_abcdef12",
+        defaultTags: {},
+        allowedModels: ["gpt-4o-mini"],
+        allowedProviders: ["openai"],
+        createdAt: new Date("2026-01-01"),
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Restricted Key",
+        allowedModels: ["gpt-4o-mini"],
+        allowedProviders: ["openai"],
+      }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.data.name).toBe("Restricted Key");
+    expect(body.data.allowedModels).toEqual(["gpt-4o-mini"]);
+    expect(body.data.allowedProviders).toEqual(["openai"]);
+  });
+
+  it("creates key with null restrictions when not provided", async () => {
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    mockSelectCount.mockResolvedValue([{ value: 0 }]);
+    mockedGenerateRawKey.mockReturnValue("ns_live_sk_abcdef1234567890abcdef1234567890");
+    mockedHashKey.mockReturnValue("hashed_key");
+    mockedExtractPrefix.mockReturnValue("ns_live_sk_abcdef12");
+    mockInsertReturning.mockResolvedValue([
+      {
+        id: "00000000-0000-4000-a000-000000000011",
+        name: "Unrestricted Key",
+        keyPrefix: "ns_live_sk_abcdef12",
+        defaultTags: {},
+        allowedModels: null,
+        allowedProviders: null,
+        createdAt: new Date("2026-01-01"),
+      },
+    ]);
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Unrestricted Key" }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.data.allowedModels).toBeNull();
+    expect(body.data.allowedProviders).toBeNull();
+  });
+
+  it("returns 400 for invalid allowedProviders value", async () => {
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Bad Provider", allowedProviders: ["google"] }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when allowedModels exceeds 50 entries", async () => {
+    vi.mocked(resolveSessionContext).mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+
+    const models = Array.from({ length: 51 }, (_, i) => `model-${i}`);
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Too Many Models", allowedModels: models }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(400);
   });
 
   it("returns 409 when max keys per user reached", async () => {

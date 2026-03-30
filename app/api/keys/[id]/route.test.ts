@@ -234,6 +234,127 @@ describe("PATCH /api/keys/[id]", () => {
     expect(res.status).toBe(400);
   });
 
+  it("updates allowedModels", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
+    mockUpdateReturning.mockResolvedValue([{
+      id: TEST_KEY_UUID,
+      name: "My Key",
+      keyPrefix: "ns_live_sk_abcdef12",
+      defaultTags: {},
+      allowedModels: ["gpt-4o-mini"],
+      allowedProviders: null,
+      lastUsedAt: null,
+      createdAt: new Date("2026-01-01"),
+    }]);
+
+    const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowedModels: ["gpt-4o-mini"] }),
+    });
+
+    const res = await PATCH(req, makeContext(TEST_KEY_PREFIXED));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.allowedModels).toEqual(["gpt-4o-mini"]);
+    expect(body.data.allowedProviders).toBeNull();
+  });
+
+  it("clears allowedModels with null", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
+    mockUpdateReturning.mockResolvedValue([{
+      id: TEST_KEY_UUID,
+      name: "My Key",
+      keyPrefix: "ns_live_sk_abcdef12",
+      defaultTags: {},
+      allowedModels: null,
+      allowedProviders: null,
+      lastUsedAt: null,
+      createdAt: new Date("2026-01-01"),
+    }]);
+
+    const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowedModels: null }),
+    });
+
+    const res = await PATCH(req, makeContext(TEST_KEY_PREFIXED));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.allowedModels).toBeNull();
+  });
+
+  it("updates allowedProviders", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
+    mockUpdateReturning.mockResolvedValue([{
+      id: TEST_KEY_UUID,
+      name: "My Key",
+      keyPrefix: "ns_live_sk_abcdef12",
+      defaultTags: {},
+      allowedModels: null,
+      allowedProviders: ["openai", "anthropic"],
+      lastUsedAt: null,
+      createdAt: new Date("2026-01-01"),
+    }]);
+
+    const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowedProviders: ["openai", "anthropic"] }),
+    });
+
+    const res = await PATCH(req, makeContext(TEST_KEY_PREFIXED));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.allowedProviders).toEqual(["openai", "anthropic"]);
+  });
+
+  it("triggers proxy cache invalidation on restriction update", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
+    mockUpdateReturning.mockResolvedValue([{
+      id: TEST_KEY_UUID,
+      name: "My Key",
+      keyPrefix: "ns_live_sk_abcdef12",
+      defaultTags: {},
+      allowedModels: ["gpt-4o"],
+      allowedProviders: null,
+      lastUsedAt: null,
+      createdAt: new Date("2026-01-01"),
+    }]);
+
+    const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowedModels: ["gpt-4o"] }),
+    });
+
+    await PATCH(req, makeContext(TEST_KEY_PREFIXED));
+
+    expect(mockInvalidateProxyCache).toHaveBeenCalledWith({
+      action: "sync",
+      ownerId: "org-test-1",
+      entityType: "api_key",
+      entityId: TEST_KEY_UUID,
+    });
+  });
+
+  it("returns 400 for invalid allowedProviders in PATCH", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
+
+    const req = new Request("http://localhost/api/keys/" + TEST_KEY_PREFIXED, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowedProviders: ["google"] }),
+    });
+
+    const res = await PATCH(req, makeContext(TEST_KEY_PREFIXED));
+    expect(res.status).toBe(400);
+  });
+
   it("returns 400 when defaultTags has _ns_ prefix", async () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" as const });
 

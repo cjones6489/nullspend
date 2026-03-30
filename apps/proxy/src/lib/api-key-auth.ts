@@ -10,6 +10,8 @@ export interface ApiKeyIdentity {
   requestLoggingEnabled: boolean;
   apiVersion: string;
   defaultTags: Record<string, string>;
+  allowedModels: string[] | null;
+  allowedProviders: string[] | null;
 }
 
 const CACHE_MAX_SIZE = 256;
@@ -72,7 +74,7 @@ async function lookupKeyInDb(
   const sql = getSql(connectionString);
 
   const rows = await sql`
-    SELECT k.id, k.user_id, k.org_id, k.api_version, k.default_tags,
+    SELECT k.id, k.user_id, k.org_id, k.api_version, k.default_tags, k.allowed_models, k.allowed_providers,
       EXISTS(
         SELECT 1 FROM webhook_endpoints w
         WHERE w.org_id = k.org_id AND w.enabled = true
@@ -105,6 +107,8 @@ async function lookupKeyInDb(
     defaultTags: (typeof row.default_tags === "object" && row.default_tags !== null && !Array.isArray(row.default_tags))
       ? row.default_tags as Record<string, string>
       : {},
+    allowedModels: Array.isArray(row.allowed_models) ? row.allowed_models as string[] : null,
+    allowedProviders: Array.isArray(row.allowed_providers) ? row.allowed_providers as string[] : null,
   };
 }
 

@@ -49,6 +49,8 @@ export async function GET(request: Request) {
         name: apiKeys.name,
         keyPrefix: apiKeys.keyPrefix,
         defaultTags: apiKeys.defaultTags,
+        allowedModels: apiKeys.allowedModels,
+        allowedProviders: apiKeys.allowedProviders,
         lastUsedAt: apiKeys.lastUsedAt,
         createdAt: apiKeys.createdAt,
       })
@@ -63,6 +65,8 @@ export async function GET(request: Request) {
 
     const data = pageRows.map((row) => ({
       ...row,
+      allowedModels: row.allowedModels ?? null,
+      allowedProviders: row.allowedProviders ?? null,
       lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
     }));
@@ -111,12 +115,16 @@ export async function POST(request: Request) {
           keyPrefix: extractPrefix(rawKey),
           apiVersion: CURRENT_VERSION,
           defaultTags: input.defaultTags,
+          allowedModels: input.allowedModels ?? null,
+          allowedProviders: input.allowedProviders ?? null,
         })
         .returning({
           id: apiKeys.id,
           name: apiKeys.name,
           keyPrefix: apiKeys.keyPrefix,
           defaultTags: apiKeys.defaultTags,
+          allowedModels: apiKeys.allowedModels,
+          allowedProviders: apiKeys.allowedProviders,
           createdAt: apiKeys.createdAt,
         });
     });
@@ -128,6 +136,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { data: createApiKeyResponseSchema.parse({
         ...created,
+        allowedModels: created.allowedModels ?? null,
+        allowedProviders: created.allowedProviders ?? null,
         rawKey,
         createdAt: created.createdAt.toISOString(),
       }) },

@@ -3,6 +3,7 @@ import { handleAnthropicMessages } from "./routes/anthropic.js";
 import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
 import { handleBudgetInvalidation, handleVelocityState, handleRequestBodies } from "./routes/internal.js";
 import { handleMetrics } from "./routes/metrics.js";
+import { handlePolicy } from "./routes/policy.js";
 import { authenticateRequest } from "./lib/auth.js";
 import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
@@ -171,6 +172,31 @@ export default {
       }
       if (url.pathname.startsWith("/internal/request-bodies/") && request.method === "GET") {
         return handleRequestBodies(request, env);
+      }
+
+      // Policy endpoint — GET with API key auth, no body parsing
+      if (url.pathname === "/v1/policy" && request.method === "GET") {
+        const connectionString = env.HYPERDRIVE.connectionString;
+        const [rateLimitResult, auth] = await Promise.all([
+          applyRateLimit(request, env),
+          authenticateRequest(request, connectionString),
+        ]);
+        if (rateLimitResult) {
+          rateLimitResult.headers.set("X-NullSpend-Trace-Id", traceId);
+          return rateLimitResult;
+        }
+        if (!auth) {
+          emitMetric("request_error", { status: 401, reason: "unauthorized" });
+          const resp = errorResponse("unauthorized", "Invalid or missing authentication header", 401);
+          resp.headers.set("X-NullSpend-Trace-Id", traceId);
+          return resp;
+        }
+        if (!auth.orgId) {
+          const resp = errorResponse("forbidden", "API key must be associated with an organization", 403);
+          resp.headers.set("X-NullSpend-Trace-Id", traceId);
+          return resp;
+        }
+        return handlePolicy(request, env, auth, traceId);
       }
 
       // Route lookup

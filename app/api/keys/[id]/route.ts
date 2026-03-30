@@ -70,9 +70,11 @@ export async function PATCH(
 
     const db = getDb();
 
-    const updates: Partial<{ name: string; defaultTags: Record<string, string> }> = {};
+    const updates: Partial<{ name: string; defaultTags: Record<string, string>; allowedModels: string[] | null; allowedProviders: string[] | null }> = {};
     if (input.name !== undefined) updates.name = input.name;
     if (input.defaultTags !== undefined) updates.defaultTags = input.defaultTags;
+    if (input.allowedModels !== undefined) updates.allowedModels = input.allowedModels ?? null;
+    if (input.allowedProviders !== undefined) updates.allowedProviders = input.allowedProviders ?? null;
 
     const [updated] = await db
       .update(apiKeys)
@@ -89,6 +91,8 @@ export async function PATCH(
         name: apiKeys.name,
         keyPrefix: apiKeys.keyPrefix,
         defaultTags: apiKeys.defaultTags,
+        allowedModels: apiKeys.allowedModels,
+        allowedProviders: apiKeys.allowedProviders,
         lastUsedAt: apiKeys.lastUsedAt,
         createdAt: apiKeys.createdAt,
       });
@@ -115,6 +119,8 @@ export async function PATCH(
     return NextResponse.json(
       { data: apiKeyRecordSchema.parse({
         ...updated,
+        allowedModels: updated.allowedModels ?? null,
+        allowedProviders: updated.allowedProviders ?? null,
         lastUsedAt: updated.lastUsedAt?.toISOString() ?? null,
         createdAt: updated.createdAt.toISOString(),
       }) },

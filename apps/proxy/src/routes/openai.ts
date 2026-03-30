@@ -25,6 +25,31 @@ export async function handleChatCompletions(
   ctx: RequestContext,
 ): Promise<Response> {
   const requestModel = extractModelFromBody(ctx.body);
+  const safeModel = requestModel.slice(0, 200);
+
+  // --- Provider restriction ---
+  if (ctx.auth.allowedProviders && !ctx.auth.allowedProviders.includes("openai")) {
+    emitMetric("mandate_denied", { reason: "provider_not_allowed", provider: "openai", model: safeModel });
+    const resp = errorResponse("mandate_violation", "Provider openai is not allowed by this key's policy", 403, {
+      mandate: "allowed_providers",
+      requested: "openai",
+      allowed: ctx.auth.allowedProviders,
+    });
+    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return resp;
+  }
+
+  // --- Model restriction ---
+  if (ctx.auth.allowedModels && !ctx.auth.allowedModels.includes(requestModel)) {
+    emitMetric("mandate_denied", { reason: "model_not_allowed", provider: "openai", model: safeModel });
+    const resp = errorResponse("mandate_violation", `Model ${safeModel} is not allowed by this key's policy. Allowed: ${ctx.auth.allowedModels.join(", ")}`, 403, {
+      mandate: "allowed_models",
+      requested: safeModel,
+      allowed: ctx.auth.allowedModels,
+    });
+    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
+    return resp;
+  }
 
   const attribution: Attribution = {
     userId: ctx.auth.userId,

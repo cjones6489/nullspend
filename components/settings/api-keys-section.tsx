@@ -110,6 +110,8 @@ function KeyRow({
     name: string;
     keyPrefix: string;
     defaultTags: Record<string, string>;
+    allowedModels: string[] | null;
+    allowedProviders: string[] | null;
     lastUsedAt: string | null;
     createdAt: string;
   };
@@ -143,6 +145,24 @@ function KeyRow({
                 {k}={v}
               </Badge>
             ))}
+          </div>
+        )}
+        {(apiKey.allowedProviders || apiKey.allowedModels) && (
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {apiKey.allowedProviders && (
+              <Badge variant="secondary" className="text-[11px] px-1.5 py-0">
+                {apiKey.allowedProviders.length === 1
+                  ? `${apiKey.allowedProviders[0]} only`
+                  : `${apiKey.allowedProviders.length} providers`}
+              </Badge>
+            )}
+            {apiKey.allowedModels && (
+              <Badge variant="secondary" className="text-[11px] px-1.5 py-0">
+                {apiKey.allowedModels.length === 1
+                  ? apiKey.allowedModels[0]
+                  : `${apiKey.allowedModels.length} models`}
+              </Badge>
+            )}
           </div>
         )}
       </TableCell>
@@ -220,6 +240,9 @@ function CreateKeyDialog({
   const [tagValue, setTagValue] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
   const tagValueRef = useRef<HTMLInputElement>(null);
+  const [allowedProviders, setAllowedProviders] = useState<string[]>([]);
+  const [modelInput, setModelInput] = useState("");
+  const [allowedModels, setAllowedModels] = useState<string[]>([]);
 
   function addTag() {
     const key = tagKey.trim();
@@ -256,7 +279,12 @@ function CreateKeyDialog({
   function handleCreate() {
     const defaultTags = Object.keys(tags).length > 0 ? tags : undefined;
     createKey.mutate(
-      { name: name.trim(), defaultTags },
+      {
+        name: name.trim(),
+        defaultTags,
+        allowedModels: allowedModels.length > 0 ? allowedModels : undefined,
+        allowedProviders: allowedProviders.length > 0 ? allowedProviders : undefined,
+      },
       {
         onSuccess: (data) => {
           setCreatedKey(data.rawKey);
@@ -265,6 +293,9 @@ function CreateKeyDialog({
           setTagKey("");
           setTagValue("");
           setTagError(null);
+          setAllowedProviders([]);
+          setAllowedModels([]);
+          setModelInput("");
           toast.success("API key created");
         },
         onError: (err) => {
@@ -286,6 +317,9 @@ function CreateKeyDialog({
       setTagKey("");
       setTagValue("");
       setTagError(null);
+      setAllowedProviders([]);
+      setAllowedModels([]);
+      setModelInput("");
     }
     onOpenChange(nextOpen);
   }
@@ -308,7 +342,28 @@ function CreateKeyDialog({
     setTagKey("");
     setTagValue("");
     setTagError(null);
+    setAllowedProviders([]);
+    setAllowedModels([]);
+    setModelInput("");
     onOpenChange(false);
+  }
+
+  function toggleProvider(provider: string) {
+    setAllowedProviders(prev =>
+      prev.includes(provider) ? prev.filter(p => p !== provider) : [...prev, provider],
+    );
+  }
+
+  function addModel() {
+    const model = modelInput.trim();
+    if (!model || allowedModels.includes(model)) return;
+    if (allowedModels.length >= 50) return;
+    setAllowedModels([...allowedModels, model]);
+    setModelInput("");
+  }
+
+  function removeModel(model: string) {
+    setAllowedModels(allowedModels.filter(m => m !== model));
   }
 
   return (
@@ -437,6 +492,79 @@ function CreateKeyDialog({
                 <p className="text-[11px] text-red-400">{tagError}</p>
               )}
             </div>
+            {/* Allowed providers */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                Allowed providers <span className="text-muted-foreground/50">(optional)</span>
+              </Label>
+              <p className="text-[11px] text-muted-foreground/60">
+                Restrict which providers this key can access. Leave unchecked for unrestricted.
+              </p>
+              <div className="flex items-center gap-4 pt-1">
+                {["openai", "anthropic"].map((provider) => (
+                  <label key={provider} className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allowedProviders.includes(provider)}
+                      onChange={() => toggleProvider(provider)}
+                      className="h-3.5 w-3.5 rounded border-border/50"
+                    />
+                    {provider === "openai" ? "OpenAI" : "Anthropic"}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Allowed models */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                Allowed models <span className="text-muted-foreground/50">(optional)</span>
+              </Label>
+              <p className="text-[11px] text-muted-foreground/60">
+                Restrict which models this key can use. Leave empty for unrestricted.
+              </p>
+              {allowedModels.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {allowedModels.map((model) => (
+                    <Badge key={model} variant="outline" className="gap-1 font-mono text-[11px] pl-1.5 pr-0.5 py-0">
+                      {model}
+                      <button
+                        type="button"
+                        onClick={() => removeModel(model)}
+                        className="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                        aria-label={`Remove model ${model}`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {allowedModels.length < 50 && (
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    placeholder="e.g. gpt-4o, claude-sonnet-4-20250514"
+                    value={modelInput}
+                    onChange={(e) => setModelInput(e.target.value)}
+                    className="h-8 flex-1 border-border/50 bg-background font-mono text-[12px] placeholder:text-muted-foreground/50"
+                    maxLength={100}
+                    aria-label="Model name"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addModel(); } }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={addModel}
+                    disabled={!modelInput.trim()}
+                  >
+                    Add
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <DialogFooter>
               <DialogClose
                 className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"

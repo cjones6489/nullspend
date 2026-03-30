@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { withNullSpend } from "./with-nullspend.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { withNullSpend, withNullSpendAsync, _resetPolicyCache } from "./with-nullspend.js";
 
 describe("withNullSpend", () => {
   const BASE = { apiKey: "ns_test_sk_abc123" } as const;
@@ -318,5 +318,152 @@ describe("withNullSpend", () => {
     expect(result.env?.ANTHROPIC_BASE_URL).toBe(
       "https://proxy.nullspend.com/",
     );
+  });
+});
+
+describe("withNullSpendAsync", () => {
+  const BASE = { apiKey: "ns_test_sk_abc123" } as const;
+
+  const POLICY_RESPONSE = {
+    budget: {
+      remaining_microdollars: 4_200_000,
+      max_microdollars: 10_000_000,
+      spend_microdollars: 5_800_000,
+      period_end: "2026-04-01T00:00:00.000Z",
+      entity_type: "api_key",
+      entity_id: "key-1",
+    },
+    allowed_models: ["gpt-4o-mini", "claude-haiku-4-5-20251001"],
+    allowed_providers: ["openai", "anthropic"],
+    cheapest_per_provider: {
+      openai: { model: "gpt-4o-mini", input_per_mtok: 0.15, output_per_mtok: 0.60 },
+    },
+    cheapest_overall: { model: "gpt-4o-mini", provider: "openai", input_per_mtok: 0.15, output_per_mtok: 0.60 },
+    restrictions_active: true,
+  };
+
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    _resetPolicyCache();
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(POLICY_RESPONSE), { status: 200 }),
+    );
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    _resetPolicyCache();
+  });
+
+  it("fetches policy and sets appendSystemPrompt", async () => {
+    const result = await withNullSpendAsync({ ...BASE });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const appendPrompt = (result as any).appendSystemPrompt as string;
+    expect(appendPrompt).toContain("[NullSpend Budget Context]");
+    expect(appendPrompt).toContain("$4.20 remaining");
+    expect(appendPrompt).toContain("gpt-4o-mini");
+    expect(appendPrompt).toContain("Allowed models:");
+  });
+
+  it("skips policy fetch when budgetAwareness is false", async () => {
+    const result = await withNullSpendAsync({ ...BASE, budgetAwareness: false });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect((result as any).appendSystemPrompt).toBeUndefined();
+  });
+
+  it("proceeds without budget context on fetch failure", async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("network error"));
+    const result = await withNullSpendAsync({ ...BASE });
+    // Should not throw, should return base options without appendSystemPrompt
+    expect(result.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.nullspend.com");
+    expect((result as any).appendSystemPrompt).toBeUndefined();
+  });
+
+  it("proceeds without budget context on non-200 response", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "unauthorized" } }), { status: 401 }),
+    );
+    const result = await withNullSpendAsync({ ...BASE });
+    expect((result as any).appendSystemPrompt).toBeUndefined();
+  });
+
+  it("caches policy response and does not re-fetch within TTL", async () => {
+    await withNullSpendAsync({ ...BASE });
+    await withNullSpendAsync({ ...BASE });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1); // Only one fetch
+  });
+
+  it("uses different cache keys for different API keys", async () => {
+    await withNullSpendAsync({ ...BASE });
+    await withNullSpendAsync({ ...BASE, apiKey: "ns_test_sk_other" });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2); // Two different keys
+  });
+
+  it("preserves existing SDK options", async () => {
+    const result = await withNullSpendAsync({
+      ...BASE,
+      env: { MY_VAR: "test" },
+    });
+    expect(result.env?.MY_VAR).toBe("test");
+    expect(result.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.nullspend.com");
+  });
+
+  it("includes budget remaining and period end in prompt", async () => {
+    const result = await withNullSpendAsync({ ...BASE });
+    const prompt = (result as any).appendSystemPrompt as string;
+    expect(prompt).toContain("$4.20 remaining");
+    expect(prompt).toContain("resets 2026-04-01");
+  });
+
+  it("includes cheapest model recommendation in prompt", async () => {
+    const result = await withNullSpendAsync({ ...BASE });
+    const prompt = (result as any).appendSystemPrompt as string;
+    expect(prompt).toContain("Preferred model (cheapest): gpt-4o-mini");
+    expect(prompt).toContain("$0.15/MTok input");
+    expect(prompt).toContain("$0.6/MTok output");
+  });
+
+  it("concatenates with existing appendSystemPrompt", async () => {
+    const result = await withNullSpendAsync({
+      ...BASE,
+      appendSystemPrompt: "You are a helpful research assistant.",
+    } as any);
+    const prompt = (result as any).appendSystemPrompt as string;
+    expect(prompt).toContain("You are a helpful research assistant.");
+    expect(prompt).toContain("[NullSpend Budget Context]");
+    // Existing prompt comes first, budget context appended after
+    expect(prompt.indexOf("research assistant")).toBeLessThan(prompt.indexOf("[NullSpend"));
+  });
+
+  it("handles policy with no budget (restrictions only)", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        ...POLICY_RESPONSE,
+        budget: null,
+      }), { status: 200 }),
+    );
+    const result = await withNullSpendAsync({ ...BASE });
+    const prompt = (result as any).appendSystemPrompt as string;
+    expect(prompt).toContain("[NullSpend Budget Context]");
+    expect(prompt).toContain("Allowed models:");
+    expect(prompt).not.toContain("remaining");
+  });
+
+  it("handles policy with no cheapest model (empty allowlist)", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        ...POLICY_RESPONSE,
+        allowed_models: [],
+        cheapest_overall: null,
+        cheapest_per_provider: null,
+      }), { status: 200 }),
+    );
+    const result = await withNullSpendAsync({ ...BASE });
+    const prompt = (result as any).appendSystemPrompt as string;
+    expect(prompt).toContain("[NullSpend Budget Context]");
+    expect(prompt).not.toContain("Preferred model");
+    // Empty allowed_models means no "Allowed models:" line either
+    expect(prompt).not.toContain("Allowed models:");
   });
 });

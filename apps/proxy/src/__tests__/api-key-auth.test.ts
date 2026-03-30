@@ -69,7 +69,7 @@ describe("authenticateApiKey", () => {
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
 
-    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false });
+    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
     expect(mockSql).toHaveBeenCalledTimes(1);
   });
 
@@ -77,7 +77,7 @@ describe("authenticateApiKey", () => {
     mockSql.mockResolvedValueOnce([validRow]);
 
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false });
+    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
     expect(mockSql).toHaveBeenCalledTimes(1);
 
     // Second call — cache hit, no DB call
@@ -161,12 +161,12 @@ describe("authenticateApiKey", () => {
       { id: "key-0", user_id: "user-0", has_webhooks: false, has_budgets: false, org_id: null, api_version: "2026-04-01", default_tags: {}, request_logging_enabled: false },
     ]);
     const result = await authenticateApiKey("ns_live_sk_key_0", TEST_CONNECTION_STRING);
-    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false });
+    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
     expect(mockSql).toHaveBeenCalledTimes(258);
 
     // key_2 should still be cached
     const result2 = await authenticateApiKey("ns_live_sk_key_2", TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false });
+    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
     expect(mockSql).toHaveBeenCalledTimes(258); // No additional DB call
 
     vi.restoreAllMocks();
@@ -184,7 +184,7 @@ describe("authenticateApiKey", () => {
 
     // Second call — retries DB (not negative-cached), succeeds
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false });
+    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
     expect(mockSql).toHaveBeenCalledTimes(2); // Both calls hit DB
     vi.restoreAllMocks();
   });
@@ -418,5 +418,80 @@ describe("authenticateApiKey requestLoggingEnabled", () => {
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
     expect(result2!.requestLoggingEnabled).toBe(true);
     expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("authenticateApiKey allowedModels/allowedProviders", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    _resetCaches();
+  });
+
+  afterEach(() => {
+    _resetCaches();
+  });
+
+  it("returns allowedModels from DB when allowed_models is a non-empty array", async () => {
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, allowed_models: ["gpt-4o", "gpt-4o-mini"], allowed_providers: null },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.allowedModels).toEqual(["gpt-4o", "gpt-4o-mini"]);
+    expect(result!.allowedProviders).toBeNull();
+  });
+
+  it("returns allowedProviders from DB when allowed_providers is a non-empty array", async () => {
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, allowed_models: null, allowed_providers: ["openai"] },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.allowedModels).toBeNull();
+    expect(result!.allowedProviders).toEqual(["openai"]);
+  });
+
+  it("returns empty array when allowed_models is empty (deny all)", async () => {
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, allowed_models: [], allowed_providers: [] },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.allowedModels).toEqual([]);
+    expect(result!.allowedProviders).toEqual([]);
+  });
+
+  it("returns null when allowed_models/allowed_providers are null (unrestricted)", async () => {
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, allowed_models: null, allowed_providers: null },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.allowedModels).toBeNull();
+    expect(result!.allowedProviders).toBeNull();
+  });
+
+  it("returns null when allowed_models/allowed_providers are absent from row", async () => {
+    mockSql.mockResolvedValueOnce([validRow]); // validRow has no allowed_models/allowed_providers fields
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.allowedModels).toBeNull();
+    expect(result!.allowedProviders).toBeNull();
+  });
+
+  it("allowedModels/allowedProviders are cached in positive cache entry", async () => {
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, allowed_models: ["gpt-4o"], allowed_providers: ["openai", "anthropic"] },
+    ]);
+
+    const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result1!.allowedModels).toEqual(["gpt-4o"]);
+    expect(result1!.allowedProviders).toEqual(["openai", "anthropic"]);
+
+    const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result2!.allowedModels).toEqual(["gpt-4o"]);
+    expect(result2!.allowedProviders).toEqual(["openai", "anthropic"]);
+    expect(mockSql).toHaveBeenCalledTimes(1); // Only one DB call
   });
 });

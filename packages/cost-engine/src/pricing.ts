@@ -26,6 +26,14 @@ export function isKnownModel(provider: string, model: string): boolean {
 }
 
 /**
+ * Return the full pricing catalog as a record of "provider/model" → ModelPricing.
+ * Used by the policy endpoint to find cheapest allowed models.
+ */
+export function getAllPricing(): Readonly<Record<string, ModelPricing>> {
+  return pricingMap;
+}
+
+/**
  * Compute a single cost component in **unrounded microdollars** (float).
  *
  * Dimensional analysis:

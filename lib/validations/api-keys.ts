@@ -17,9 +17,14 @@ export const keyIdParamsSchema = z.object({
   id: nsIdInput("key"),
 });
 
+const allowedModelsSchema = z.array(z.string().min(1).max(100)).max(50).nullish();
+const allowedProvidersSchema = z.array(z.enum(["openai", "anthropic"])).nullish();
+
 export const createApiKeyInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(50, "Name must be 50 characters or fewer."),
   defaultTags: defaultTagsSchema,
+  allowedModels: allowedModelsSchema,
+  allowedProviders: allowedProvidersSchema,
 });
 
 const updateDefaultTagsSchema = z.record(tagKeySchema, tagValueSchema)
@@ -29,13 +34,20 @@ const updateDefaultTagsSchema = z.record(tagKeySchema, tagValueSchema)
 export const updateApiKeyInputSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(50, "Name must be 50 characters or fewer.").optional(),
   defaultTags: updateDefaultTagsSchema.optional(),
-}).refine(obj => obj.name !== undefined || obj.defaultTags !== undefined, "At least one field (name or defaultTags) is required.");
+  allowedModels: allowedModelsSchema.optional(),
+  allowedProviders: allowedProvidersSchema.optional(),
+}).refine(
+  obj => obj.name !== undefined || obj.defaultTags !== undefined || obj.allowedModels !== undefined || obj.allowedProviders !== undefined,
+  "At least one field is required.",
+);
 
 export const apiKeyRecordSchema = z.object({
   id: nsIdOutput("key"),
   name: z.string(),
   keyPrefix: z.string(),
   defaultTags: z.record(z.string(), z.string()),
+  allowedModels: z.array(z.string()).nullable(),
+  allowedProviders: z.array(z.string()).nullable(),
   lastUsedAt: z.string().nullable(),
   createdAt: z.string(),
 });
@@ -45,6 +57,8 @@ export const createApiKeyResponseSchema = z.object({
   name: z.string(),
   keyPrefix: z.string(),
   defaultTags: z.record(z.string(), z.string()),
+  allowedModels: z.array(z.string()).nullable(),
+  allowedProviders: z.array(z.string()).nullable(),
   rawKey: z.string(),
   createdAt: z.string(),
 });

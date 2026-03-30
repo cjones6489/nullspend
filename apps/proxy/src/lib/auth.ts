@@ -11,6 +11,8 @@ export interface AuthResult {
   requestLoggingEnabled: boolean;
   apiVersion: string;
   defaultTags: Record<string, string>;
+  allowedModels: string[] | null;
+  allowedProviders: string[] | null;
 }
 
 /**
@@ -36,5 +38,7 @@ export async function authenticateRequest(
     requestLoggingEnabled: identity.requestLoggingEnabled,
     apiVersion: identity.apiVersion,
     defaultTags: identity.defaultTags,
+    allowedModels: identity.allowedModels,
+    allowedProviders: identity.allowedProviders,
   };
 }

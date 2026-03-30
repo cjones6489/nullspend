@@ -1,4 +1,4 @@
-import type { CheckResult, VelocityState } from "../durable-objects/user-budget.js";
+import type { BudgetRow, CheckResult, VelocityState } from "../durable-objects/user-budget.js";
 import type { DOBudgetEntity } from "./budget-do-lookup.js";
 import { updateBudgetSpend } from "./budget-spend.js";
 import { emitMetric } from "./metrics.js";
@@ -168,6 +168,18 @@ export async function doBudgetGetVelocityState(
 ): Promise<VelocityState[]> {
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
   return stub.getVelocityState();
+}
+
+/**
+ * Read budget state from the UserBudgetDO without creating any reservation.
+ * Returns all budget rows for the owner.
+ */
+export async function doBudgetGetState(
+  env: Env,
+  ownerId: string,
+): Promise<BudgetRow[]> {
+  const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
+  return stub.getBudgetState();
 }
 
 /**

@@ -127,6 +127,80 @@ describe("API key validation schemas", () => {
         updateApiKeyInputSchema.parse({ defaultTags: { _ns_bad: "val" } }),
       ).toThrow();
     });
+
+    it("accepts allowedModels only", () => {
+      const result = updateApiKeyInputSchema.parse({ allowedModels: ["gpt-4o"] });
+      expect(result.allowedModels).toEqual(["gpt-4o"]);
+    });
+
+    it("accepts allowedProviders only", () => {
+      const result = updateApiKeyInputSchema.parse({ allowedProviders: ["openai"] });
+      expect(result.allowedProviders).toEqual(["openai"]);
+    });
+
+    it("accepts null allowedModels to clear restriction", () => {
+      const result = updateApiKeyInputSchema.parse({ allowedModels: null });
+      expect(result.allowedModels).toBeNull();
+    });
+
+    it("accepts null allowedProviders to clear restriction", () => {
+      const result = updateApiKeyInputSchema.parse({ allowedProviders: null });
+      expect(result.allowedProviders).toBeNull();
+    });
+  });
+
+  describe("createApiKeyInputSchema allowedModels/Providers", () => {
+    it("accepts allowedModels as array of strings", () => {
+      const result = createApiKeyInputSchema.parse({ name: "Test", allowedModels: ["gpt-4o", "gpt-4o-mini"] });
+      expect(result.allowedModels).toEqual(["gpt-4o", "gpt-4o-mini"]);
+    });
+
+    it("accepts null allowedModels (unrestricted)", () => {
+      const result = createApiKeyInputSchema.parse({ name: "Test", allowedModels: null });
+      expect(result.allowedModels).toBeNull();
+    });
+
+    it("defaults allowedModels to undefined when not provided", () => {
+      const result = createApiKeyInputSchema.parse({ name: "Test" });
+      expect(result.allowedModels).toBeUndefined();
+    });
+
+    it("rejects allowedModels with more than 50 entries", () => {
+      const models = Array.from({ length: 51 }, (_, i) => `model-${i}`);
+      expect(() => createApiKeyInputSchema.parse({ name: "Test", allowedModels: models })).toThrow();
+    });
+
+    it("rejects allowedModels with empty string entries", () => {
+      expect(() => createApiKeyInputSchema.parse({ name: "Test", allowedModels: [""] })).toThrow();
+    });
+
+    it("rejects allowedModels with entries over 100 characters", () => {
+      expect(() => createApiKeyInputSchema.parse({ name: "Test", allowedModels: ["x".repeat(101)] })).toThrow();
+    });
+
+    it("accepts allowedProviders as array of valid providers", () => {
+      const result = createApiKeyInputSchema.parse({ name: "Test", allowedProviders: ["openai", "anthropic"] });
+      expect(result.allowedProviders).toEqual(["openai", "anthropic"]);
+    });
+
+    it("rejects allowedProviders with unknown provider", () => {
+      expect(() => createApiKeyInputSchema.parse({ name: "Test", allowedProviders: ["google"] })).toThrow();
+    });
+
+    it("accepts null allowedProviders (unrestricted)", () => {
+      const result = createApiKeyInputSchema.parse({ name: "Test", allowedProviders: null });
+      expect(result.allowedProviders).toBeNull();
+    });
+
+    it("accepts empty allowedModels array (deny all)", () => {
+      const result = createApiKeyInputSchema.parse({ name: "Test", allowedModels: [] });
+      expect(result.allowedModels).toEqual([]);
+    });
+
+    it("accepts empty allowedProviders array", () => {
+      const result = createApiKeyInputSchema.parse({ name: "Test", allowedProviders: [] });
+      expect(result.allowedProviders).toEqual([]);
+    });
   });
 
   describe("apiKeyRecordSchema", () => {
@@ -136,6 +210,8 @@ describe("API key validation schemas", () => {
         name: "Production",
         keyPrefix: "ns_live_sk_3f8a1b2c",
         defaultTags: { project: "alpha" },
+        allowedModels: null,
+        allowedProviders: null,
         lastUsedAt: null,
         createdAt: "2026-03-07T12:00:00.000Z",
       });
@@ -151,11 +227,15 @@ describe("API key validation schemas", () => {
         name: "Dev",
         keyPrefix: "ns_live_sk_abcd1234",
         defaultTags: {},
+        allowedModels: ["gpt-4o"],
+        allowedProviders: ["openai"],
         lastUsedAt: "2026-03-07T15:00:00.000Z",
         createdAt: "2026-03-07T12:00:00.000Z",
       });
       expect(result.id).toBe("ns_key_550e8400-e29b-41d4-a716-446655440000");
       expect(result.lastUsedAt).toBe("2026-03-07T15:00:00.000Z");
+      expect(result.allowedModels).toEqual(["gpt-4o"]);
+      expect(result.allowedProviders).toEqual(["openai"]);
     });
   });
 
@@ -166,6 +246,8 @@ describe("API key validation schemas", () => {
         name: "Production",
         keyPrefix: "ns_live_sk_3f8a1b2c",
         defaultTags: { project: "alpha" },
+        allowedModels: null,
+        allowedProviders: null,
         rawKey: "ns_live_sk_3f8a1b2c9d4e5f6a7b8c9d0e1f2a3b4c",
         createdAt: "2026-03-07T12:00:00.000Z",
       });
