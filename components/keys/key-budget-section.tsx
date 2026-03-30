@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -176,6 +177,13 @@ export function KeyBudgetSection({ keyId, canManage }: KeyBudgetSectionProps) {
           )}
         </CardContent>
       </Card>
+
+      <Link
+        href="/app/budgets"
+        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        View all budgets →
+      </Link>
 
       {/* Velocity Limit */}
       {keyBudget.velocityLimitMicrodollars != null && (

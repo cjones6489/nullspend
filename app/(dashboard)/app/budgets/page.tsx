@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, Clock, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -330,8 +331,14 @@ function BudgetRow({
     <TableRow className="border-border/30 transition-colors hover:bg-accent/40">
       <TableCell>
         <div>
-          <p className="text-[13px] font-medium text-foreground">{entityName}</p>
-          <p className="text-[11px] text-muted-foreground">{budget.entityType}</p>
+          {budget.entityType === "api_key" ? (
+            <Link href={`/app/keys?selected=${budget.entityId}`} className="text-[13px] font-medium text-foreground hover:text-primary transition-colors">
+              {entityName}
+            </Link>
+          ) : (
+            <p className="text-[13px] font-medium text-foreground">{entityName}</p>
+          )}
+          <p className="text-[11px] text-muted-foreground">{budget.entityType === "tag" ? "tag" : budget.entityType}</p>
         </div>
       </TableCell>
       <TableCell>

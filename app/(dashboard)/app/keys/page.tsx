@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { KeyList } from "@/components/keys/key-list";
 import { KeyDetail } from "@/components/keys/key-detail";
 import { CreateKeyDialog } from "@/components/keys/create-key-dialog";
@@ -13,7 +14,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function KeysPage() {
   const { data, isLoading, error } = useApiKeys();
   const { data: session } = useSession();
-  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const [selectedKeyId, setSelectedKeyId] = useState<string | null>(
+    searchParams.get("selected"),
+  );
   const [createOpen, setCreateOpen] = useState(false);
 
   const canCreate = session?.role === "owner" || session?.role === "admin" || session?.role === "member";
@@ -22,7 +26,7 @@ export default function KeysPage() {
   const keys = useMemo(() => data?.data ?? [], [data]);
   const selectedKey = keys.find((k) => k.id === selectedKeyId) ?? null;
 
-  // Auto-select first key when data loads
+  // Auto-select first key when data loads (unless deep-linked via ?selected=)
   useEffect(() => {
     if (keys.length > 0 && !selectedKeyId) {
       setSelectedKeyId(keys[0].id);
