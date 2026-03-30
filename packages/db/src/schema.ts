@@ -352,3 +352,25 @@ export const auditEvents = pgTable("audit_events", {
 
 export type AuditEventRow = typeof auditEvents.$inferSelect;
 export type NewAuditEventRow = typeof auditEvents.$inferInsert;
+
+// ── Sessions (materialized from cost_events) ────────────────────────
+
+export const sessions = pgTable("sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  eventCount: integer("event_count").notNull().default(0),
+  totalCostMicrodollars: bigint("total_cost_microdollars", { mode: "number" }).notNull().default(0),
+  totalInputTokens: integer("total_input_tokens").notNull().default(0),
+  totalOutputTokens: integer("total_output_tokens").notNull().default(0),
+  totalDurationMs: integer("total_duration_ms").notNull().default(0),
+  firstEventAt: timestamp("first_event_at", { withTimezone: true }).notNull().defaultNow(),
+  lastEventAt: timestamp("last_event_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("sessions_org_session_idx").on(table.orgId, table.sessionId),
+  index("sessions_org_last_event_idx").on(table.orgId, table.lastEventAt),
+]);
+
+export type SessionRow = typeof sessions.$inferSelect;

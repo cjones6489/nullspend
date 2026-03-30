@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { handleRouteError } from "@/lib/utils/http";
-import { costEvents } from "@nullspend/db";
+import { sessions } from "@nullspend/db";
 
 const PAGE_SIZE = 25;
 
@@ -20,42 +20,37 @@ export async function GET(request: Request) {
 
     const db = getDb();
 
-    const conditions = [
-      eq(costEvents.orgId, orgId),
-      isNotNull(costEvents.sessionId),
-    ];
+    const conditions = [eq(sessions.orgId, orgId)];
 
-    // Cursor-based pagination: fetch sessions with lastEventAt < cursor
     if (cursor) {
-      conditions.push(sql`${costEvents.createdAt} < ${cursor}::timestamptz`);
+      conditions.push(lt(sessions.lastEventAt, new Date(cursor)));
     }
 
     const rows = await db
       .select({
-        sessionId: costEvents.sessionId,
-        eventCount: sql<number>`count(*)::int`,
-        totalCostMicrodollars: sql<number>`sum(${costEvents.costMicrodollars})::int`,
-        firstEventAt: sql<string>`min(${costEvents.createdAt})::text`,
-        lastEventAt: sql<string>`max(${costEvents.createdAt})::text`,
+        sessionId: sessions.sessionId,
+        eventCount: sessions.eventCount,
+        totalCostMicrodollars: sessions.totalCostMicrodollars,
+        firstEventAt: sessions.firstEventAt,
+        lastEventAt: sessions.lastEventAt,
       })
-      .from(costEvents)
+      .from(sessions)
       .where(and(...conditions))
-      .groupBy(costEvents.sessionId)
-      .orderBy(desc(sql`max(${costEvents.createdAt})`))
+      .orderBy(desc(sessions.lastEventAt))
       .limit(PAGE_SIZE + 1);
 
     const hasMore = rows.length > PAGE_SIZE;
     const pageRows = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
     const lastRow = pageRows[pageRows.length - 1];
-    const nextCursor = hasMore && lastRow ? lastRow.lastEventAt : null;
+    const nextCursor = hasMore && lastRow ? lastRow.lastEventAt.toISOString() : null;
 
     const response = NextResponse.json({
       data: pageRows.map((row) => ({
         sessionId: row.sessionId,
         eventCount: row.eventCount,
         totalCostMicrodollars: row.totalCostMicrodollars,
-        firstEventAt: row.firstEventAt,
-        lastEventAt: row.lastEventAt,
+        firstEventAt: row.firstEventAt.toISOString(),
+        lastEventAt: row.lastEventAt.toISOString(),
       })),
       cursor: nextCursor,
     });
