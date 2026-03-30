@@ -480,6 +480,27 @@ describe("authenticateApiKey allowedModels/allowedProviders", () => {
     expect(result!.allowedProviders).toBeNull();
   });
 
+  it("parses allowed_models from Postgres text array literal string (Hyperdrive/fetch_types:false)", async () => {
+    // When fetch_types:false, postgres.js returns text[] as a raw string like "{gpt-4o,gpt-4o-mini}"
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, allowed_models: "{gpt-4o,gpt-4o-mini}", allowed_providers: "{openai}" },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.allowedModels).toEqual(["gpt-4o", "gpt-4o-mini"]);
+    expect(result!.allowedProviders).toEqual(["openai"]);
+  });
+
+  it("parses empty Postgres text array literal string as empty array", async () => {
+    mockSql.mockResolvedValueOnce([
+      { ...validRow, allowed_models: "{}", allowed_providers: "{}" },
+    ]);
+
+    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
+    expect(result!.allowedModels).toEqual([]);
+    expect(result!.allowedProviders).toEqual([]);
+  });
+
   it("allowedModels/allowedProviders are cached in positive cache entry", async () => {
     mockSql.mockResolvedValueOnce([
       { ...validRow, allowed_models: ["gpt-4o"], allowed_providers: ["openai", "anthropic"] },

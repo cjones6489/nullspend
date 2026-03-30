@@ -1,6 +1,28 @@
 import { getSql } from "./db.js";
 import { toHex } from "./hex.js";
 
+/**
+ * Parse a Postgres text[] value which may arrive as:
+ * - A JavaScript array (when postgres.js parses the type correctly)
+ * - A Postgres array literal string like "{gpt-4o-mini,claude-haiku}" (when fetch_types:false skips parsing)
+ * - null/undefined (column is NULL)
+ *
+ * Returns a string[] or null.
+ */
+function parseTextArray(value: unknown): string[] | null {
+  if (Array.isArray(value)) return value as string[];
+  if (typeof value === "string" && value.startsWith("{") && value.endsWith("}")) {
+    const inner = value.slice(1, -1);
+    if (inner === "") return [];
+    return inner.split(",").map(s => {
+      // Handle quoted elements: "{\"quoted value\",simple}" → ["quoted value", "simple"]
+      if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"');
+      return s;
+    });
+  }
+  return null;
+}
+
 export interface ApiKeyIdentity {
   userId: string;
   orgId: string | null;
@@ -107,8 +129,8 @@ async function lookupKeyInDb(
     defaultTags: (typeof row.default_tags === "object" && row.default_tags !== null && !Array.isArray(row.default_tags))
       ? row.default_tags as Record<string, string>
       : {},
-    allowedModels: Array.isArray(row.allowed_models) ? row.allowed_models as string[] : null,
-    allowedProviders: Array.isArray(row.allowed_providers) ? row.allowed_providers as string[] : null,
+    allowedModels: parseTextArray(row.allowed_models),
+    allowedProviders: parseTextArray(row.allowed_providers),
   };
 }
 
