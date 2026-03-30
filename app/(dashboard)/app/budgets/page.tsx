@@ -96,7 +96,7 @@ export default function BudgetsPage() {
       budget.thresholdPercentages[2] === 90 &&
       budget.thresholdPercentages[3] === 95;
     setEditBudget({
-      entityType: budget.entityType as "user" | "api_key",
+      entityType: budget.entityType as "user" | "api_key" | "tag",
       entityId: budget.entityId,
       limitDollars: (budget.maxBudgetMicrodollars / 1_000_000).toString(),
       resetInterval: budget.resetInterval ?? "none",
@@ -185,7 +185,9 @@ export default function BudgetsPage() {
                     entityName={
                       budget.entityType === "user"
                         ? "Your Account"
-                        : keyMap.get(budget.entityId) ?? budget.entityId.slice(0, 8)
+                        : budget.entityType === "tag"
+                          ? budget.entityId
+                          : keyMap.get(budget.entityId) ?? budget.entityId.slice(0, 8)
                     }
                     onEditClick={() => handleEditClick(budget)}
                     velocityEntries={velocityEntries}
@@ -473,7 +475,7 @@ function BudgetRow({
 }
 
 interface EditBudgetData {
-  entityType: "user" | "api_key";
+  entityType: "user" | "api_key" | "tag";
   entityId: string;
   limitDollars: string;
   resetInterval: string;
@@ -500,11 +502,17 @@ function BudgetDialog({
   const { data: keysData } = useApiKeys();
   const keys = keysData?.data ?? [];
 
-  const [entityType, setEntityType] = useState<"user" | "api_key">(
+  const [entityType, setEntityType] = useState<"user" | "api_key" | "tag">(
     editBudget?.entityType ?? "user",
   );
   const [selectedKeyId, setSelectedKeyId] = useState(
     editBudget?.entityType === "api_key" ? editBudget.entityId : "",
+  );
+  const [tagKey, setTagKey] = useState(
+    editBudget?.entityType === "tag" ? editBudget.entityId.split("=")[0] : "",
+  );
+  const [tagValue, setTagValue] = useState(
+    editBudget?.entityType === "tag" ? editBudget.entityId.slice(editBudget.entityId.indexOf("=") + 1) : "",
   );
   const [limitDollars, setLimitDollars] = useState(editBudget?.limitDollars ?? "");
   const [resetInterval, setResetInterval] = useState<string>(
@@ -522,6 +530,8 @@ function BudgetDialog({
   function resetForm() {
     setEntityType("user");
     setSelectedKeyId("");
+    setTagKey("");
+    setTagValue("");
     setLimitDollars("");
     setResetInterval("none");
     setVelocityEnabled(false);
@@ -545,14 +555,23 @@ function BudgetDialog({
       ? editBudget.entityId
       : entityType === "user"
         ? userId
-        : selectedKeyId;
+        : entityType === "tag"
+          ? `${tagKey.trim()}=${tagValue.trim()}`
+          : selectedKeyId;
 
     if (!entityId) {
       toast.error(
         entityType === "user"
           ? "Could not determine your user ID"
-          : "Select an API key",
+          : entityType === "tag"
+            ? "Enter a tag key and value"
+            : "Select an API key",
       );
+      return;
+    }
+
+    if (entityType === "tag" && (!tagKey.trim() || !tagValue.trim())) {
+      toast.error("Both tag key and value are required");
       return;
     }
 
@@ -656,7 +675,7 @@ function BudgetDialog({
         <DialogDescription>
           {isEdit
             ? "Update the spending limit or reset interval."
-            : "Set a spending limit for your account or an individual API key."}
+            : "Set a spending limit for your account, an API key, or a tag."}
         </DialogDescription>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -689,6 +708,20 @@ function BudgetDialog({
                 )}
               >
                 API Key
+              </button>
+              <button
+                type="button"
+                onClick={() => !isEdit && setEntityType("tag")}
+                disabled={isEdit}
+                className={cn(
+                  "flex-1 rounded-md border px-3 py-2 text-xs font-medium transition-colors",
+                  entityType === "tag"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground",
+                  isEdit && "cursor-default opacity-60",
+                )}
+              >
+                Tag
               </button>
             </div>
           </div>
@@ -723,6 +756,34 @@ function BudgetDialog({
                   </SelectContent>
                 </Select>
               )}
+            </div>
+          )}
+
+          {entityType === "tag" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Tag</Label>
+              {isEdit ? (
+                <p className="text-xs font-mono text-foreground/80">{editBudget.entityId}</p>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="key (e.g. customer)"
+                    value={tagKey}
+                    onChange={(e) => setTagKey(e.target.value)}
+                    className="h-9 flex-1 font-mono text-[13px]"
+                  />
+                  <span className="flex items-center text-xs text-muted-foreground">=</span>
+                  <Input
+                    placeholder="value (e.g. acme)"
+                    value={tagValue}
+                    onChange={(e) => setTagValue(e.target.value)}
+                    className="h-9 flex-1 font-mono text-[13px]"
+                  />
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground">
+                Budget applies to all requests with this tag. Set default tags on your API keys.
+              </p>
             </div>
           )}
 
