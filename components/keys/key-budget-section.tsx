@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -64,9 +64,12 @@ export function KeyBudgetSection({ keyId, canManage }: KeyBudgetSectionProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-[13px] text-muted-foreground">
-            No budget set for this key. Requests are tracked but not capped.
-          </p>
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <p className="text-[13px] text-amber-200/80">
+              No budget set. Requests from this key are tracked but not capped.
+            </p>
+          </div>
           {canManage && (
             <CreateBudgetDialog
               keyId={keyId}
