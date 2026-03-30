@@ -229,6 +229,25 @@ describe("GET /api/budgets", () => {
     const json = await response.json();
     expect(json.data).toHaveLength(3);
   });
+
+  it("returns tag budget with entityId unchanged (no UUID prefix)", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+    const budgetRows = [
+      makeBudgetRow({
+        id: "b0000000-0000-4000-a000-000000000004",
+        entityType: "tag",
+        entityId: "customer=acme",
+      }),
+    ];
+    mockWhere.mockResolvedValueOnce(budgetRows);
+
+    const response = await GET(makeRequest());
+    const json = await response.json();
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0].entityType).toBe("tag");
+    // Tag entityId should pass through as-is, not get UUID prefix wrapping
+    expect(json.data[0].entityId).toBe("customer=acme");
+  });
 });
 
 describe("POST /api/budgets — proxy invalidation", () => {
@@ -431,5 +450,71 @@ describe("POST /api/budgets — proxy invalidation", () => {
     expect(response.status).toBe(400);
     const json = await response.json();
     expect(json.error.code).toBe("spend_cap_exceeded");
+  });
+
+  it("POST with tag entityType creates budget (ownership passthrough)", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "tag",
+      entityId: "customer=acme",
+      maxBudgetMicrodollars: 10_000_000,
+    });
+
+    const budgetRow = makeBudgetRow({
+      entityType: "tag",
+      entityId: "customer=acme",
+    });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json.data.entityType).toBe("tag");
+    expect(json.data.entityId).toBe("customer=acme");
+
+    // Verify proxy cache invalidation fires with tag entity
+    expect(mockedInvalidateProxyCache).toHaveBeenCalledWith({
+      action: "sync",
+      ownerId: "org-test-1",
+      entityType: "tag",
+      entityId: "customer=acme",
+    });
+  });
+
+  it("POST with invalid tag entityId returns 400", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    vi.mocked(readJsonBody).mockResolvedValue({
+      entityType: "tag",
+      entityId: "no-equals-sign",
+      maxBudgetMicrodollars: 10_000_000,
+    });
+
+    mockedGetDb.mockReturnValue({} as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
   });
 });
