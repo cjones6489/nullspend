@@ -13,6 +13,7 @@ import { useUpdateApiKey, useRevokeApiKey } from "@/lib/queries/api-keys";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { PolicyEditor } from "@/components/keys/policy-editor";
 import { KeyBudgetSection } from "@/components/keys/key-budget-section";
+import { KeyTagBudgets } from "@/components/keys/key-tag-budgets";
 import { RevokeKeyDialog } from "@/components/keys/revoke-key-dialog";
 import type { ApiKeyRecord } from "@/lib/validations/api-keys";
 
@@ -131,6 +132,9 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
             />
           </CardContent>
         </Card>
+
+        {/* Tag Budgets (matched from default tags) */}
+        <KeyTagBudgets defaultTags={apiKey.defaultTags} />
 
         {/* Actions */}
         {canManage && (
