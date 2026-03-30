@@ -1,4 +1,5 @@
 export function formatActionType(actionType: string): string {
+  if (!actionType) return "Unknown";
   return actionType
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

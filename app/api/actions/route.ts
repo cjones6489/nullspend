@@ -28,7 +28,7 @@ export const GET = withRequestContext(async (request: Request) => {
   });
   const result = await listActions({ ...query, orgId });
 
-  return NextResponse.json({ data: listActionsResponseSchema.parse(result) });
+  return NextResponse.json(listActionsResponseSchema.parse(result));
 });
 
 export const POST = withRequestContext(async (request: Request) => {

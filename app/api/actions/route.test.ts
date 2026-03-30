@@ -240,12 +240,12 @@ describe("app/api/actions/route", () => {
 
     expect(response.status).toBe(200);
     const json = await response.json();
-    expect(json.data.cursor).toEqual({
+    expect(json.cursor).toEqual({
       createdAt: "2026-03-07T12:00:00.000Z",
       id: "ns_act_00000000-0000-4000-a000-000000000002",
     });
     // Data IDs are also prefixed
-    expect(json.data.data[0].id).toBe("ns_act_550e8400-e29b-41d4-a716-446655440000");
+    expect(json.data[0].id).toBe("ns_act_550e8400-e29b-41d4-a716-446655440000");
   });
 
   it("passes statuses array to listActions when provided", async () => {
