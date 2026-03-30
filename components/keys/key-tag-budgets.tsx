@@ -65,7 +65,7 @@ export function KeyTagBudgets({ defaultTags }: KeyTagBudgetsProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[11px] text-muted-foreground">
-          Budgets matching this key's default tags. Every request from this key counts toward these limits.
+          Budgets matching this key&#39;s default tags. Every request from this key counts toward these limits.
         </p>
 
         {matched.map(({ tagKey, tagValue, budget }) => {
