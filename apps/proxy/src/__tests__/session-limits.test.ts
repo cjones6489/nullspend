@@ -13,7 +13,7 @@
  * 9. Anthropic route session denial
  * 10. buildSessionLimitExceededPayload builder
  */
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
 beforeAll(() => {
   if (!crypto.subtle.timingSafeEqual) {
@@ -279,10 +279,19 @@ const approvedCheckResult: CheckResult = {
 // ── Tests ──────────────────────────────────────────────────────────
 
 describe("Session Limits", () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
+    // Optimistic execution: fetch starts in parallel with budget check.
+    // Default mock returns a pending promise (aborted on denial).
+    globalThis.fetch = vi.fn().mockReturnValue(new Promise(() => {}));
     vi.clearAllMocks();
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   // ── 1. Orchestrator: session check passes through DO result ──────

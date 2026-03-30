@@ -75,12 +75,28 @@ export async function handleAnthropicMessages(
 
   const isStreaming = ctx.body.stream === true;
 
-  // --- Budget enforcement ---
+  // --- Budget enforcement + optimistic upstream fetch ---
   const estimate = estimateAnthropicMaxCost(requestModel, ctx.body, ctx.bodyByteLength);
 
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
   let budgetStatus: "skipped" | "approved" | "denied" = "skipped";
+
+  // Start upstream fetch optimistically — runs in parallel with budget check.
+  // Budget DO RPC takes 15-33ms; upstream TTFB is >200ms, so the budget
+  // result is always known before the provider sends any data back.
+  const upstreamHeaders = buildAnthropicUpstreamHeaders(request);
+  const budgetAbort = new AbortController();
+  const startTime = performance.now();
+  const upstreamFetchPromise = fetch(
+    `${ANTHROPIC_BASE_URL}/v1/messages`,
+    {
+      method: "POST",
+      headers: upstreamHeaders,
+      body: ctx.bodyText,
+      signal: AbortSignal.any([budgetAbort.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]),
+    },
+  );
 
   try {
     const budgetStartMs = performance.now();
@@ -92,29 +108,24 @@ export async function handleAnthropicMessages(
     budgetEntities = outcome.budgetEntities;
 
     const denialResponse = handleBudgetDenials(outcome, ctx, env, "anthropic", requestModel, estimate, budgetEntities);
-    if (denialResponse) return denialResponse;
+    if (denialResponse) {
+      budgetAbort.abort();
+      upstreamFetchPromise.catch(() => {});
+      return denialResponse;
+    }
 
     dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "anthropic");
   } catch {
+    budgetAbort.abort();
+    upstreamFetchPromise.catch(() => {});
     const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
     budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
     return budgetUnavailResp;
   }
 
-  // --- Forward to upstream ---
-  const upstreamHeaders = buildAnthropicUpstreamHeaders(request);
-  const startTime = performance.now();
-
+  // Budget approved — await the already-in-flight upstream fetch
   try {
-    const upstreamResponse = await fetch(
-      `${ANTHROPIC_BASE_URL}/v1/messages`,
-      {
-        method: "POST",
-        headers: upstreamHeaders,
-        body: ctx.bodyText,
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      },
-    );
+    const upstreamResponse = await upstreamFetchPromise;
     const upstreamDurationMs = Math.round(performance.now() - startTime);
 
     // Capture provider rate limit proximity in tags for analytics

@@ -370,6 +370,9 @@ describe("OpenAI route — velocity denial", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
+    // Optimistic execution: fetch starts in parallel with budget check.
+    // Default mock returns a pending promise (aborted on denial).
+    globalThis.fetch = vi.fn().mockReturnValue(new Promise(() => {}));
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -455,14 +458,18 @@ describe("OpenAI route — velocity denial", () => {
     expect(mockDoBudgetReconcile).not.toHaveBeenCalled();
   });
 
-  it("does not forward request to upstream on velocity denial", async () => {
+  it("aborts upstream fetch on velocity denial", async () => {
     mockDoBudgetCheck.mockResolvedValue(velocityDeniedCheckResult);
-    const fetchSpy = vi.fn();
+    const fetchSpy = vi.fn().mockReturnValue(new Promise(() => {}));
     globalThis.fetch = fetchSpy;
 
-    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
+    const res = await handleChatCompletions(makeRequest(defaultBody), makeEnv(), makeCtx(defaultBody));
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.status).toBe(429);
+    // Optimistic execution: fetch starts in parallel, aborted when budget denies
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const signal = fetchSpy.mock.calls[0][1]?.signal as AbortSignal;
+    expect(signal?.aborted).toBe(true);
   });
 
   it("velocity denial is distinct from budget_exceeded", async () => {
@@ -561,6 +568,8 @@ describe("Anthropic route — velocity denial", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
+    // Optimistic execution: fetch starts in parallel with budget check.
+    globalThis.fetch = vi.fn().mockReturnValue(new Promise(() => {}));
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -600,16 +609,20 @@ describe("Anthropic route — velocity denial", () => {
     expect(res.headers.get("Retry-After")).toBe("45");
   });
 
-  it("does not forward request to upstream on velocity denial", async () => {
+  it("aborts upstream fetch on velocity denial", async () => {
     mockDoBudgetCheck.mockResolvedValue(velocityDeniedCheckResult);
-    const fetchSpy = vi.fn();
+    const fetchSpy = vi.fn().mockReturnValue(new Promise(() => {}));
     globalThis.fetch = fetchSpy;
 
-    await handleAnthropicMessages(
+    const res = await handleAnthropicMessages(
       makeAnthropicRequest(anthropicBody), makeEnv(), makeCtx(anthropicBody),
     );
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(res.status).toBe(429);
+    // Optimistic execution: fetch starts in parallel, aborted when budget denies
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const signal = fetchSpy.mock.calls[0][1]?.signal as AbortSignal;
+    expect(signal?.aborted).toBe(true);
   });
 
   it("webhook dispatch uses provider='anthropic'", async () => {

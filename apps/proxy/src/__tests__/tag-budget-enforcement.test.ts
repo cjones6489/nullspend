@@ -9,7 +9,7 @@
  * 5. No enforcement when no tags on request
  * 6. No enforcement when tags present but no matching tag budgets (approved)
  */
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
 beforeAll(() => {
   if (!crypto.subtle.timingSafeEqual) {
@@ -252,10 +252,19 @@ const approvedWithTagCheckResult: CheckResult = {
 // ── Tests ──────────────────────────────────────────────────────────
 
 describe("Tag Budget Enforcement", () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
+    // Optimistic execution: fetch starts in parallel with budget check.
+    // Default mock returns a pending promise (aborted on denial).
+    globalThis.fetch = vi.fn().mockReturnValue(new Promise(() => {}));
     vi.clearAllMocks();
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   // ── OpenAI route ───────────────────────────────────────────────────

@@ -135,6 +135,9 @@ describe("OpenAI budget enforcement", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
+    // Optimistic execution: fetch starts in parallel with budget check.
+    // Default mock returns a pending promise (aborted on denial).
+    globalThis.fetch = vi.fn().mockReturnValue(new Promise(() => {}));
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});

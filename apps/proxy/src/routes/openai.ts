@@ -89,12 +89,26 @@ export async function handleChatCompletions(
     ensureStreamOptions(ctx.body);
   }
 
-  // --- Budget enforcement ---
+  // --- Budget enforcement + optimistic upstream fetch ---
   const estimate = estimateMaxCost(requestModel, ctx.body, ctx.bodyByteLength);
 
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
   let budgetStatus: "skipped" | "approved" | "denied" = "skipped";
+
+  // Start upstream fetch optimistically — runs in parallel with budget check.
+  // Budget DO RPC takes 15-33ms; upstream TTFB is >200ms, so the budget
+  // result is always known before the provider sends any data back.
+  const upstreamHeaders = buildUpstreamHeaders(request);
+  const UPSTREAM_TIMEOUT_MS = 120_000;
+  const budgetAbort = new AbortController();
+  const startTime = performance.now();
+  const upstreamFetchPromise = fetch(`${resolvedUpstream}/v1/chat/completions`, {
+    method: "POST",
+    headers: upstreamHeaders,
+    body: isStreaming ? JSON.stringify(ctx.body) : ctx.bodyText,
+    signal: AbortSignal.any([budgetAbort.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]),
+  });
 
   try {
     const budgetStartMs = performance.now();
@@ -106,28 +120,24 @@ export async function handleChatCompletions(
     budgetEntities = outcome.budgetEntities;
 
     const denialResponse = handleBudgetDenials(outcome, ctx, env, "openai", requestModel, estimate, budgetEntities);
-    if (denialResponse) return denialResponse;
+    if (denialResponse) {
+      budgetAbort.abort();
+      upstreamFetchPromise.catch(() => {});
+      return denialResponse;
+    }
 
     dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "openai");
   } catch {
+    budgetAbort.abort();
+    upstreamFetchPromise.catch(() => {});
     const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
     budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
     return budgetUnavailResp;
   }
 
-  // --- Forward to upstream ---
-  const upstreamHeaders = buildUpstreamHeaders(request);
-  const startTime = performance.now();
-  const UPSTREAM_TIMEOUT_MS = 120_000;
-
-  // Fix 11: wrap all post-reservation code in try/catch to ensure cleanup
+  // Budget approved — await the already-in-flight upstream fetch
   try {
-    const upstreamResponse = await fetch(`${resolvedUpstream}/v1/chat/completions`, {
-      method: "POST",
-      headers: upstreamHeaders,
-      body: isStreaming ? JSON.stringify(ctx.body) : ctx.bodyText,
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
+    const upstreamResponse = await upstreamFetchPromise;
     const upstreamDurationMs = Math.round(performance.now() - startTime);
 
     // Capture provider rate limit proximity in tags for analytics
