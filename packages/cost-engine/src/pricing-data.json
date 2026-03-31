@@ -1,4 +1,49 @@
 {
+  "openai/gpt-5.4": {
+    "inputPerMTok": 2.50,
+    "cachedInputPerMTok": 0.25,
+    "outputPerMTok": 15.00
+  },
+  "openai/gpt-5.4-mini": {
+    "inputPerMTok": 0.75,
+    "cachedInputPerMTok": 0.075,
+    "outputPerMTok": 4.50
+  },
+  "openai/gpt-5.4-nano": {
+    "inputPerMTok": 0.20,
+    "cachedInputPerMTok": 0.02,
+    "outputPerMTok": 1.25
+  },
+  "openai/gpt-5.4-pro": {
+    "inputPerMTok": 30.00,
+    "cachedInputPerMTok": 30.00,
+    "outputPerMTok": 180.00
+  },
+  "openai/gpt-5.3-chat-latest": {
+    "inputPerMTok": 1.75,
+    "cachedInputPerMTok": 0.175,
+    "outputPerMTok": 14.00
+  },
+  "openai/gpt-5.3-codex": {
+    "inputPerMTok": 1.75,
+    "cachedInputPerMTok": 0.175,
+    "outputPerMTok": 14.00
+  },
+  "openai/o3-deep-research": {
+    "inputPerMTok": 5.00,
+    "cachedInputPerMTok": 5.00,
+    "outputPerMTok": 20.00
+  },
+  "openai/o4-mini-deep-research": {
+    "inputPerMTok": 1.00,
+    "cachedInputPerMTok": 1.00,
+    "outputPerMTok": 4.00
+  },
+  "openai/computer-use-preview": {
+    "inputPerMTok": 1.50,
+    "cachedInputPerMTok": 1.50,
+    "outputPerMTok": 6.00
+  },
   "openai/gpt-4o": {
     "inputPerMTok": 2.50,
     "cachedInputPerMTok": 1.25,
