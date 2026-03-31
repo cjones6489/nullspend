@@ -4,6 +4,7 @@ import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { updateBudgetSpendFromCostEvent } from "@/lib/budgets/update-spend";
 import { insertCostEvent } from "@/lib/cost-events/ingest";
 import { listCostEvents } from "@/lib/cost-events/list-cost-events";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 import { withIdempotency } from "@/lib/resilience/idempotency";
 import { dispatchCostEventToEndpoints, fetchWebhookEndpoints } from "@/lib/webhooks/dispatch";
 import { GET, POST } from "./route";
@@ -56,6 +57,10 @@ vi.mock("@/lib/budgets/threshold-detection", () => ({
   detectThresholdCrossings: vi.fn(() => []),
 }));
 
+vi.mock("@/lib/proxy-invalidate", () => ({
+  invalidateProxyCache: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock("@/lib/observability", () => ({
   withRequestContext: vi.fn((handler: (req: Request) => Promise<Response>) => handler),
   getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
@@ -66,6 +71,7 @@ const mockedInsertCostEvent = vi.mocked(insertCostEvent);
 const mockedFetchWebhookEndpoints = vi.mocked(fetchWebhookEndpoints);
 const mockedDispatchCostEventToEndpoints = vi.mocked(dispatchCostEventToEndpoints);
 const mockedUpdateBudgetSpend = vi.mocked(updateBudgetSpendFromCostEvent);
+const mockedInvalidateProxyCache = vi.mocked(invalidateProxyCache);
 
 const VALID_EVENT = {
   provider: "openai",
@@ -224,7 +230,7 @@ describe("POST /api/cost-events", () => {
     expect(withIdempotency).toHaveBeenCalled();
   });
 
-  it("calls updateBudgetSpendFromCostEvent on new event", async () => {
+  it("calls updateBudgetSpendFromCostEvent with userId on new event", async () => {
     mockedAuthenticateApiKey.mockResolvedValue({
       userId: "user-1",
       orgId: "org-test-1",
@@ -246,6 +252,7 @@ describe("POST /api/cost-events", () => {
       "key-1",
       1500,
       undefined,
+      "user-1",
     );
   });
 
@@ -290,7 +297,89 @@ describe("POST /api/cost-events", () => {
       "key-1",
       1500,
       { project: "alpha", env: "prod" },
+      "user-1",
     );
+  });
+
+  it("syncs proxy cache for each updated budget entity", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      orgId: "org-test-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-sync-1",
+      createdAt: "2026-03-18T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedUpdateBudgetSpend.mockResolvedValue({
+      updatedEntities: [
+        { id: "b-1", entityType: "api_key", entityId: "key-1", previousSpend: 5000, newSpend: 6500, maxBudget: 20000, thresholdPercentages: [] },
+        { id: "b-2", entityType: "tag", entityId: "env=prod", previousSpend: 1000, newSpend: 2500, maxBudget: 10000, thresholdPercentages: [] },
+      ],
+    });
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedInvalidateProxyCache).toHaveBeenCalledTimes(2);
+    expect(mockedInvalidateProxyCache).toHaveBeenCalledWith({
+      action: "sync",
+      ownerId: "org-test-1",
+      entityType: "api_key",
+      entityId: "key-1",
+    });
+    expect(mockedInvalidateProxyCache).toHaveBeenCalledWith({
+      action: "sync",
+      ownerId: "org-test-1",
+      entityType: "tag",
+      entityId: "env=prod",
+    });
+  });
+
+  it("does not sync proxy cache when no budget entities updated", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      orgId: "org-test-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-nosync-1",
+      createdAt: "2026-03-18T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedUpdateBudgetSpend.mockResolvedValue({ updatedEntities: [] });
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedInvalidateProxyCache).not.toHaveBeenCalled();
+  });
+
+  it("still dispatches webhooks when budget spend update fails", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      orgId: "org-test-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-fail-spend",
+      createdAt: "2026-03-18T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedUpdateBudgetSpend.mockRejectedValue(new Error("DB connection lost"));
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Webhooks should still fire even though spend update failed
+    expect(mockedFetchWebhookEndpoints).toHaveBeenCalledWith("org-test-1");
+    expect(mockedDispatchCostEventToEndpoints).toHaveBeenCalled();
+    // Proxy cache should NOT be synced since no entities were updated
+    expect(mockedInvalidateProxyCache).not.toHaveBeenCalled();
   });
 });
 

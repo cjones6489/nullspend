@@ -14,8 +14,12 @@ import {
   listCostEventsQuerySchema,
   listCostEventsResponseSchema,
 } from "@/lib/validations/cost-events";
+import { updateBudgetSpendFromCostEvent } from "@/lib/budgets/update-spend";
+import { detectThresholdCrossings } from "@/lib/budgets/threshold-detection";
+import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 import {
   dispatchCostEventToEndpoints,
+  dispatchToEndpoints,
   fetchWebhookEndpoints,
 } from "@/lib/webhooks/dispatch";
 
@@ -76,7 +80,7 @@ export const POST = withRequestContext(async (request: Request) => {
       apiKeyId: authResult.keyId,
     }, idempotencyHeader);
 
-    // Fire-and-forget webhook dispatch
+    // Fire-and-forget: webhook dispatch + budget spend update + threshold detection
     if (!result.deduplicated) {
       const costEventData = {
         requestId: idempotencyHeader ?? `sdk_${result.id}`,
@@ -98,10 +102,61 @@ export const POST = withRequestContext(async (request: Request) => {
       };
       const orgId = authResult.orgId;
       (async () => {
-        const endpoints = await fetchWebhookEndpoints(orgId);
-        await dispatchCostEventToEndpoints(endpoints, costEventData);
+        // 1. Budget spend update — critical path, updates Postgres budgets table
+        let updatedEntities: Awaited<ReturnType<typeof updateBudgetSpendFromCostEvent>>["updatedEntities"] = [];
+        try {
+          const result = await updateBudgetSpendFromCostEvent(
+            orgId,
+            authResult.keyId,
+            input.costMicrodollars,
+            input.tags,
+            authResult.userId,
+          );
+          updatedEntities = result.updatedEntities;
+        } catch (spendErr) {
+          log.error({ err: spendErr }, "Budget spend update failed for SDK cost event — budget may under-count");
+        }
+
+        // 2. Sync proxy Durable Object with updated spend so enforcement stays accurate
+        //    Runs independently — even if spend update failed, a sync attempt may help
+        if (updatedEntities.length > 0) {
+          for (const entity of updatedEntities) {
+            invalidateProxyCache({
+              action: "sync",
+              ownerId: orgId,
+              entityType: entity.entityType,
+              entityId: entity.entityId,
+            }).catch((syncErr) => {
+              log.error({ err: syncErr, entityType: entity.entityType, entityId: entity.entityId },
+                "Proxy cache sync failed after SDK spend update");
+            });
+          }
+        }
+
+        // 3. Webhook dispatch — fetch endpoints once, used for both cost event and threshold
+        try {
+          const endpoints = await fetchWebhookEndpoints(orgId);
+          await dispatchCostEventToEndpoints(endpoints, costEventData);
+
+          // 4. Threshold detection — runs independently from spend update
+          if (updatedEntities.length > 0 && endpoints.length > 0) {
+            try {
+              const thresholdEvents = detectThresholdCrossings(
+                updatedEntities,
+                costEventData.requestId,
+              );
+              for (const te of thresholdEvents) {
+                await dispatchToEndpoints(endpoints, te);
+              }
+            } catch (thresholdErr) {
+              log.error({ err: thresholdErr }, "Threshold detection/dispatch failed");
+            }
+          }
+        } catch (webhookErr) {
+          log.error({ err: webhookErr }, "Webhook dispatch failed for cost event");
+        }
       })().catch((err) => {
-        log.error({ err }, "Webhook dispatch failed for cost event");
+        log.error({ err }, "Post-insert processing failed for cost event");
       });
     }
 
