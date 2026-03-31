@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
+import { updateBudgetSpendFromCostEvent } from "@/lib/budgets/update-spend";
 import { insertCostEvent } from "@/lib/cost-events/ingest";
 import { listCostEvents } from "@/lib/cost-events/list-cost-events";
 import { withIdempotency } from "@/lib/resilience/idempotency";
@@ -47,6 +48,14 @@ vi.mock("@/lib/webhooks/dispatch", () => ({
   dispatchCostEventToEndpoints: vi.fn(() => Promise.resolve()),
 }));
 
+vi.mock("@/lib/budgets/update-spend", () => ({
+  updateBudgetSpendFromCostEvent: vi.fn(() => Promise.resolve({ updatedEntities: [] })),
+}));
+
+vi.mock("@/lib/budgets/threshold-detection", () => ({
+  detectThresholdCrossings: vi.fn(() => []),
+}));
+
 vi.mock("@/lib/observability", () => ({
   withRequestContext: vi.fn((handler: (req: Request) => Promise<Response>) => handler),
   getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
@@ -56,6 +65,7 @@ const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedInsertCostEvent = vi.mocked(insertCostEvent);
 const mockedFetchWebhookEndpoints = vi.mocked(fetchWebhookEndpoints);
 const mockedDispatchCostEventToEndpoints = vi.mocked(dispatchCostEventToEndpoints);
+const mockedUpdateBudgetSpend = vi.mocked(updateBudgetSpendFromCostEvent);
 
 const VALID_EVENT = {
   provider: "openai",
@@ -212,6 +222,75 @@ describe("POST /api/cost-events", () => {
 
     await POST(makeRequest(VALID_EVENT));
     expect(withIdempotency).toHaveBeenCalled();
+  });
+
+  it("calls updateBudgetSpendFromCostEvent on new event", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      orgId: "org-test-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-spend-1",
+      createdAt: "2026-03-18T00:00:00.000Z",
+      deduplicated: false,
+    });
+
+    await POST(makeRequest(VALID_EVENT));
+    // Allow fire-and-forget promise to resolve
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedUpdateBudgetSpend).toHaveBeenCalledWith(
+      "org-test-1",
+      "key-1",
+      1500,
+      undefined,
+    );
+  });
+
+  it("does not call updateBudgetSpendFromCostEvent on deduplicated event", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      orgId: "org-test-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-dedup",
+      createdAt: "2026-03-17T00:00:00.000Z",
+      deduplicated: true,
+    });
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedUpdateBudgetSpend).not.toHaveBeenCalled();
+  });
+
+  it("passes tags to updateBudgetSpendFromCostEvent", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-1",
+      orgId: "org-test-1",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-tags-1",
+      createdAt: "2026-03-18T00:00:00.000Z",
+      deduplicated: false,
+    });
+
+    const eventWithTags = { ...VALID_EVENT, tags: { project: "alpha", env: "prod" } };
+    await POST(makeRequest(eventWithTags));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedUpdateBudgetSpend).toHaveBeenCalledWith(
+      "org-test-1",
+      "key-1",
+      1500,
+      { project: "alpha", env: "prod" },
+    );
   });
 });
 
