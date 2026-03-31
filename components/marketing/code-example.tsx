@@ -7,7 +7,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 const PROXY_URL = "https://proxy.nullspend.com/v1";
 
 const snippets = {
-  OpenAI: `import OpenAI from "openai";
+  Proxy: `import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "${PROXY_URL}",
@@ -15,13 +15,21 @@ const client = new OpenAI({
     "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
 });`,
-  Anthropic: `import Anthropic from "@anthropic-ai/sdk";
+  SDK: `import { NullSpend } from "@nullspend/sdk";
 
-const client = new Anthropic({
-  baseURL: "${PROXY_URL}",
-  defaultHeaders: {
-    "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
-  },
+const ns = new NullSpend({
+  baseUrl: "https://app.nullspend.com",
+  apiKey: process.env.NULLSPEND_API_KEY,
+  costReporting: {},
+});
+
+// Wraps fetch to auto-track cost for every LLM call
+const fetch = ns.createTrackedFetch("openai");`,
+  "Claude Agent": `import { withNullSpend } from "@nullspend/claude-agent";
+
+const config = withNullSpend({
+  apiKey: process.env.NULLSPEND_API_KEY,
+  tags: { agent: "my-agent" },
 });`,
   cURL: `curl ${PROXY_URL}/chat/completions \\
   -H "Authorization: Bearer $OPENAI_API_KEY" \\
@@ -33,20 +41,20 @@ const client = new Anthropic({
 } as const;
 
 type TabKey = keyof typeof snippets;
-const tabs: TabKey[] = ["OpenAI", "Anthropic", "cURL"];
+const tabs: TabKey[] = ["Proxy", "SDK", "Claude Agent", "cURL"];
 
 export function CodeExample() {
-  const [activeTab, setActiveTab] = useState<TabKey>("OpenAI");
+  const [activeTab, setActiveTab] = useState<TabKey>("Proxy");
 
   return (
     <section className="py-20">
       <div className="mx-auto max-w-3xl px-6">
         <div className="text-center">
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Two config changes. No SDK rewrite.
+            Three ways to connect. Zero SDK rewrites.
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
-            Point your existing SDK at NullSpend and add one header.
+            Use the proxy, SDK, or Claude Agent adapter — all feed the same dashboard.
           </p>
         </div>
 

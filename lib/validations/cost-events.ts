@@ -15,7 +15,7 @@ export const costEventRecordSchema = z.object({
   costMicrodollars: z.number(),
   durationMs: z.number().int().nullable(),
   createdAt: z.string(),
-  source: z.string(),
+  source: z.enum(["proxy", "api", "mcp"]),
   traceId: z.string().nullable(),
   sessionId: z.string().nullable(),
   tags: z.record(z.string(), z.string()).default({}),

@@ -95,7 +95,7 @@ export default function KeysPage() {
             onSelect={setSelectedKeyId}
           />
           {selectedKey ? (
-            <KeyDetail apiKey={selectedKey} canManage={canManage} />
+            <KeyDetail key={selectedKey.id} apiKey={selectedKey} canManage={canManage} />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
               Select a key to view details

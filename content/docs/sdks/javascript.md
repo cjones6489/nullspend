@@ -199,6 +199,106 @@ await ns.shutdown();
 
 When the queue overflows `maxQueueSize`, the oldest events are dropped and `onDropped` is called.
 
+## Tracked Fetch (Auto Cost Tracking)
+
+`createTrackedFetch` wraps `globalThis.fetch` to automatically track cost events for OpenAI and Anthropic API calls. Call the provider directly — the SDK intercepts responses, extracts token counts, calculates cost, and reports it to NullSpend. No proxy required.
+
+Requires `costReporting` in the constructor config.
+
+### Basic Usage
+
+```typescript
+import OpenAI from "openai";
+import { NullSpend } from "@nullspend/sdk";
+
+const ns = new NullSpend({
+  baseUrl: "https://app.nullspend.com",
+  apiKey: "ns_live_sk_...",
+  costReporting: {},
+});
+
+// Pass the tracked fetch to the OpenAI client
+const openai = new OpenAI({
+  fetch: ns.createTrackedFetch("openai"),
+});
+
+// Use OpenAI as normal — costs are tracked automatically
+const response = await openai.chat.completions.create({
+  model: "gpt-4o",
+  messages: [{ role: "user", content: "Hello" }],
+});
+
+// Flush pending cost events before exit
+await ns.shutdown();
+```
+
+Works with Anthropic too:
+
+```typescript
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic({
+  fetch: ns.createTrackedFetch("anthropic"),
+});
+```
+
+### Options
+
+`createTrackedFetch(provider, options?)` accepts a `TrackedFetchOptions` object:
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `sessionId` | `string` | — | Session ID for cost grouping and session limits |
+| `tags` | `Record<string, string>` | — | Tags for cost attribution |
+| `traceId` | `string` | — | 32-char hex trace ID for request correlation |
+| `actionId` | `string` | — | NullSpend action ID to correlate with HITL approval |
+| `enforcement` | `boolean` | `false` | Enable cooperative budget and mandate enforcement |
+| `onCostError` | `(error: Error) => void` | stderr log | Called on non-fatal cost tracking errors |
+| `onDenied` | `(reason: DenialReason) => void` | — | Called before throwing `BudgetExceededError` or `MandateViolationError` |
+
+### Enforcement Mode
+
+When `enforcement: true`, the SDK fetches and caches your key's policy before each request. If the request would violate a budget or mandate, it throws instead of calling the provider:
+
+```typescript
+import { BudgetExceededError, MandateViolationError } from "@nullspend/sdk";
+
+const fetch = ns.createTrackedFetch("openai", {
+  enforcement: true,
+  onDenied: (reason) => {
+    if (reason.type === "budget") {
+      console.log(`Only $${reason.remaining / 1_000_000} remaining`);
+    } else {
+      console.log(`Mandate violation: ${reason.mandate}`);
+    }
+  },
+});
+
+try {
+  const openai = new OpenAI({ fetch });
+  await openai.chat.completions.create({ model: "gpt-4o", messages: [...] });
+} catch (err) {
+  if (err instanceof BudgetExceededError) {
+    // Budget would be exceeded — request was NOT sent to OpenAI
+  }
+  if (err instanceof MandateViolationError) {
+    // Model or provider not allowed by key policy
+  }
+}
+```
+
+### How It Works
+
+1. Intercepts `fetch` calls to OpenAI/Anthropic chat/messages endpoints
+2. Non-tracked routes (GET requests, non-LLM endpoints) pass through untouched
+3. For tracked requests: parses the response (streaming or non-streaming), extracts token usage, calculates cost using the built-in pricing engine, and queues a cost event
+4. Cost events are batched and flushed according to `costReporting` config
+5. If the request goes through `proxy.nullspend.com`, tracking is skipped (proxy already handles it)
+
+### Source Field
+
+Cost events from `createTrackedFetch` are reported with `source: "api"`. This appears as "SDK" in the dashboard's source filter and analytics.
+
 ## Budget Status
 
 ```typescript

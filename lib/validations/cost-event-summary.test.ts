@@ -8,6 +8,7 @@ import {
   keyBreakdownSchema,
   totalsSchema,
   costSummaryResponseSchema,
+  sourceBreakdownSchema,
 } from "./cost-event-summary";
 
 describe("costSummaryQuerySchema", () => {
@@ -163,6 +164,67 @@ describe("totalsSchema", () => {
   it("rejects float totalRequests", () => {
     expect(() =>
       totalsSchema.parse({ totalCostMicrodollars: 0, totalRequests: 1.5 }),
+    ).toThrow(ZodError);
+  });
+});
+
+describe("sourceBreakdownSchema", () => {
+  it("accepts valid proxy source", () => {
+    const result = sourceBreakdownSchema.parse({
+      source: "proxy",
+      totalCostMicrodollars: 5_000_000,
+      requestCount: 30,
+    });
+    expect(result.source).toBe("proxy");
+    expect(result.totalCostMicrodollars).toBe(5_000_000);
+    expect(result.requestCount).toBe(30);
+  });
+
+  it("accepts valid api source", () => {
+    const result = sourceBreakdownSchema.parse({
+      source: "api",
+      totalCostMicrodollars: 2_000_000,
+      requestCount: 15,
+    });
+    expect(result.source).toBe("api");
+  });
+
+  it("accepts valid mcp source", () => {
+    const result = sourceBreakdownSchema.parse({
+      source: "mcp",
+      totalCostMicrodollars: 1_000_000,
+      requestCount: 5,
+    });
+    expect(result.source).toBe("mcp");
+  });
+
+  it("rejects unknown source values", () => {
+    expect(() =>
+      sourceBreakdownSchema.parse({
+        source: "unknown",
+        totalCostMicrodollars: 100,
+        requestCount: 1,
+      }),
+    ).toThrow(ZodError);
+  });
+
+  it("rejects empty string source", () => {
+    expect(() =>
+      sourceBreakdownSchema.parse({
+        source: "",
+        totalCostMicrodollars: 0,
+        requestCount: 0,
+      }),
+    ).toThrow(ZodError);
+  });
+
+  it("rejects float requestCount", () => {
+    expect(() =>
+      sourceBreakdownSchema.parse({
+        source: "proxy",
+        totalCostMicrodollars: 100,
+        requestCount: 1.5,
+      }),
     ).toThrow(ZodError);
   });
 });

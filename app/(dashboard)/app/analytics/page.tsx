@@ -8,6 +8,7 @@ import { CostBreakdown } from "@/components/analytics/cost-breakdown";
 import { KeyBreakdown } from "@/components/analytics/key-breakdown";
 import { ModelBreakdown } from "@/components/analytics/model-breakdown";
 import { ProviderBreakdown } from "@/components/analytics/provider-breakdown";
+import { SourceBreakdown } from "@/components/analytics/source-breakdown";
 import { SpendChart } from "@/components/analytics/spend-chart";
 import { ToolBreakdown } from "@/components/analytics/tool-breakdown";
 import { TraceBreakdown } from "@/components/analytics/trace-breakdown";
@@ -147,7 +148,10 @@ export default function AnalyticsPage() {
 
           <SpendChart data={data.daily} />
 
-          <ProviderBreakdown data={data.providers} />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <ProviderBreakdown data={data.providers} />
+            <SourceBreakdown data={data.sources} />
+          </div>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ModelBreakdown data={data.models} />

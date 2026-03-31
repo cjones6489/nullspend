@@ -40,7 +40,14 @@ interface RecentActivityProps {
 
 const ALL_KEYS = "all";
 const ALL_PROVIDERS = "all";
+const ALL_SOURCES = "all";
 const ALL_BUDGET_STATUS = "all";
+
+const SOURCE_LABELS: Record<string, string> = {
+  proxy: "Proxy",
+  api: "SDK",
+  mcp: "MCP",
+};
 
 type SortField = "createdAt" | "cost" | "toks" | "latency" | "input" | "output";
 type SortDir = "asc" | "desc";
@@ -56,6 +63,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
   const router = useRouter();
   const [selectedKeyId, setSelectedKeyId] = useState(ALL_KEYS);
   const [selectedProvider, setSelectedProvider] = useState(initialProvider ?? ALL_PROVIDERS);
+  const [selectedSource, setSelectedSource] = useState(ALL_SOURCES);
   const [selectedBudgetStatus, setSelectedBudgetStatus] = useState(ALL_BUDGET_STATUS);
   const [modelFilter, setModelFilter] = useState("");
   const [modelInput, setModelInput] = useState("");
@@ -75,6 +83,9 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
     ...(selectedKeyId !== ALL_KEYS ? { apiKeyId: selectedKeyId } : {}),
     ...(selectedProvider !== ALL_PROVIDERS
       ? { provider: selectedProvider }
+      : {}),
+    ...(selectedSource !== ALL_SOURCES
+      ? { source: selectedSource as "proxy" | "api" | "mcp" }
       : {}),
     ...(selectedBudgetStatus !== ALL_BUDGET_STATUS
       ? { budgetStatus: selectedBudgetStatus as "skipped" | "approved" | "denied" }
@@ -111,7 +122,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
     return sorted;
   }, [data, sortField, sortDir]);
   const hasFilter =
-    selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS || selectedBudgetStatus !== ALL_BUDGET_STATUS || !!modelFilter;
+    selectedKeyId !== ALL_KEYS || selectedProvider !== ALL_PROVIDERS || selectedSource !== ALL_SOURCES || selectedBudgetStatus !== ALL_BUDGET_STATUS || !!modelFilter;
 
   return (
     <div className="space-y-3">
@@ -121,6 +132,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
           onClick={() => {
             const params = new URLSearchParams();
             if (selectedProvider !== ALL_PROVIDERS) params.set("provider", selectedProvider);
+            if (selectedSource !== ALL_SOURCES) params.set("source", selectedSource);
             if (modelFilter) params.set("model", modelFilter);
             if (selectedKeyId !== ALL_KEYS) params.set("apiKeyId", selectedKeyId);
             const qs = params.toString();
@@ -158,6 +170,20 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
             <SelectItem value={ALL_PROVIDERS}>All providers</SelectItem>
             <SelectItem value="openai">OpenAI</SelectItem>
             <SelectItem value="anthropic">Anthropic</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={selectedSource}
+          onValueChange={(v) => setSelectedSource(v ?? ALL_SOURCES)}
+        >
+          <SelectTrigger className="h-8 w-[120px] text-xs">
+            <SelectValue placeholder="All sources" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_SOURCES}>All sources</SelectItem>
+            <SelectItem value="proxy">Proxy</SelectItem>
+            <SelectItem value="api">SDK</SelectItem>
+            <SelectItem value="mcp">MCP</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -245,6 +271,9 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                 <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Model
                 </TableHead>
+                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Source
+                </TableHead>
                 {selectedKeyId === ALL_KEYS && (
                   <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                     Key
@@ -321,6 +350,9 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                     <p className="font-mono text-[13px] text-foreground">
                       {formatModelName(event.model)}
                     </p>
+                  </TableCell>
+                  <TableCell>
+                    <SourceBadge source={event.source} />
                   </TableCell>
                   {selectedKeyId === ALL_KEYS && (
                     <TableCell className="text-[13px] text-muted-foreground">
@@ -424,6 +456,22 @@ function EmptyActivity({ hasFilter }: { hasFilter: boolean }) {
         </p>
       </div>
     </div>
+  );
+}
+
+const SOURCE_STYLES: Record<string, string> = {
+  proxy: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  api: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  mcp: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+};
+
+function SourceBadge({ source }: { source: string }) {
+  const style = SOURCE_STYLES[source] ?? "bg-secondary text-muted-foreground border-border/50";
+  const label = SOURCE_LABELS[source] ?? source;
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${style}`}>
+      {label}
+    </span>
   );
 }
 

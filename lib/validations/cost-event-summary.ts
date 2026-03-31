@@ -49,7 +49,7 @@ export const toolBreakdownSchema = z.object({
 });
 
 export const sourceBreakdownSchema = z.object({
-  source: z.string(),
+  source: z.enum(["proxy", "api", "mcp"]),
   totalCostMicrodollars: z.number().nonnegative(),
   requestCount: z.number().int(),
 });

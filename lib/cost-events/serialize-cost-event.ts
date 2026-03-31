@@ -15,7 +15,7 @@ interface CostEventJoinRow {
   createdAt: Date;
   traceId: string | null;
   sessionId: string | null;
-  source: string;
+  source: "proxy" | "api" | "mcp";
   tags: Record<string, string>;
   keyName: string | null;
   budgetStatus?: string | null;

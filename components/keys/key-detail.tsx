@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
 
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useUpdateApiKey, useRevokeApiKey } from "@/lib/queries/api-keys";
+import { useCostEvents } from "@/lib/queries/cost-events";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { PolicyEditor } from "@/components/keys/policy-editor";
 import { KeyBudgetSection } from "@/components/keys/key-budget-section";
@@ -22,10 +23,27 @@ interface KeyDetailProps {
   canManage: boolean;
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  proxy: "Proxy",
+  api: "SDK",
+  mcp: "MCP",
+};
+
+const SOURCE_STYLES: Record<string, string> = {
+  proxy: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  api: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  mcp: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+};
+
 export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
   const updateKey = useUpdateApiKey();
   const revokeKey = useRevokeApiKey();
   const [revokeOpen, setRevokeOpen] = useState(false);
+  const { data: eventsData } = useCostEvents({ apiKeyId: apiKey.id });
+  const activeSources = useMemo(() => {
+    const events = eventsData?.pages.flatMap((p) => p.data) ?? [];
+    return [...new Set(events.map((e) => e.source))].sort();
+  }, [eventsData]);
 
   const handleUpdatePolicy = async (
     allowedProviders: string[] | null,
@@ -92,6 +110,25 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
             {apiKey.lastUsedAt ? formatRelativeTime(apiKey.lastUsedAt) : "Never"}
           </div>
         </div>
+
+        {/* Traffic sources */}
+        {activeSources.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Sources
+            </span>
+            <div className="flex gap-1.5">
+              {activeSources.map((source) => (
+                <span
+                  key={source}
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${SOURCE_STYLES[source] ?? "bg-secondary text-muted-foreground border-border/50"}`}
+                >
+                  {SOURCE_LABELS[source] ?? source}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Policy (providers + models) */}
         <Card className="border-border/50 bg-card">

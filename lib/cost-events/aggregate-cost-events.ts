@@ -128,6 +128,43 @@ export async function getSourceBreakdown(orgId: string, periodDays: number, opti
     .limit(25);
 }
 
+export async function getSourceBreakdownForEntity(
+  orgId: string,
+  entityType: string,
+  entityId: string,
+  periodDays: number,
+  options?: AggregateOptions,
+) {
+  const db = getDb();
+  const cutoff = makeCutoff(periodDays);
+
+  const entityCondition =
+    entityType === "api_key"
+      ? eq(costEvents.apiKeyId, entityId)
+      : entityType === "tag"
+        ? (() => {
+            const eqIdx = entityId.indexOf("=");
+            if (eqIdx === -1) return sql`false`;
+            const tagKey = entityId.slice(0, eqIdx);
+            const tagValue = entityId.slice(eqIdx + 1);
+            return sql`${costEvents.tags}->>${tagKey} = ${tagValue}`;
+          })()
+        : eq(costEvents.userId, entityId);
+
+  return db
+    .select({
+      source: costEvents.source,
+      totalCostMicrodollars:
+        sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
+      requestCount: sql`cast(count(*) as int)`.mapWith(Number),
+    })
+    .from(costEvents)
+    .where(and(baseConditions(orgId, cutoff, options), entityCondition))
+    .groupBy(costEvents.source)
+    .orderBy(desc(sql`sum(${costEvents.costMicrodollars})`))
+    .limit(25);
+}
+
 export async function getToolBreakdown(orgId: string, periodDays: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);

@@ -126,6 +126,21 @@ export function useVelocityStatus(enabled: boolean = true) {
   });
 }
 
+export interface BudgetSourceBreakdown {
+  source: "proxy" | "api" | "mcp";
+  totalCostMicrodollars: number;
+  requestCount: number;
+}
+
+export function useBudgetSources(budgetId: string | null) {
+  return useQuery<{ data: BudgetSourceBreakdown[] }>({
+    queryKey: [...budgetKeys.all, "sources", budgetId],
+    queryFn: () => apiGet(`/api/budgets/${budgetId}/sources?period=30d`),
+    enabled: !!budgetId,
+    staleTime: 60_000,
+  });
+}
+
 export function useDeleteBudget() {
   const queryClient = useQueryClient();
 

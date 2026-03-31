@@ -4,23 +4,26 @@
 
 ## What NullSpend Does
 
-NullSpend is a proxy that sits between your app and OpenAI/Anthropic. It tracks costs per-request, enforces budgets before requests reach the provider, and provides a dashboard with analytics, attribution, and webhook alerts. Two config changes to integrate — change the base URL and add one header.
+NullSpend tracks costs per-request, enforces budgets before requests reach the provider, and provides a dashboard with analytics, attribution, and webhook alerts. Three integration paths — proxy, SDK, or Claude Agent adapter — all feed the same dashboard.
+
+## Integration Paths
+
+Every cost event has a `source` field indicating how it was ingested:
+
+| Source | Value | How It Works |
+|---|---|---|
+| Proxy | `"proxy"` | Route LLM calls through `proxy.nullspend.com`. Automatic cost tracking, budget enforcement, zero code changes beyond config. |
+| SDK | `"api"` | Use `@nullspend/sdk` with `createTrackedFetch()` to auto-track costs client-side. Call providers directly, report costs to NullSpend. |
+| MCP | `"mcp"` | Use `@nullspend/claude-agent` or `@nullspend/mcp-server` for Claude Agent SDK and MCP tool cost tracking. |
 
 ## Quick Integration
 
-```bash
-# Before
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-# After
-OPENAI_BASE_URL=https://proxy.nullspend.com/v1
-```
-
-Add the `X-NullSpend-Key` header to every request:
+### Option 1: Proxy (recommended)
 
 ```typescript
-// OpenAI
+// OpenAI — change base URL, add one header
 const openai = new OpenAI({
+  baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: { "X-NullSpend-Key": process.env.NULLSPEND_API_KEY },
 });
 
@@ -28,6 +31,31 @@ const openai = new OpenAI({
 const anthropic = new Anthropic({
   baseURL: "https://proxy.nullspend.com/v1",
   defaultHeaders: { "X-NullSpend-Key": process.env.NULLSPEND_API_KEY },
+});
+```
+
+### Option 2: SDK (client-side cost tracking)
+
+```typescript
+import { NullSpend } from "@nullspend/sdk";
+
+const ns = new NullSpend({
+  baseUrl: "https://app.nullspend.com",
+  apiKey: process.env.NULLSPEND_API_KEY,
+  costReporting: {},
+});
+
+const fetch = ns.createTrackedFetch("openai");
+```
+
+### Option 3: Claude Agent SDK
+
+```typescript
+import { withNullSpend } from "@nullspend/claude-agent";
+
+const config = withNullSpend({
+  apiKey: process.env.NULLSPEND_API_KEY,
+  tags: { agent: "my-agent" },
 });
 ```
 
@@ -68,6 +96,12 @@ These endpoints are callable from your agent or SDK using the `X-NullSpend-Key` 
 `POST /api/cost-events`
 Body: `{ provider, model, inputTokens, outputTokens, costMicrodollars, cachedInputTokens?, reasoningTokens?, durationMs?, sessionId?, traceId?, eventType?, tags? }`
 Response: `{ data: { id, createdAt } }`
+Note: Events ingested via this endpoint are tagged with `source: "api"`. Proxy events get `source: "proxy"`, MCP events get `source: "mcp"`.
+
+### List Cost Events (Dashboard)
+`GET /api/cost-events`
+Query: `limit`, `cursor`, `provider`, `model`, `source` (`"proxy"`, `"api"`, `"mcp"`), `apiKeyId`, `sessionId`, `traceId`, `tag.*`
+Response: `{ data: [CostEventRecord], cursor }` — each record includes `source` field.
 
 ### Batch Ingest
 `POST /api/cost-events/batch`

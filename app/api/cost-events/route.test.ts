@@ -61,10 +61,21 @@ vi.mock("@/lib/proxy-invalidate", () => ({
   invalidateProxyCache: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("@/lib/observability", () => ({
-  withRequestContext: vi.fn((handler: (req: Request) => Promise<Response>) => handler),
-  getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
-}));
+vi.mock("@/lib/observability", async () => {
+  const http = await vi.importActual<typeof import("@/lib/utils/http")>("@/lib/utils/http");
+  return {
+    withRequestContext: vi.fn((handler: (req: Request) => Promise<Response>) =>
+      async (req: Request) => {
+        try {
+          return await handler(req);
+        } catch (error) {
+          return http.handleRouteError(error);
+        }
+      },
+    ),
+    getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+  };
+});
 
 const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedInsertCostEvent = vi.mocked(insertCostEvent);
@@ -434,6 +445,75 @@ describe("GET /api/cost-events", () => {
         requestId: "req-123",
       }),
     );
+  });
+
+  it("filters by source when provided", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request(
+      "http://localhost:3000/api/cost-events?source=proxy",
+    );
+    await GET(request);
+
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: "org-test-1",
+        source: "proxy",
+      }),
+    );
+  });
+
+  it("filters by source=api for SDK events", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request(
+      "http://localhost:3000/api/cost-events?source=api",
+    );
+    await GET(request);
+
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "api",
+      }),
+    );
+  });
+
+  it("filters by source=mcp for MCP events", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request(
+      "http://localhost:3000/api/cost-events?source=mcp",
+    );
+    await GET(request);
+
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "mcp",
+      }),
+    );
+  });
+
+  it("rejects invalid source values", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request(
+      "http://localhost:3000/api/cost-events?source=invalid",
+    );
+    const res = await GET(request);
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("validation_error");
+  });
+
+  it("omits source filter when not provided", async () => {
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request("http://localhost:3000/api/cost-events");
+    await GET(request);
+
+    const callArgs = mockedListCostEvents.mock.calls[0][0];
+    expect(callArgs.source).toBeUndefined();
   });
 
   it("filters by sessionId when provided", async () => {

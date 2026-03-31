@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { resolveSessionContext } from "@/lib/auth/session";
@@ -83,8 +84,12 @@ export async function GET(request: Request) {
     const apiKeyId = url.searchParams.get("apiKeyId");
     if (apiKeyId) conditions.push(eq(costEvents.apiKeyId, apiKeyId));
 
-    const source = url.searchParams.get("source") as "proxy" | "api" | "mcp" | null;
-    if (source) conditions.push(eq(costEvents.source, source));
+    const sourceParam = z.enum(["proxy", "api", "mcp"]).optional().safeParse(
+      url.searchParams.get("source") ?? undefined,
+    );
+    if (sourceParam.success && sourceParam.data) {
+      conditions.push(eq(costEvents.source, sourceParam.data));
+    }
 
     const sessionId = url.searchParams.get("sessionId");
     if (sessionId) conditions.push(eq(costEvents.sessionId, sessionId));

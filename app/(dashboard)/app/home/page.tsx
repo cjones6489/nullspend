@@ -31,9 +31,10 @@ import { useCostSummary } from "@/lib/queries/cost-event-summary";
 import { formatMicrodollars, formatChartDollars } from "@/lib/utils/format";
 
 const PROXY_URL = process.env.NEXT_PUBLIC_NULLSPEND_PROXY_URL ?? "https://proxy.nullspend.com/v1";
+const DASHBOARD_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.nullspend.com";
 
 const snippets = {
-  OpenAI: `import OpenAI from "openai";
+  Proxy: `import OpenAI from "openai";
 
 const client = new OpenAI({
   baseURL: "${PROXY_URL}",
@@ -41,13 +42,21 @@ const client = new OpenAI({
     "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
 });`,
-  Anthropic: `import Anthropic from "@anthropic-ai/sdk";
+  SDK: `import { NullSpend } from "@nullspend/sdk";
 
-const client = new Anthropic({
-  baseURL: "${PROXY_URL}",
-  defaultHeaders: {
-    "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
-  },
+const ns = new NullSpend({
+  baseUrl: "${DASHBOARD_URL}",
+  apiKey: process.env.NULLSPEND_API_KEY,
+  costReporting: {},
+});
+
+// Wraps fetch to auto-track cost for every LLM call
+const fetch = ns.createTrackedFetch("openai");`,
+  "Claude Agent": `import { withNullSpend } from "@nullspend/claude-agent";
+
+const config = withNullSpend({
+  apiKey: process.env.NULLSPEND_API_KEY,
+  tags: { agent: "my-agent" },
 });`,
   cURL: `curl ${PROXY_URL}/chat/completions \\
   -H "Authorization: Bearer $OPENAI_API_KEY" \\
@@ -59,7 +68,7 @@ const client = new Anthropic({
 } as const;
 
 type TabKey = keyof typeof snippets;
-const tabs: TabKey[] = ["OpenAI", "Anthropic", "cURL"];
+const tabs: TabKey[] = ["Proxy", "SDK", "Claude Agent", "cURL"];
 
 const chartConfig = {
   totalCostMicrodollars: {
@@ -69,7 +78,7 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<TabKey>("OpenAI");
+  const [activeTab, setActiveTab] = useState<TabKey>("Proxy");
   const { data: keysData, isLoading: keysLoading } = useApiKeys();
   const { data: summaryData, isLoading: summaryLoading } = useCostSummary("7d");
   const { data: budgetsData } = useBudgets();
@@ -195,7 +204,7 @@ export default function HomePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-[13px] text-muted-foreground">
-              Point your SDK at NullSpend to start tracking costs:
+              Connect via proxy, SDK, or Claude Agent to start tracking costs:
             </p>
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
               <TabsList className="h-8 bg-secondary/50 p-0.5">

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Clock, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -44,6 +44,7 @@ import { useApiKeys } from "@/lib/queries/api-keys";
 import { useSession } from "@/lib/queries/session";
 import {
   useBudgets,
+  useBudgetSources,
   useCreateBudget,
   useCurrentUserId,
   useDeleteBudget,
@@ -285,6 +286,8 @@ function BudgetRow({
   const deleteBudget = useDeleteBudget();
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const { data: sourcesData, isLoading: sourcesLoading } = useBudgetSources(expanded ? budget.id : null);
 
   const pct =
     budget.maxBudgetMicrodollars > 0
@@ -340,22 +343,37 @@ function BudgetRow({
     ? Math.ceil((velocityEntry!.tripped_at! + cooldownMs - now) / 1000)
     : 0;
 
+  const sources = sourcesData?.data ?? [];
+
   return (
-    <TableRow className="border-border/30 transition-colors hover:bg-accent/40">
+    <>
+    <TableRow
+      className="border-border/30 cursor-pointer transition-colors hover:bg-accent/40"
+      onClick={() => setExpanded((e) => !e)}
+    >
       <TableCell>
-        <div>
-          {budget.entityType === "api_key" ? (
-            <Link href={`/app/keys?selected=${budget.entityId}`} className="text-[13px] font-medium text-foreground hover:text-primary transition-colors">
-              {entityName}
-            </Link>
-          ) : (
-            <p className="text-[13px] font-medium text-foreground">{entityName}</p>
-          )}
-          <p className="text-[11px] text-muted-foreground/70">
-            {budget.entityType === "user" && "All requests across your account"}
-            {budget.entityType === "api_key" && "Requests from this key only"}
-            {budget.entityType === "tag" && `All requests tagged ${budget.entityId} (any key)`}
-          </p>
+        <div className="flex items-center gap-1.5">
+          {expanded
+            ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+            : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+          <div>
+            {budget.entityType === "api_key" ? (
+              <Link
+                href={`/app/keys?selected=${budget.entityId}`}
+                className="text-[13px] font-medium text-foreground hover:text-primary transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {entityName}
+              </Link>
+            ) : (
+              <p className="text-[13px] font-medium text-foreground">{entityName}</p>
+            )}
+            <p className="text-[11px] text-muted-foreground/70">
+              {budget.entityType === "user" && "All requests across your account"}
+              {budget.entityType === "api_key" && "Requests from this key only"}
+              {budget.entityType === "tag" && `All requests tagged ${budget.entityId} (any key)`}
+            </p>
+          </div>
         </div>
       </TableCell>
       <TableCell>
@@ -415,7 +433,7 @@ function BudgetRow({
         </div>
       </TableCell>
       {canManage && (
-        <TableCell>
+        <TableCell onClick={(e) => e.stopPropagation()}>
           <DropdownMenu>
             <DropdownMenuTrigger
               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -495,8 +513,56 @@ function BudgetRow({
         </TableCell>
       )}
     </TableRow>
+    {expanded && (
+      <TableRow className="border-border/30 bg-muted/20">
+        <TableCell colSpan={canManage ? 5 : 4} className="py-3">
+          {sourcesLoading ? (
+            <div className="flex items-center gap-2 pl-5">
+              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+              <span className="text-[12px] text-muted-foreground">Loading source breakdown...</span>
+            </div>
+          ) : sources.length > 0 ? (
+            <div className="flex items-center gap-4 pl-5">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                By Source
+              </span>
+              {sources.map((s) => (
+                <div key={s.source} className="flex items-center gap-1.5">
+                  <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${SOURCE_STYLES[s.source] ?? "bg-secondary text-muted-foreground border-border/50"}`}>
+                    {SOURCE_LABELS[s.source] ?? s.source}
+                  </span>
+                  <span className="text-[12px] tabular-nums text-foreground">
+                    {formatMicrodollars(s.totalCostMicrodollars)}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    ({s.requestCount.toLocaleString()} req)
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="pl-5 text-[12px] text-muted-foreground">
+              No cost events for this budget in the last 30 days.
+            </p>
+          )}
+        </TableCell>
+      </TableRow>
+    )}
+    </>
   );
 }
+
+const SOURCE_LABELS: Record<string, string> = {
+  proxy: "Proxy",
+  api: "SDK",
+  mcp: "MCP",
+};
+
+const SOURCE_STYLES: Record<string, string> = {
+  proxy: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  api: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  mcp: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+};
 
 interface EditBudgetData {
   entityType: "user" | "api_key" | "tag";
