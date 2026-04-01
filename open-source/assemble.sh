@@ -41,6 +41,13 @@ cp "$MONOREPO/pnpm-workspace.yaml" "$PUBLIC/pnpm-workspace.yaml"
 # ── Copy llms.txt ──────────────────────────────────────────────
 echo "==> Copying llms.txt..."
 cp "$MONOREPO/public/llms.txt" "$PUBLIC/llms.txt"
+mkdir -p "$PUBLIC/public"
+cp "$MONOREPO/public/llms.txt" "$PUBLIC/public/llms.txt"
+
+# ── Copy content/docs (needed by docs-mcp-server build) ──────
+echo "==> Copying content/docs..."
+mkdir -p "$PUBLIC/content"
+cp -r "$MONOREPO/content/docs" "$PUBLIC/content/docs"
 
 # ── Copy public-repo-only files ────────────────────────────────
 echo "==> Copying public repo files..."
