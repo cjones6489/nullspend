@@ -6,6 +6,7 @@ export const ACTION_TYPES = [
   "db_write",
   "file_write",
   "file_delete",
+  "budget_increase",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -132,6 +133,12 @@ export interface MutateActionResponse {
   approvedAt?: string | null;
   rejectedAt?: string | null;
   executedAt?: string | null;
+  budgetIncrease?: {
+    previousLimit: number;
+    newLimit: number;
+    amount: number;
+    requestedAmount: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +189,12 @@ export interface CostEventInput {
   cachedInputTokens?: number;
   reasoningTokens?: number;
   costMicrodollars: number;
+  costBreakdown?: {
+    input: number;
+    output: number;
+    cached: number;
+    reasoning?: number;
+  };
   durationMs?: number;
   sessionId?: string;
   traceId?: string;
@@ -190,6 +203,32 @@ export interface CostEventInput {
   toolServer?: string;
   tags?: Record<string, string>;
 }
+
+// ---------------------------------------------------------------------------
+// Tracked fetch (provider wrappers)
+// ---------------------------------------------------------------------------
+
+export type TrackedProvider = "openai" | "anthropic";
+
+export interface TrackedFetchOptions {
+  sessionId?: string;
+  tags?: Record<string, string>;
+  traceId?: string;
+  actionId?: string;
+  /** Enable cooperative budget + mandate enforcement. */
+  enforcement?: boolean;
+  /** Per-session spend limit in microdollars. Takes precedence over policy-fetched limit. */
+  sessionLimitMicrodollars?: number;
+  /** Called when cost tracking encounters a non-fatal error. */
+  onCostError?: (error: Error) => void;
+  /** Called before throwing BudgetExceededError, MandateViolationError, or SessionLimitExceededError. */
+  onDenied?: (reason: DenialReason) => void;
+}
+
+export type DenialReason =
+  | { type: "budget"; remaining: number; entityType?: string; entityId?: string; limit?: number; spend?: number }
+  | { type: "mandate"; mandate: string; requested: string; allowed: string[] }
+  | { type: "session_limit"; sessionSpend: number; sessionLimit: number };
 
 export interface ReportCostResponse {
   id: string;

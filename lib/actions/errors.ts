@@ -31,3 +31,12 @@ export class ActionExpiredError extends Error {
     this.name = "ActionExpiredError";
   }
 }
+
+export class BudgetEntityNotFoundError extends Error {
+  constructor(entityType: string, entityId: string) {
+    super(
+      `Budget entity not found: ${entityType}/${entityId}. It may have been deleted.`,
+    );
+    this.name = "BudgetEntityNotFoundError";
+  }
+}

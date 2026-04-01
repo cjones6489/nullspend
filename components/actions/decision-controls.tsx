@@ -15,30 +15,66 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   actionKeys,
   useApproveAction,
   useRejectAction,
 } from "@/lib/queries/actions";
+import { budgetIncreasePayloadSchema } from "@/lib/validations/actions";
+import { formatMicrodollars } from "@/lib/utils/format";
 
 interface DecisionControlsProps {
   actionId: string;
+  actionType?: string;
+  payload?: Record<string, unknown>;
 }
 
-export function DecisionControls({ actionId }: DecisionControlsProps) {
+export function DecisionControls({ actionId, actionType, payload }: DecisionControlsProps) {
   const queryClient = useQueryClient();
   const approveAction = useApproveAction();
   const rejectAction = useRejectAction();
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [approvedAmount, setApprovedAmount] = useState("");
 
   const isPending = approveAction.isPending || rejectAction.isPending;
 
+  const budgetPayload =
+    actionType === "budget_increase" && payload
+      ? budgetIncreasePayloadSchema.safeParse(payload)
+      : null;
+  const isBudgetIncrease = budgetPayload?.success === true;
+  const budgetData = isBudgetIncrease ? budgetPayload.data : null;
+
   function handleApprove() {
-    approveAction.mutate(actionId, {
-      onSuccess: () => {
+    let approvedAmountMicrodollars: number | undefined;
+
+    if (isBudgetIncrease && approvedAmount.trim() !== "") {
+      const dollars = parseFloat(approvedAmount);
+      if (!Number.isFinite(dollars) || dollars <= 0) {
+        toast.error("Enter a valid positive amount");
+        return;
+      }
+      const microdollars = Math.round(dollars * 1_000_000);
+      if (microdollars > 1_000_000_000_000) {
+        toast.error("Amount cannot exceed $1,000,000");
+        return;
+      }
+      approvedAmountMicrodollars = microdollars;
+    }
+
+    approveAction.mutate({ id: actionId, approvedAmountMicrodollars }, {
+      onSuccess: (result) => {
         setApproveOpen(false);
-        toast.success("Action approved");
+        setApprovedAmount("");
+        if (result.budgetIncrease) {
+          toast.success(
+            `Budget increased from ${formatMicrodollars(result.budgetIncrease.previousLimit)} to ${formatMicrodollars(result.budgetIncrease.newLimit)}`,
+          );
+        } else {
+          toast.success("Action approved");
+        }
       },
       onError: (err) => {
         toast.error(err.message || "Failed to approve action");
@@ -66,9 +102,18 @@ export function DecisionControls({ actionId }: DecisionControlsProps) {
     });
   }
 
+  // Check if entered amount exceeds requested
+  const enteredDollars = parseFloat(approvedAmount);
+  const exceedsRequested =
+    isBudgetIncrease &&
+    budgetData &&
+    Number.isFinite(enteredDollars) &&
+    enteredDollars > 0 &&
+    Math.round(enteredDollars * 1_000_000) > budgetData.requestedAmountMicrodollars;
+
   return (
     <div className="flex items-center gap-2">
-      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+      <Dialog open={approveOpen} onOpenChange={(open) => { setApproveOpen(open); if (!open) setApprovedAmount(""); }}>
         <DialogTrigger
           className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:pointer-events-none disabled:opacity-50"
           disabled={isPending}
@@ -77,11 +122,61 @@ export function DecisionControls({ actionId }: DecisionControlsProps) {
           Approve
         </DialogTrigger>
         <DialogContent>
-          <DialogTitle>Approve this action?</DialogTitle>
+          <DialogTitle>
+            {isBudgetIncrease ? "Approve this budget increase?" : "Approve this action?"}
+          </DialogTitle>
           <DialogDescription>
-            This will allow the agent to execute the proposed action. This
-            cannot be undone.
+            {isBudgetIncrease && budgetData ? (
+              <>
+                Agent requested{" "}
+                <span className="font-medium text-foreground">
+                  +{formatMicrodollars(budgetData.requestedAmountMicrodollars)}
+                </span>{" "}
+                to increase the budget from{" "}
+                <span className="font-medium text-foreground">
+                  {formatMicrodollars(budgetData.currentLimitMicrodollars)}
+                </span>{" "}
+                to{" "}
+                <span className="font-medium text-foreground">
+                  {formatMicrodollars(budgetData.currentLimitMicrodollars + budgetData.requestedAmountMicrodollars)}
+                </span>
+                .
+              </>
+            ) : (
+              "This will allow the agent to execute the proposed action. This cannot be undone."
+            )}
           </DialogDescription>
+
+          {isBudgetIncrease && budgetData && (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="approved-amount"
+                className="text-[11px] font-medium text-muted-foreground"
+              >
+                Approved amount
+              </label>
+              <Input
+                id="approved-amount"
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder={`${(budgetData.requestedAmountMicrodollars / 1_000_000).toFixed(2)}`}
+                value={approvedAmount}
+                onChange={(e) => setApprovedAmount(e.target.value)}
+                className="h-8 text-sm"
+              />
+              {exceedsRequested ? (
+                <p className="text-[11px] text-amber-400">
+                  Exceeds the requested +{formatMicrodollars(budgetData.requestedAmountMicrodollars)}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  Leave blank to approve the full requested amount.
+                </p>
+              )}
+            </div>
+          )}
+
           <DialogFooter>
             <DialogClose
               className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"

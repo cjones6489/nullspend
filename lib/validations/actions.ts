@@ -191,14 +191,34 @@ export const mutateActionResponseSchema = z.object({
   approvedAt: z.string().nullable().optional(),
   rejectedAt: z.string().nullable().optional(),
   executedAt: z.string().nullable().optional(),
+  budgetIncrease: z
+    .object({
+      previousLimit: z.number(),
+      newLimit: z.number(),
+      amount: z.number(),
+      requestedAmount: z.number(),
+    })
+    .optional(),
 });
 
 export { MAX_EXPIRES_SECONDS, MAX_JSON_DEPTH };
 export type CreateActionInput = z.infer<typeof createActionInputSchema>;
 export type MarkResultInput = z.infer<typeof markResultInputSchema>;
 
+export const budgetIncreasePayloadSchema = z.object({
+  entityType: z.string().min(1).max(50),
+  entityId: z.string().min(1).max(255),
+  requestedAmountMicrodollars: z.number().int().positive(),
+  currentLimitMicrodollars: z.number().int().min(0),
+  currentSpendMicrodollars: z.number().int().min(0),
+  reason: z.string().min(1).max(2000),
+});
+
+export type BudgetIncreasePayload = z.infer<typeof budgetIncreasePayloadSchema>;
+
 export interface ApproveActionInput {
   approvedBy: string;
+  approvedAmountMicrodollars?: number;
 }
 
 export interface RejectActionInput {

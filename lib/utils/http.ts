@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import {
   ActionExpiredError,
   ActionNotFoundError,
+  BudgetEntityNotFoundError,
   InvalidActionTransitionError,
   StaleActionError,
 } from "@/lib/actions/errors";
@@ -119,6 +120,10 @@ export function handleRouteError(error: unknown) {
 
   if (error instanceof ActionNotFoundError) {
     return NextResponse.json(errorJson("not_found", error.message), { status: 404 });
+  }
+
+  if (error instanceof BudgetEntityNotFoundError) {
+    return NextResponse.json(errorJson("budget_entity_not_found", error.message), { status: 404 });
   }
 
   if (error instanceof InvalidActionTransitionError) {

@@ -25,6 +25,12 @@ interface MutateActionResponse {
   approvedAt?: string | null;
   rejectedAt?: string | null;
   executedAt?: string | null;
+  budgetIncrease?: {
+    previousLimit: number;
+    newLimit: number;
+    amount: number;
+    requestedAmount: number;
+  };
 }
 
 export const actionKeys = {
@@ -85,15 +91,23 @@ export function useAction(id: string) {
   });
 }
 
+export interface ApproveActionInput {
+  id: string;
+  approvedAmountMicrodollars?: number;
+}
+
 export function useApproveAction() {
   const queryClient = useQueryClient();
 
-  return useMutation<MutateActionResponse, Error, string>({
-    mutationFn: async (id: string) => {
-      const res = await apiPost<{ data: MutateActionResponse }>(`/api/actions/${id}/approve`);
+  return useMutation<MutateActionResponse, Error, ApproveActionInput>({
+    mutationFn: async ({ id, approvedAmountMicrodollars }) => {
+      const body = approvedAmountMicrodollars != null
+        ? { approvedAmountMicrodollars }
+        : undefined;
+      const res = await apiPost<{ data: MutateActionResponse }>(`/api/actions/${id}/approve`, body);
       return res.data;
     },
-    onSuccess: (updatedAction, id) => {
+    onSuccess: (updatedAction, { id }) => {
       queryClient.setQueryData<ActionRecord | undefined>(
         actionKeys.detail(id),
         (existing) =>

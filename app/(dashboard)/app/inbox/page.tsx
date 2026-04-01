@@ -1,6 +1,6 @@
 "use client";
 
-import { Inbox, Loader2 } from "lucide-react";
+import { DollarSign, Inbox, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -24,7 +24,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useActionsInfinite } from "@/lib/queries/actions";
-import { formatActionType, formatRelativeTime } from "@/lib/utils/format";
+import { formatActionType, formatMicrodollars, formatRelativeTime } from "@/lib/utils/format";
+import { budgetIncreasePayloadSchema } from "@/lib/validations/actions";
 import type { ActionStatus } from "@/lib/utils/status";
 import { ACTION_TYPES } from "@/lib/utils/status";
 
@@ -151,11 +152,25 @@ export default function InboxPage() {
                       href={`/app/actions/${action.id}?from=inbox`}
                       className="text-[13px] font-medium text-foreground transition-colors hover:text-primary"
                     >
+                      {action.actionType === "budget_increase" && (
+                        <DollarSign className="mr-1 inline h-3.5 w-3.5 text-amber-400" />
+                      )}
                       {formatActionType(action.actionType)}
                     </Link>
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {action.agentId}
+                  <TableCell>
+                    <div className="font-mono text-xs text-muted-foreground">
+                      {action.agentId}
+                    </div>
+                    {action.actionType === "budget_increase" && (() => {
+                      const parsed = budgetIncreasePayloadSchema.safeParse(action.payload);
+                      if (!parsed.success) return null;
+                      return (
+                        <div className="text-[11px] text-amber-400">
+                          +{formatMicrodollars(parsed.data.requestedAmountMicrodollars)}
+                        </div>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={action.status} />

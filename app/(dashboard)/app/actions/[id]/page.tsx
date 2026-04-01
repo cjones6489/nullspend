@@ -7,6 +7,7 @@ import { Suspense, use } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { ActionTimeline } from "@/components/actions/action-timeline";
+import { BudgetIncreaseCard } from "@/components/actions/budget-increase-card";
 import { CostCard } from "@/components/actions/cost-card";
 import { DecisionControls } from "@/components/actions/decision-controls";
 import { PayloadViewer } from "@/components/actions/payload-viewer";
@@ -67,14 +68,22 @@ export default function ActionDetailPage({
             <p className="text-[13px] text-amber-400/90">
               This action is awaiting your decision.
             </p>
-            <DecisionControls actionId={action.id} />
+            <DecisionControls
+              actionId={action.id}
+              actionType={action.actionType}
+              payload={action.payload}
+            />
           </div>
         </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-4 md:col-span-2">
-          <PayloadViewer title="Payload" data={action.payload} />
+          {action.actionType === "budget_increase" ? (
+            <BudgetIncreaseCard payload={action.payload} status={action.status} />
+          ) : (
+            <PayloadViewer title="Payload" data={action.payload} />
+          )}
           <PayloadViewer title="Metadata" data={action.metadata} />
 
           {action.result && (
