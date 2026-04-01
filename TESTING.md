@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~2,900+ tests across ~175 files organized into four tiers.
+NullSpend has ~3,860+ tests across ~220 files organized into four tiers.
 
 ## Quick Reference
 
@@ -32,7 +32,7 @@ Currently empty — the Redis-based Lua integration tests were removed when budg
 
 ### Tier 3 — Smoke Tests (live deployed worker + real APIs)
 
-The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and make real API calls to OpenAI/Anthropic. They require API keys and a deployed proxy. These are NOT run in CI.
+The 29 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and make real API calls to OpenAI/Anthropic. They require API keys and a deployed proxy. These are NOT run in CI.
 
 ### Tier 4 — CI Pipeline
 
@@ -42,7 +42,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
-73 files, ~1,254 tests. All mock `cloudflare:workers` and external dependencies.
+77 files, ~1,309 tests. All mock `cloudflare:workers` and external dependencies.
 
 ### Naming Convention
 
@@ -197,7 +197,7 @@ The 26 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Smoke Tests (`apps/proxy/smoke*.test.ts`)
 
-26 files. Require a deployed worker and API keys. Organized by provider and concern:
+29 files. Require a deployed worker and API keys. Organized by provider and concern:
 
 | Pattern | Files |
 |---|---|
@@ -238,7 +238,7 @@ Intensity levels control concurrency (light: 10-15, medium: 25-40, heavy: 50-80)
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. 918 tests across 80 files.
+Co-located with source files. ~1,471 tests across 118 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback
@@ -248,12 +248,14 @@ Co-located with source files. 918 tests across 80 files.
 
 **Actions** (`lib/actions/`)
 - `create-action.test.ts`, `approve-action.test.ts`, `reject-action.test.ts` — HITL lifecycle
+- `approve-action.test.ts` — includes budget_increase sideEffect, partial approval, tier cap rollback, approvedAmount > requestedAmount
 - `transitions.test.ts` — State machine validation
 - `expiration.test.ts` — TTL enforcement
 - `mark-result.test.ts`, `list-actions.test.ts`, `errors.test.ts`
 
 **Validations** (`lib/validations/`)
 - `actions.test.ts`, `api-keys.test.ts`, `budgets.test.ts`, `slack.test.ts` — Zod schemas
+- `budgets.test.ts` — includes `policySchema` enum validation, policy in create/response/entity schemas, invalid policy rejection
 - `cost-events.test.ts` — `listCostEventsQuerySchema` requestId filter validation
 - `cost-event-summary.test.ts` — Analytics query validation
 - `webhooks.test.ts` — `payloadMode` in create/update/record schemas
@@ -261,10 +263,14 @@ Co-located with source files. 918 tests across 80 files.
 
 **API Routes** (`app/api/`)
 - One test file per route: actions CRUD, keys CRUD, budgets, cost-events, cost-events/{id}, slack config/callback/test
+- `budgets/route.test.ts` — includes policy round-trip (store + return for all three values), policy omitted preserves DB default, invalid policy 400
 - `cost-events/[id]/route.test.ts` — Fetch-back endpoint: owned event, missing, other user's, auth, invalid ID, prefixed ID
 - `velocity-status/route.test.ts` — Live velocity state polling: auth, proxy fetch, graceful degradation
 
 **Other**
+- `lib/budgets/increase.test.ts` — `executeBudgetIncrease`: happy path, `BudgetEntityNotFoundError` on missing entity (SELECT + UPDATE paths), invalid payload, tier cap, partial approval, zero/negative amount, approvedAmount > requestedAmount
+- `components/actions/budget-increase-card.test.ts` — Payload parsing (valid/invalid/boundary), `mutateActionResponseSchema` budgetIncrease field (preserve/absent/partial/over-approval), display logic (spendColor thresholds, percent clamping, zero-limit safety), dollar→microdollar conversion, exceeds-requested detection, client-side $1M cap, status-aware labels, inbox amount extraction, `BudgetEntityNotFoundError` class + `handleRouteError` 404 mapping
+- `lib/slack/budget-message.test.ts` — Budget increase Slack templates: pending (details + buttons), truncation, decision (approved/rejected), completion, formatDollars
 - `lib/queries/actions.test.ts`, `lib/utils/format.test.ts`, `lib/slack/*.test.ts`
 - `lib/webhooks/dispatch.test.ts` — Cost event webhook builders (proxy/dashboard shape parity), `dispatchToEndpoints` signing/filtering/expiry, `buildThinCostEventPayload`, `dispatchCostEventToEndpoints` (thin/full/mixed/undefined fallback/event filter/expiry), non-cost-event to thin endpoint
 - `components/actions/action-timeline.test.ts`
@@ -273,7 +279,7 @@ Co-located with source files. 918 tests across 80 files.
 
 ## Package Tests
 
-**cost-engine** (`packages/cost-engine/src/`) — 627 tests
+**cost-engine** (`packages/cost-engine/src/`) — 700 tests
 - `pricing.test.ts` — `getModelPricing`, `costComponent`, `isKnownModel`
 - `edge-cases.test.ts` — Boundary values, precision, accumulation drift
 - `scenarios.test.ts` — Realistic multi-provider API call scenarios
@@ -281,14 +287,19 @@ Co-located with source files. 918 tests across 80 files.
 - `catalog.test.ts` — Pricing data structural validation
 - `exports.test.ts` — Public API surface verification
 
-**claude-agent** (`packages/claude-agent/src/`) — 34 tests
+**claude-agent** (`packages/claude-agent/src/`) — 49 tests
 - `with-nullspend.test.ts` — `withNullSpend` config transformer: URL, headers, passthrough, tag/traceId/actionId validation, newline injection, env merging, edge cases
 
 **Other packages** — co-located `*.test.ts` files:
 - `packages/db/src/schema.test.ts` — Schema structure validation
-- `packages/sdk/src/client.test.ts` — SDK client behavior
+- `packages/sdk/src/client.test.ts` — SDK client behavior, `requestBudgetIncrease` (happy path, rejected, timeout, cache invalidation)
+- `packages/sdk/src/tracked-fetch.test.ts` — Tracked fetch: cost tracking, proxy detection, streaming, enforcement (mandates, budgets, session limits), `onDenied` safety, accumulation, edge cases, enriched budget entity details, proxy 429 interception (NullSpend vs upstream)
+- `packages/sdk/src/policy-cache.test.ts` — Policy cache: TTL, invalidation, mandate/budget/session-limit checks, fail-open, budget entity details on denial
 - `packages/mcp-server/src/config.test.ts`, `tools.test.ts`
 - `packages/mcp-proxy/src/config.test.ts`, `proxy.test.ts`, `gate.test.ts`
+- `packages/docs-mcp-server/src/config.test.ts` — Zero-config loader, ConfigError class
+- `packages/docs-mcp-server/src/search.test.ts` — Tokenization, scoring, synonyms, substring matching, real data smoke tests
+- `packages/docs-mcp-server/src/tools.test.ts` — Tool registration, search→fetch workflow, path normalization, traversal defense
 
 ---
 
