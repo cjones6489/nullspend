@@ -1,8 +1,17 @@
 {
   "name": "@nullspend/mcp-proxy",
-  "private": true,
   "version": "0.1.0",
   "description": "MCP proxy that gates risky tool calls through NullSpend approval before forwarding to an upstream MCP server",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NullSpend/nullspend",
+    "directory": "packages/mcp-proxy"
+  },
+  "homepage": "https://nullspend.com",
+  "author": "NullSpend <chris@nullspend.dev>",
+  "keywords": ["nullspend", "mcp", "proxy", "gateway", "tool-gating", "model-context-protocol"],
+  "engines": { "node": ">=20.11.0" },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

@@ -1,8 +1,17 @@
 {
   "name": "@nullspend/claude-agent",
-  "private": true,
   "version": "0.1.0",
   "description": "NullSpend adapter for Claude Agent SDK — route LLM calls through the NullSpend proxy",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NullSpend/nullspend",
+    "directory": "packages/claude-agent"
+  },
+  "homepage": "https://nullspend.com",
+  "author": "NullSpend <chris@nullspend.dev>",
+  "keywords": ["nullspend", "claude", "agent-sdk", "anthropic", "finops", "cost-tracking"],
+  "engines": { "node": ">=20.11.0" },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

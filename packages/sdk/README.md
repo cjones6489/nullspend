@@ -1,6 +1,6 @@
 # @nullspend/sdk
 
-TypeScript SDK for [NullSpend](https://github.com/cjones6489/NullSpend) — propose, approve, and execute risky AI agent actions.
+TypeScript SDK for [NullSpend](https://github.com/NullSpend/nullspend) — propose, approve, and execute risky AI agent actions.
 
 ## Quick start
 
