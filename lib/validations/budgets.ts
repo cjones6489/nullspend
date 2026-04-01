@@ -7,6 +7,7 @@ export const budgetIdParamsSchema = z.object({
 });
 
 const entityTypeSchema = z.enum(["api_key", "user", "tag"]);
+export const policySchema = z.enum(["strict_block", "soft_block", "warn"]);
 
 function entityIdPrefixForType(entityType: "api_key" | "user"): "key" | "usr" {
   return entityType === "api_key" ? "key" : "usr";
@@ -37,6 +38,7 @@ export const createBudgetInputSchema = z
     velocityWindowSeconds: z.number().int().min(10).max(3600).optional(),
     velocityCooldownSeconds: z.number().int().min(10).max(3600).optional(),
     sessionLimitMicrodollars: z.number().int().positive().nullable().optional(),
+    policy: policySchema.optional(),
   })
   .superRefine((val, ctx) => {
     // Tag entity IDs are "key=value" strings, not prefixed UUIDs
@@ -109,7 +111,7 @@ export const budgetResponseSchema = z
     entityId: z.string(),
     maxBudgetMicrodollars: z.number(),
     spendMicrodollars: z.number(),
-    policy: z.string(),
+    policy: policySchema,
     resetInterval: z.string().nullable(),
     currentPeriodStart: z.string().nullable(),
     createdAt: z.string(),
@@ -141,7 +143,7 @@ export const budgetEntitySchema = z
     limitMicrodollars: z.number(),
     spendMicrodollars: z.number(),
     remainingMicrodollars: z.number().min(0),
-    policy: z.string(),
+    policy: policySchema,
     resetInterval: z.string().nullable(),
     currentPeriodStart: z.string().nullable(),
     thresholdPercentages: z.array(z.number()),

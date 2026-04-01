@@ -84,6 +84,7 @@ export const POST = withRequestContext(async (request: Request) => {
         entityId: input.entityId,
         maxBudgetMicrodollars: input.maxBudgetMicrodollars,
         resetInterval: input.resetInterval ?? null,
+        ...(input.policy != null && { policy: input.policy }),
         ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
         ...(input.thresholdPercentages != null && { thresholdPercentages: input.thresholdPercentages }),
         ...(input.velocityLimitMicrodollars !== undefined && { velocityLimitMicrodollars: input.velocityLimitMicrodollars }),
@@ -97,6 +98,7 @@ export const POST = withRequestContext(async (request: Request) => {
         set: {
           maxBudgetMicrodollars: input.maxBudgetMicrodollars,
           resetInterval: input.resetInterval ?? null,
+          ...(input.policy != null && { policy: input.policy }),
           ...(input.resetInterval != null && { currentPeriodStart: sql`NOW()` }),
           ...(input.thresholdPercentages != null && { thresholdPercentages: input.thresholdPercentages }),
           ...(input.velocityLimitMicrodollars !== undefined && { velocityLimitMicrodollars: input.velocityLimitMicrodollars }),

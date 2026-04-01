@@ -269,6 +269,7 @@ function CreateBudgetDialog({
       ? String(existingBudget.velocityCooldownSeconds)
       : "60",
   );
+  const [policy, setPolicy] = useState(existingBudget?.policy ?? "strict_block");
   const [sessionDollars, setSessionDollars] = useState(
     existingBudget?.sessionLimitMicrodollars != null
       ? String(existingBudget.sessionLimitMicrodollars / 1_000_000)
@@ -330,6 +331,7 @@ function CreateBudgetDialog({
         entityType: "api_key",
         entityId: keyId,
         maxBudgetMicrodollars: maxMicro,
+        policy: policy as "strict_block" | "soft_block" | "warn",
         resetInterval: (resetInterval || undefined) as "daily" | "weekly" | "monthly" | undefined,
         velocityLimitMicrodollars: velocityMicro,
         velocityWindowSeconds: velocityMicro ? parseInt(velocityWindow) || 60 : undefined,
@@ -356,7 +358,7 @@ function CreateBudgetDialog({
         <DialogDescription>
           {isUpdate
             ? "Update the spending limits for this key."
-            : "Set a spending cap for this API key. The proxy will block requests when the budget is exceeded."}
+            : "Set a spending cap for this API key."}
         </DialogDescription>
 
         <div className="space-y-4 py-2">
@@ -372,6 +374,34 @@ function CreateBudgetDialog({
               placeholder="e.g. 50.00"
               className="mt-1"
             />
+          </div>
+
+          {/* Enforcement Mode */}
+          <div>
+            <Label className="text-[13px]">Enforcement Mode</Label>
+            <div className="mt-1 flex gap-2">
+              {([
+                { value: "strict_block", label: "Block Requests" },
+                { value: "soft_block", label: "Allow + Warn" },
+                { value: "warn", label: "Track Only" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPolicy(opt.value)}
+                  className={`rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                    policy === opt.value
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border/50 text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Block = deny requests over budget. Other modes allow requests but still fire webhook alerts.
+            </p>
           </div>
 
           {/* Reset Interval */}

@@ -499,6 +499,169 @@ describe("POST /api/budgets — proxy invalidation", () => {
     });
   });
 
+  it("POST with policy: warn stores and returns the policy", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 10_000_000,
+      policy: "warn",
+    });
+
+    const budgetRow = makeBudgetRow({ entityId: TEST_USER_ID, policy: "warn" });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json.data.policy).toBe("warn");
+
+    // Verify policy was passed to .values()
+    const valuesArg = (mockValues.mock.calls as any)[0][0];
+    expect(valuesArg.policy).toBe("warn");
+    // Verify policy was passed to .onConflictDoUpdate set
+    const setArg = (mockOnConflict.mock.calls as any)[0][0].set;
+    expect(setArg.policy).toBe("warn");
+  });
+
+  it("POST with policy: soft_block stores and returns the policy", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 10_000_000,
+      policy: "soft_block",
+    });
+
+    const budgetRow = makeBudgetRow({ entityId: TEST_USER_ID, policy: "soft_block" });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json.data.policy).toBe("soft_block");
+  });
+
+  it("POST without policy omits it from values/set (preserves DB default)", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 10_000_000,
+      // policy intentionally omitted
+    });
+
+    const budgetRow = makeBudgetRow({ entityId: TEST_USER_ID, policy: "strict_block" });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+
+    // Verify policy was NOT in .values() or .set() — DB default applies
+    const valuesArg = (mockValues.mock.calls as any)[0][0];
+    expect(valuesArg).not.toHaveProperty("policy");
+    const setArg = (mockOnConflict.mock.calls as any)[0][0].set;
+    expect(setArg).not.toHaveProperty("policy");
+  });
+
+  it("POST with invalid policy returns 400", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    vi.mocked(readJsonBody).mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 10_000_000,
+      policy: "block_all",
+    });
+
+    mockedGetDb.mockReturnValue({} as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    const json = await response.json();
+    expect(json.error.code).toBe("validation_error");
+  });
+
+  it("GET returns policy field for all three values", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-123", orgId: "org-test-123", role: "owner" });
+
+    const budgetRows = [
+      makeBudgetRow({ id: "b0000000-0000-4000-a000-000000000010", policy: "strict_block" }),
+      makeBudgetRow({ id: "b0000000-0000-4000-a000-000000000011", policy: "soft_block", entityType: "api_key", entityId: "key-1" }),
+      makeBudgetRow({ id: "b0000000-0000-4000-a000-000000000012", policy: "warn", entityType: "tag", entityId: "env=prod" }),
+    ];
+    const mockWhere = vi.fn().mockResolvedValueOnce(budgetRows);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    mockedGetDb.mockReturnValue({ select: mockSelect } as unknown as ReturnType<typeof getDb>);
+
+    const response = await GET(makeRequest());
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data).toHaveLength(3);
+    expect(json.data[0].policy).toBe("strict_block");
+    expect(json.data[1].policy).toBe("soft_block");
+    expect(json.data[2].policy).toBe("warn");
+  });
+
   it("POST with invalid tag entityId returns 400", async () => {
     const { readJsonBody } = await import("@/lib/utils/http");
     vi.mocked(readJsonBody).mockResolvedValue({

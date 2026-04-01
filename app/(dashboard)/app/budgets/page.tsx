@@ -64,6 +64,7 @@ interface BudgetData {
   entityId: string;
   maxBudgetMicrodollars: number;
   spendMicrodollars: number;
+  policy: string;
   resetInterval: string | null;
   currentPeriodStart: string | null;
   velocityLimitMicrodollars: number | null;
@@ -100,6 +101,7 @@ export default function BudgetsPage() {
     setEditBudget({
       entityType: budget.entityType as "user" | "api_key" | "tag",
       entityId: budget.entityId,
+      policy: budget.policy,
       limitDollars: (budget.maxBudgetMicrodollars / 1_000_000).toString(),
       resetInterval: budget.resetInterval ?? "none",
       velocityLimitDollars: budget.velocityLimitMicrodollars != null
@@ -368,11 +370,21 @@ function BudgetRow({
             ) : (
               <p className="text-[13px] font-medium text-foreground">{entityName}</p>
             )}
-            <p className="text-[11px] text-muted-foreground/70">
-              {budget.entityType === "user" && "All requests across your account"}
-              {budget.entityType === "api_key" && "Requests from this key only"}
-              {budget.entityType === "tag" && `All requests tagged ${budget.entityId} (any key)`}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[11px] text-muted-foreground/70">
+                {budget.entityType === "user" && "All requests across your account"}
+                {budget.entityType === "api_key" && "Requests from this key only"}
+                {budget.entityType === "tag" && `All requests tagged ${budget.entityId} (any key)`}
+              </p>
+              <span className={cn(
+                "inline-flex rounded-full border px-1.5 py-0 text-[10px] font-medium leading-4",
+                budget.policy === "strict_block" && "border-red-500/20 bg-red-500/10 text-red-400",
+                budget.policy === "soft_block" && "border-amber-500/20 bg-amber-500/10 text-amber-400",
+                budget.policy === "warn" && "border-blue-500/20 bg-blue-500/10 text-blue-400",
+              )}>
+                {budget.policy === "strict_block" ? "Block" : budget.policy === "soft_block" ? "Warn" : "Track"}
+              </span>
+            </div>
           </div>
         </div>
       </TableCell>
@@ -567,6 +579,7 @@ const SOURCE_STYLES: Record<string, string> = {
 interface EditBudgetData {
   entityType: "user" | "api_key" | "tag";
   entityId: string;
+  policy: string;
   limitDollars: string;
   resetInterval: string;
   velocityLimitDollars: string;
@@ -614,6 +627,7 @@ function BudgetDialog({
   const [velocityCooldownSeconds, setVelocityCooldownSeconds] = useState(editBudget?.velocityCooldownSeconds ?? "60");
   const [thresholdsCustomized, setThresholdsCustomized] = useState(editBudget?._thresholdsCustomized ?? !!editBudget?.thresholdPercentages);
   const [thresholdPercentages, setThresholdPercentages] = useState(editBudget?.thresholdPercentages ?? "");
+  const [policy, setPolicy] = useState(editBudget?.policy ?? "strict_block");
   const [sessionLimitEnabled, setSessionLimitEnabled] = useState(!!editBudget?.sessionLimitDollars);
   const [sessionLimitDollars, setSessionLimitDollars] = useState(editBudget?.sessionLimitDollars ?? "");
 
@@ -623,6 +637,7 @@ function BudgetDialog({
     setTagKey("");
     setTagValue("");
     setLimitDollars("");
+    setPolicy("strict_block");
     setResetInterval("none");
     setVelocityEnabled(false);
     setVelocityLimitDollars("");
@@ -714,6 +729,7 @@ function BudgetDialog({
         entityType,
         entityId,
         maxBudgetMicrodollars: Math.round(dollars * 1_000_000),
+        policy: policy as "strict_block" | "soft_block" | "warn",
         resetInterval:
           resetInterval === "none"
             ? undefined
@@ -927,6 +943,34 @@ function BudgetDialog({
                 className="h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50"
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Enforcement mode</Label>
+            <div className="flex gap-2">
+              {([
+                { value: "strict_block", label: "Block Requests" },
+                { value: "soft_block", label: "Allow + Warn" },
+                { value: "warn", label: "Track Only" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPolicy(opt.value)}
+                  className={cn(
+                    "flex-1 rounded-md border px-3 py-1.5 text-[12px] font-medium transition-colors",
+                    policy === opt.value
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border/50 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/70">
+              Block = deny requests over budget. Other modes allow requests but still fire webhook alerts.
+            </p>
           </div>
 
           <div className="space-y-1.5">

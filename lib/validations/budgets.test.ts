@@ -12,6 +12,7 @@ import {
   budgetResponseSchema,
   budgetEntitySchema,
   listBudgetsResponseSchema,
+  policySchema,
 } from "./budgets";
 import { handleRouteError } from "@/lib/utils/http";
 
@@ -555,5 +556,132 @@ describe("handleRouteError Zod sanitization", () => {
     expect(body.error.details.issues[0]).not.toHaveProperty("code");
     expect(body.error.details.issues[0]).not.toHaveProperty("expected");
     expect(body.error.details.issues[0]).not.toHaveProperty("received");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Policy schema + policy in create/response schemas
+// ---------------------------------------------------------------------------
+
+describe("policySchema", () => {
+  it("accepts strict_block", () => {
+    expect(policySchema.parse("strict_block")).toBe("strict_block");
+  });
+
+  it("accepts soft_block", () => {
+    expect(policySchema.parse("soft_block")).toBe("soft_block");
+  });
+
+  it("accepts warn", () => {
+    expect(policySchema.parse("warn")).toBe("warn");
+  });
+
+  it("rejects invalid policy values", () => {
+    expect(() => policySchema.parse("block")).toThrow();
+    expect(() => policySchema.parse("")).toThrow();
+    expect(() => policySchema.parse("STRICT_BLOCK")).toThrow();
+  });
+});
+
+describe("createBudgetInputSchema policy field", () => {
+  const validBase = {
+    entityType: "user",
+    entityId: "ns_usr_550e8400-e29b-41d4-a716-446655440000",
+    maxBudgetMicrodollars: 10_000_000,
+  };
+
+  it("accepts policy: strict_block", () => {
+    const result = createBudgetInputSchema.safeParse({ ...validBase, policy: "strict_block" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.policy).toBe("strict_block");
+  });
+
+  it("accepts policy: soft_block", () => {
+    const result = createBudgetInputSchema.safeParse({ ...validBase, policy: "soft_block" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.policy).toBe("soft_block");
+  });
+
+  it("accepts policy: warn", () => {
+    const result = createBudgetInputSchema.safeParse({ ...validBase, policy: "warn" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.policy).toBe("warn");
+  });
+
+  it("accepts omitted policy (defaults to DB level)", () => {
+    const result = createBudgetInputSchema.safeParse(validBase);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.policy).toBeUndefined();
+  });
+
+  it("rejects invalid policy value", () => {
+    const result = createBudgetInputSchema.safeParse({ ...validBase, policy: "block_all" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("budgetResponseSchema policy enum", () => {
+  const validResponse = {
+    id: "550e8400-e29b-41d4-a716-446655440000",
+    entityType: "api_key",
+    entityId: "550e8400-e29b-41d4-a716-446655440001",
+    maxBudgetMicrodollars: 50_000_000,
+    spendMicrodollars: 10_000_000,
+    policy: "strict_block",
+    resetInterval: null,
+    currentPeriodStart: null,
+    createdAt: "2026-02-15T12:00:00.000Z",
+    updatedAt: "2026-03-01T00:00:00.000Z",
+    thresholdPercentages: [50, 80, 90, 95],
+    velocityLimitMicrodollars: null,
+    velocityWindowSeconds: null,
+    velocityCooldownSeconds: null,
+    sessionLimitMicrodollars: null,
+  };
+
+  it("accepts soft_block in response", () => {
+    const result = budgetResponseSchema.parse({ ...validResponse, policy: "soft_block" });
+    expect(result.policy).toBe("soft_block");
+  });
+
+  it("accepts warn in response", () => {
+    const result = budgetResponseSchema.parse({ ...validResponse, policy: "warn" });
+    expect(result.policy).toBe("warn");
+  });
+
+  it("rejects invalid policy in response", () => {
+    expect(() => budgetResponseSchema.parse({ ...validResponse, policy: "invalid" })).toThrow();
+  });
+});
+
+describe("budgetEntitySchema policy enum", () => {
+  const validEntity = {
+    entityType: "user",
+    entityId: "550e8400-e29b-41d4-a716-446655440000",
+    limitMicrodollars: 10_000_000,
+    spendMicrodollars: 3_000_000,
+    remainingMicrodollars: 7_000_000,
+    policy: "strict_block",
+    resetInterval: null,
+    currentPeriodStart: null,
+    thresholdPercentages: [],
+    velocityLimitMicrodollars: null,
+    velocityWindowSeconds: null,
+    velocityCooldownSeconds: null,
+    sessionLimitMicrodollars: null,
+  };
+
+  it("accepts soft_block", () => {
+    const result = budgetEntitySchema.parse({ ...validEntity, policy: "soft_block" });
+    expect(result.policy).toBe("soft_block");
+  });
+
+  it("accepts warn", () => {
+    const result = budgetEntitySchema.parse({ ...validEntity, policy: "warn" });
+    expect(result.policy).toBe("warn");
+  });
+
+  it("rejects invalid policy", () => {
+    expect(() => budgetEntitySchema.parse({ ...validEntity, policy: "none" })).toThrow();
   });
 });
