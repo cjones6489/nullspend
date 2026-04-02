@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api/client";
+import { apiGet, apiPost, apiPatch, apiDelete, retryOnServerError } from "@/lib/api/client";
 import type {
   WebhookRecord,
   CreateWebhookInput,
@@ -42,6 +42,8 @@ export function useWebhooks() {
   return useQuery<WebhookListResponse>({
     queryKey: webhookKeys.list(),
     queryFn: () => apiGet("/api/webhooks"),
+    retry: retryOnServerError,
+    staleTime: 60_000,
   });
 }
 

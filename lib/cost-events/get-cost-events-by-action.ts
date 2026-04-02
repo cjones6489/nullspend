@@ -29,6 +29,7 @@ export async function getCostEventsByActionId(
       source: costEvents.source,
       tags: costEvents.tags,
       keyName: apiKeys.name,
+      costBreakdown: costEvents.costBreakdown,
     })
     .from(costEvents)
     .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))

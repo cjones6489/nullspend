@@ -37,7 +37,7 @@ function formatSessionDuration(startedAt: string | null, endedAt: string | null)
 
 function ExpandableEvent({ event }: { event: CostEventRecord }) {
   const [expanded, setExpanded] = useState(false);
-  const { data: bodiesData, isLoading: bodiesLoading } = useCostEventBodies(
+  const { data: bodiesData, isLoading: bodiesLoading, error: bodiesError } = useCostEventBodies(
     event.id,
     expanded,
   );
@@ -95,6 +95,11 @@ function ExpandableEvent({ event }: { event: CostEventRecord }) {
               Loading bodies...
             </div>
           )}
+          {bodiesError && (
+            <p className="text-xs text-red-400">
+              Failed to load request/response bodies.
+            </p>
+          )}
           {bodies?.requestBody && (
             <PayloadViewer title="Request Body" data={bodies.requestBody} />
           )}
@@ -117,7 +122,7 @@ function SessionSkeleton() {
     <div className="mx-auto max-w-3xl space-y-6">
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-8 w-64" />
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-20 w-full" />
         ))}
@@ -141,11 +146,11 @@ export default function SessionReplayPage({
     return (
       <div className="mx-auto max-w-3xl space-y-6">
         <Link
-          href="/app/activity"
+          href="/app/sessions"
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Back to Activity
+          Back to Sessions
         </Link>
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-6">
           <h2 className="text-lg font-semibold text-red-400">
@@ -165,11 +170,11 @@ export default function SessionReplayPage({
     <div className="mx-auto max-w-3xl space-y-6">
       {/* Back link */}
       <Link
-        href="/app/activity"
+        href="/app/sessions"
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Back to Activity
+        Back to Sessions
       </Link>
 
       {/* Header */}

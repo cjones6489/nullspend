@@ -171,7 +171,7 @@ export default function BudgetsPage() {
 
       {data && budgets.length > 0 && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <SummaryStats budgets={budgets} />
           </div>
 
@@ -940,9 +940,15 @@ function BudgetDialog({
                 placeholder="100.00"
                 value={limitDollars}
                 onChange={(e) => setLimitDollars(e.target.value)}
-                className="h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50"
+                className={cn(
+                  "h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50",
+                  limitDollars && (isNaN(parseFloat(limitDollars)) || parseFloat(limitDollars) <= 0) && "border-red-500/50",
+                )}
               />
             </div>
+            {limitDollars && (isNaN(parseFloat(limitDollars)) || parseFloat(limitDollars) <= 0) && (
+              <p className="text-[11px] text-red-400">Enter a positive dollar amount</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -1027,12 +1033,19 @@ function BudgetDialog({
                       placeholder="10.00"
                       value={velocityLimitDollars}
                       onChange={(e) => setVelocityLimitDollars(e.target.value)}
-                      className="h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50"
+                      className={cn(
+                        "h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50",
+                        velocityLimitDollars && (isNaN(parseFloat(velocityLimitDollars)) || parseFloat(velocityLimitDollars) <= 0) && "border-red-500/50",
+                      )}
                     />
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    Max spend per sliding window. Triggers a cooldown if exceeded.
-                  </p>
+                  {velocityLimitDollars && (isNaN(parseFloat(velocityLimitDollars)) || parseFloat(velocityLimitDollars) <= 0) ? (
+                    <p className="text-[10px] text-red-400">Enter a positive dollar amount</p>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">
+                      Max spend per sliding window. Triggers a cooldown if exceeded.
+                    </p>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -1122,12 +1135,19 @@ function BudgetDialog({
                     placeholder="5.00"
                     value={sessionLimitDollars}
                     onChange={(e) => setSessionLimitDollars(e.target.value)}
-                    className="h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50"
+                    className={cn(
+                      "h-9 border-border/50 bg-background pl-7 text-[13px] tabular-nums placeholder:text-muted-foreground/50",
+                      sessionLimitDollars && (isNaN(parseFloat(sessionLimitDollars)) || parseFloat(sessionLimitDollars) <= 0) && "border-red-500/50",
+                    )}
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Max spend per session. Agents set sessions via X-NullSpend-Session-Id header. Hard cap regardless of budget policy.
-                </p>
+                {sessionLimitDollars && (isNaN(parseFloat(sessionLimitDollars)) || parseFloat(sessionLimitDollars) <= 0) ? (
+                  <p className="text-[10px] text-red-400">Enter a positive dollar amount</p>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground">
+                    Max spend per session. Agents set sessions via X-NullSpend-Session-Id header. Hard cap regardless of budget policy.
+                  </p>
+                )}
               </div>
             )}
           </div>

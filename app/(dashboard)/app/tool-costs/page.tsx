@@ -60,7 +60,7 @@ export default function ToolCostsPage() {
 
       {data && toolCosts.length > 0 && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <StatCard label="Tracked tools" value={String(totalTools)} />
             <StatCard label="Servers" value={String(totalServers)} />
             <StatCard label="Avg cost / tool" value={totalTools > 0 ? formatMicrodollars(Math.round(totalCost / totalTools)) : "$0.00"} />
@@ -166,7 +166,7 @@ function EmptyToolCosts() {
 function ToolCostsSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full rounded-lg bg-secondary/50" />
         ))}

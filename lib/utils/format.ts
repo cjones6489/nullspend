@@ -40,7 +40,9 @@ export function formatTimestamp(dateString: string): string {
 export function formatMicrodollars(microdollars: number): string {
   if (!Number.isFinite(microdollars)) return "Unlimited";
   const dollars = microdollars / 1_000_000;
-  if (dollars >= 0.01 || dollars === 0) return `$${dollars.toFixed(2)}`;
+  if (dollars >= 0.01 || dollars <= -0.01) return `$${dollars.toFixed(2)}`;
+  if (dollars === 0) return "$0.00";
+  if (Math.abs(dollars) < 0.00005) return "<$0.0001";
   return `$${dollars.toFixed(4).replace(/0+$/, "")}`;
 }
 
@@ -166,4 +168,9 @@ export function formatExpiresAt(expiresAt: string | null): string | null {
   if (diffMin < 60) return `Expires in ${diffMin} min`;
   if (diffHour < 24) return `Expires in ${diffHour}h ${diffMin % 60}m`;
   return `Expires in ${Math.floor(diffHour / 24)}d`;
+}
+
+export function truncateId(id: string, maxLen = 16): string {
+  if (id.length <= maxLen) return id;
+  return `${id.slice(0, maxLen)}\u2026`;
 }

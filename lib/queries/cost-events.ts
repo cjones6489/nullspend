@@ -1,13 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { apiGet, ApiError } from "@/lib/api/client";
+import { apiGet, retryOnServerError } from "@/lib/api/client";
 import type { CostEventRecord } from "@/lib/validations/cost-events";
-
-/** Only retry on server errors (5xx), not on 4xx (not found, bad request). */
-function retryOnServerError(failureCount: number, error: Error): boolean {
-  if (error instanceof ApiError && error.status < 500) return false;
-  return failureCount < 2;
-}
 
 interface CostEventsPage {
   data: CostEventRecord[];
@@ -108,5 +102,7 @@ export function useCostEvents(filters: CostEventFilters = {}) {
     initialPageParam: undefined as
       | { createdAt: string; id: string }
       | undefined,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 }

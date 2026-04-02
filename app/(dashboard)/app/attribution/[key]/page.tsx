@@ -102,7 +102,7 @@ export default function AttributionDetailPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <StatCard
               label="Total Spend"
               value={formatMicrodollars(data.totalCostMicrodollars)}
@@ -258,7 +258,7 @@ function DetailSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-6 w-48 rounded bg-secondary/50" />
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full rounded-lg bg-secondary/50" />
         ))}

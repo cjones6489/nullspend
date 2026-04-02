@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api/client";
+import { apiGet, apiPost, apiPatch, apiDelete, retryOnServerError } from "@/lib/api/client";
 import { toExternalId } from "@/lib/ids/prefixed-id";
 import type { OrgRole } from "@/lib/validations/orgs";
 
@@ -63,6 +63,8 @@ export function useMembers(orgId: string | undefined) {
     queryKey: memberKeys.list(orgId ?? ""),
     queryFn: () => apiGet(`${orgPath(orgId!)}/members`),
     enabled: !!orgId,
+    retry: retryOnServerError,
+    staleTime: 60_000,
   });
 }
 
@@ -71,6 +73,8 @@ export function useInvitations(orgId: string | undefined) {
     queryKey: invitationKeys.list(orgId ?? ""),
     queryFn: () => apiGet(`${orgPath(orgId!)}/invitations`),
     enabled: !!orgId,
+    retry: retryOnServerError,
+    staleTime: 60_000,
   });
 }
 

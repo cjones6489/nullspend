@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { apiGet, apiPost, apiDelete } from "@/lib/api/client";
+import { apiGet, apiPost, apiDelete, retryOnServerError } from "@/lib/api/client";
 import { createBrowserSupabaseClient } from "@/lib/auth/supabase-browser";
 import type { CreateBudgetInput } from "@/lib/validations/budgets";
 
@@ -55,6 +55,8 @@ export function useBudgets() {
   return useQuery<ListBudgetsResponse>({
     queryKey: budgetKeys.list(),
     queryFn: () => apiGet("/api/budgets"),
+    retry: retryOnServerError,
+    staleTime: 60_000,
   });
 }
 

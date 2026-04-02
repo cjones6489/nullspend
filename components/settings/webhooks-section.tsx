@@ -586,6 +586,9 @@ function RotateSecretDialogContent({
           Copy this secret now. You won&apos;t be able to see it again.
         </DialogDescription>
         <SecretDisplay secret={newSecret} />
+        <p className="text-[11px] text-amber-400">
+          Click &ldquo;Done&rdquo; to close — this secret will not be shown again.
+        </p>
         <DialogFooter>
           <button
             type="button"

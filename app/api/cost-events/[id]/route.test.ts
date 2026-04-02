@@ -221,4 +221,42 @@ describe("GET /api/cost-events/[id]", () => {
     expect(json.data.apiKeyId).toBeNull();
     expect(json.data.keyName).toBeNull();
   });
+
+  it("returns costBreakdown when present", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    const breakdown = { input: 5000, output: 12000, cached: 1000, reasoning: 3000, toolDefinition: 800 };
+    const row = makeCostEventRow({ costBreakdown: breakdown });
+    mockLimit.mockResolvedValue([row]);
+
+    const res = await GET(makeRequest(), makeContext(VALID_UUID));
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.data.costBreakdown).toEqual(breakdown);
+  });
+
+  it("returns costBreakdown as null when not populated", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    const row = makeCostEventRow({ costBreakdown: null });
+    mockLimit.mockResolvedValue([row]);
+
+    const res = await GET(makeRequest(), makeContext(VALID_UUID));
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.data.costBreakdown).toBeNull();
+  });
+
+  it("returns costBreakdown with partial fields (Anthropic: no reasoning)", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+    const breakdown = { input: 8000, output: 15000, cached: 2000 };
+    const row = makeCostEventRow({ costBreakdown: breakdown });
+    mockLimit.mockResolvedValue([row]);
+
+    const res = await GET(makeRequest(), makeContext(VALID_UUID));
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.data.costBreakdown).toEqual(breakdown);
+  });
 });

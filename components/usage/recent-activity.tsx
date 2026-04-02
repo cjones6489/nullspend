@@ -1,9 +1,10 @@
 "use client";
 
-import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2, RefreshCw } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, Download, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCostEvents } from "@/lib/queries/cost-events";
+import { formatBreakdownTitle } from "@/components/usage/cost-breakdown-bar";
 import {
   formatDuration,
   formatMicrodollars,
@@ -31,6 +33,7 @@ import {
   formatProviderName,
   formatRelativeTime,
   formatTokens,
+  truncateId,
 } from "@/lib/utils/format";
 
 interface RecentActivityProps {
@@ -53,7 +56,7 @@ type SortField = "createdAt" | "cost" | "toks" | "latency" | "input" | "output";
 type SortDir = "asc" | "desc";
 
 function SortIcon({ field, active, dir }: { field: string; active: string | null; dir: SortDir }) {
-  if (active !== field) return <ArrowUpDown className="ml-1 inline h-3 w-3 opacity-30" />;
+  if (active !== field) return <ArrowUpDown className="ml-1 inline h-3 w-3 opacity-50" />;
   return dir === "asc"
     ? <ArrowUp className="ml-1 inline h-3 w-3" />
     : <ArrowDown className="ml-1 inline h-3 w-3" />;
@@ -67,6 +70,11 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
   const [selectedBudgetStatus, setSelectedBudgetStatus] = useState(ALL_BUDGET_STATUS);
   const [modelFilter, setModelFilter] = useState("");
   const [modelInput, setModelInput] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => setModelFilter(modelInput.trim()), 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [modelInput]);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -129,14 +137,30 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
-          onClick={() => {
+          onClick={async () => {
             const params = new URLSearchParams();
             if (selectedProvider !== ALL_PROVIDERS) params.set("provider", selectedProvider);
             if (selectedSource !== ALL_SOURCES) params.set("source", selectedSource);
             if (modelFilter) params.set("model", modelFilter);
             if (selectedKeyId !== ALL_KEYS) params.set("apiKeyId", selectedKeyId);
             const qs = params.toString();
-            window.location.href = `/api/cost-events/export${qs ? `?${qs}` : ""}`;
+            const url = `/api/cost-events/export${qs ? `?${qs}` : ""}`;
+            try {
+              const res = await fetch(url);
+              if (!res.ok) {
+                toast.error(res.status === 401 ? "Session expired — please log in again" : "Export failed");
+                return;
+              }
+              const blob = await res.blob();
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = res.headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1] ?? "nullspend-export.csv";
+              a.click();
+              URL.revokeObjectURL(a.href);
+              toast.success("Export downloaded");
+            } catch {
+              toast.error("Export failed — check your connection");
+            }
           }}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           title="Export as CSV"
@@ -206,9 +230,11 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
           value={modelInput}
           onChange={(e) => setModelInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") setModelFilter(modelInput.trim());
+            if (e.key === "Enter") {
+              clearTimeout(debounceRef.current);
+              setModelFilter(modelInput.trim());
+            }
           }}
-          onBlur={() => setModelFilter(modelInput.trim())}
           className="h-8 w-[160px] text-xs"
         />
         {modelFilter && (
@@ -274,11 +300,9 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                 <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   Source
                 </TableHead>
-                {selectedKeyId === ALL_KEYS && (
-                  <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Key
-                  </TableHead>
-                )}
+                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Key
+                </TableHead>
                 <TableHead
                   className="cursor-pointer select-none text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
                   onClick={() => toggleSort("input")}
@@ -343,22 +367,20 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                   >
                     {formatRelativeTime(event.createdAt)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="max-w-[180px]">
                     <p className="text-[11px] text-muted-foreground">
                       {formatProviderName(event.provider)}
                     </p>
-                    <p className="font-mono text-[13px] text-foreground">
+                    <p className="truncate font-mono text-[13px] text-foreground" title={event.model}>
                       {formatModelName(event.model)}
                     </p>
                   </TableCell>
                   <TableCell>
                     <SourceBadge source={event.source} />
                   </TableCell>
-                  {selectedKeyId === ALL_KEYS && (
-                    <TableCell className="text-[13px] text-muted-foreground">
-                      {event.keyName}
-                    </TableCell>
-                  )}
+                  <TableCell className="max-w-[140px] truncate text-[13px] text-muted-foreground" title={event.keyName ?? undefined}>
+                    {selectedKeyId === ALL_KEYS ? event.keyName : "—"}
+                  </TableCell>
                   <TableCell className="text-right">
                     <span className="tabular-nums text-[13px] text-foreground">
                       {formatTokens(event.inputTokens)}
@@ -379,7 +401,10 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                       </p>
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-mono tabular-nums text-[13px] text-foreground">
+                  <TableCell
+                    className="text-right font-mono tabular-nums text-[13px] text-foreground"
+                    title={formatBreakdownTitle(event.costBreakdown) ?? undefined}
+                  >
                     {formatMicrodollars(event.costMicrodollars)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-[13px] text-muted-foreground">
@@ -398,7 +423,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                         className="text-primary underline-offset-2 hover:underline"
                         title={event.sessionId}
                       >
-                        {event.sessionId.length > 16 ? event.sessionId.slice(0, 16) + "..." : event.sessionId}
+                        {truncateId(event.sessionId)}
                       </Link>
                     ) : "—"}
                   </TableCell>
@@ -413,7 +438,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
             </TableBody>
           </Table>
 
-          {hasNextPage && (
+          {hasNextPage ? (
             <div className="flex justify-center border-t border-border/30 py-3">
               <Button
                 variant="ghost"
@@ -431,6 +456,10 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
                   "Load More"
                 )}
               </Button>
+            </div>
+          ) : events.length > 0 && (
+            <div className="py-3 text-center text-[11px] text-muted-foreground/50">
+              End of results
             </div>
           )}
         </div>

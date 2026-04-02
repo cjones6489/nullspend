@@ -23,6 +23,13 @@ export const costEventRecordSchema = z.object({
   budgetStatus: z.enum(["skipped", "approved", "denied"]).nullable().optional(),
   stopReason: z.string().nullable().optional(),
   estimatedCostMicrodollars: z.number().nullable().optional(),
+  costBreakdown: z.object({
+    input: z.number().nullable().optional().transform((v) => v ?? undefined),
+    output: z.number().nullable().optional().transform((v) => v ?? undefined),
+    cached: z.number().nullable().optional().transform((v) => v ?? undefined),
+    reasoning: z.number().nullable().optional().transform((v) => v ?? undefined),
+    toolDefinition: z.number().nullable().optional().transform((v) => v ?? undefined),
+  }).nullable().optional(),
 });
 
 const cursorInputSchema = z.object({

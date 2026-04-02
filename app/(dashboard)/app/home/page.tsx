@@ -81,7 +81,7 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabKey>("Proxy");
   const { data: keysData, isLoading: keysLoading } = useApiKeys();
   const { data: summaryData, isLoading: summaryLoading } = useCostSummary("7d");
-  const { data: budgetsData } = useBudgets();
+  const { data: budgetsData, isLoading: budgetsLoading } = useBudgets();
 
   const keys = keysData?.data ?? [];
   const totals = summaryData?.totals;
@@ -108,25 +108,25 @@ export default function HomePage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <MetricCard
             label="7d Spend"
-            value={formatMicrodollars(totalSpend)}
+            value={summaryLoading ? "—" : formatMicrodollars(totalSpend)}
             icon={DollarSign}
             href="/app/analytics"
           />
           <MetricCard
             label="Requests"
-            value={totalRequests.toLocaleString()}
+            value={summaryLoading ? "—" : totalRequests.toLocaleString()}
             icon={Activity}
             href="/app/activity"
           />
           <MetricCard
             label="Active Keys"
-            value={String(activeKeys)}
+            value={keysLoading ? "—" : String(activeKeys)}
             icon={Key}
             href="/app/keys"
           />
           <MetricCard
             label="Budgets"
-            value={String(activeBudgets)}
+            value={budgetsLoading ? "—" : String(activeBudgets)}
             icon={Shield}
             href="/app/budgets"
           />

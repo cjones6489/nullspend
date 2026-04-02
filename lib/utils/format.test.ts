@@ -1,6 +1,49 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-import { formatChartDollars, fillDateGaps } from "./format";
+import { formatChartDollars, formatMicrodollars, fillDateGaps } from "./format";
+
+describe("formatMicrodollars", () => {
+  it("returns $0.00 for zero", () => {
+    expect(formatMicrodollars(0)).toBe("$0.00");
+  });
+
+  it("formats standard amounts with two decimals", () => {
+    expect(formatMicrodollars(10_000)).toBe("$0.01");
+    expect(formatMicrodollars(100_000)).toBe("$0.10");
+    expect(formatMicrodollars(1_000_000)).toBe("$1.00");
+    expect(formatMicrodollars(5_500_000)).toBe("$5.50");
+  });
+
+  it("formats sub-cent amounts with up to four decimals", () => {
+    expect(formatMicrodollars(5_000)).toBe("$0.005");
+    expect(formatMicrodollars(1_000)).toBe("$0.001");
+    expect(formatMicrodollars(500)).toBe("$0.0005");
+    expect(formatMicrodollars(100)).toBe("$0.0001");
+    expect(formatMicrodollars(50)).toBe("$0.0001");
+  });
+
+  it("shows <$0.0001 for values below display threshold", () => {
+    expect(formatMicrodollars(1)).toBe("<$0.0001");
+    expect(formatMicrodollars(5)).toBe("<$0.0001");
+    expect(formatMicrodollars(10)).toBe("<$0.0001");
+    expect(formatMicrodollars(49)).toBe("<$0.0001");
+  });
+
+  it("returns Unlimited for non-finite values", () => {
+    expect(formatMicrodollars(Infinity)).toBe("Unlimited");
+    expect(formatMicrodollars(-Infinity)).toBe("Unlimited");
+    expect(formatMicrodollars(NaN)).toBe("Unlimited");
+  });
+
+  it("handles exact boundary at $0.01", () => {
+    expect(formatMicrodollars(10_000)).toBe("$0.01");
+    expect(formatMicrodollars(9_999)).toBe("$0.01");
+  });
+
+  it("handles negative microdollars", () => {
+    expect(formatMicrodollars(-500_000)).toBe("$-0.50");
+  });
+});
 
 describe("formatChartDollars", () => {
   it("returns $0 for zero", () => {

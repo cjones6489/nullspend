@@ -58,6 +58,7 @@ export async function GET(
         budgetStatus: costEvents.budgetStatus,
         stopReason: costEvents.stopReason,
         estimatedCostMicrodollars: costEvents.estimatedCostMicrodollars,
+        costBreakdown: costEvents.costBreakdown,
       })
       .from(costEvents)
       .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))

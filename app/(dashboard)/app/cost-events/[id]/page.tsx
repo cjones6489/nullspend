@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/ui/copy-button";
 import { PayloadViewer } from "@/components/actions/payload-viewer";
+import { CostBreakdownBar } from "@/components/usage/cost-breakdown-bar";
 import { useCostEvent, useCostEventBodies } from "@/lib/queries/cost-events";
 import {
   formatTimestamp,
@@ -78,6 +79,18 @@ function TagBadge({ name, value }: { name: string; value: string }) {
   );
 }
 
+function BackLinkFallback() {
+  return (
+    <Link
+      href="/app/activity"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ArrowLeft className="h-3.5 w-3.5" />
+      Back to Activity
+    </Link>
+  );
+}
+
 function BackLink({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const params = use(searchParams);
   const from = params.from;
@@ -134,7 +147,7 @@ export default function CostEventDetailPage({
   if (error || !event) {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
-        <Suspense fallback={<Skeleton className="h-4 w-32" />}>
+        <Suspense fallback={<BackLinkFallback />}>
           <BackLink searchParams={searchParams} />
         </Suspense>
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-6">
@@ -348,6 +361,9 @@ export default function CostEventDetailPage({
                 label="Total Cost"
                 value={formatMicrodollars(event.costMicrodollars)}
               />
+              {event.costBreakdown && (
+                <CostBreakdownBar breakdown={event.costBreakdown} />
+              )}
               <DetailRow
                 label="Latency"
                 value={formatDuration(event.durationMs)}

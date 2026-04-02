@@ -36,8 +36,13 @@ export default function BillingPage() {
     if (searchParams.get("success") === "true" && sessionId && !syncAttempted.current) {
       syncAttempted.current = true;
       syncCheckout.mutate(sessionId, {
-        onSettled: () => {
+        onSuccess: () => {
           toast.success("Subscription activated!");
+        },
+        onError: () => {
+          toast.error("Failed to sync subscription — please refresh");
+        },
+        onSettled: () => {
           window.history.replaceState({}, "", "/app/billing");
         },
       });

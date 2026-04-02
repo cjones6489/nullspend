@@ -21,6 +21,7 @@ interface CostEventJoinRow {
   budgetStatus?: string | null;
   stopReason?: string | null;
   estimatedCostMicrodollars?: number | null;
+  costBreakdown?: { input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null;
 }
 
 export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
@@ -45,5 +46,6 @@ export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
     budgetStatus: (row.budgetStatus as "skipped" | "approved" | "denied" | null) ?? null,
     stopReason: row.stopReason ?? null,
     estimatedCostMicrodollars: row.estimatedCostMicrodollars ?? null,
+    costBreakdown: row.costBreakdown ?? null,
   };
 }

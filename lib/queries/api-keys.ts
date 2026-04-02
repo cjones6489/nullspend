@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api/client";
+import { apiGet, apiPost, apiPatch, apiDelete, retryOnServerError } from "@/lib/api/client";
 import type {
   ApiKeyRecord,
   CreateApiKeyResponse,
@@ -29,6 +29,8 @@ export function useApiKeys() {
   return useQuery<ListApiKeysResponse>({
     queryKey: apiKeyKeys.list(),
     queryFn: () => apiGet("/api/keys"),
+    retry: retryOnServerError,
+    staleTime: 60_000,
   });
 }
 

@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiGet } from "@/lib/api/client";
-import { formatMicrodollars, formatRelativeTime } from "@/lib/utils/format";
+import { formatMicrodollars, formatRelativeTime, truncateId } from "@/lib/utils/format";
 
 interface SessionSummary {
   sessionId: string;
@@ -109,9 +109,7 @@ export default function SessionsPage() {
                         href={`/app/sessions/${encodeURIComponent(session.sessionId)}`}
                         className="font-mono text-[13px] text-foreground hover:text-primary transition-colors"
                       >
-                        {session.sessionId.length > 40
-                          ? `${session.sessionId.slice(0, 40)}...`
-                          : session.sessionId}
+                        {truncateId(session.sessionId, 40)}
                       </Link>
                     </TableCell>
                     <TableCell className="tabular-nums text-[13px]">
@@ -129,7 +127,7 @@ export default function SessionsPage() {
             </Table>
           </div>
 
-          {hasNextPage && (
+          {hasNextPage ? (
             <div className="flex justify-center">
               <Button
                 variant="outline"
@@ -141,6 +139,10 @@ export default function SessionsPage() {
                 {isFetchingNextPage && <Loader2 className="h-3 w-3 animate-spin" />}
                 Load more
               </Button>
+            </div>
+          ) : sessions.length > 0 && (
+            <div className="py-3 text-center text-[11px] text-muted-foreground/50">
+              End of results
             </div>
           )}
         </>

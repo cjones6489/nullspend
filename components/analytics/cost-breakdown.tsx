@@ -46,18 +46,24 @@ export function CostBreakdown({
 }: {
   data: CostBreakdownTotals;
 }) {
+  // Reasoning is a SUBSET of output (already counted in outputCost).
+  // Decompose output into (output - reasoning) + reasoning for display.
+  const outputExclReasoning = Math.max(0, data.outputCost - data.reasoningCost);
   const components = [
     { name: "Input", cost: data.inputCost },
-    { name: "Output", cost: data.outputCost },
+    ...(data.reasoningCost > 0
+      ? [
+          { name: "Output", cost: outputExclReasoning },
+          { name: "Reasoning", cost: data.reasoningCost },
+        ]
+      : [{ name: "Output", cost: data.outputCost }]),
     { name: "Cached", cost: data.cachedCost },
-    { name: "Reasoning", cost: data.reasoningCost },
   ];
 
   const allZero = components.every((c) => c.cost === 0);
   if (allZero) return null;
 
-  // Use sum of breakdown components as denominator (not totalCostMicrodollars)
-  // so percentages sum to 100% even when MCP/pre-deploy events lack breakdown data
+  // Denominator = input + output + cached (reasoning is already inside output)
   const breakdownTotal = data.inputCost + data.outputCost + data.cachedCost;
 
   const chartData = components.map((c, i) => ({

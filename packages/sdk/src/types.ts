@@ -302,6 +302,13 @@ export interface CostEventRecord {
   eventType: string;
   toolName: string | null;
   tags: Record<string, string> | null;
+  costBreakdown?: {
+    input?: number;
+    output?: number;
+    cached?: number;
+    reasoning?: number;
+    toolDefinition?: number;
+  } | null;
   createdAt: string;
 }
 

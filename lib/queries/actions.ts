@@ -5,7 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { apiGet, apiPost } from "@/lib/api/client";
+import { apiGet, apiPost, retryOnServerError } from "@/lib/api/client";
 import type { ActionRecord } from "@/lib/validations/actions";
 import type { ActionStatus } from "@/lib/utils/status";
 
@@ -57,6 +57,7 @@ export function useActions(status?: ActionStatus, limit = 50) {
   return useQuery<ListActionsResponse>({
     queryKey: actionKeys.list(status, limit),
     queryFn: () => apiGet(`/api/actions?${qs}`),
+    retry: retryOnServerError,
   });
 }
 
@@ -77,6 +78,8 @@ export function useActionsInfinite(options: {
     },
     getNextPageParam: (lastPage) => lastPage.cursor ?? undefined,
     initialPageParam: undefined as ActionCursor | undefined,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -88,6 +91,7 @@ export function useAction(id: string) {
       return res.data;
     },
     enabled: !!id,
+    retry: retryOnServerError,
   });
 }
 

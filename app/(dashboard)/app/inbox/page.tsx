@@ -189,7 +189,7 @@ export default function InboxPage() {
             </TableBody>
           </Table>
 
-          {hasNextPage && (
+          {hasNextPage ? (
             <div className="flex justify-center border-t border-border/30 py-3">
               <Button
                 variant="ghost"
@@ -207,6 +207,10 @@ export default function InboxPage() {
                   "Load More"
                 )}
               </Button>
+            </div>
+          ) : actions.length > 0 && (
+            <div className="py-3 text-center text-[11px] text-muted-foreground/50">
+              End of results
             </div>
           )}
         </div>

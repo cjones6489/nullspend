@@ -2,7 +2,8 @@
 
 import { BarChart3, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { CostBreakdown } from "@/components/analytics/cost-breakdown";
 import { KeyBreakdown } from "@/components/analytics/key-breakdown";
@@ -22,8 +23,26 @@ import { cn } from "@/lib/utils";
 
 type Period = "7d" | "30d" | "90d";
 
+const VALID_PERIODS = new Set<Period>(["7d", "30d", "90d"]);
+
 export default function AnalyticsPage() {
-  const [period, setPeriod] = useState<Period>("30d");
+  return (
+    <Suspense fallback={<AnalyticsSkeleton />}>
+      <AnalyticsContent />
+    </Suspense>
+  );
+}
+
+function AnalyticsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const paramPeriod = searchParams.get("period") as Period | null;
+  const period: Period = paramPeriod && VALID_PERIODS.has(paramPeriod) ? paramPeriod : "30d";
+  const setPeriod = (p: Period) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("period", p);
+    router.replace(`?${params.toString()}`);
+  };
   const { data, isLoading, isError, refetch, isFetching } = useCostSummary(period);
 
   const isEmpty = data && data.totals.totalRequests === 0;
@@ -91,7 +110,7 @@ export default function AnalyticsPage() {
 
       {data && !isEmpty && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <StatCard
               label="Total Spend"
               value={formatMicrodollars(data.totals.totalCostMicrodollars)}
@@ -170,7 +189,7 @@ export default function AnalyticsPage() {
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full rounded-lg bg-secondary/50" />
         ))}

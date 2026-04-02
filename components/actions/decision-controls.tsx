@@ -115,7 +115,7 @@ export function DecisionControls({ actionId, actionType, payload }: DecisionCont
     <div className="flex items-center gap-2">
       <Dialog open={approveOpen} onOpenChange={(open) => { setApproveOpen(open); if (!open) setApprovedAmount(""); }}>
         <DialogTrigger
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-3 text-xs font-medium text-white transition-colors hover:bg-emerald-500 disabled:pointer-events-none disabled:opacity-50"
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
           disabled={isPending}
         >
           <CheckCircle2 className="h-3.5 w-3.5" />
@@ -188,7 +188,7 @@ export function DecisionControls({ actionId, actionType, payload }: DecisionCont
               size="sm"
               onClick={handleApprove}
               disabled={isPending}
-              className="bg-emerald-600 text-white hover:bg-emerald-500"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {approveAction.isPending ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />Approving...</> : "Confirm Approve"}
             </Button>
@@ -198,7 +198,7 @@ export function DecisionControls({ actionId, actionType, payload }: DecisionCont
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogTrigger
-          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 disabled:pointer-events-none disabled:opacity-50"
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
           disabled={isPending}
         >
           <XCircle className="h-3.5 w-3.5" />

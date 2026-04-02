@@ -64,6 +64,7 @@ describe("GET /api/cost-events/export", () => {
         traceId: null,
         keyName: "My Key",
         createdAt: new Date("2026-03-27T14:00:00.000Z"),
+        costBreakdown: { input: 800, output: 600, cached: 100 },
       },
     ]);
 
@@ -76,11 +77,42 @@ describe("GET /api/cost-events/export", () => {
 
     const csv = await res.text();
     const lines = csv.split("\n");
-    expect(lines[0]).toBe("id,request_id,provider,model,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,cost_microdollars,cost_usd,duration_ms,source,session_id,trace_id,key_name,created_at");
+    expect(lines[0]).toBe("id,request_id,provider,model,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,cost_microdollars,cost_usd,duration_ms,source,session_id,trace_id,key_name,created_at,cost_breakdown_input,cost_breakdown_output,cost_breakdown_cached,cost_breakdown_reasoning,cost_breakdown_tool_definition");
     expect(lines[1]).toContain("evt-1");
     expect(lines[1]).toContain("gpt-4o");
     expect(lines[1]).toContain("0.001500");
     expect(lines[1]).toContain("My Key");
+    // Breakdown columns: input=800, output=600, cached=100, reasoning empty, tool_definition empty
+    expect(lines[1]).toContain("800,600,100,,");
+  });
+
+  it("exports empty breakdown columns when costBreakdown is null", async () => {
+    mockDbChain([
+      {
+        id: "evt-null-bd",
+        requestId: "req-null",
+        provider: "openai",
+        model: "gpt-4o",
+        inputTokens: 100,
+        outputTokens: 50,
+        cachedInputTokens: 0,
+        reasoningTokens: 0,
+        costMicrodollars: 1500,
+        durationMs: 320,
+        source: "api",
+        sessionId: null,
+        traceId: null,
+        keyName: null,
+        createdAt: new Date("2026-03-27T14:00:00.000Z"),
+        costBreakdown: null,
+      },
+    ]);
+
+    const res = await GET(new Request("http://localhost:3000/api/cost-events/export"));
+    const csv = await res.text();
+    const dataLine = csv.split("\n")[1];
+    // Last 5 columns should all be empty
+    expect(dataLine).toMatch(/,,,,$/);
   });
 
   it("returns empty CSV with only headers when no data", async () => {

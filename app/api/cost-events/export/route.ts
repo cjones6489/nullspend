@@ -27,6 +27,11 @@ const CSV_HEADERS = [
   "trace_id",
   "key_name",
   "created_at",
+  "cost_breakdown_input",
+  "cost_breakdown_output",
+  "cost_breakdown_cached",
+  "cost_breakdown_reasoning",
+  "cost_breakdown_tool_definition",
 ] as const;
 
 function rowToCSV(row: {
@@ -45,7 +50,9 @@ function rowToCSV(row: {
   traceId: string | null;
   keyName: string | null;
   createdAt: Date;
+  costBreakdown: { input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null;
 }): string {
+  const cb = row.costBreakdown;
   return [
     escapeCSV(row.id),
     escapeCSV(row.requestId),
@@ -63,6 +70,11 @@ function rowToCSV(row: {
     escapeCSV(row.traceId ?? ""),
     escapeCSV(row.keyName ?? ""),
     row.createdAt.toISOString(),
+    cb?.input != null ? String(cb.input) : "",
+    cb?.output != null ? String(cb.output) : "",
+    cb?.cached != null ? String(cb.cached) : "",
+    cb?.reasoning != null ? String(cb.reasoning) : "",
+    cb?.toolDefinition != null ? String(cb.toolDefinition) : "",
   ].join(",");
 }
 
@@ -122,6 +134,7 @@ export async function GET(request: Request) {
         traceId: costEvents.traceId,
         keyName: apiKeys.name,
         createdAt: costEvents.createdAt,
+        costBreakdown: costEvents.costBreakdown,
       })
       .from(costEvents)
       .leftJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))

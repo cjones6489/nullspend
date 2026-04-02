@@ -4,6 +4,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code?: string,
     public body?: unknown,
   ) {
     super(message);
@@ -13,6 +14,13 @@ export class ApiError extends Error {
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    // Redirect to login on auth failure — session likely expired
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+      // Return a never-resolving promise so callers don't process further
+      return new Promise(() => {});
+    }
+
     let body: unknown;
     try {
       body = await response.json();
@@ -23,15 +31,25 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const err = body && typeof body === "object" && "error" in body
       ? (body as { error: unknown }).error
       : null;
+    const code =
+      err && typeof err === "object" && err !== null && "code" in err
+        ? String((err as { code: string }).code)
+        : undefined;
     const message =
       err && typeof err === "object" && err !== null && "message" in err
         ? String((err as { message: string }).message)
         : body && typeof body === "object" && "message" in body
           ? String((body as { message: string }).message)
           : `Request failed with status ${response.status}`;
-    throw new ApiError(message, response.status, body);
+    throw new ApiError(message, response.status, code, body);
   }
   return response.json() as Promise<T>;
+}
+
+/** Only retry on server errors (5xx), not on 4xx (not found, bad request). */
+export function retryOnServerError(failureCount: number, error: Error): boolean {
+  if (error instanceof ApiError && error.status < 500) return false;
+  return failureCount < 2;
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

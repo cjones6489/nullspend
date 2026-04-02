@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, PieChart, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -182,7 +183,7 @@ export default function AttributionPage() {
 
       {data && !isEmpty && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <StatCard
               label="Total Spend"
               value={formatMicrodollars(totalCost)}
@@ -210,12 +211,28 @@ export default function AttributionPage() {
               </p>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const params = new URLSearchParams();
                   params.set("groupBy", groupBy);
                   params.set("period", period);
                   params.set("format", "csv");
-                  window.location.href = `/api/cost-events/attribution?${params.toString()}`;
+                  const url = `/api/cost-events/attribution?${params.toString()}`;
+                  try {
+                    const res = await fetch(url);
+                    if (!res.ok) {
+                      toast.error(res.status === 401 ? "Session expired — please log in again" : "Export failed");
+                      return;
+                    }
+                    const blob = await res.blob();
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = res.headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1] ?? "nullspend-attribution.csv";
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                    toast.success("Export downloaded");
+                  } catch {
+                    toast.error("Export failed — check your connection");
+                  }
                 }}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 title="Export as CSV"
@@ -323,7 +340,7 @@ export default function AttributionPage() {
 function AttributionSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className="h-16 w-full rounded-lg bg-secondary/50" />
         ))}

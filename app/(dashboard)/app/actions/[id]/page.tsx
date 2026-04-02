@@ -32,7 +32,7 @@ export default function ActionDetailPage({
   if (error || !action) {
     return (
       <div className="space-y-4">
-        <Suspense fallback={null}>
+        <Suspense fallback={<BackLinkFallback />}>
         <BackLink />
       </Suspense>
         <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-6 text-center text-sm text-red-400">
@@ -44,7 +44,7 @@ export default function ActionDetailPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Suspense fallback={null}>
+      <Suspense fallback={<BackLinkFallback />}>
         <BackLink />
       </Suspense>
 
@@ -63,7 +63,7 @@ export default function ActionDetailPage({
       </div>
 
       {action.status === "pending" && (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+        <div className="sticky top-0 z-10 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 backdrop-blur-sm">
           <div className="flex items-center justify-between gap-4">
             <p className="text-[13px] text-amber-400/90">
               This action is awaiting your decision.
@@ -145,6 +145,18 @@ export default function ActionDetailPage({
         </div>
       </div>
     </div>
+  );
+}
+
+function BackLinkFallback() {
+  return (
+    <Link
+      href="/app/inbox"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ArrowLeft className="h-3.5 w-3.5" />
+      Back to inbox
+    </Link>
   );
 }
 
