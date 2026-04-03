@@ -2207,17 +2207,6 @@ describe("requestBudgetIncrease", () => {
     // Create a tracked fetch with enforcement to register a policy cache
     const trackedFetch = client.createTrackedFetch("openai", { enforcement: true });
 
-    // Warm the policy cache by making a request that triggers getPolicy
-    // Use a simple non-streaming response so the tracked fetch completes
-    const _warmResponse = new Response(JSON.stringify({
-      id: "chatcmpl-1",
-      choices: [{ message: { content: "hi" } }],
-      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-
     // The trackedFetch wraps globalThis.fetch — we need to have our mock fetchFn
     // handle the upstream OpenAI call too. The tracked fetch calls the underlying
     // fetch (our mock) for the actual request.

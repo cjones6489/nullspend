@@ -605,9 +605,11 @@ function MCPToolCallsVisual() {
 
   const [callStream, setCallStream] = useState<Array<{ id: number; call: typeof toolCalls[0]; status: "running" | "complete" }>>([]);
   const callIdRef = useRef(0);
+  const pendingTimeouts = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const [totalCost, setTotalCost] = useState(0);
 
   useEffect(() => {
+    const timeouts = pendingTimeouts.current;
     const interval = setInterval(() => {
       const call = toolCalls[Math.floor(Math.random() * toolCalls.length)];
       const newId = callIdRef.current++;
@@ -619,7 +621,8 @@ function MCPToolCallsVisual() {
       ]);
 
       // Mark as complete after delay
-      setTimeout(() => {
+      const tid = setTimeout(() => {
+        timeouts.delete(tid);
         setCallStream((prev) =>
           prev.map((item) =>
             item.id === newId ? { ...item, status: "complete" } : item
@@ -627,8 +630,13 @@ function MCPToolCallsVisual() {
         );
         setTotalCost((prev) => prev + call.cost);
       }, 600);
+      timeouts.add(tid);
     }, 1400);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      timeouts.forEach(clearTimeout);
+      timeouts.clear();
+    };
   }, [toolCalls]);
 
   return (
