@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~3,860+ tests across ~220 files organized into four tiers.
+NullSpend has ~3,890+ tests across ~220 files organized into four tiers.
 
 ## Quick Reference
 
@@ -238,7 +238,7 @@ Intensity levels control concurrency (light: 10-15, medium: 25-40, heavy: 50-80)
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. ~1,471 tests across 118 files.
+Co-located with source files. ~1,535 tests across 119 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback
@@ -265,6 +265,7 @@ Co-located with source files. ~1,471 tests across 118 files.
 - One test file per route: actions CRUD, keys CRUD, budgets, cost-events, cost-events/{id}, slack config/callback/test
 - `budgets/route.test.ts` — includes policy round-trip (store + return for all three values), policy omitted preserves DB default, invalid policy 400
 - `cost-events/[id]/route.test.ts` — Fetch-back endpoint: owned event, missing, other user's, auth, invalid ID, prefixed ID
+- `cost-events/batch/route.test.ts` — Batch ingestion: per-event budget accounting, tag isolation, proxy cache sync, dispatch failure isolation, threshold detection, observability logging, math invariants
 - `velocity-status/route.test.ts` — Live velocity state polling: auth, proxy fetch, graceful degradation
 
 **Other**

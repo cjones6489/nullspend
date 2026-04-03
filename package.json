@@ -36,6 +36,8 @@
     "cost-engine:test": "pnpm --filter @nullspend/cost-engine test",
     "db:build": "pnpm --filter @nullspend/db build",
     "db:test": "pnpm --filter @nullspend/db test",
+    "docs-mcp:build": "pnpm --filter @nullspend/docs build",
+    "docs-mcp:test": "pnpm --filter @nullspend/docs test",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
@@ -44,6 +46,7 @@
     "@react-three/fiber": "^9.1.3",
     "@base-ui/react": "^1.2.0",
     "@fumadocs/mdx-remote": "^1.4.6",
+    "@nullspend/cost-engine": "workspace:*",
     "@nullspend/db": "workspace:*",
     "@sentry/nextjs": "^10.43.0",
     "@supabase/ssr": "^0.9.0",

@@ -16,6 +16,7 @@ export async function resolveAction(
   orgId: string,
   targetStatus: ActionStatus,
   setFields: { approvedBy: string } | { rejectedBy: string },
+  sideEffect?: (tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0], action: { id: string; actionType: string; payloadJson: Record<string, unknown> | null }) => Promise<void>,
 ) {
   const db = getDb();
 
@@ -25,6 +26,8 @@ export async function resolveAction(
         id: actions.id,
         status: actions.status,
         expiresAt: actions.expiresAt,
+        actionType: actions.actionType,
+        payloadJson: actions.payloadJson,
       })
       .from(actions)
       .where(and(eq(actions.id, actionId), eq(actions.orgId, orgId)))
@@ -75,6 +78,14 @@ export async function resolveAction(
 
     if (updatedRows.length === 0) {
       throw new StaleActionError(actionId);
+    }
+
+    if (sideEffect) {
+      await sideEffect(tx, {
+        id: existingAction.id,
+        actionType: existingAction.actionType,
+        payloadJson: existingAction.payloadJson,
+      });
     }
 
     return updatedRows[0];

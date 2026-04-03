@@ -21,6 +21,8 @@ export interface ApiKeyIdentity {
   orgId: string | null;
   keyId: string;
   apiVersion: string;
+  allowedModels: string[] | null;
+  allowedProviders: string[] | null;
 }
 
 export function generateRawKey(): string {
@@ -58,7 +60,14 @@ async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
   const hash = hashKey(rawKey);
 
   const [row] = await db
-    .select({ id: apiKeys.id, userId: apiKeys.userId, orgId: apiKeys.orgId, apiVersion: apiKeys.apiVersion })
+    .select({
+      id: apiKeys.id,
+      userId: apiKeys.userId,
+      orgId: apiKeys.orgId,
+      apiVersion: apiKeys.apiVersion,
+      allowedModels: apiKeys.allowedModels,
+      allowedProviders: apiKeys.allowedProviders,
+    })
     .from(apiKeys)
     .where(and(eq(apiKeys.keyHash, hash), isNull(apiKeys.revokedAt)))
     .limit(1);
@@ -77,7 +86,14 @@ async function lookupKeyInDb(rawKey: string): Promise<ApiKeyIdentity | null> {
       .catch(() => {}); // Best-effort, never block
   }
 
-  return { userId: row.userId, orgId: row.orgId ?? null, keyId: row.id, apiVersion: row.apiVersion };
+  return {
+    userId: row.userId,
+    orgId: row.orgId ?? null,
+    keyId: row.id,
+    apiVersion: row.apiVersion,
+    allowedModels: row.allowedModels ?? null,
+    allowedProviders: row.allowedProviders ?? null,
+  };
 }
 
 /** @internal Use `authenticateApiKey` from `with-api-key-auth.ts` in route handlers */

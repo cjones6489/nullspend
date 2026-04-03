@@ -187,6 +187,54 @@ describe("sendSlackNotification", () => {
   });
 });
 
+describe("sendSlackNotification — budget_increase via Web API", () => {
+  beforeEach(() => {
+    vi.stubEnv("NULLSPEND_URL", "http://localhost:3000");
+    vi.stubEnv("SLACK_BOT_TOKEN", "xoxb-test-token");
+    vi.stubEnv("SLACK_CHANNEL_ID", "C12345");
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it("maps ratelimited Slack API error to 429 and retries", async () => {
+    // Single getDb call returns a mock that supports both select (config lookup)
+    // and update (thread_ts write) — same db instance is reused in sendSlackNotification
+    const dbMock = {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([activeConfig]),
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+    };
+    mockedGetDb.mockReturnValue(dbMock as never);
+
+    // First call: Slack API returns HTTP 200 but { ok: false, error: "ratelimited" }
+    // Second call: succeeds with a thread_ts
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: false, error: "ratelimited" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, ts: "1234567890.123456" }),
+      });
+
+    const action = makeAction({ actionType: "budget_increase" });
+    await sendSlackNotification(action, "user-123");
+
+    // Should have retried: 1 ratelimited + 1 success = 2 calls to Slack API
+    const slackApiCalls = mockFetch.mock.calls.filter(
+      (args: unknown[]) => typeof args[0] === "string" && (args[0] as string).includes("slack.com/api"),
+    );
+    expect(slackApiCalls.length).toBe(2);
+  });
+});
+
 describe("sendSlackTestNotification", () => {
   beforeEach(() => {
     vi.stubEnv("NULLSPEND_URL", "http://localhost:3000");

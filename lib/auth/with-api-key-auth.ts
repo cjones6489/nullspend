@@ -17,6 +17,8 @@ export interface ApiKeyAuthContext {
   orgId: string | null;
   keyId: string | null; // null for dev-mode env key
   apiVersion: string;
+  allowedModels?: string[] | null;
+  allowedProviders?: string[] | null;
   rateLimit?: RateLimitInfo; // present when per-key rate limiting is active
 }
 
@@ -55,6 +57,8 @@ export async function authenticateApiKey(
     return {
       userId, orgId, keyId,
       apiVersion: identity?.apiVersion ?? CURRENT_VERSION,
+      allowedModels: identity?.allowedModels ?? null,
+      allowedProviders: identity?.allowedProviders ?? null,
       rateLimit: result.limit != null
         ? { limit: result.limit, remaining: result.remaining ?? 0, reset: result.reset ?? 0 }
         : undefined,
@@ -63,7 +67,12 @@ export async function authenticateApiKey(
 
   setRequestUserId(userId);
   addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
-  return { userId, orgId, keyId, apiVersion: identity?.apiVersion ?? CURRENT_VERSION };
+  return {
+    userId, orgId, keyId,
+    apiVersion: identity?.apiVersion ?? CURRENT_VERSION,
+    allowedModels: identity?.allowedModels ?? null,
+    allowedProviders: identity?.allowedProviders ?? null,
+  };
 }
 
 /** Set X-RateLimit-* headers on a response if rate limit info is available. */

@@ -42,6 +42,9 @@ jobs:
       - name: Build @nullspend/claude-agent
         run: pnpm claude-agent:build
 
+      - name: Build @nullspend/docs
+        run: pnpm docs-mcp:build
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -68,3 +71,6 @@ jobs:
 
       - name: DB tests
         run: pnpm db:test
+
+      - name: Docs MCP tests
+        run: pnpm docs-mcp:test

@@ -19,6 +19,7 @@ nullspend/                  # Next.js 16 dashboard (root)
 ├── packages/claude-agent/  # Claude Agent SDK adapter (@nullspend/claude-agent)
 ├── packages/mcp-server/    # MCP server (@nullspend/mcp-server)
 ├── packages/mcp-proxy/     # MCP proxy (@nullspend/mcp-proxy)
+├── packages/docs-mcp-server/ # Docs MCP server (@nullspend/docs)
 ├── proxy.ts                # Next.js 16 proxy (replaces middleware.ts)
 └── drizzle/                # SQL migrations
 ```
@@ -57,6 +58,12 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 
 - Root `package.json` has `pnpm.overrides` pinning `drizzle-orm@^0.45.1` across all workspace packages to prevent version mismatch issues
 
+## Slack Integration
+
+- `SLACK_BOT_TOKEN` (xoxb-...) — Slack Web API bot token for budget negotiation threaded replies. Optional; falls back to incoming webhook if absent.
+- `SLACK_CHANNEL_ID` — Channel ID for budget negotiation messages. Required alongside `SLACK_BOT_TOKEN`.
+- Existing webhook URL (via `slackConfigs` table) is used for all non-budget actions and as fallback.
+
 ## Supabase
 
 - Project ref: set in .env.local (not committed)
@@ -65,7 +72,7 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 
 ## Testing
 
-See @TESTING.md for the full test map (~168 files, ~2,800+ tests across 4 tiers). Key points:
+See @TESTING.md for the full test map (~219 files, ~3,780+ tests across 4 tiers). Key points:
 
 - Proxy tests: `apps/proxy/src/__tests__/` — naming convention: `{module}.test.ts`, `-edge-cases.test.ts`, `-all-models.test.ts`
 - Dashboard tests: co-located with source files

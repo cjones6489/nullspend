@@ -1,5 +1,8 @@
 import { CostReporter } from "./cost-reporter.js";
 import { NullSpendError, RejectedError, TimeoutError } from "./errors.js";
+import { buildTrackedFetch } from "./tracked-fetch.js";
+import { createPolicyCache } from "./policy-cache.js";
+import type { PolicyCache, PolicyResponse } from "./policy-cache.js";
 import {
   isRetryableStatusCode,
   isRetryableError,
@@ -27,6 +30,8 @@ import type {
   ReportCostResponse,
   ReportCostBatchResponse,
   RetryInfo,
+  TrackedFetchOptions,
+  TrackedProvider,
   WaitForDecisionOptions,
 } from "./types.js";
 
@@ -54,6 +59,14 @@ export class NullSpend {
   private readonly apiVersion: string;
   private readonly onRetry: ((info: RetryInfo) => void | boolean) | undefined;
   private readonly costReporter: CostReporter | null;
+  /**
+   * Tracks all PolicyCache instances created by createTrackedFetch() so
+   * requestBudgetIncrease() can invalidate them on approval.
+   *
+   * Call createTrackedFetch() once per provider, not per-request, to avoid
+   * unbounded growth. The returned fetch function is safe to reuse.
+   */
+  private readonly policyCaches: Set<PolicyCache> = new Set();
 
   constructor(config: NullSpendConfig) {
     if (!config.baseUrl) throw new NullSpendError("baseUrl is required");
@@ -158,6 +171,44 @@ export class NullSpend {
   }
 
   // -------------------------------------------------------------------------
+  // Tracked fetch (provider wrappers)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a tracked fetch function for a specific LLM provider.
+   * Automatically tracks cost events for OpenAI and Anthropic API calls.
+   *
+   * ```ts
+   * const openai = new OpenAI({ fetch: ns.createTrackedFetch("openai") });
+   * ```
+   */
+  createTrackedFetch(
+    provider: TrackedProvider,
+    options?: TrackedFetchOptions,
+  ): typeof globalThis.fetch {
+    if (!this.costReporter) {
+      throw new NullSpendError(
+        "createTrackedFetch() requires costReporting to be configured",
+      );
+    }
+
+    let policyCache: PolicyCache | null = null;
+    if (options?.enforcement) {
+      policyCache = createPolicyCache(async (): Promise<PolicyResponse> => {
+        return this.request<PolicyResponse>("GET", "/api/policy");
+      });
+      this.policyCaches.add(policyCache);
+    }
+
+    return buildTrackedFetch(
+      provider,
+      options,
+      (event) => this.queueCost(event),
+      policyCache,
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // Budget status
   // -------------------------------------------------------------------------
 
@@ -187,6 +238,92 @@ export class NullSpend {
     if (options?.cursor) params.set("cursor", options.cursor);
     const qs = params.toString();
     return this.request<ListCostEventsResponse>("GET", `/api/cost-events${qs ? `?${qs}` : ""}`);
+  }
+
+  // -------------------------------------------------------------------------
+  // Budget negotiation
+  // -------------------------------------------------------------------------
+
+  /**
+   * Request a budget increase from a human approver. Blocks until the request
+   * is approved, rejected, or times out. On approval, invalidates all policy
+   * caches so subsequent requests use the new limit.
+   *
+   * ```ts
+   * try {
+   *   await openai.chat.completions.create({ ... });
+   * } catch (err) {
+   *   if (err instanceof BudgetExceededError) {
+   *     const { approvedAmountMicrodollars } = await ns.requestBudgetIncrease({
+   *       agentId: "doc-processor",
+   *       amount: 5_000_000,
+   *       reason: "Processing 50 remaining documents",
+   *       entityType: err.entityType,
+   *       entityId: err.entityId,
+   *       currentLimit: err.limitMicrodollars,
+   *       currentSpend: err.spendMicrodollars,
+   *     });
+   *     // Retry — budget is now increased
+   *     await openai.chat.completions.create({ ... });
+   *   }
+   * }
+   * ```
+   */
+  async requestBudgetIncrease(options: {
+    agentId: string;
+    /** Microdollars to request adding to the budget. */
+    amount: number;
+    /** Human-readable reason for the increase. */
+    reason: string;
+    /** Budget entity type (from BudgetExceededError). */
+    entityType?: string;
+    /** Budget entity ID (from BudgetExceededError). */
+    entityId?: string;
+    /** Current budget limit in microdollars. */
+    currentLimit?: number;
+    /** Current spend in microdollars. */
+    currentSpend?: number;
+    /** Milliseconds between polls. Default: 2000. */
+    pollIntervalMs?: number;
+    /** Total timeout in milliseconds. Default: 300000 (5 min). */
+    timeoutMs?: number;
+    /** Called each time the SDK polls. */
+    onPoll?: (action: ActionRecord) => void;
+  }): Promise<{ actionId: string; requestedAmountMicrodollars: number }> {
+    return this.proposeAndWait<{ actionId: string; requestedAmountMicrodollars: number }>({
+      agentId: options.agentId,
+      actionType: "budget_increase",
+      payload: {
+        entityType: options.entityType ?? "api_key",
+        entityId: options.entityId ?? "unknown",
+        requestedAmountMicrodollars: options.amount,
+        currentLimitMicrodollars: options.currentLimit ?? 0,
+        currentSpendMicrodollars: options.currentSpend ?? 0,
+        reason: options.reason,
+      },
+      pollIntervalMs: options.pollIntervalMs,
+      timeoutMs: options.timeoutMs,
+      onPoll: options.onPoll,
+      execute: async (context) => {
+        // On approval: invalidate all policy caches so the agent sees the
+        // new budget limit immediately on retry.
+        this.invalidateAllPolicyCaches();
+        // The server may have approved a different amount (partial approval).
+        // We return the requested amount — the actual approved amount is
+        // reflected in the updated budget, visible via checkBudget().
+        return {
+          actionId: context?.actionId ?? "unknown",
+          requestedAmountMicrodollars: options.amount,
+        };
+      },
+    });
+  }
+
+  /** Invalidate all tracked policy caches (used after budget increases). */
+  private invalidateAllPolicyCaches(): void {
+    for (const cache of this.policyCaches) {
+      cache.invalidate();
+    }
   }
 
   // -------------------------------------------------------------------------

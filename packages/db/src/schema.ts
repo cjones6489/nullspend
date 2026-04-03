@@ -20,6 +20,7 @@ export const ACTION_TYPES = [
   "db_write",
   "file_write",
   "file_delete",
+  "budget_increase",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -81,6 +82,7 @@ export const actions = pgTable("actions", {
   errorMessage: text("error_message"),
   environment: text("environment"),
   sourceFramework: text("source_framework"),
+  slackThreadTs: text("slack_thread_ts"),
 }, (table) => [
   index("actions_owner_status_created_idx").on(table.ownerUserId, table.status, table.createdAt),
   index("actions_owner_created_idx").on(table.ownerUserId, table.createdAt),
@@ -108,7 +110,10 @@ export type SlackConfigRow = typeof slackConfigs.$inferSelect;
 
 export const budgets = pgTable("budgets", {
   id: uuid("id").defaultRandom().primaryKey(),
-  entityType: text("entity_type").$type<"user" | "agent" | "api_key" | "team" | "tag">().notNull(),
+  // DB CHECK allows: user, agent, api_key, team, tag.
+  // "agent" and "team" are reserved for future use — gated by Zod validation
+  // in lib/validations/budgets.ts which only accepts: api_key, user, tag.
+  entityType: text("entity_type").$type<"user" | "api_key" | "tag">().notNull(),
   entityId: text("entity_id").notNull(),
   maxBudgetMicrodollars: bigint("max_budget_microdollars", { mode: "number" }).notNull(),
   spendMicrodollars: bigint("spend_microdollars", { mode: "number" }).notNull().default(0),

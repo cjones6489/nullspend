@@ -86,10 +86,40 @@ const result = await seam.proposeAndWait({
 
 The linked cost data will appear on the action detail page in the dashboard.
 
+## Tracked Fetch (Provider Wrappers)
+
+Wrap your LLM provider's `fetch` to automatically track costs and enforce policies client-side:
+
+```typescript
+import { NullSpend, SessionLimitExceededError, BudgetExceededError, MandateViolationError } from "@nullspend/sdk";
+import OpenAI from "openai";
+
+const ns = new NullSpend({
+  baseUrl: "https://app.nullspend.com",
+  apiKey: "ns_live_sk_...",
+  costReporting: {},
+});
+
+// Basic cost tracking
+const openai = new OpenAI({ fetch: ns.createTrackedFetch("openai") });
+
+// With enforcement: budget, mandates, and session limits
+const enforced = new OpenAI({
+  fetch: ns.createTrackedFetch("openai", {
+    enforcement: true,
+    sessionId: "task-042",
+    sessionLimitMicrodollars: 5_000_000, // $5 per session
+    tags: { team: "backend" },
+  }),
+});
+```
+
+Providers: `"openai"` and `"anthropic"`. Cost is calculated locally using the built-in pricing engine. With `enforcement: true`, the SDK checks model mandates, budget, and session limits before each request — throwing `MandateViolationError`, `BudgetExceededError`, or `SessionLimitExceededError` if policy is violated. See the [full SDK docs](https://nullspend.com/docs/sdks/javascript) for `TrackedFetchOptions` reference.
+
 ## Error handling
 
 ```typescript
-import { RejectedError, TimeoutError, NullSpendError } from "@nullspend/sdk";
+import { RejectedError, TimeoutError, NullSpendError, BudgetExceededError, MandateViolationError, SessionLimitExceededError } from "@nullspend/sdk";
 
 try {
   await seam.proposeAndWait({ ... });

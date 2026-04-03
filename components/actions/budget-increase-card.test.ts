@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { budgetIncreasePayloadSchema } from "@/lib/validations/actions";
 import { formatMicrodollars } from "@/lib/utils/format";
+import { BudgetEntityNotFoundError } from "@/lib/actions/errors";
+import { handleRouteError } from "@/lib/utils/http";
 
 // ---------------------------------------------------------------------------
 // Payload parsing (schema validation)
@@ -478,13 +480,10 @@ describe("Inbox budget_increase row extraction", () => {
 
 describe("SDK MutateActionResponse type parity", () => {
   it("SDK type includes budgetIncrease field", async () => {
-    const { MutateActionResponse } = await import(
-      "../../packages/sdk/src/types"
-    ) as { MutateActionResponse: never };
-    // Type-level check: if the SDK type doesn't have budgetIncrease,
-    // this import would still succeed but the value check below exercises
-    // the interface shape at runtime via a conforming object.
-    const conforming = {
+    // Type-level check: exercises the MutateActionResponse interface shape
+    // at runtime via a conforming object. If the SDK type is ever changed
+    // to remove budgetIncrease, this test documents expected structure.
+    const conforming: import("../../packages/sdk/src/types").MutateActionResponse = {
       id: "act_123",
       status: "approved" as const,
       approvedAt: "2026-04-01T12:00:00Z",
@@ -496,10 +495,10 @@ describe("SDK MutateActionResponse type parity", () => {
       },
     };
     // Verify the shape is structurally valid
-    expect(conforming.budgetIncrease.previousLimit).toBe(10_000_000);
-    expect(conforming.budgetIncrease.newLimit).toBe(15_000_000);
-    expect(conforming.budgetIncrease.amount).toBe(5_000_000);
-    expect(conforming.budgetIncrease.requestedAmount).toBe(5_000_000);
+    expect(conforming.budgetIncrease!.previousLimit).toBe(10_000_000);
+    expect(conforming.budgetIncrease!.newLimit).toBe(15_000_000);
+    expect(conforming.budgetIncrease!.amount).toBe(5_000_000);
+    expect(conforming.budgetIncrease!.requestedAmount).toBe(5_000_000);
   });
 
   it("SDK type allows budgetIncrease to be absent", () => {
@@ -615,16 +614,20 @@ describe("BudgetEntityNotFoundError", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleRouteError BudgetEntityNotFoundError handling", () => {
-  it("returns 404 with budget_entity_not_found code", async () => {
-    const { BudgetEntityNotFoundError } = await import("@/lib/actions/errors");
-    const { handleRouteError } = await import("@/lib/utils/http");
-
+  it("returns 404 with budget_entity_not_found code", () => {
     const err = new BudgetEntityNotFoundError("api_key", "key-gone");
     const response = handleRouteError(err);
 
     expect(response.status).toBe(404);
+  });
+
+  it("includes correct error code and entity path in response body", async () => {
+    const err = new BudgetEntityNotFoundError("api_key", "key-gone");
+    const response = handleRouteError(err);
     const body = await response.json();
+
     expect(body.error.code).toBe("budget_entity_not_found");
     expect(body.error.message).toContain("api_key/key-gone");
+    expect(body.error.details).toBeNull();
   });
 });

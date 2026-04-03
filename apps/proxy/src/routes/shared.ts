@@ -191,20 +191,43 @@ export function handleBudgetDenials(
 
   // Generic budget denial
   if (outcome.status === "denied") {
+    const entityType = outcome.deniedEntityType ?? budgetEntities?.[0]?.entityType ?? "unknown";
+    const entityId = outcome.deniedEntityId ?? budgetEntities?.[0]?.entityId ?? "unknown";
+    const budgetLimit = outcome.maxBudget ?? 0;
+    const budgetSpend = (outcome.spend ?? 0) + (outcome.reserved ?? 0);
     dispatchDenialWebhook(ctx, env, logPrefix, () =>
       buildBudgetExceededPayload({
-        budgetEntityType: outcome.deniedEntityType ?? budgetEntities[0]?.entityType ?? "unknown",
-        budgetEntityId: outcome.deniedEntityId ?? budgetEntities[0]?.entityId ?? "unknown",
-        budgetLimitMicrodollars: outcome.maxBudget ?? 0,
-        budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+        budgetEntityType: entityType,
+        budgetEntityId: entityId,
+        budgetLimitMicrodollars: budgetLimit,
+        budgetSpendMicrodollars: budgetSpend,
         estimatedRequestCostMicrodollars: estimate,
         model: requestModel,
         provider,
       }),
     );
-    const resp = errorResponse("budget_exceeded", "Request blocked: estimated cost exceeds remaining budget", 429);
-    resp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
-    return resp;
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "budget_exceeded",
+          message: "Request blocked: estimated cost exceeds remaining budget.",
+          details: {
+            entity_type: entityType,
+            entity_id: entityId,
+            budget_limit_microdollars: budgetLimit,
+            budget_spend_microdollars: budgetSpend,
+            estimated_cost_microdollars: estimate,
+          },
+        },
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "X-NullSpend-Trace-Id": ctx.traceId,
+        },
+      },
+    );
   }
 
   return null; // Not denied — continue processing

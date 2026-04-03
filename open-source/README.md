@@ -122,7 +122,7 @@ Not every use case needs the same level of control. Pick the integration path th
 | Model & provider mandates | Yes | Cooperative | Yes | — | — |
 | Tag-level budgets | Yes | — | Yes | — | — |
 | Velocity controls | Yes | — | Yes | — | — |
-| Session limits | Yes | — | Yes | — | — |
+| Session limits | Yes | Cooperative | Yes | — | — |
 | Request/response logging | Yes | — | Yes | — | — |
 | HITL approval | Via SDK | Yes | Via SDK | Yes | Yes |
 | MCP tool gating | — | — | — | Yes | Yes |
@@ -176,7 +176,7 @@ flowchart LR
     style D fill:#f9fafb,stroke:#d1d5db
 ```
 
-Don't want to route traffic through a proxy? The SDK wraps your existing fetch call with `createTrackedFetch()`. With `enforcement: true`, it fetches your key's policy, checks budget and model mandates **before** the request — throwing `BudgetExceededError` or `MandateViolationError` if the call would violate policy. Cost is calculated locally using the built-in pricing engine and reported asynchronously. Your requests go directly to the provider.
+Don't want to route traffic through a proxy? The SDK wraps your existing fetch call with `createTrackedFetch()`. With `enforcement: true`, it fetches your key's policy, checks budget, model mandates, and session limits **before** the request — throwing `BudgetExceededError`, `MandateViolationError`, or `SessionLimitExceededError` if the call would violate policy. Cost is calculated locally using the built-in pricing engine and reported asynchronously. Your requests go directly to the provider.
 
 > **Note:** SDK enforcement is cooperative — it runs client-side and can be bypassed by raw API calls. For guaranteed, un-bypassable enforcement, use the proxy.
 

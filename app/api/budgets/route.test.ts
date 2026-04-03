@@ -680,4 +680,49 @@ describe("POST /api/budgets — proxy invalidation", () => {
     const response = await POST(request);
     expect(response.status).toBe(400);
   });
+
+  it("POST with resetInterval: yearly creates budget successfully", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "user",
+      entityId: `ns_usr_${TEST_USER_ID}`,
+      maxBudgetMicrodollars: 50_000_000,
+      resetInterval: "yearly",
+    });
+
+    const budgetRow = makeBudgetRow({
+      entityId: TEST_USER_ID,
+      maxBudgetMicrodollars: 50_000_000,
+      resetInterval: "yearly",
+    });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json.data.resetInterval).toBe("yearly");
+    expect(json.data.maxBudgetMicrodollars).toBe(50_000_000);
+
+    // Verify resetInterval was passed through to DB insert
+    const valuesArg = (mockValues.mock.calls as any)[0][0];
+    expect(valuesArg.resetInterval).toBe("yearly");
+  });
 });

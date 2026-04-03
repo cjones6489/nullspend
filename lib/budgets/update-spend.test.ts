@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getDb } from "@/lib/db/client";
 import { updateBudgetSpendFromCostEvent } from "./update-spend";
@@ -21,6 +21,40 @@ function makeBudgetRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Build a minimal mock DB that supports:
+ *   select().from().where()  -> returns `rows`
+ *   transaction(cb)          -> calls `cb(tx)`
+ *   tx.update().set().where().returning() -> returns `updatedRows` (per-call via queue)
+ */
+function buildMockDb(
+  rows: ReturnType<typeof makeBudgetRow>[],
+  updatedRowsQueue: { id: string; spendMicrodollars: number }[][] = [],
+) {
+  let updateCallIndex = 0;
+
+  const mockReturning = vi.fn().mockImplementation(() => {
+    const result = updatedRowsQueue[updateCallIndex] ?? [];
+    updateCallIndex++;
+    return result;
+  });
+  const mockUpdateWhere = vi.fn(() => ({ returning: mockReturning }));
+  const mockSet = vi.fn(() => ({ where: mockUpdateWhere }));
+  const mockUpdate = vi.fn(() => ({ set: mockSet }));
+  const mockTx = { update: mockUpdate };
+
+  const mockSelectWhere = vi.fn().mockResolvedValue(rows);
+  const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere }));
+  const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
+
+  const db = {
+    select: mockSelect,
+    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockTx)),
+  } as unknown as ReturnType<typeof getDb>;
+
+  return { db, mockUpdate, mockSet, mockUpdateWhere, mockReturning, mockTx };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -35,27 +69,16 @@ describe("updateBudgetSpendFromCostEvent", () => {
   it("returns empty when costMicrodollars is negative", async () => {
     const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", -100);
     expect(result.updatedEntities).toEqual([]);
+    expect(mockedGetDb).not.toHaveBeenCalled();
   });
 
   it("increments spend for matching api_key budget", async () => {
     const budgetRow = makeBudgetRow();
-    const updatedRow = { id: "budget-1", spendMicrodollars: 5_010_000 };
-
-    const mockReturning = vi.fn().mockResolvedValue([updatedRow]);
-    const mockWhere = vi.fn(() => ({ returning: mockReturning }));
-    const mockSet = vi.fn(() => ({ where: mockWhere }));
-    const mockUpdate = vi.fn(() => ({ set: mockSet }));
-
-    const mockTx = { update: mockUpdate };
-
-    const mockSelectWhere = vi.fn().mockResolvedValue([budgetRow]);
-    const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere }));
-    const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
-
-    mockedGetDb.mockReturnValue({
-      select: mockSelect,
-      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTx)),
-    } as unknown as ReturnType<typeof getDb>);
+    const { db } = buildMockDb(
+      [budgetRow],
+      [[{ id: "budget-1", spendMicrodollars: 5_010_000 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
 
     const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
 
@@ -71,44 +94,17 @@ describe("updateBudgetSpendFromCostEvent", () => {
     });
   });
 
-  it("does not update budgets for non-matching key", async () => {
-    const budgetRow = makeBudgetRow({ entityId: "key-other" });
-
-    const mockSelectWhere = vi.fn().mockResolvedValue([budgetRow]);
-    const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere }));
-    const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
-
-    mockedGetDb.mockReturnValue({
-      select: mockSelect,
-      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb({})),
-    } as unknown as ReturnType<typeof getDb>);
-
-    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
-    expect(result.updatedEntities).toHaveLength(0);
-  });
-
-  it("matches tag budgets by key=value format", async () => {
+  it("increments spend for matching tag budget entity (entityId format key=value)", async () => {
     const tagBudget = makeBudgetRow({
       id: "budget-tag-1",
       entityType: "tag",
       entityId: "project=alpha",
     });
-    const updatedRow = { id: "budget-tag-1", spendMicrodollars: 5_010_000 };
-
-    const mockReturning = vi.fn().mockResolvedValue([updatedRow]);
-    const mockWhere = vi.fn(() => ({ returning: mockReturning }));
-    const mockSet = vi.fn(() => ({ where: mockWhere }));
-    const mockUpdate = vi.fn(() => ({ set: mockSet }));
-    const mockTx = { update: mockUpdate };
-
-    const mockSelectWhere = vi.fn().mockResolvedValue([tagBudget]);
-    const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere }));
-    const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
-
-    mockedGetDb.mockReturnValue({
-      select: mockSelect,
-      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTx)),
-    } as unknown as ReturnType<typeof getDb>);
+    const { db } = buildMockDb(
+      [tagBudget],
+      [[{ id: "budget-tag-1", spendMicrodollars: 5_010_000 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
 
     const result = await updateBudgetSpendFromCostEvent(
       "org-1", "key-1", 10_000, { project: "alpha" },
@@ -119,20 +115,171 @@ describe("updateBudgetSpendFromCostEvent", () => {
     expect(result.updatedEntities[0].entityId).toBe("project=alpha");
   });
 
-  it("does not match tag budget when tag value differs", async () => {
-    const tagBudget = makeBudgetRow({
-      entityType: "tag",
-      entityId: "project=alpha",
+  it("returns previous and new spend for threshold detection", async () => {
+    const budgetRow = makeBudgetRow({
+      spendMicrodollars: 15_000_000,
+      maxBudgetMicrodollars: 20_000_000,
     });
+    const { db } = buildMockDb(
+      [budgetRow],
+      [[{ id: "budget-1", spendMicrodollars: 15_500_000 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
 
-    const mockSelectWhere = vi.fn().mockResolvedValue([tagBudget]);
+    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 500_000);
+
+    expect(result.updatedEntities).toHaveLength(1);
+    expect(result.updatedEntities[0].previousSpend).toBe(15_000_000);
+    expect(result.updatedEntities[0].newSpend).toBe(15_500_000);
+    expect(result.updatedEntities[0].maxBudget).toBe(20_000_000);
+    expect(result.updatedEntities[0].thresholdPercentages).toEqual([50, 80, 90, 95]);
+  });
+
+  it("returns empty when no budgets exist for org", async () => {
+    const { db } = buildMockDb([]);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("returns empty when no matching budgets (key mismatch)", async () => {
+    const budgetRow = makeBudgetRow({ entityId: "key-other" });
+    const { db } = buildMockDb([budgetRow]);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("updates multiple matching entities (api_key + tag)", async () => {
+    const rows = [
+      makeBudgetRow({ id: "b-key", entityType: "api_key", entityId: "key-1" }),
+      makeBudgetRow({ id: "b-tag", entityType: "tag", entityId: "env=prod" }),
+    ];
+    const { db } = buildMockDb(rows, [
+      [{ id: "b-key", spendMicrodollars: 5_010_000 }],
+      [{ id: "b-tag", spendMicrodollars: 5_010_000 }],
+    ]);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", "key-1", 10_000, { env: "prod" },
+    );
+
+    expect(result.updatedEntities).toHaveLength(2);
+    // api_key sorts before tag alphabetically
+    expect(result.updatedEntities[0].entityType).toBe("api_key");
+    expect(result.updatedEntities[1].entityType).toBe("tag");
+  });
+
+  it("sorts entities by (entityType, entityId) before transaction to prevent deadlocks", async () => {
+    // Intentionally reversed: tag first, api_key second in DB results
+    const rows = [
+      makeBudgetRow({ id: "b-tag-z", entityType: "tag", entityId: "z=val" }),
+      makeBudgetRow({ id: "b-tag-a", entityType: "tag", entityId: "a=val" }),
+      makeBudgetRow({ id: "b-key", entityType: "api_key", entityId: "key-1" }),
+    ];
+    const updatedIds: string[] = [];
+    const mockReturning = vi.fn().mockImplementation(() => {
+      return [{ id: updatedIds[updatedIds.length - 1], spendMicrodollars: 5_010_000 }];
+    });
+    const mockUpdateWhere = vi.fn(() => ({ returning: mockReturning }));
+    const mockSet = vi.fn().mockImplementation(() => ({ where: mockUpdateWhere }));
+    const mockUpdate = vi.fn().mockImplementation(() => {
+      // We track order by inspecting result entity order
+      return { set: mockSet };
+    });
+    const mockTx = { update: mockUpdate };
+
+    const mockSelectWhere = vi.fn().mockResolvedValue(rows);
     const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere }));
     const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
 
     mockedGetDb.mockReturnValue({
       select: mockSelect,
-      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb({})),
+      transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(mockTx)),
     } as unknown as ReturnType<typeof getDb>);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", "key-1", 10_000, { a: "val", z: "val" },
+    );
+
+    expect(result.updatedEntities).toHaveLength(3);
+    // Sorted: api_key < tag, then a < z
+    expect(result.updatedEntities[0].entityType).toBe("api_key");
+    expect(result.updatedEntities[1].entityId).toBe("a=val");
+    expect(result.updatedEntities[2].entityId).toBe("z=val");
+  });
+
+  it("does not update non-matching entity types (agent, team)", async () => {
+    const rows = [
+      makeBudgetRow({ id: "b-agent", entityType: "agent", entityId: "agent-1" }),
+      makeBudgetRow({ id: "b-team", entityType: "team", entityId: "team-1" }),
+    ];
+    const { db } = buildMockDb(rows);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("increments spend for matching user budget when userId provided", async () => {
+    const userBudget = makeBudgetRow({
+      id: "budget-user-1",
+      entityType: "user",
+      entityId: "user-1",
+    });
+    const { db } = buildMockDb(
+      [userBudget],
+      [[{ id: "budget-user-1", spendMicrodollars: 5_010_000 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", "key-1", 10_000, undefined, "user-1",
+    );
+
+    expect(result.updatedEntities).toHaveLength(1);
+    expect(result.updatedEntities[0].entityType).toBe("user");
+    expect(result.updatedEntities[0].entityId).toBe("user-1");
+  });
+
+  it("does not match user budget when userId is not provided", async () => {
+    const userBudget = makeBudgetRow({
+      id: "budget-user-1",
+      entityType: "user",
+      entityId: "user-1",
+    });
+    const { db } = buildMockDb([userBudget]);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("does not match user budget when userId differs", async () => {
+    const userBudget = makeBudgetRow({
+      id: "budget-user-1",
+      entityType: "user",
+      entityId: "user-1",
+    });
+    const { db } = buildMockDb([userBudget]);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", "key-1", 10_000, undefined, "user-other",
+    );
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("does not update tag budget when tag value differs", async () => {
+    const tagBudget = makeBudgetRow({
+      entityType: "tag",
+      entityId: "project=alpha",
+    });
+    const { db } = buildMockDb([tagBudget]);
+    mockedGetDb.mockReturnValue(db);
 
     const result = await updateBudgetSpendFromCostEvent(
       "org-1", "key-1", 10_000, { project: "beta" },
@@ -140,60 +287,90 @@ describe("updateBudgetSpendFromCostEvent", () => {
     expect(result.updatedEntities).toHaveLength(0);
   });
 
-  it("updates multiple matching budgets in sorted order", async () => {
-    const budgets = [
-      makeBudgetRow({ id: "b-key", entityType: "api_key", entityId: "key-1" }),
-      makeBudgetRow({ id: "b-tag", entityType: "tag", entityId: "env=prod" }),
-    ];
-
-    const updateCalls: string[] = [];
-    const mockReturning = vi.fn().mockImplementation(() => {
-      const id = updateCalls[updateCalls.length - 1];
-      return [{ id, spendMicrodollars: 5_010_000 }];
+  it("does not match tag budget when tags are not provided", async () => {
+    const tagBudget = makeBudgetRow({
+      entityType: "tag",
+      entityId: "project=alpha",
     });
-    const mockWhere = vi.fn(() => ({ returning: mockReturning }));
-    const mockSet = vi.fn(() => ({ where: mockWhere }));
-    const mockUpdate = vi.fn().mockImplementation(() => {
-      return { set: mockSet };
-    });
-    const mockTx = { update: mockUpdate };
-
-    const mockSelectWhere = vi.fn().mockResolvedValue(budgets);
-    const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere }));
-    const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
-
-    mockedGetDb.mockReturnValue({
-      select: mockSelect,
-      transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
-        // Track update order via mockSet calls
-        mockSet.mockImplementation(() => {
-          return { where: mockWhere };
-        });
-        return cb(mockTx);
-      }),
-    } as unknown as ReturnType<typeof getDb>);
-
-    const result = await updateBudgetSpendFromCostEvent(
-      "org-1", "key-1", 10_000, { env: "prod" },
-    );
-
-    // Both budgets should be updated
-    expect(result.updatedEntities).toHaveLength(2);
-    // api_key sorts before tag alphabetically
-    expect(result.updatedEntities[0].entityType).toBe("api_key");
-    expect(result.updatedEntities[1].entityType).toBe("tag");
-  });
-
-  it("returns empty when no budgets exist for org", async () => {
-    const mockSelectWhere = vi.fn().mockResolvedValue([]);
-    const mockSelectFrom = vi.fn(() => ({ where: mockSelectWhere }));
-    const mockSelect = vi.fn(() => ({ from: mockSelectFrom }));
-
-    mockedGetDb.mockReturnValue({
-      select: mockSelect,
-    } as unknown as ReturnType<typeof getDb>);
+    const { db } = buildMockDb([tagBudget]);
+    mockedGetDb.mockReturnValue(db);
 
     const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
     expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("does not match api_key budgets when apiKeyId is null", async () => {
+    const keyBudget = makeBudgetRow({
+      entityType: "api_key",
+      entityId: "key-1",
+    });
+    const { db } = buildMockDb([keyBudget]);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent("org-1", null, 10_000);
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("does not match tag budget when entityId has no = separator", async () => {
+    const tagBudget = makeBudgetRow({
+      entityType: "tag",
+      entityId: "malformed-no-equals",
+    });
+    const { db } = buildMockDb([tagBudget]);
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", "key-1", 10_000, { malformed: "val" },
+    );
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("matches tag budget with value containing = character", async () => {
+    // Tag entityId: "config=key=value" → tagKey="config", tagValue="key=value"
+    const tagBudget = makeBudgetRow({
+      id: "budget-eq",
+      entityType: "tag",
+      entityId: "config=key=value",
+    });
+    const { db } = buildMockDb(
+      [tagBudget],
+      [[{ id: "budget-eq", spendMicrodollars: 5_010_000 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", "key-1", 10_000, { config: "key=value" },
+    );
+    expect(result.updatedEntities).toHaveLength(1);
+    expect(result.updatedEntities[0].entityId).toBe("config=key=value");
+  });
+
+  it("previousSpend and newSpend are always integers (microdollars)", async () => {
+    const budgetRow = makeBudgetRow({ spendMicrodollars: 1_234_567 });
+    const { db } = buildMockDb(
+      [budgetRow],
+      [[{ id: "budget-1", spendMicrodollars: 1_244_567 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 10_000);
+
+    expect(Number.isInteger(result.updatedEntities[0].previousSpend)).toBe(true);
+    expect(Number.isInteger(result.updatedEntities[0].newSpend)).toBe(true);
+    expect(result.updatedEntities[0].newSpend - result.updatedEntities[0].previousSpend).toBe(10_000);
+  });
+
+  it("handles 1 microdollar cost (smallest possible)", async () => {
+    const budgetRow = makeBudgetRow({ spendMicrodollars: 0 });
+    const { db } = buildMockDb(
+      [budgetRow],
+      [[{ id: "budget-1", spendMicrodollars: 1 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent("org-1", "key-1", 1);
+    expect(result.updatedEntities).toHaveLength(1);
+    expect(result.updatedEntities[0].previousSpend).toBe(0);
+    expect(result.updatedEntities[0].newSpend).toBe(1);
   });
 });

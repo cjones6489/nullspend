@@ -46,6 +46,10 @@ export const POST = withRequestContext(async (request: Request) => {
     const input = createActionInputSchema.parse(body);
     const action = await createAction(input, ownerUserId, authResult.orgId);
 
+    if (input.actionType === "budget_increase") {
+      console.log(`[budget-increase] budget_increase_requested actionId=${action.id} agentId=${input.agentId}`);
+    }
+
     sendSlackNotification(action, authResult.orgId).catch((err) => {
       console.error("[NullSpend] Slack notification failed:", err);
     });

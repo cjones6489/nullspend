@@ -393,6 +393,37 @@ export function buildBudgetResetPayload(
   };
 }
 
+export function buildBudgetIncreasedPayload(
+  data: {
+    budgetEntityType: string;
+    budgetEntityId: string;
+    previousLimitMicrodollars: number;
+    newLimitMicrodollars: number;
+    increasedByMicrodollars: number;
+    approvedBy: string;
+    actionId: string;
+  },
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "budget.increased",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: data.budgetEntityType,
+        budget_entity_id: data.budgetEntityId,
+        previous_limit_microdollars: data.previousLimitMicrodollars,
+        new_limit_microdollars: data.newLimitMicrodollars,
+        increased_by_microdollars: data.increasedByMicrodollars,
+        approved_by: data.approvedBy,
+        action_id: data.actionId,
+      },
+    },
+  };
+}
+
 export function buildThinCostEventPayload(
   requestId: string,
   provider: string,

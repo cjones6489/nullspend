@@ -54,14 +54,13 @@ The SDK provides methods for the full [HITL approval workflow](../features/human
 Create a new action for human approval.
 
 ```typescript
-const action = await ns.createAction({
+const { id, status, expiresAt } = await ns.createAction({
   agentId: "support-agent",
   actionType: "send_email",
   payload: { to: "user@example.com", subject: "Refund" },
   metadata: { ticketId: "T-1234" },
   expiresInSeconds: 1800,
 });
-console.log(action.id, action.status, action.expiresAt);
 ```
 
 ### `getAction(id)`
@@ -143,7 +142,7 @@ Three approaches for reporting cost events.
 ### `reportCost(event)` — Single Event
 
 ```typescript
-const result = await ns.reportCost({
+const { id, createdAt } = await ns.reportCost({
   provider: "anthropic",
   model: "claude-sonnet-4-20250514",
   inputTokens: 1000,
@@ -158,7 +157,6 @@ const result = await ns.reportCost({
   eventType: "llm",        // "llm" | "tool" | "custom"
   tags: { team: "backend" },
 });
-console.log(result.id, result.createdAt);
 ```
 
 ### `reportCostBatch(events)` — Batch
@@ -198,106 +196,6 @@ await ns.shutdown();
 ```
 
 When the queue overflows `maxQueueSize`, the oldest events are dropped and `onDropped` is called.
-
-## Tracked Fetch (Auto Cost Tracking)
-
-`createTrackedFetch` wraps `globalThis.fetch` to automatically track cost events for OpenAI and Anthropic API calls. Call the provider directly — the SDK intercepts responses, extracts token counts, calculates cost, and reports it to NullSpend. No proxy required.
-
-Requires `costReporting` in the constructor config.
-
-### Basic Usage
-
-```typescript
-import OpenAI from "openai";
-import { NullSpend } from "@nullspend/sdk";
-
-const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.com",
-  apiKey: "ns_live_sk_...",
-  costReporting: {},
-});
-
-// Pass the tracked fetch to the OpenAI client
-const openai = new OpenAI({
-  fetch: ns.createTrackedFetch("openai"),
-});
-
-// Use OpenAI as normal — costs are tracked automatically
-const response = await openai.chat.completions.create({
-  model: "gpt-4o",
-  messages: [{ role: "user", content: "Hello" }],
-});
-
-// Flush pending cost events before exit
-await ns.shutdown();
-```
-
-Works with Anthropic too:
-
-```typescript
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({
-  fetch: ns.createTrackedFetch("anthropic"),
-});
-```
-
-### Options
-
-`createTrackedFetch(provider, options?)` accepts a `TrackedFetchOptions` object:
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `sessionId` | `string` | — | Session ID for cost grouping and session limits |
-| `tags` | `Record<string, string>` | — | Tags for cost attribution |
-| `traceId` | `string` | — | 32-char hex trace ID for request correlation |
-| `actionId` | `string` | — | NullSpend action ID to correlate with HITL approval |
-| `enforcement` | `boolean` | `false` | Enable cooperative budget and mandate enforcement |
-| `onCostError` | `(error: Error) => void` | stderr log | Called on non-fatal cost tracking errors |
-| `onDenied` | `(reason: DenialReason) => void` | — | Called before throwing `BudgetExceededError` or `MandateViolationError` |
-
-### Enforcement Mode
-
-When `enforcement: true`, the SDK fetches and caches your key's policy before each request. If the request would violate a budget or mandate, it throws instead of calling the provider:
-
-```typescript
-import { BudgetExceededError, MandateViolationError } from "@nullspend/sdk";
-
-const fetch = ns.createTrackedFetch("openai", {
-  enforcement: true,
-  onDenied: (reason) => {
-    if (reason.type === "budget") {
-      console.log(`Only $${reason.remaining / 1_000_000} remaining`);
-    } else {
-      console.log(`Mandate violation: ${reason.mandate}`);
-    }
-  },
-});
-
-try {
-  const openai = new OpenAI({ fetch });
-  await openai.chat.completions.create({ model: "gpt-4o", messages: [...] });
-} catch (err) {
-  if (err instanceof BudgetExceededError) {
-    // Budget would be exceeded — request was NOT sent to OpenAI
-  }
-  if (err instanceof MandateViolationError) {
-    // Model or provider not allowed by key policy
-  }
-}
-```
-
-### How It Works
-
-1. Intercepts `fetch` calls to OpenAI/Anthropic chat/messages endpoints
-2. Non-tracked routes (GET requests, non-LLM endpoints) pass through untouched
-3. For tracked requests: parses the response (streaming or non-streaming), extracts token usage, calculates cost using the built-in pricing engine, and queues a cost event
-4. Cost events are batched and flushed according to `costReporting` config
-5. If the request goes through `proxy.nullspend.com`, tracking is skipped (proxy already handles it)
-
-### Source Field
-
-Cost events from `createTrackedFetch` are reported with `source: "api"`. This appears as "SDK" in the dashboard's source filter and analytics.
 
 ## Budget Status
 
@@ -352,7 +250,7 @@ Each `BudgetRecord` contains:
 | `entityId` | `string` | Entity identifier |
 | `maxBudgetMicrodollars` | `number` | Budget ceiling |
 | `spendMicrodollars` | `number` | Current spend |
-| `policy` | `string` | `"strict_block"`, `"soft_block"`, or `"warn"` |
+| `policy` | `string` | `"strict_block"` or `"warn"` |
 | `resetInterval` | `string \| null` | `"daily"`, `"monthly"`, etc. |
 | `thresholdPercentages` | `number[]` | Webhook alert thresholds |
 | `velocityLimitMicrodollars` | `number \| null` | Per-window spend limit |
@@ -365,14 +263,13 @@ Get aggregated spend data for a time period.
 ```typescript
 const summary = await ns.getCostSummary("30d"); // "7d" | "30d" | "90d"
 
-console.log(`Period: ${summary.totals.period}`); // "7d" | "30d" | "90d"
 console.log(`Total spend: $${summary.totals.totalCostMicrodollars / 1_000_000}`);
 console.log(`Total requests: ${summary.totals.totalRequests}`);
 
 // Spend by model
-summary.models.forEach(m => {
-  console.log(`  ${m.model}: $${m.totalCostMicrodollars / 1_000_000}`);
-});
+for (const [model, cost] of Object.entries(summary.models)) {
+  console.log(`  ${model}: $${cost / 1_000_000}`);
+}
 
 // Daily trend
 for (const day of summary.daily) {
@@ -394,7 +291,7 @@ for (const event of events) {
 
 // Paginate with cursor
 if (cursor) {
-  const nextPage = await ns.listCostEvents({ limit: 10, cursor: JSON.stringify(cursor) });
+  const nextPage = await ns.listCostEvents({ limit: 10, cursor: `${cursor.createdAt},${cursor.id}` });
 }
 ```
 
@@ -424,9 +321,85 @@ const ns = new NullSpend({
 });
 ```
 
+## Tracked Fetch (Provider Wrappers)
+
+Wrap your LLM provider's `fetch` to automatically track costs and enforce policies client-side.
+
+### Basic Setup
+
+```typescript
+const ns = new NullSpend({
+  baseUrl: "https://app.nullspend.com",
+  apiKey: "ns_live_sk_...",
+  costReporting: {},  // required for createTrackedFetch
+});
+
+const openai = new OpenAI({ fetch: ns.createTrackedFetch("openai") });
+const anthropic = new Anthropic({ fetch: ns.createTrackedFetch("anthropic") });
+```
+
+Cost events are calculated locally using the built-in pricing engine and reported asynchronously in batches. Your requests go directly to the provider — no proxy required.
+
+### Enforcement Mode
+
+Enable `enforcement: true` to check budgets, model mandates, and session limits before each request:
+
+```typescript
+const openai = new OpenAI({
+  fetch: ns.createTrackedFetch("openai", {
+    enforcement: true,
+    sessionId: "task-042",
+    sessionLimitMicrodollars: 5_000_000, // $5 per session
+    tags: { team: "backend", customer: "acme" },
+    onDenied: (reason) => {
+      if (reason.type === "budget") console.log(`Budget: ${reason.remaining} remaining`);
+      if (reason.type === "mandate") console.log(`Mandate: ${reason.mandate} blocks ${reason.requested}`);
+      if (reason.type === "session_limit") console.log(`Session: ${reason.sessionSpend} of ${reason.sessionLimit}`);
+    },
+    onCostError: (err) => console.warn("Cost tracking error:", err.message),
+  }),
+});
+```
+
+### `TrackedFetchOptions`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enforcement` | `boolean` | `false` | Enable budget, mandate, and session limit checks |
+| `sessionId` | `string` | — | Session identifier for cost correlation and session limits |
+| `sessionLimitMicrodollars` | `number` | — | Manual per-session spend cap (takes precedence over policy) |
+| `tags` | `Record<string, string>` | — | Tags attached to every cost event |
+| `traceId` | `string` | — | Distributed trace ID |
+| `actionId` | `string` | — | HITL action ID for cost correlation |
+| `onDenied` | `(reason: DenialReason) => void` | — | Called before throwing enforcement errors |
+| `onCostError` | `(error: Error) => void` | `console.warn` | Called on non-fatal cost tracking errors |
+
+### Enforcement Flow
+
+When `enforcement: true`, each request goes through:
+
+1. **Mandate check** — is this model/provider allowed by key policy?
+2. **Budget check** — does estimated cost fit within remaining budget?
+3. **Session limit check** — does `sessionSpend + estimate` exceed the session limit?
+
+If any check fails, the SDK throws the corresponding error **before** calling the provider. If the policy endpoint is unreachable, the SDK falls open (requests proceed) — except for manual session limits, which are always enforced.
+
+### Session Limit Enforcement
+
+Session limits track cumulative spend per `createTrackedFetch()` instance:
+
+- Each instance starts at 0 spend
+- Actual cost from each successful response is accumulated
+- Before each request, the SDK checks `sessionSpend + estimate > sessionLimit`
+- The limit comes from `sessionLimitMicrodollars` (manual) or the policy endpoint (from budget config), with manual taking precedence
+- Streaming cost is accumulated asynchronously — a concurrent request may slip through before the first stream's cost is counted
+- Failed responses (4xx/5xx) don't count toward session spend
+
+> **Note:** SDK session limits are cooperative — each `createTrackedFetch()` instance tracks independently. For fleet-wide authoritative enforcement, use the proxy.
+
 ## Error Handling
 
-Three error classes, all extending `Error`:
+Five error classes, all extending `Error`:
 
 ### `NullSpendError`
 
@@ -471,6 +444,53 @@ try {
 }
 ```
 
+### `BudgetExceededError`
+
+Thrown by `createTrackedFetch` when enforcement is enabled and the estimated cost exceeds remaining budget.
+
+| Property | Type | Description |
+|---|---|---|
+| `remainingMicrodollars` | `number` | Budget remaining when denial occurred |
+
+### `MandateViolationError`
+
+Thrown when the requested model or provider is not allowed by key policy.
+
+| Property | Type | Description |
+|---|---|---|
+| `mandate` | `string` | Which mandate was violated (`"allowed_models"` or `"allowed_providers"`) |
+| `requested` | `string` | The model or provider that was denied |
+| `allowed` | `string[]` | The allowed values |
+
+### `SessionLimitExceededError`
+
+Thrown when session spend plus estimated cost exceeds the session limit.
+
+| Property | Type | Description |
+|---|---|---|
+| `sessionSpendMicrodollars` | `number` | Accumulated session spend at denial time |
+| `sessionLimitMicrodollars` | `number` | Configured session limit |
+
+```typescript
+import {
+  BudgetExceededError,
+  MandateViolationError,
+  SessionLimitExceededError,
+} from "@nullspend/sdk";
+
+try {
+  await openai.chat.completions.create({ model: "gpt-4o", messages: [{ role: "user", content: "Hi" }] });
+} catch (err) {
+  if (err instanceof SessionLimitExceededError) {
+    console.log(`Session spent $${err.sessionSpendMicrodollars / 1_000_000} of $${err.sessionLimitMicrodollars / 1_000_000} limit`);
+  } else if (err instanceof BudgetExceededError) {
+    console.log(`Budget exhausted: $${err.remainingMicrodollars / 1_000_000} remaining`);
+  } else if (err instanceof MandateViolationError) {
+    console.log(`${err.mandate} blocks "${err.requested}". Allowed: ${err.allowed.join(", ")}`);
+  }
+}
+```
+
 ## Types
 
 All types are exported from the package:
@@ -496,6 +516,11 @@ import type {
   CostEventInput,
   ReportCostResponse,
   ReportCostBatchResponse,
+
+  // Tracked fetch
+  TrackedFetchOptions,
+  TrackedProvider,
+  DenialReason,
 
   // Budgets
   BudgetStatus,

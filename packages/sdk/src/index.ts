@@ -1,5 +1,12 @@
 export { NullSpend } from "./client.js";
-export { NullSpendError, TimeoutError, RejectedError } from "./errors.js";
+export {
+  NullSpendError,
+  TimeoutError,
+  RejectedError,
+  BudgetExceededError,
+  MandateViolationError,
+  SessionLimitExceededError,
+} from "./errors.js";
 export { waitWithAbort, interruptibleSleep } from "./polling.js";
 export type {
   ActionStatus,
@@ -11,6 +18,7 @@ export type {
   CostReportingConfig,
   CostSummaryPeriod,
   CostSummaryResponse,
+  DenialReason,
   ListBudgetsResponse,
   ListCostEventsOptions,
   ListCostEventsResponse,
@@ -26,6 +34,8 @@ export type {
   ReportCostResponse,
   ReportCostBatchResponse,
   RetryInfo,
+  TrackedFetchOptions,
+  TrackedProvider,
   WaitForDecisionOptions,
 } from "./types.js";
 export { ACTION_TYPES, ACTION_STATUSES, TERMINAL_STATUSES } from "./types.js";

@@ -2031,3 +2031,243 @@ describe("client-side batching", () => {
     await client.shutdown();
   });
 });
+
+// ---------------------------------------------------------------------------
+// requestBudgetIncrease
+// ---------------------------------------------------------------------------
+
+describe("requestBudgetIncrease", () => {
+  it("happy path: creates action, polls, executes, returns result", async () => {
+    const createResp: CreateActionResponse = { id: "act-budget-1", status: "pending" };
+    const approved = mockAction({ id: "act-budget-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction → POST /api/actions
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      // waitForDecision → GET /api/actions/act-budget-1 (approved)
+      .mockResolvedValueOnce(jsonResponse({ data: approved }))
+      // markResult(executing) → POST /api/actions/act-budget-1/result
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-budget-1", status: "executing" } }))
+      // markResult(executed) → POST /api/actions/act-budget-1/result
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "act-budget-1", status: "executed" } }));
+
+    const client = createClient(fetchFn);
+
+    const result = await client.requestBudgetIncrease({
+      agentId: "doc-processor",
+      amount: 5_000_000,
+      reason: "Processing 50 remaining documents",
+      entityType: "api_key",
+      entityId: "key-abc",
+      currentLimit: 10_000_000,
+      currentSpend: 9_500_000,
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    // Verify returned value
+    expect(result.actionId).toBe("act-budget-1");
+    expect(result.requestedAmountMicrodollars).toBe(5_000_000);
+
+    // Verify createAction POST body
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+    const [createUrl, createInit] = fetchFn.mock.calls[0];
+    expect(createUrl).toBe("http://localhost:3000/api/actions");
+    expect(createInit.method).toBe("POST");
+    const createBody = JSON.parse(createInit.body);
+    expect(createBody.actionType).toBe("budget_increase");
+    expect(createBody.agentId).toBe("doc-processor");
+    expect(createBody.payload).toEqual({
+      entityType: "api_key",
+      entityId: "key-abc",
+      requestedAmountMicrodollars: 5_000_000,
+      currentLimitMicrodollars: 10_000_000,
+      currentSpendMicrodollars: 9_500_000,
+      reason: "Processing 50 remaining documents",
+    });
+  });
+
+  it("rejected action throws RejectedError", async () => {
+    const createResp: CreateActionResponse = { id: "act-budget-rej", status: "pending" };
+    const rejected = mockAction({ id: "act-budget-rej", status: "rejected" });
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      // waitForDecision → rejected
+      .mockResolvedValueOnce(jsonResponse({ data: rejected }));
+
+    const client = createClient(fetchFn);
+
+    const err = await client
+      .requestBudgetIncrease({
+        agentId: "doc-processor",
+        amount: 5_000_000,
+        reason: "Need more budget",
+        pollIntervalMs: 10,
+        timeoutMs: 5000,
+      })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(RejectedError);
+    expect((err as RejectedError).actionId).toBe("act-budget-rej");
+  });
+
+  it("timeout throws TimeoutError", async () => {
+    const createResp: CreateActionResponse = { id: "act-budget-timeout", status: "pending" };
+
+    const fetchFn = vi
+      .fn()
+      // createAction
+      .mockResolvedValueOnce(jsonResponse({ data: createResp }, 201))
+      // waitForDecision → always pending
+      .mockImplementation(() =>
+        Promise.resolve(jsonResponse({ data: mockAction({ id: "act-budget-timeout", status: "pending" }) })),
+      );
+
+    const client = createClient(fetchFn);
+
+    await expect(
+      client.requestBudgetIncrease({
+        agentId: "doc-processor",
+        amount: 5_000_000,
+        reason: "Need more budget",
+        timeoutMs: 100,
+        pollIntervalMs: 50,
+      }),
+    ).rejects.toThrow(TimeoutError);
+  });
+
+  it("invalidates all policy caches on approval", async () => {
+    // Track how many times /api/policy is fetched
+    let policyFetchCount = 0;
+
+    const createResp: CreateActionResponse = { id: "act-budget-inv", status: "pending" };
+    const approved = mockAction({ id: "act-budget-inv", status: "approved" });
+
+    const policyResponse = {
+      budget: null,
+      allowed_models: null,
+      allowed_providers: null,
+      cheapest_per_provider: null,
+      cheapest_overall: null,
+      restrictions_active: false,
+      session_limit_microdollars: null,
+    };
+
+    // Build a mock fetch that routes by URL pattern
+    const fetchFn = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      // Policy endpoint — track fetch count
+      if (typeof url === "string" && url.includes("/api/policy")) {
+        policyFetchCount++;
+        return Promise.resolve(jsonResponse(policyResponse));
+      }
+
+      // Batch cost events (from flush / tracked fetch)
+      if (typeof url === "string" && url.includes("/api/cost-events/batch")) {
+        return Promise.resolve(jsonResponse({ inserted: 0, ids: [] }, 201));
+      }
+
+      // Cost event (single)
+      if (typeof url === "string" && url.includes("/api/cost-events") && !url.includes("batch")) {
+        return Promise.resolve(jsonResponse({ data: { id: "ce-1", createdAt: "2026-01-01T00:00:00Z" } }, 201));
+      }
+
+      // createAction
+      if (typeof url === "string" && url.includes("/api/actions") && init?.method === "POST" && !url.includes("/result")) {
+        return Promise.resolve(jsonResponse({ data: createResp }, 201));
+      }
+
+      // getAction (poll)
+      if (typeof url === "string" && url.match(/\/api\/actions\/act-budget-inv$/) && (!init?.method || init?.method === "GET")) {
+        return Promise.resolve(jsonResponse({ data: approved }));
+      }
+
+      // markResult
+      if (typeof url === "string" && url.includes("/result") && init?.method === "POST") {
+        const body = JSON.parse(init.body as string);
+        return Promise.resolve(
+          jsonResponse({ data: { id: "act-budget-inv", status: body.status } }),
+        );
+      }
+
+      return Promise.resolve(jsonResponse({ data: {} }));
+    });
+
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_test0001",
+      fetch: fetchFn,
+      maxRetries: 0,
+      costReporting: { batchSize: 100, flushIntervalMs: 60000 },
+    });
+
+    // Create a tracked fetch with enforcement to register a policy cache
+    const trackedFetch = client.createTrackedFetch("openai", { enforcement: true });
+
+    // Warm the policy cache by making a request that triggers getPolicy
+    // Use a simple non-streaming response so the tracked fetch completes
+    const warmResponse = new Response(JSON.stringify({
+      id: "chatcmpl-1",
+      choices: [{ message: { content: "hi" } }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    // The trackedFetch wraps globalThis.fetch — we need to have our mock fetchFn
+    // handle the upstream OpenAI call too. The tracked fetch calls the underlying
+    // fetch (our mock) for the actual request.
+    const warmFetchCount = policyFetchCount;
+    try {
+      await trackedFetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      });
+    } catch {
+      // The tracked fetch may fail on parsing the mock response — that's fine,
+      // the policy cache was still warmed by the getPolicy call.
+    }
+
+    // Policy should have been fetched at least once to warm the cache
+    const afterWarmCount = policyFetchCount;
+    expect(afterWarmCount).toBeGreaterThan(warmFetchCount);
+
+    // Now call requestBudgetIncrease — the execute callback should invalidate caches
+    const result = await client.requestBudgetIncrease({
+      agentId: "doc-processor",
+      amount: 5_000_000,
+      reason: "Need more budget",
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    expect(result.actionId).toBe("act-budget-inv");
+
+    // After invalidation, the next tracked fetch call should re-fetch policy
+    const afterInvalidateCount = policyFetchCount;
+
+    try {
+      await trackedFetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [{ role: "user", content: "hello again" }],
+        }),
+      });
+    } catch {
+      // Same as above — parsing may fail, we only care about the policy fetch
+    }
+
+    // Policy should have been fetched again (cache was invalidated)
+    expect(policyFetchCount).toBeGreaterThan(afterInvalidateCount);
+
+    await client.shutdown();
+  });
+});

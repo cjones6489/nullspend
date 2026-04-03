@@ -169,7 +169,12 @@ export async function handleMcpBudgetCheck(
       return Response.json({
         allowed: false,
         denied: true,
+        reason: "budget_exceeded",
         remaining: outcome.remaining,
+        entityType: outcome.deniedEntityType ?? null,
+        entityId: outcome.deniedEntityId ?? null,
+        budgetLimitMicrodollars: outcome.maxBudget ?? null,
+        budgetSpendMicrodollars: outcome.spend != null ? (outcome.spend + (outcome.reserved ?? 0)) : null,
         traceId: ctx.traceId,
       }, {
         status: 429,

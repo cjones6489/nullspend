@@ -321,9 +321,85 @@ const ns = new NullSpend({
 });
 ```
 
+## Tracked Fetch (Provider Wrappers)
+
+Wrap your LLM provider's `fetch` to automatically track costs and enforce policies client-side.
+
+### Basic Setup
+
+```typescript
+const ns = new NullSpend({
+  baseUrl: "https://app.nullspend.com",
+  apiKey: "ns_live_sk_...",
+  costReporting: {},  // required for createTrackedFetch
+});
+
+const openai = new OpenAI({ fetch: ns.createTrackedFetch("openai") });
+const anthropic = new Anthropic({ fetch: ns.createTrackedFetch("anthropic") });
+```
+
+Cost events are calculated locally using the built-in pricing engine and reported asynchronously in batches. Your requests go directly to the provider — no proxy required.
+
+### Enforcement Mode
+
+Enable `enforcement: true` to check budgets, model mandates, and session limits before each request:
+
+```typescript
+const openai = new OpenAI({
+  fetch: ns.createTrackedFetch("openai", {
+    enforcement: true,
+    sessionId: "task-042",
+    sessionLimitMicrodollars: 5_000_000, // $5 per session
+    tags: { team: "backend", customer: "acme" },
+    onDenied: (reason) => {
+      if (reason.type === "budget") console.log(`Budget: ${reason.remaining} remaining`);
+      if (reason.type === "mandate") console.log(`Mandate: ${reason.mandate} blocks ${reason.requested}`);
+      if (reason.type === "session_limit") console.log(`Session: ${reason.sessionSpend} of ${reason.sessionLimit}`);
+    },
+    onCostError: (err) => console.warn("Cost tracking error:", err.message),
+  }),
+});
+```
+
+### `TrackedFetchOptions`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enforcement` | `boolean` | `false` | Enable budget, mandate, and session limit checks |
+| `sessionId` | `string` | — | Session identifier for cost correlation and session limits |
+| `sessionLimitMicrodollars` | `number` | — | Manual per-session spend cap (takes precedence over policy) |
+| `tags` | `Record<string, string>` | — | Tags attached to every cost event |
+| `traceId` | `string` | — | Distributed trace ID |
+| `actionId` | `string` | — | HITL action ID for cost correlation |
+| `onDenied` | `(reason: DenialReason) => void` | — | Called before throwing enforcement errors |
+| `onCostError` | `(error: Error) => void` | `console.warn` | Called on non-fatal cost tracking errors |
+
+### Enforcement Flow
+
+When `enforcement: true`, each request goes through:
+
+1. **Mandate check** — is this model/provider allowed by key policy?
+2. **Budget check** — does estimated cost fit within remaining budget?
+3. **Session limit check** — does `sessionSpend + estimate` exceed the session limit?
+
+If any check fails, the SDK throws the corresponding error **before** calling the provider. If the policy endpoint is unreachable, the SDK falls open (requests proceed) — except for manual session limits, which are always enforced.
+
+### Session Limit Enforcement
+
+Session limits track cumulative spend per `createTrackedFetch()` instance:
+
+- Each instance starts at 0 spend
+- Actual cost from each successful response is accumulated
+- Before each request, the SDK checks `sessionSpend + estimate > sessionLimit`
+- The limit comes from `sessionLimitMicrodollars` (manual) or the policy endpoint (from budget config), with manual taking precedence
+- Streaming cost is accumulated asynchronously — a concurrent request may slip through before the first stream's cost is counted
+- Failed responses (4xx/5xx) don't count toward session spend
+
+> **Note:** SDK session limits are cooperative — each `createTrackedFetch()` instance tracks independently. For fleet-wide authoritative enforcement, use the proxy.
+
 ## Error Handling
 
-Three error classes, all extending `Error`:
+Five error classes, all extending `Error`:
 
 ### `NullSpendError`
 
@@ -368,6 +444,53 @@ try {
 }
 ```
 
+### `BudgetExceededError`
+
+Thrown by `createTrackedFetch` when enforcement is enabled and the estimated cost exceeds remaining budget.
+
+| Property | Type | Description |
+|---|---|---|
+| `remainingMicrodollars` | `number` | Budget remaining when denial occurred |
+
+### `MandateViolationError`
+
+Thrown when the requested model or provider is not allowed by key policy.
+
+| Property | Type | Description |
+|---|---|---|
+| `mandate` | `string` | Which mandate was violated (`"allowed_models"` or `"allowed_providers"`) |
+| `requested` | `string` | The model or provider that was denied |
+| `allowed` | `string[]` | The allowed values |
+
+### `SessionLimitExceededError`
+
+Thrown when session spend plus estimated cost exceeds the session limit.
+
+| Property | Type | Description |
+|---|---|---|
+| `sessionSpendMicrodollars` | `number` | Accumulated session spend at denial time |
+| `sessionLimitMicrodollars` | `number` | Configured session limit |
+
+```typescript
+import {
+  BudgetExceededError,
+  MandateViolationError,
+  SessionLimitExceededError,
+} from "@nullspend/sdk";
+
+try {
+  await openai.chat.completions.create({ model: "gpt-4o", messages: [{ role: "user", content: "Hi" }] });
+} catch (err) {
+  if (err instanceof SessionLimitExceededError) {
+    console.log(`Session spent $${err.sessionSpendMicrodollars / 1_000_000} of $${err.sessionLimitMicrodollars / 1_000_000} limit`);
+  } else if (err instanceof BudgetExceededError) {
+    console.log(`Budget exhausted: $${err.remainingMicrodollars / 1_000_000} remaining`);
+  } else if (err instanceof MandateViolationError) {
+    console.log(`${err.mandate} blocks "${err.requested}". Allowed: ${err.allowed.join(", ")}`);
+  }
+}
+```
+
 ## Types
 
 All types are exported from the package:
@@ -393,6 +516,11 @@ import type {
   CostEventInput,
   ReportCostResponse,
   ReportCostBatchResponse,
+
+  // Tracked fetch
+  TrackedFetchOptions,
+  TrackedProvider,
+  DenialReason,
 
   // Budgets
   BudgetStatus,

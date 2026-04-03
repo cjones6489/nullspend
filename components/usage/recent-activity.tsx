@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Check, Download, Loader2, RefreshCw } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Download, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -70,7 +70,7 @@ export function RecentActivity({ keys, initialProvider }: RecentActivityProps) {
   const [selectedBudgetStatus, setSelectedBudgetStatus] = useState(ALL_BUDGET_STATUS);
   const [modelFilter, setModelFilter] = useState("");
   const [modelInput, setModelInput] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     debounceRef.current = setTimeout(() => setModelFilter(modelInput.trim()), 400);
     return () => clearTimeout(debounceRef.current);

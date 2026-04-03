@@ -10,6 +10,7 @@ import {
 } from "@/lib/actions/errors";
 import { rejectAction } from "@/lib/actions/reject-action";
 import { getDb } from "@/lib/db/client";
+import { SpendCapExceededError } from "@/lib/utils/http";
 
 import { POST } from "./route";
 
@@ -348,6 +349,26 @@ describe("POST /api/slack/callback", () => {
     const json = await res.json();
 
     expect(json.text).toContain("already been decided");
+  });
+
+  it("budget_increase approval that exceeds spend cap returns friendly error message", async () => {
+    mockDbSelect({ ...dbAction, actionType: "budget_increase" });
+    mockedApproveAction.mockRejectedValue(
+      new SpendCapExceededError("New limit $50.00 exceeds plan spend cap of $25.00"),
+    );
+
+    const body = makePayload();
+    const res = await POST(makeSignedRequest(body));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.replace_original).toBe(true);
+    expect(json.text).toContain("spend cap");
+    expect(mockedApproveAction).toHaveBeenCalledWith(
+      ACTION_ID,
+      { approvedBy: "jtorrance" },
+      "org-test-1",
+    );
   });
 
   it("handles unexpected errors gracefully", async () => {

@@ -20,7 +20,7 @@ export const createBudgetInputSchema = z
     entityType: entityTypeSchema,
     entityId: z.string(),
     maxBudgetMicrodollars: z.number().int().positive(),
-    resetInterval: z.enum(["daily", "weekly", "monthly"]).optional(),
+    resetInterval: z.enum(["daily", "weekly", "monthly", "yearly"]).optional(),
     thresholdPercentages: z
       .array(z.number().int().min(1).max(100))
       .max(10)

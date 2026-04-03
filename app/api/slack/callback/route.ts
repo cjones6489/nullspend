@@ -11,7 +11,8 @@ import {
 import { rejectAction } from "@/lib/actions/reject-action";
 import { getDb } from "@/lib/db/client";
 import { actions, slackConfigs } from "@nullspend/db";
-import { buildDecisionMessage } from "@/lib/slack/message";
+import { buildDecisionMessage, buildBudgetIncreaseDecisionMessage } from "@/lib/slack/message";
+import { SpendCapExceededError } from "@/lib/utils/http";
 import {
   SlackSignatureError,
   verifySlackSignature,
@@ -148,16 +149,42 @@ export async function POST(request: Request) {
 
   try {
     if (isApprove) {
-      await approveAction(actionId, { approvedBy: decidedBy }, action.orgId);
-    } else {
-      await rejectAction(actionId, { rejectedBy: decidedBy }, action.orgId);
+      const approveResult = await approveAction(actionId, { approvedBy: decidedBy }, action.orgId);
+
+      // Budget increase approvals get a budget-specific message with old/new limits
+      if (action.actionType === "budget_increase" && approveResult.budgetIncrease) {
+        const message = buildBudgetIncreaseDecisionMessage(
+          "approved",
+          approveResult.budgetIncrease.previousLimit,
+          approveResult.budgetIncrease.newLimit,
+          decidedBy,
+        );
+        return NextResponse.json({ replace_original: true, ...message });
+      }
+
+      const message = buildDecisionMessage(
+        action.actionType,
+        action.agentId,
+        "approved",
+        decidedBy,
+        dashboardUrl,
+        action.id,
+      );
+      return NextResponse.json({ replace_original: true, ...message });
     }
 
-    const decision = isApprove ? "approved" : "rejected";
+    await rejectAction(actionId, { rejectedBy: decidedBy }, action.orgId);
+
+    if (action.actionType === "budget_increase") {
+      console.log(`[budget-increase] budget_increase_rejected actionId=${actionId}`);
+      const message = buildBudgetIncreaseDecisionMessage("rejected", 0, 0, decidedBy);
+      return NextResponse.json({ replace_original: true, ...message });
+    }
+
     const message = buildDecisionMessage(
       action.actionType,
       action.agentId,
-      decision,
+      "rejected",
       decidedBy,
       dashboardUrl,
       action.id,
@@ -189,6 +216,11 @@ export async function POST(request: Request) {
       err instanceof StaleActionError
     ) {
       return errorMessage("This action has already been decided.");
+    }
+
+    if (err instanceof SpendCapExceededError) {
+      console.warn(`[budget-increase] Spend cap exceeded on Slack approve: actionId=${actionId}`);
+      return errorMessage("Budget increase would exceed your plan's spend cap. Upgrade your plan or approve a smaller amount via the dashboard.");
     }
 
     console.error("[NullSpend] Slack callback error:", err);

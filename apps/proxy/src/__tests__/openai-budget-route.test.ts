@@ -172,7 +172,13 @@ describe("OpenAI budget enforcement", () => {
     const json = await res.json();
     expect(json.error.code).toBe("budget_exceeded");
     expect(json.error.message).toContain("budget");
-    expect(json.error.details).toBeNull();
+    expect(json.error.details).toEqual(expect.objectContaining({
+      entity_type: expect.any(String),
+      entity_id: expect.any(String),
+      budget_limit_microdollars: expect.any(Number),
+      budget_spend_microdollars: expect.any(Number),
+      estimated_cost_microdollars: expect.any(Number),
+    }));
   });
 
   it("successful non-streaming request reconciles with actual cost", async () => {

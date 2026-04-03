@@ -171,10 +171,64 @@ Session is checked before velocity so that denied requests don't inflate velocit
 7. Agent starts a new conversation with `X-NullSpend-Session: task-043`
 8. New session starts at $0 spend — requests resume
 
+## SDK Cooperative Enforcement
+
+The `@nullspend/sdk` provides client-side session limit enforcement via `createTrackedFetch()`. This is cooperative — the SDK tracks session spend locally and denies requests that would exceed the limit before calling the provider.
+
+```typescript
+import { NullSpend, SessionLimitExceededError } from "@nullspend/sdk";
+
+const ns = new NullSpend({
+  baseUrl: "https://app.nullspend.com",
+  apiKey: "ns_live_sk_...",
+  costReporting: {},
+});
+
+const openai = new OpenAI({
+  fetch: ns.createTrackedFetch("openai", {
+    enforcement: true,
+    sessionId: "task-042",
+    sessionLimitMicrodollars: 5_000_000, // $5 manual limit
+    onDenied: (reason) => {
+      if (reason.type === "session_limit") {
+        console.log(`Session spent ${reason.sessionSpend}, limit is ${reason.sessionLimit}`);
+      }
+    },
+  }),
+});
+```
+
+### How It Works
+
+1. Each `createTrackedFetch()` call creates an independent session spend accumulator starting at 0
+2. Before each request, the SDK estimates cost and checks: `sessionSpend + estimate > sessionLimit`
+3. If over limit, throws `SessionLimitExceededError` without calling the provider
+4. After each successful response, the actual cost is accumulated into the session spend counter
+5. The limit comes from `sessionLimitMicrodollars` (manual option) or the policy endpoint (from budget config), with manual taking precedence
+
+### Differences from Proxy Enforcement
+
+| Aspect | Proxy | SDK |
+|---|---|---|
+| Tracking | Server-side Durable Object, fleet-wide | Client-side closure, per-instance |
+| Accuracy | Atomic reservation + reconciliation | Estimate-based, streaming cost is async |
+| Multiple instances | Shared session state | Each instance tracks independently |
+| Bypass | Cannot bypass (network-level) | Cooperative — raw `fetch` bypasses |
+| Policy source | Database (authoritative) | Cached policy endpoint or manual option |
+
+### Key Behaviors
+
+- **Requires `enforcement: true`** — without it, session limits are not checked
+- **Requires `sessionId`** — mirrors proxy behavior; no session ID means no session enforcement
+- **Fails open on policy error** — if the policy endpoint is unreachable, requests proceed (but manual limits are still enforced)
+- **Streaming is async** — cost from a streaming response is accumulated after the stream completes. A concurrent second request may slip through before the first stream's cost is counted
+- **Failed responses don't count** — 4xx/5xx responses don't accumulate session spend (consistent with proxy)
+
 ## Related
 
 - [Budgets](budgets.md) — overall budget configuration and enforcement
 - [Velocity Limits](velocity-limits.md) — spending-rate circuit breaker
 - [Event Types](../webhooks/event-types.md) — full webhook payload examples
 - [Errors](../api-reference/errors.md) — all error codes and response shapes
+- [JavaScript SDK](../sdks/javascript.md) — full SDK reference
 - [Claude Agent SDK](../sdks/claude-agent.md) — `budgetSessionId` option

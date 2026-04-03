@@ -189,9 +189,14 @@ describe("createBudgetInputSchema", () => {
     ).toThrow(ZodError);
   });
 
+  it("accepts yearly resetInterval", () => {
+    const result = createBudgetInputSchema.parse({ ...validInput, resetInterval: "yearly" });
+    expect(result.resetInterval).toBe("yearly");
+  });
+
   it("rejects invalid resetInterval", () => {
     expect(() =>
-      createBudgetInputSchema.parse({ ...validInput, resetInterval: "yearly" }),
+      createBudgetInputSchema.parse({ ...validInput, resetInterval: "biweekly" }),
     ).toThrow(ZodError);
   });
 

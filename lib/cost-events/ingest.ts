@@ -23,6 +23,12 @@ export const costEventInputSchema = z.object({
   toolName: z.string().max(200).optional(),
   toolServer: z.string().max(200).optional(),
   idempotencyKey: z.string().max(200).optional(),
+  costBreakdown: z.object({
+    input: z.number().int(),
+    output: z.number().int(),
+    cached: z.number().int(),
+    reasoning: z.number().int().optional(),
+  }).optional(),
   tags: z.record(z.string(), z.string().max(256).refine(v => !v.includes("\0"), { message: "Tag values must not contain null bytes" })).optional().default({}).refine(
     (t) => Object.keys(t).length <= 10 && Object.keys(t).every(k => /^[a-zA-Z0-9_-]{1,64}$/.test(k)),
     { message: "Tags: max 10 keys, key must be 1-64 alphanumeric/underscore/hyphen chars" },
@@ -78,6 +84,7 @@ function buildInsertValues(input: CostEventInput, requestId: string, ctx: Insert
     sessionId: input.sessionId ?? null,
     traceId: input.traceId ?? null,
     tags: input.tags ?? {},
+    costBreakdown: input.costBreakdown ?? null,
     source: "api" as const,
   };
 }
@@ -140,6 +147,7 @@ export interface InsertedCostEventRow {
   outputTokens: number;
   cachedInputTokens: number;
   costMicrodollars: number;
+  costBreakdown: { input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null;
   durationMs: number | null;
   eventType: string;
   toolName: string | null;
@@ -187,6 +195,7 @@ export async function insertCostEventsBatch(
       requestId: costEvents.requestId,
       source: costEvents.source,
       tags: costEvents.tags,
+      costBreakdown: costEvents.costBreakdown,
     });
 
   return {

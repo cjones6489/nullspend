@@ -151,6 +151,140 @@ export function buildDecisionMessage(
   return { text, blocks };
 }
 
+// ---------------------------------------------------------------------------
+// Budget increase messages
+// ---------------------------------------------------------------------------
+
+function formatDollars(microdollars: number): string {
+  return `$${(microdollars / 1_000_000).toFixed(2)}`;
+}
+
+export function buildBudgetIncreasePendingMessage(
+  action: RawActionRecord,
+  dashboardUrl: string,
+): SlackMessage {
+  const actionUrl = `${dashboardUrl}/app/actions/${toExternalId("act", action.id)}`;
+  const payload = action.payload as {
+    entityType?: string;
+    entityId?: string;
+    requestedAmountMicrodollars?: number;
+    currentLimitMicrodollars?: number;
+    currentSpendMicrodollars?: number;
+    reason?: string;
+  };
+
+  const currentLimit = payload.currentLimitMicrodollars ?? 0;
+  const currentSpend = payload.currentSpendMicrodollars ?? 0;
+  const requested = payload.requestedAmountMicrodollars ?? 0;
+  const newLimit = currentLimit + requested;
+
+  const text = `Budget increase requested by ${action.agentId}: +${formatDollars(requested)}`;
+
+  const blocks: SlackBlock[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: "Budget Increase Requested",
+        emoji: true,
+      },
+    },
+    {
+      type: "section",
+      fields: [
+        { type: "mrkdwn", text: `*Current budget:*\n${formatDollars(currentLimit)} / ${formatDollars(currentSpend)} spent` },
+        { type: "mrkdwn", text: `*Requested increase:*\n+${formatDollars(requested)}` },
+      ],
+    },
+    {
+      type: "section",
+      fields: [
+        { type: "mrkdwn", text: `*New limit if approved:*\n${formatDollars(newLimit)}` },
+        { type: "mrkdwn", text: `*Agent:*\n${action.agentId}` },
+      ],
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Reason:* ${truncate(payload.reason ?? "No reason provided", 500)}`,
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Approve", emoji: true },
+          style: "primary",
+          action_id: "approve_action",
+          value: action.id,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Reject", emoji: true },
+          style: "danger",
+          action_id: "reject_action",
+          value: action.id,
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "View in Dashboard", emoji: true },
+          url: actionUrl,
+          action_id: "view_dashboard",
+        },
+      ],
+    },
+  ];
+
+  return { text, blocks };
+}
+
+export function buildBudgetIncreaseDecisionMessage(
+  decision: "approved" | "rejected",
+  previousLimit: number,
+  newLimit: number,
+  decidedBy: string,
+): SlackMessage {
+  const isApproved = decision === "approved";
+  const emoji = isApproved ? "\u2705" : "\u274c";
+  const label = isApproved
+    ? `Budget increased from ${formatDollars(previousLimit)} to ${formatDollars(newLimit)}`
+    : "Budget increase rejected";
+
+  const text = `${emoji} ${label}`;
+
+  const blocks: SlackBlock[] = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `${emoji} *${label}*\nDecided by: ${decidedBy}`,
+      },
+    },
+  ];
+
+  return { text, blocks };
+}
+
+export function buildBudgetIncreaseCompletionMessage(
+  remainingMicrodollars: number,
+): SlackMessage {
+  const text = `Task completed. Budget remaining: ${formatDollars(remainingMicrodollars)}.`;
+
+  const blocks: SlackBlock[] = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text,
+      },
+    },
+  ];
+
+  return { text, blocks };
+}
+
 export function buildTestMessage(dashboardUrl: string): SlackMessage {
   return {
     text: "NullSpend Slack integration is working!",

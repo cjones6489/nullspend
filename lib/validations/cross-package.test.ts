@@ -26,6 +26,7 @@ describe("cross-package constant consistency", () => {
       "budget.threshold.warning",
       "budget.threshold.critical",
       "budget.exceeded",
+      "budget.increased",
       "budget.reset",
       "request.blocked",
       "action.created",

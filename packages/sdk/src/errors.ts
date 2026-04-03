@@ -30,3 +30,60 @@ export class RejectedError extends NullSpendError {
     this.actionStatus = status;
   }
 }
+
+export class BudgetExceededError extends NullSpendError {
+  public readonly remainingMicrodollars: number;
+  public readonly entityType: string | undefined;
+  public readonly entityId: string | undefined;
+  public readonly limitMicrodollars: number | undefined;
+  public readonly spendMicrodollars: number | undefined;
+
+  constructor(details: number | {
+    remaining: number;
+    entityType?: string;
+    entityId?: string;
+    limit?: number;
+    spend?: number;
+  }) {
+    const d = typeof details === "number" ? { remaining: details } : details;
+    super(
+      `Budget exceeded: ${d.remaining} microdollars remaining`,
+    );
+    this.name = "BudgetExceededError";
+    this.remainingMicrodollars = d.remaining;
+    this.entityType = d.entityType;
+    this.entityId = d.entityId;
+    this.limitMicrodollars = d.limit;
+    this.spendMicrodollars = d.spend;
+  }
+}
+
+export class MandateViolationError extends NullSpendError {
+  public readonly mandate: string;
+  public readonly requested: string;
+  public readonly allowed: string[];
+
+  constructor(mandate: string, requested: string, allowed: string[]) {
+    super(
+      `Mandate violation: ${mandate} does not allow "${requested}". Allowed: ${allowed.join(", ")}`,
+    );
+    this.name = "MandateViolationError";
+    this.mandate = mandate;
+    this.requested = requested;
+    this.allowed = allowed;
+  }
+}
+
+export class SessionLimitExceededError extends NullSpendError {
+  public readonly sessionSpendMicrodollars: number;
+  public readonly sessionLimitMicrodollars: number;
+
+  constructor(sessionSpend: number, sessionLimit: number) {
+    super(
+      `Session limit exceeded: ${sessionSpend} of ${sessionLimit} microdollars spent`,
+    );
+    this.name = "SessionLimitExceededError";
+    this.sessionSpendMicrodollars = sessionSpend;
+    this.sessionLimitMicrodollars = sessionLimit;
+  }
+}

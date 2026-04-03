@@ -66,7 +66,7 @@ describe("authenticateApiKey", () => {
 
   it("returns ApiKeyAuthContext with rateLimit for managed key identity", async () => {
     const resetTime = Date.now() + 60000;
-    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     mockedCheckKeyRateLimit.mockResolvedValue({ allowed: true, limit: 60, remaining: 55, reset: resetTime });
 
     const result = await authenticateApiKey(makeRequest());
@@ -95,13 +95,13 @@ describe("authenticateApiKey", () => {
 
     const result = await authenticateApiKey(makeRequest());
 
-    expect(result).toEqual({ userId: "dev-user", orgId: null, keyId: null, apiVersion: "2026-04-01" });
+    expect(result).toEqual({ userId: "dev-user", orgId: null, keyId: null, apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     expect(mockedCheckKeyRateLimit).not.toHaveBeenCalled();
   });
 
   it("returns 429 Response when rate limit exceeded", async () => {
     const resetTime = Date.now() + 60000;
-    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     mockedCheckKeyRateLimit.mockResolvedValue({ allowed: false, limit: 60, remaining: 0, reset: resetTime });
 
     const result = await authenticateApiKey(makeRequest());
@@ -119,7 +119,7 @@ describe("authenticateApiKey", () => {
 
   it("429 Response includes x-request-id from request headers", async () => {
     const resetTime = Date.now() + 60000;
-    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     mockedCheckKeyRateLimit.mockResolvedValue({ allowed: false, limit: 60, remaining: 0, reset: resetTime });
 
     const result = await authenticateApiKey(makeRequest());
@@ -130,7 +130,7 @@ describe("authenticateApiKey", () => {
 
   it("clamps Retry-After to minimum 1 when reset is in the past", async () => {
     const pastReset = Date.now() - 5000; // 5 seconds ago
-    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     mockedCheckKeyRateLimit.mockResolvedValue({ allowed: false, limit: 60, remaining: 0, reset: pastReset });
 
     const result = await authenticateApiKey(makeRequest());
@@ -142,7 +142,7 @@ describe("authenticateApiKey", () => {
 
   it("omits x-request-id header when not present on request", async () => {
     const resetTime = Date.now() + 60000;
-    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     mockedCheckKeyRateLimit.mockResolvedValue({ allowed: false, limit: 60, remaining: 0, reset: resetTime });
 
     // Build request without x-request-id
@@ -173,7 +173,7 @@ describe("authenticateApiKey", () => {
 
   it("sets request userId and adds breadcrumb for managed key", async () => {
     const resetTime = Date.now() + 60000;
-    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     mockedCheckKeyRateLimit.mockResolvedValue({ allowed: true, limit: 60, remaining: 55, reset: resetTime });
 
     await authenticateApiKey(makeRequest());
@@ -198,7 +198,7 @@ describe("authenticateApiKey", () => {
 
   it("does NOT set userId or breadcrumb on rate limit 429", async () => {
     const resetTime = Date.now() + 60000;
-    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01" });
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
     mockedCheckKeyRateLimit.mockResolvedValue({ allowed: false, limit: 60, remaining: 0, reset: resetTime });
 
     const result = await authenticateApiKey(makeRequest());
