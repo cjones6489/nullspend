@@ -174,7 +174,7 @@ export default function BillingPage() {
                 </li>
               ))}
             </ul>
-            <Button variant="outline" render={<a href="mailto:support@nullspend.com" />}>
+            <Button variant="outline" nativeButton={false} render={<a href="mailto:support@nullspend.com" />}>
               Contact Us
             </Button>
           </div>

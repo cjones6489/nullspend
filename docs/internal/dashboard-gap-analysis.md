@@ -31,11 +31,16 @@ Backend capabilities vs dashboard UI exposure. Organized by shipping priority.
 - **Files:** `lib/validations/budgets.ts`, `app/api/budgets/route.ts`, `app/(dashboard)/app/budgets/page.tsx`, `components/keys/key-budget-section.tsx`, `lib/queries/budgets.ts`
 
 ### Cost Breakdown Display
-- **Status:** Not started
-- **Gap:** `costBreakdown` (input/output/cached/reasoning/toolDefinition splits) is computed on every request but only total cost is shown.
-- **Backend ready:** `cost_events.cost_breakdown` JSONB column populated by proxy. Already returned by cost event APIs.
-- **What to build:** Breakdown bar or table in cost event detail view. Optionally in activity list as expandable row.
-- **Files:** `app/(dashboard)/app/cost-events/[id]/page.tsx`, `app/(dashboard)/app/activity/page.tsx`
+- **Status:** Shipped
+- **What shipped:**
+  - `costBreakdown` plumbed through all API routes (detail, list, sessions, action costs, CSV export)
+  - `CostBreakdownBar` component with decomposed segments (reasoning ⊂ output, toolDefinition ⊂ input)
+  - Stacked bar in cost event detail view, title attr on activity table cost cell
+  - SDK `CostEventRecord` type updated, Zod schema resilient to corrupt JSONB
+  - Analytics cost breakdown chart correctly decomposes reasoning from output
+  - `formatMicrodollars` fix for sub-cent values (<$0.0001)
+  - 35 new tests
+- **Files:** `components/usage/cost-breakdown-bar.tsx`, `app/(dashboard)/app/cost-events/[id]/page.tsx`, `components/usage/recent-activity.tsx`, `app/api/cost-events/export/route.ts`, plus 6 API/serializer files
 
 ---
 
