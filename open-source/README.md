@@ -270,7 +270,6 @@ The open-source packages handle authorization and enforcement at the network lay
 | Endpoint | Provider |
 |---|---|
 | `POST /v1/chat/completions` | OpenAI |
-| `POST /v1/responses` | OpenAI Responses API |
 | `POST /v1/messages` | Anthropic |
 
 Streaming and non-streaming. Your provider API key forwards transparently.

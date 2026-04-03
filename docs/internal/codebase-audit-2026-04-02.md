@@ -129,7 +129,7 @@ No API path can create "agent" or "team" budgets. The policy endpoint could retu
 
 ### P0-6. SDK missing velocity limit enforcement
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — SDK intercepts proxy `velocity_exceeded` 429, throws `VelocityExceededError`, fires `onDenied`
 - **Files**: `packages/sdk/src/tracked-fetch.ts`, `packages/sdk/src/policy-cache.ts`
 - **Category**: SDK/proxy parity
 - **Impact**: SDK-only users bypass velocity limits entirely
@@ -148,7 +148,7 @@ No API path can create "agent" or "team" budgets. The policy endpoint could retu
 
 ### P0-7. SDK missing tag budget enforcement
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — SDK intercepts proxy `tag_budget_exceeded` 429, throws `TagBudgetExceededError`, fires `onDenied`
 - **Files**: `packages/sdk/src/tracked-fetch.ts`
 - **Category**: SDK/proxy parity
 - **Impact**: SDK-only users can overspend on tagged resources
@@ -235,7 +235,7 @@ No API path can create "agent" or "team" budgets. The policy endpoint could retu
 
 ### P1-6. SDK can't distinguish proxy 429 denial types
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — all four NullSpend 429 codes intercepted: `budget_exceeded`, `velocity_exceeded`, `session_limit_exceeded`, `tag_budget_exceeded`
 - **File**: `packages/sdk/src/tracked-fetch.ts:156-183`
 - **Category**: SDK/proxy parity
 - **Impact**: SDK consumers using proxy can't programmatically handle different denial types
@@ -253,7 +253,7 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 
 ### P1-7. SDK DenialReason type incomplete
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — added `velocity` and `tag_budget` variants to `DenialReason` union
 - **File**: `packages/sdk/src/types.ts`
 - **Category**: SDK/proxy parity
 - **Impact**: `onDenied` callback can't represent velocity or tag budget denials
@@ -329,7 +329,7 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 
 ### P1-12. `/v1/responses` endpoint documented but not implemented
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — removed from open-source README
 - **File**: `open-source/README.md`
 - **Category**: Documentation drift
 - **Impact**: Users expect OpenAI Responses API to work through proxy
@@ -342,7 +342,7 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 
 ### P1-13. Budget policy docs show wrong enum value
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — replaced `"enforce"` with `"strict_block"`, added `policy` parameter to create/update docs, added `"yearly"` to `resetInterval`
 - **File**: `docs/api-reference/budgets-api.md`
 - **Category**: Documentation drift
 - **Impact**: API clients copying examples get validation errors
@@ -462,7 +462,7 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 |---|---|
 | Mandate cache invalidation race with concurrent requests | `apps/proxy/src/__tests__/api-key-auth.test.ts` |
 | Session limit reached during active stream | `apps/proxy/src/__tests__/session-limits.test.ts` |
-| SDK proxy 429 interception for velocity/session/tag codes | `packages/sdk/src/tracked-fetch.test.ts` |
+| ~~SDK proxy 429 interception for velocity/session/tag codes~~ | ~~`packages/sdk/src/tracked-fetch.test.ts`~~ (done) |
 | Batch cost events with heterogeneous tags + tag budgets | `app/api/cost-events/batch/route.test.ts` |
 
 ---
@@ -531,10 +531,10 @@ These are the things that are working correctly and should be preserved:
 
 | Severity | Count | Summary |
 |---|---|---|
-| P0 | 7 | Tag budget over-counting, 4 failing tests, 3 schema drifts, 2 SDK parity gaps |
-| P1 | 14 | 5 TS errors, fire-and-forget gaps, sync races, missing audit log, doc drift |
-| P2 | 10 | Lint errors, code duplication, outdated deps, missing tests, dead code |
-| **Total** | **31** | |
+| P0 | 7 (7 fixed) | Tag budget over-counting, 4 failing tests, 3 schema drifts, 2 SDK parity gaps |
+| P1 | 14 (7 fixed) | 5 TS errors, fire-and-forget gaps, sync races, missing audit log, doc drift |
+| P2 | 10 (0 fixed) | Lint errors, code duplication, outdated deps, missing tests, dead code |
+| **Total** | **31 (14 fixed, 17 remaining)** | |
 
 ### Suggested fix order
 

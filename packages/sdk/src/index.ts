@@ -6,6 +6,8 @@ export {
   BudgetExceededError,
   MandateViolationError,
   SessionLimitExceededError,
+  VelocityExceededError,
+  TagBudgetExceededError,
 } from "./errors.js";
 export { waitWithAbort, interruptibleSleep } from "./polling.js";
 export type {

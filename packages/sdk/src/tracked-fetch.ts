@@ -1,6 +1,12 @@
 import type { CostEventInput, TrackedFetchOptions, TrackedProvider } from "./types.js";
 import type { PolicyCache } from "./policy-cache.js";
-import { BudgetExceededError, MandateViolationError, SessionLimitExceededError } from "./errors.js";
+import {
+  BudgetExceededError,
+  MandateViolationError,
+  SessionLimitExceededError,
+  VelocityExceededError,
+  TagBudgetExceededError,
+} from "./errors.js";
 import {
   isTrackedRoute,
   extractModelFromBody,
@@ -153,31 +159,55 @@ export function buildTrackedFetch(
     const startTime = performance.now();
     const response = await globalThis.fetch(input, modifiedInit ?? init);
 
-    // Proxy 429 interception: detect NullSpend budget denial from proxy
+    // Proxy 429 interception: detect NullSpend denial codes from proxy
     if (response.status === 429 && enforcement) {
       try {
         const cloned = response.clone();
         const json = await cloned.json() as Record<string, unknown>;
         const errObj = json.error as Record<string, unknown> | undefined;
-        if (errObj && errObj.code === "budget_exceeded") {
+        if (errObj) {
+          const code = errObj.code as string | undefined;
           const details = errObj.details as Record<string, unknown> | undefined;
-          const entityType = details?.entity_type as string | undefined;
-          const entityId = details?.entity_id as string | undefined;
-          const limit = details?.budget_limit_microdollars as number | undefined;
-          const spend = details?.budget_spend_microdollars as number | undefined;
-          const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
-          safeDenied(onDenied, {
-            type: "budget",
-            remaining,
-            entityType,
-            entityId,
-            limit,
-            spend,
-          }, onCostError);
-          throw new BudgetExceededError({ remaining, entityType, entityId, limit, spend });
+
+          if (code === "budget_exceeded") {
+            const entityType = details?.entity_type as string | undefined;
+            const entityId = details?.entity_id as string | undefined;
+            const limit = details?.budget_limit_microdollars as number | undefined;
+            const spend = details?.budget_spend_microdollars as number | undefined;
+            const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
+            safeDenied(onDenied, { type: "budget", remaining, entityType, entityId, limit, spend }, onCostError);
+            throw new BudgetExceededError({ remaining, entityType, entityId, limit, spend });
+          }
+
+          if (code === "velocity_exceeded") {
+            const retryAfter = details?.retry_after_seconds as number | undefined;
+            safeDenied(onDenied, { type: "velocity", retryAfterSeconds: retryAfter }, onCostError);
+            throw new VelocityExceededError(retryAfter);
+          }
+
+          if (code === "session_limit_exceeded") {
+            const sessionSpend = details?.session_spend_microdollars as number | undefined;
+            const sessionLimit = details?.session_limit_microdollars as number | undefined;
+            safeDenied(onDenied, { type: "session_limit", sessionSpend: sessionSpend ?? 0, sessionLimit: sessionLimit ?? 0 }, onCostError);
+            throw new SessionLimitExceededError(sessionSpend ?? 0, sessionLimit ?? 0);
+          }
+
+          if (code === "tag_budget_exceeded") {
+            const tagKey = details?.tag_key as string | undefined;
+            const tagValue = details?.tag_value as string | undefined;
+            const limit = details?.budget_limit_microdollars as number | undefined;
+            const remaining = details?.remaining_microdollars as number | undefined;
+            safeDenied(onDenied, { type: "tag_budget", tagKey, tagValue, remaining, limit }, onCostError);
+            throw new TagBudgetExceededError({ tagKey, tagValue, remaining, limit });
+          }
         }
       } catch (err) {
-        if (err instanceof BudgetExceededError) throw err;
+        if (
+          err instanceof BudgetExceededError ||
+          err instanceof VelocityExceededError ||
+          err instanceof SessionLimitExceededError ||
+          err instanceof TagBudgetExceededError
+        ) throw err;
         // Not a NullSpend 429 (upstream provider 429 or parse failure) — fall through
       }
     }

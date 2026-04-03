@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { buildTrackedFetch } from "./tracked-fetch.js";
-import { BudgetExceededError, MandateViolationError, SessionLimitExceededError } from "./errors.js";
+import {
+  BudgetExceededError,
+  MandateViolationError,
+  SessionLimitExceededError,
+  VelocityExceededError,
+  TagBudgetExceededError,
+} from "./errors.js";
 import type { CostEventInput, TrackedFetchOptions, DenialReason } from "./types.js";
 import type { PolicyCache, PolicyResponse } from "./policy-cache.js";
 
@@ -1640,6 +1646,163 @@ describe("buildTrackedFetch", () => {
 
       // Non-JSON 429 should pass through
       expect(response.status).toBe(429);
+    });
+
+    it("proxy 429 with velocity_exceeded throws VelocityExceededError", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true },
+        queueCost,
+        policyCache,
+      );
+
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "velocity_exceeded",
+          message: "Spending too fast",
+          details: { retry_after_seconds: 30 },
+        },
+      }, 429));
+
+      try {
+        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(VelocityExceededError);
+        const velErr = err as InstanceType<typeof VelocityExceededError>;
+        expect(velErr.retryAfterSeconds).toBe(30);
+      }
+    });
+
+    it("proxy 429 velocity_exceeded fires onDenied with type velocity", async () => {
+      const policyCache = createMockPolicyCache();
+      const denied: DenialReason[] = [];
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true, onDenied: (r) => denied.push(r) },
+        queueCost,
+        policyCache,
+      );
+
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "velocity_exceeded",
+          message: "Spending too fast",
+          details: { retry_after_seconds: 15 },
+        },
+      }, 429));
+
+      await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
+
+      expect(denied).toHaveLength(1);
+      expect(denied[0]).toEqual({ type: "velocity", retryAfterSeconds: 15 });
+    });
+
+    it("proxy 429 with session_limit_exceeded throws SessionLimitExceededError", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true },
+        queueCost,
+        policyCache,
+      );
+
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "session_limit_exceeded",
+          message: "Session limit reached",
+          details: {
+            session_spend_microdollars: 950_000,
+            session_limit_microdollars: 1_000_000,
+          },
+        },
+      }, 429));
+
+      try {
+        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(SessionLimitExceededError);
+        const sessErr = err as InstanceType<typeof SessionLimitExceededError>;
+        expect(sessErr.sessionSpendMicrodollars).toBe(950_000);
+        expect(sessErr.sessionLimitMicrodollars).toBe(1_000_000);
+      }
+    });
+
+    it("proxy 429 with tag_budget_exceeded throws TagBudgetExceededError", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true },
+        queueCost,
+        policyCache,
+      );
+
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "tag_budget_exceeded",
+          message: "Tag budget exceeded",
+          details: {
+            tag_key: "env",
+            tag_value: "prod",
+            budget_limit_microdollars: 5_000_000,
+            remaining_microdollars: 0,
+          },
+        },
+      }, 429));
+
+      try {
+        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(TagBudgetExceededError);
+        const tagErr = err as InstanceType<typeof TagBudgetExceededError>;
+        expect(tagErr.tagKey).toBe("env");
+        expect(tagErr.tagValue).toBe("prod");
+        expect(tagErr.limitMicrodollars).toBe(5_000_000);
+        expect(tagErr.remainingMicrodollars).toBe(0);
+      }
+    });
+
+    it("proxy 429 tag_budget_exceeded fires onDenied with type tag_budget", async () => {
+      const policyCache = createMockPolicyCache();
+      const denied: DenialReason[] = [];
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true, onDenied: (r) => denied.push(r) },
+        queueCost,
+        policyCache,
+      );
+
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "tag_budget_exceeded",
+          message: "Tag budget exceeded",
+          details: {
+            tag_key: "customer",
+            tag_value: "acme",
+            budget_limit_microdollars: 1_000_000,
+            remaining_microdollars: 0,
+          },
+        },
+      }, 429));
+
+      await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
+
+      expect(denied).toHaveLength(1);
+      expect(denied[0]).toEqual({
+        type: "tag_budget",
+        tagKey: "customer",
+        tagValue: "acme",
+        remaining: 0,
+        limit: 1_000_000,
+      });
     });
   });
 });
