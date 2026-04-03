@@ -116,7 +116,7 @@ function registerRequestBudgetIncrease(
               approved: false,
               rejected: true,
               requestedDollars: params.amount,
-              message: `Budget increase of $${params.amount} was rejected. Reason: ${params.reason}`,
+              message: `Budget increase of $${params.amount} was rejected.`,
             });
           }
 

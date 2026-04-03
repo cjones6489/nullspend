@@ -168,6 +168,9 @@ describe("registerTools", () => {
       expect(data.approved).toBe(false);
       expect(data.rejected).toBe(true);
       expect(data.status).toBe("rejected");
+      // Message should not echo the agent's reason as if it were the human's rejection reason
+      expect(data.message).toContain("rejected");
+      expect(data.message).not.toContain("Exploration task");
     });
 
     it("returns timeout when no decision within deadline", async () => {
@@ -273,6 +276,49 @@ describe("registerTools", () => {
         expect.objectContaining({ agentId: "test-agent" }),
       );
     });
+
+    it("defaults entityType to api_key and entityId to unknown when omitted", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-7", status: "pending" });
+      mockGetAction.mockResolvedValue(
+        mockAction({ id: "act-bi-7", status: "approved", approvedAt: "2026-01-01T00:01:00Z" }),
+      );
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      await tool.cb({ amount: 1, reason: "test", timeoutSeconds: 5 });
+
+      expect(mockCreateAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            entityType: "api_key",
+            entityId: "unknown",
+            currentLimitMicrodollars: 0,
+            currentSpendMicrodollars: 0,
+          }),
+        }),
+      );
+    });
+
+    it("aborts polling when shutdown signal fires", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-8", status: "pending" });
+      mockGetAction.mockResolvedValue(mockAction({ status: "pending" }));
+
+      const abortController = new AbortController();
+      const { tools } = captureTools(TEST_CONFIG, abortController.signal);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      setTimeout(() => abortController.abort(), 50);
+
+      const result = await tool.cb({
+        amount: 5,
+        reason: "Long task",
+        timeoutSeconds: 60,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("Aborted");
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -363,6 +409,27 @@ describe("registerTools", () => {
 
       expect(data.budgets[0].willBlock).toBe(false);
       expect(data.budgets[0].remainingDollars).toBe(0);
+    });
+
+    it("handles zero-limit budget (percentUsed = 0, willBlock)", async () => {
+      mockListBudgets.mockResolvedValue({
+        data: [{
+          id: "b-1", entityType: "api_key", entityId: "key-1",
+          maxBudgetMicrodollars: 0, spendMicrodollars: 0,
+          policy: "strict_block", resetInterval: null,
+        }],
+      });
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "check_budget");
+
+      const result = await tool.cb({});
+      const { data } = parseResult(result);
+
+      expect(data.budgets[0].percentUsed).toBe(0);
+      expect(data.budgets[0].remainingDollars).toBe(0);
+      expect(data.budgets[0].willBlock).toBe(true);
+      expect(data.mostConstrained.willBlock).toBe(true);
     });
 
     it("returns error on API failure", async () => {
