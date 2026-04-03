@@ -168,7 +168,7 @@ Common codes: `authentication_required` (401), `forbidden` (403), `budget_exceed
 - JavaScript/TypeScript: `@nullspend/sdk`
 - Python: `nullspend`
 - Claude Agent SDK adapter: `@nullspend/claude-agent`
-- MCP Server: `@nullspend/mcp-server`
+- MCP Server: `@nullspend/mcp-server` — 7 tools: budget negotiation (`request_budget_increase`, `check_budget`), approval (`propose_action`, `check_action`), cost awareness (`get_budgets`, `get_spend_summary`, `get_recent_costs`)
 - MCP Proxy: `@nullspend/mcp-proxy`
 
 ## Webhooks

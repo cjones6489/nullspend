@@ -10,12 +10,17 @@ LLM / MCP Client  ──stdio──▶  NullSpend MCP Server  ──HTTP──�
                                                        Human reviews in Dashboard
 ```
 
-The MCP server exposes two tools:
+The MCP server exposes seven tools:
 
-| Tool | Purpose |
-|------|---------|
-| `propose_action` | Propose a risky action for human approval. Blocks until approved/rejected (or returns immediately in non-blocking mode). |
-| `check_action` | Check the current status of a previously proposed action. |
+| Tool | Category | Purpose |
+|------|----------|---------|
+| `request_budget_increase` | Budget negotiation | Request more budget from a human approver. Blocks until approved/rejected. |
+| `check_budget` | Budget negotiation | Preflight check — remaining budget, policy, and whether the next request will be blocked. |
+| `propose_action` | Approval | Propose a risky action for human approval. Blocks until approved/rejected (or returns immediately). |
+| `check_action` | Approval | Check the current status of a previously proposed action. |
+| `get_budgets` | Cost awareness | Get current budget limits and spend. |
+| `get_spend_summary` | Cost awareness | Aggregated spending by model and provider. |
+| `get_recent_costs` | Cost awareness | List recent API call costs. |
 
 ## Quick start (local)
 
@@ -79,6 +84,67 @@ Add to your Cursor MCP settings:
 ```
 
 ## Tool reference
+
+### `request_budget_increase`
+
+Request a budget increase from a human approver. The request is sent to Slack (if configured) or the NullSpend dashboard. Blocks until approved, rejected, or timed out.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `amount` | number | Yes | Amount to request in dollars (e.g. `5` for $5) |
+| `reason` | string | Yes | Why you need more budget — shown to the human approver |
+| `entityType` | string | No | Budget entity type (e.g. `api_key`, `user`). Default: `api_key` |
+| `entityId` | string | No | Budget entity ID. Default: inferred from API key |
+| `currentLimitDollars` | number | No | Current budget limit in dollars (for context) |
+| `currentSpendDollars` | number | No | Current spend in dollars (for context) |
+| `agentId` | string | No | Agent identifier |
+| `timeoutSeconds` | number | No | Seconds to wait for a decision (default: 300) |
+
+**Typical flow:**
+
+```
+1. Agent calls check_budget → sees $0.50 remaining, willBlock: true
+2. Agent calls request_budget_increase → "$5, finishing document processing"
+3. Human approves in Slack or dashboard
+4. Tool returns { approved: true }
+5. Agent retries the original request
+```
+
+### `check_budget`
+
+Check your current budget status before making an expensive request. Returns remaining budget, spend, and policy for each budget entity.
+
+**Parameters:** None.
+
+**Response:**
+
+```json
+{
+  "hasBudgets": true,
+  "budgets": [
+    {
+      "entityType": "api_key",
+      "entityId": "key-123",
+      "limitDollars": 10,
+      "spendDollars": 9.50,
+      "remainingDollars": 0.50,
+      "percentUsed": 95,
+      "policy": "strict_block",
+      "resetInterval": "monthly",
+      "willBlock": false
+    }
+  ],
+  "mostConstrained": {
+    "entityType": "api_key",
+    "entityId": "key-123",
+    "remainingDollars": 0.50,
+    "willBlock": false
+  },
+  "message": "$0.50 remaining on most constrained budget (api_key/key-123)."
+}
+```
 
 ### `propose_action`
 
