@@ -6,6 +6,8 @@ import { budgetIncreasePayloadSchema } from "@/lib/validations/actions";
 import { resolveOrgTier, assertAmountBelowCap } from "@/lib/stripe/feature-gate";
 import { getLogger } from "@/lib/observability";
 
+type BudgetEntityType = "user" | "api_key" | "tag";
+
 const log = getLogger("budget-increase");
 
 /**
@@ -18,12 +20,14 @@ const log = getLogger("budget-increase");
  * - Throws if entity not found (rolls back entire parent transaction)
  */
 export async function executeBudgetIncrease(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle transaction generic is not re-exportable
   tx: Parameters<Parameters<import("drizzle-orm/pg-core").PgDatabase<any, any, any>["transaction"]>[0]>[0],
   payloadJson: Record<string, unknown> | null,
   orgId: string,
   approvedAmountMicrodollars?: number,
 ): Promise<{ previousLimit: number; newLimit: number; amount: number; requestedAmount: number }> {
   const payload = budgetIncreasePayloadSchema.parse(payloadJson);
+  const entityType = payload.entityType as BudgetEntityType;
   const amount = approvedAmountMicrodollars ?? payload.requestedAmountMicrodollars;
 
   if (amount <= 0) {
@@ -33,13 +37,14 @@ export async function executeBudgetIncrease(
   // Read the actual current budget from DB — never trust client-provided values
   // for billing enforcement. Lock the row to prevent concurrent increases from
   // both passing the cap check.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle transaction generic
   const [currentBudget] = await (tx as any)
     .select({ maxBudgetMicrodollars: budgets.maxBudgetMicrodollars })
     .from(budgets)
     .where(
       and(
         eq(budgets.orgId, orgId),
-        eq(budgets.entityType, payload.entityType as any),
+        eq(budgets.entityType, entityType),
         eq(budgets.entityId, payload.entityId),
       ),
     )
@@ -56,6 +61,7 @@ export async function executeBudgetIncrease(
   assertAmountBelowCap(tierInfo, "spendCapMicrodollars", newTotal);
 
   // Atomic increment
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle transaction generic
   const updated = await (tx as any)
     .update(budgets)
     .set({
@@ -65,7 +71,7 @@ export async function executeBudgetIncrease(
     .where(
       and(
         eq(budgets.orgId, orgId),
-        eq(budgets.entityType, payload.entityType as any),
+        eq(budgets.entityType, entityType),
         eq(budgets.entityId, payload.entityId),
       ),
     )

@@ -2209,7 +2209,7 @@ describe("requestBudgetIncrease", () => {
 
     // Warm the policy cache by making a request that triggers getPolicy
     // Use a simple non-streaming response so the tracked fetch completes
-    const warmResponse = new Response(JSON.stringify({
+    const _warmResponse = new Response(JSON.stringify({
       id: "chatcmpl-1",
       choices: [{ message: { content: "hi" } }],
       usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },

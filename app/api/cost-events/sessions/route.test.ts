@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";

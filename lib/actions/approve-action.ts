@@ -87,7 +87,7 @@ async function invalidateAfterBudgetIncrease(actionId: string, orgId: string): P
   const [budget] = await db
     .select({ userId: budgets.userId })
     .from(budgets)
-    .where(and(eq(budgets.orgId, orgId), eq(budgets.entityType, entityType as any), eq(budgets.entityId, entityId)))
+    .where(and(eq(budgets.orgId, orgId), eq(budgets.entityType, entityType as "user" | "api_key" | "tag"), eq(budgets.entityId, entityId)))
     .limit(1);
 
   if (!budget) return;

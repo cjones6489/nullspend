@@ -70,8 +70,6 @@ export async function POST(_request: Request, { params }: RouteParams) {
         throw new NotFoundError("Budget not found.");
       }
 
-      const budget = rows[0];
-
       const [result] = await tx
         .update(budgets)
         .set({

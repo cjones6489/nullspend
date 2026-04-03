@@ -1,7 +1,6 @@
 "use client";
 
 import { CommandTrigger } from "./command-trigger";
-import { PageTitle } from "./page-title";
 import { UserMenu } from "./user-menu";
 
 export function DashboardHeader({ email }: { email: string | null }) {

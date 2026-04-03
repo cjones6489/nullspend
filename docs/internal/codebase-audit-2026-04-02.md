@@ -8,6 +8,8 @@ Comprehensive audit across 9 dimensions: test failures, type errors, dead code, 
 
 **After Batch 2 fixes**: 3,583 tests (3,583 pass, 0 fail), typecheck clean. P0-1 tag budget over-counting fixed with per-event budget updates + 23 new math/accounting tests.
 
+**After Batch 3 fixes**: 2,844 root + proxy tests pass (1,535 + 1,309), typecheck clean, lint clean (0 errors, 0 warnings). SDK proxy 429 interception matches actual proxy response shapes. 6 P2 items closed.
+
 ---
 
 ## P0 — Ship Blockers
@@ -373,31 +375,16 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 
 ### P2-1. 23 ESLint errors
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — 19 errors → 0, 3 warnings → 0. Removed unused imports, added `BudgetEntityType` cast, eslint-disable for Drizzle tx generics, removed unused `crypto` require, prefixed unused test vars.
 - **Category**: Code quality
-
-**Key items**:
-- `apps/proxy/src/routes/shared.ts:3` — unused `errorResponse` import
-- `app/api/budgets/[id]/route.ts:73` — `budget` assigned but never read (used for SELECT FOR UPDATE lock)
-- `components/dashboard/dashboard-header.tsx:4` — unused `PageTitle` import
-- `components/usage/recent-activity.tsx:3` — unused `Check` import from lucide-react
-- `lib/budgets/increase.ts` — 7x `no-explicit-any` (needs proper typing)
-- `app/api/actions/[id]/result/route.ts:81` — `no-explicit-any`
-- `app/api/cost-events/sessions/route.test.ts:1` — unused `beforeEach`
-- `app/api/policy/route.test.ts:1` — unused `beforeEach`
-- `lib/budgets/update-spend.test.ts:1` — unused `beforeEach`
-- `packages/sdk/src/client.test.ts:2212` — unused `warmResponse`
-- `scripts/seed-all-pages.js` — `no-require-imports` (CommonJS in ESM project)
 
 ---
 
 ### P2-2. Duplicate webhook secret expiry logic
 
-- **Status**: [ ] Open
-- **File**: `lib/webhooks/dispatch.ts` lines 123-147 and 517-541
+- **Status**: [x] Fixed 2026-04-02 — extracted `cleanupExpiredSecrets()` helper, both callers now use it
+- **File**: `lib/webhooks/dispatch.ts`
 - **Category**: Dead code / code smell
-
-**Description**: Identical lazy secret rotation expiry cleanup code exists in both `dispatchToEndpoints` and `dispatchCostEventToEndpoints`. Extract to a shared helper.
 
 ---
 
@@ -423,13 +410,9 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 
 ### P2-5. `@nullspend/db` package.json export condition ordering
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — `"types"` moved before `"import"` in exports
 - **File**: `packages/db/package.json`
 - **Category**: Build config
-
-**Description**: `"types"` condition appears after `"import"` and `"require"` in the exports field, making it unreachable. Produces build warnings. Functional but messy.
-
-**Fix**: Move `"types"` before `"import"` in the exports conditions.
 
 ---
 
@@ -481,26 +464,16 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 
 ### P2-9. Dead export: `closeDbConnection()`
 
-- **Status**: [ ] Open
-- **File**: `lib/db/client.ts:28-35`
+- **Status**: [x] Fixed 2026-04-02 — removed
+- **File**: `lib/db/client.ts`
 - **Category**: Dead code
-
-**Description**: Exported but never imported or called anywhere. In Next.js runtime, closing the singleton connection pool mid-request would break subsequent requests.
-
-**Fix**: Remove or mark as `@internal` test-only.
 
 ---
 
 ### P2-10. 3 React Hook warnings
 
-- **Status**: [ ] Open
+- **Status**: [x] Fixed 2026-04-02 — animation counters use `useRef` instead of `useState`; arrays hoisted to module scope; animated-hero-bg dep suppressed with eslint-disable (intentional closure capture)
 - **Category**: Code quality
-
-| File | Warning |
-|---|---|
-| `components/marketing/animated-hero-bg.tsx:36` | Missing dep `displayValue` |
-| `components/marketing/feature-sections.tsx:504` | Missing dep `tags` |
-| `components/marketing/feature-sections.tsx:629` | Missing dep `toolCalls` |
 
 ---
 
@@ -533,8 +506,8 @@ These are the things that are working correctly and should be preserved:
 |---|---|---|
 | P0 | 7 (7 fixed) | Tag budget over-counting, 4 failing tests, 3 schema drifts, 2 SDK parity gaps |
 | P1 | 14 (7 fixed) | 5 TS errors, fire-and-forget gaps, sync races, missing audit log, doc drift |
-| P2 | 10 (0 fixed) | Lint errors, code duplication, outdated deps, missing tests, dead code |
-| **Total** | **31 (14 fixed, 17 remaining)** | |
+| P2 | 10 (6 fixed) | Lint errors, code duplication, outdated deps, missing tests, dead code |
+| **Total** | **31 (20 fixed, 11 remaining)** | |
 
 ### Suggested fix order
 

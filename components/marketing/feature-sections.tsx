@@ -480,28 +480,30 @@ export function VelocityLimitsSection() {
 // ============================================================================
 // SECTION 4: Tags & Attribution - Visual tag assignment
 // ============================================================================
+const TAG_ITEMS = [
+  { name: "production", color: "bg-primary text-primary-foreground" },
+  { name: "staging", color: "bg-amber-500 text-amber-950" },
+  { name: "team:ml", color: "bg-cyan-500 text-cyan-950" },
+  { name: "feature:search", color: "bg-violet-500 text-violet-950" },
+];
+
 function TagsVisual() {
-  const tags = [
-    { name: "production", color: "bg-primary text-primary-foreground" },
-    { name: "staging", color: "bg-amber-500 text-amber-950" },
-    { name: "team:ml", color: "bg-cyan-500 text-cyan-950" },
-    { name: "feature:search", color: "bg-violet-500 text-violet-950" },
-  ];
+  const tags = TAG_ITEMS;
 
   const [activeRequests, setActiveRequests] = useState<Array<{ id: number; tag: typeof tags[0]; x: number }>>([]);
-  const [idCounter, setIdCounter] = useState(0);
+  const idRef = useRef(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
       const tag = tags[Math.floor(Math.random() * tags.length)];
+      const id = idRef.current++;
       setActiveRequests((prev) => [
         ...prev.slice(-5),
-        { id: idCounter, tag, x: 0 },
+        { id, tag, x: 0 },
       ]);
-      setIdCounter((prev) => prev + 1);
     }, 800);
     return () => clearInterval(interval);
-  }, [idCounter]);
+  }, [tags]);
 
   return (
     <div className="relative">
@@ -589,36 +591,37 @@ export function TagsAttributionSection() {
 // ============================================================================
 // SECTION 5: MCP Tool Calls - Live agent activity feed
 // ============================================================================
+const TOOL_CALL_ITEMS = [
+  { tool: "search_web", server: "brave-search", cost: 0.002 },
+  { tool: "read_file", server: "filesystem", cost: 0.001 },
+  { tool: "query_db", server: "postgres", cost: 0.004 },
+  { tool: "send_email", server: "gmail", cost: 0.003 },
+  { tool: "create_issue", server: "linear", cost: 0.002 },
+  { tool: "fetch_url", server: "web-fetch", cost: 0.001 },
+];
+
 function MCPToolCallsVisual() {
-  const toolCalls = [
-    { tool: "search_web", server: "brave-search", cost: 0.002 },
-    { tool: "read_file", server: "filesystem", cost: 0.001 },
-    { tool: "query_db", server: "postgres", cost: 0.004 },
-    { tool: "send_email", server: "gmail", cost: 0.003 },
-    { tool: "create_issue", server: "linear", cost: 0.002 },
-    { tool: "fetch_url", server: "web-fetch", cost: 0.001 },
-  ];
+  const toolCalls = TOOL_CALL_ITEMS;
 
   const [callStream, setCallStream] = useState<Array<{ id: number; call: typeof toolCalls[0]; status: "running" | "complete" }>>([]);
-  const [idCounter, setIdCounter] = useState(0);
+  const callIdRef = useRef(0);
   const [totalCost, setTotalCost] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
       const call = toolCalls[Math.floor(Math.random() * toolCalls.length)];
-      const newId = idCounter;
-      
+      const newId = callIdRef.current++;
+
       // Add as running
       setCallStream((prev) => [
         { id: newId, call, status: "running" },
         ...prev.slice(0, 4),
       ]);
-      setIdCounter((prev) => prev + 1);
-      
+
       // Mark as complete after delay
       setTimeout(() => {
-        setCallStream((prev) => 
-          prev.map((item) => 
+        setCallStream((prev) =>
+          prev.map((item) =>
             item.id === newId ? { ...item, status: "complete" } : item
           )
         );
@@ -626,7 +629,7 @@ function MCPToolCallsVisual() {
       }, 600);
     }, 1400);
     return () => clearInterval(interval);
-  }, [idCounter]);
+  }, [toolCalls]);
 
   return (
     <div className="relative">

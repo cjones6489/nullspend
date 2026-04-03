@@ -25,11 +25,3 @@ export function getDb() {
   return drizzle(getSqlClient(), { schema });
 }
 
-export async function closeDbConnection() {
-  if (!globalThis.__nullspendSql) {
-    return;
-  }
-
-  await globalThis.__nullspendSql.end();
-  globalThis.__nullspendSql = undefined;
-}

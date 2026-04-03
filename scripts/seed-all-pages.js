@@ -1,5 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const postgres = require("postgres");
-const crypto = require("crypto");
 const sql = postgres(process.env.DATABASE_URL, { prepare: false });
 
 const userId = "edbb20db-261f-450d-83a1-ce191950373d";

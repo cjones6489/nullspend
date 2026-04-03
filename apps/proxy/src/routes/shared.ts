@@ -1,6 +1,5 @@
 import { waitUntil } from "cloudflare:workers";
 import type { RequestContext } from "../lib/context.js";
-import { errorResponse } from "../lib/errors.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
 import type { BudgetEntity } from "../lib/budget-do-lookup.js";
 import {

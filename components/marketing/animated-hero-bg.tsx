@@ -33,6 +33,7 @@ function AnimatedNumber({
     };
     
     requestAnimationFrame(animate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally captures displayValue at effect start for animation
   }, [value, duration]);
   
   return (

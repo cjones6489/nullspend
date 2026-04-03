@@ -78,7 +78,7 @@ async function sendBudgetCompletionThreadIfApplicable(
     .where(
       and(
         eq(budgets.orgId, orgId),
-        eq(budgets.entityType, payload.entityType as any),
+        eq(budgets.entityType, payload.entityType as "user" | "api_key" | "tag"),
         eq(budgets.entityId, payload.entityId),
       ),
     )

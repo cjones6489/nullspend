@@ -74,6 +74,34 @@ function isSecretActive(ep: WebhookEndpoint): boolean {
   return Date.now() - ep.secretRotatedAt.getTime() < SECRET_ROTATION_WINDOW_SECONDS * 1000;
 }
 
+/** Fire-and-forget: clear expired rotation secrets from DB. */
+function cleanupExpiredSecrets(endpoints: WebhookEndpoint[]): void {
+  const cutoff = new Date(Date.now() - SECRET_ROTATION_WINDOW_SECONDS * 1000);
+  const expired = endpoints.filter(
+    (ep) => ep.secretRotatedAt && ep.secretRotatedAt < cutoff,
+  );
+  if (expired.length === 0) return;
+
+  const db = getDb();
+  void (async () => {
+    for (const ep of expired) {
+      try {
+        await db
+          .update(webhookEndpoints)
+          .set({ previousSigningSecret: null, secretRotatedAt: null })
+          .where(
+            and(
+              eq(webhookEndpoints.id, ep.id),
+              lt(webhookEndpoints.secretRotatedAt, cutoff),
+            ),
+          );
+      } catch {
+        // fire-and-forget
+      }
+    }
+  })();
+}
+
 /**
  * Dispatch a webhook event to pre-fetched endpoints.
  * Fire-and-forget: logs errors but never throws.
@@ -120,31 +148,7 @@ export async function dispatchToEndpoints(
     }
   }
 
-  // Lazy expiry: clean up expired rotation secrets (fire-and-forget, never awaited)
-  const cutoff = new Date(Date.now() - SECRET_ROTATION_WINDOW_SECONDS * 1000);
-  const expiredEndpoints = endpoints.filter(
-    (ep) => ep.secretRotatedAt && ep.secretRotatedAt < cutoff,
-  );
-  if (expiredEndpoints.length > 0) {
-    const db = getDb();
-    void (async () => {
-      for (const ep of expiredEndpoints) {
-        try {
-          await db
-            .update(webhookEndpoints)
-            .set({ previousSigningSecret: null, secretRotatedAt: null })
-            .where(
-              and(
-                eq(webhookEndpoints.id, ep.id),
-                lt(webhookEndpoints.secretRotatedAt, cutoff),
-              ),
-            );
-        } catch {
-          // fire-and-forget
-        }
-      }
-    })();
-  }
+  cleanupExpiredSecrets(endpoints);
 }
 
 /**
@@ -514,29 +518,5 @@ export async function dispatchCostEventToEndpoints(
     }
   }
 
-  // Lazy expiry: clean up expired rotation secrets (fire-and-forget, never awaited)
-  const cutoff = new Date(Date.now() - SECRET_ROTATION_WINDOW_SECONDS * 1000);
-  const expiredEndpoints = endpoints.filter(
-    (ep) => ep.secretRotatedAt && ep.secretRotatedAt < cutoff,
-  );
-  if (expiredEndpoints.length > 0) {
-    const db = getDb();
-    void (async () => {
-      for (const ep of expiredEndpoints) {
-        try {
-          await db
-            .update(webhookEndpoints)
-            .set({ previousSigningSecret: null, secretRotatedAt: null })
-            .where(
-              and(
-                eq(webhookEndpoints.id, ep.id),
-                lt(webhookEndpoints.secretRotatedAt, cutoff),
-              ),
-            );
-        } catch {
-          // fire-and-forget
-        }
-      }
-    })();
-  }
+  cleanupExpiredSecrets(endpoints);
 }

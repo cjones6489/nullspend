@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { KeyList } from "@/components/keys/key-list";
 import { KeyDetail } from "@/components/keys/key-detail";
@@ -26,14 +26,9 @@ export default function KeysPage() {
   const canManage = session?.role === "owner" || session?.role === "admin";
 
   const keys = useMemo(() => data?.data ?? [], [data]);
-  const selectedKey = keys.find((k) => k.id === selectedKeyId) ?? null;
-
   // Auto-select first key when data loads (unless deep-linked via ?selected=)
-  useEffect(() => {
-    if (keys.length > 0 && !selectedKeyId) {
-      setSelectedKeyId(keys[0].id);
-    }
-  }, [keys, selectedKeyId]);
+  const effectiveKeyId = selectedKeyId ?? keys[0]?.id ?? null;
+  const selectedKey = keys.find((k) => k.id === effectiveKeyId) ?? null;
 
   return (
     <div className="flex h-full flex-col">
@@ -91,7 +86,7 @@ export default function KeysPage() {
           <KeyList
             keys={keys}
             budgets={budgetsData?.data ?? []}
-            selectedKeyId={selectedKeyId}
+            selectedKeyId={effectiveKeyId}
             onSelect={setSelectedKeyId}
           />
           {selectedKey ? (
