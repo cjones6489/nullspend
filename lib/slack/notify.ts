@@ -137,8 +137,13 @@ export async function sendSlackNotification(
       }
     }
 
-    // Fallback: use webhook (no thread_ts, but notification still works)
+    // Fallback: use webhook (no thread_ts, so approval/rejection won't appear as threaded replies)
+    log.info({ actionId: action.id }, "Budget increase sent via webhook fallback — threaded replies unavailable");
     const message = buildBudgetIncreasePendingMessage(action, dashboardUrl);
+    message.blocks?.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: "_Threaded updates unavailable — approve or reject from the dashboard._" }],
+    });
     await retryWithBackoff(() => postToWebhook(config.webhookUrl, message));
     return;
   }

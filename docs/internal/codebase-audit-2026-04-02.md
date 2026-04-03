@@ -208,17 +208,9 @@ No API path can create "agent" or "team" budgets. The policy endpoint could retu
 
 ### P1-4. Budget sync gap after approval — DO stale for up to 60s
 
-- **Status**: [ ] Open
-- **File**: `lib/actions/approve-action.ts:49-51`
+- **Status**: [x] Fixed 2026-04-02 — `invalidateAfterBudgetIncrease` is now awaited (with try/catch fallback to 60s natural expiry)
+- **File**: `lib/actions/approve-action.ts`
 - **Category**: Data flow integrity
-- **Impact**: Dashboard shows correct budget, but proxy enforces old limit during sync gap
-
-**Description**: After budget increase approval, `invalidateProxyCache()` is fire-and-forget with 2 retries. If both fail, the Durable Object still enforces the old budget limit until natural 60s cache expiry. Scenario: User approves $100→$200, dashboard shows $200, but proxy blocks at $100 for up to a minute.
-
-**Fix options**:
-1. Await `invalidateProxyCache()` before returning approval response (adds latency)
-2. Accept the 60s window and document it
-3. Have the SDK poll policy endpoint to confirm sync before retrying
 
 ---
 
@@ -290,14 +282,9 @@ if (error.code === "tag_budget_exceeded") throw new TagBudgetExceededError(...)
 
 ### P1-9. Slack Web API fallback is silent
 
-- **Status**: [ ] Open
-- **File**: `lib/slack/notify.ts:134-142`
+- **Status**: [x] Fixed 2026-04-02 — fallback webhook message now includes context block ("Threaded updates unavailable — approve or reject from the dashboard.") + info-level log
+- **File**: `lib/slack/notify.ts`
 - **Category**: Data flow integrity
-- **Impact**: User expects threaded replies for budget negotiation, gets single message instead
-
-**Description**: If Slack Web API call fails (network, rate limit, config error), the code logs a warning and falls back to the incoming webhook. The user is not informed that threaded replies won't work, which breaks the budget negotiation UX (where approval/rejection appear as thread replies).
-
-**Fix**: Either surface the fallback in the Slack message ("Note: threaded replies unavailable") or retry the Web API call before falling back.
 
 ---
 
@@ -505,9 +492,9 @@ These are the things that are working correctly and should be preserved:
 | Severity | Count | Summary |
 |---|---|---|
 | P0 | 7 (7 fixed) | Tag budget over-counting, 4 failing tests, 3 schema drifts, 2 SDK parity gaps |
-| P1 | 14 (7 fixed) | 5 TS errors, fire-and-forget gaps, sync races, missing audit log, doc drift |
+| P1 | 14 (9 fixed) | 5 TS errors, fire-and-forget gaps, sync races, missing audit log, doc drift |
 | P2 | 10 (6 fixed) | Lint errors, code duplication, outdated deps, missing tests, dead code |
-| **Total** | **31 (20 fixed, 11 remaining)** | |
+| **Total** | **31 (22 fixed, 9 remaining)** | |
 
 ### Suggested fix order
 

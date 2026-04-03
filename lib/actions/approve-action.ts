@@ -39,18 +39,21 @@ export async function approveAction(
     },
   );
 
-  // Fire-and-forget: sync the updated budget to the proxy DO + dispatch webhook
+  // Sync the updated budget to the proxy DO before returning (so the new limit takes effect immediately)
+  // Webhook dispatch remains fire-and-forget (non-critical path)
   if (budgetIncrease) {
     log.info(
       { actionId, entityType: "budget_increase", amount: budgetIncrease.amount, requestedAmount: budgetIncrease.requestedAmount, partial: budgetIncrease.amount !== budgetIncrease.requestedAmount },
       "budget_increase_approved",
     );
 
-    void invalidateAfterBudgetIncrease(actionId, orgId).catch((err) => {
+    try {
+      await invalidateAfterBudgetIncrease(actionId, orgId);
+    } catch (err) {
       log.warn({ err, actionId }, "Budget increase proxy cache invalidation failed (will sync within 60s)");
-    });
+    }
 
-    // Dispatch budget.increased webhook event
+    // Dispatch budget.increased webhook event (fire-and-forget)
     void dispatchBudgetIncreasedWebhook(actionId, orgId, budgetIncrease, input.approvedBy).catch((err) => {
       log.warn({ err, actionId }, "budget.increased webhook dispatch failed");
     });
