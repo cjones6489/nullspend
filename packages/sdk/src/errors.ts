@@ -90,13 +90,24 @@ export class SessionLimitExceededError extends NullSpendError {
 
 export class VelocityExceededError extends NullSpendError {
   public readonly retryAfterSeconds: number | undefined;
+  public readonly limitMicrodollars: number | undefined;
+  public readonly windowSeconds: number | undefined;
+  public readonly currentMicrodollars: number | undefined;
 
-  constructor(retryAfterSeconds?: number) {
+  constructor(details?: {
+    retryAfterSeconds?: number;
+    limit?: number;
+    window?: number;
+    current?: number;
+  }) {
     super(
-      `Velocity limit exceeded${retryAfterSeconds ? ` — retry after ${retryAfterSeconds}s` : ""}`,
+      `Velocity limit exceeded${details?.retryAfterSeconds ? ` — retry after ${details.retryAfterSeconds}s` : ""}`,
     );
     this.name = "VelocityExceededError";
-    this.retryAfterSeconds = retryAfterSeconds;
+    this.retryAfterSeconds = details?.retryAfterSeconds;
+    this.limitMicrodollars = details?.limit;
+    this.windowSeconds = details?.window;
+    this.currentMicrodollars = details?.current;
   }
 }
 
@@ -105,12 +116,14 @@ export class TagBudgetExceededError extends NullSpendError {
   public readonly tagValue: string | undefined;
   public readonly remainingMicrodollars: number | undefined;
   public readonly limitMicrodollars: number | undefined;
+  public readonly spendMicrodollars: number | undefined;
 
   constructor(details?: {
     tagKey?: string;
     tagValue?: string;
     remaining?: number;
     limit?: number;
+    spend?: number;
   }) {
     const tag = details?.tagKey ? `${details.tagKey}=${details.tagValue}` : "unknown";
     super(`Tag budget exceeded for ${tag}`);
@@ -119,5 +132,6 @@ export class TagBudgetExceededError extends NullSpendError {
     this.tagValue = details?.tagValue;
     this.remainingMicrodollars = details?.remaining;
     this.limitMicrodollars = details?.limit;
+    this.spendMicrodollars = details?.spend;
   }
 }

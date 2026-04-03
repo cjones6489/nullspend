@@ -114,12 +114,32 @@ const enforced = new OpenAI({
 });
 ```
 
-Providers: `"openai"` and `"anthropic"`. Cost is calculated locally using the built-in pricing engine. With `enforcement: true`, the SDK checks model mandates, budget, and session limits before each request — throwing `MandateViolationError`, `BudgetExceededError`, or `SessionLimitExceededError` if policy is violated. See the [full SDK docs](https://nullspend.com/docs/sdks/javascript) for `TrackedFetchOptions` reference.
+Providers: `"openai"` and `"anthropic"`. Cost is calculated locally using the built-in pricing engine. With `enforcement: true`, the SDK checks model mandates, budget, and session limits before each request — throwing `MandateViolationError`, `BudgetExceededError`, or `SessionLimitExceededError` if policy is violated.
+
+When using the proxy, the SDK also intercepts proxy-side 429 denials and throws typed errors:
+
+| Error | Proxy code | When |
+|---|---|---|
+| `BudgetExceededError` | `budget_exceeded` | Key/user budget exhausted |
+| `VelocityExceededError` | `velocity_exceeded` | Spend rate exceeds velocity limit |
+| `SessionLimitExceededError` | `session_limit_exceeded` | Session spend cap reached |
+| `TagBudgetExceededError` | `tag_budget_exceeded` | Tag-level budget exhausted |
+
+All denial types fire the `onDenied` callback before throwing. See the [full SDK docs](https://nullspend.com/docs/sdks/javascript) for `TrackedFetchOptions` reference.
 
 ## Error handling
 
 ```typescript
-import { RejectedError, TimeoutError, NullSpendError, BudgetExceededError, MandateViolationError, SessionLimitExceededError } from "@nullspend/sdk";
+import {
+  RejectedError,
+  TimeoutError,
+  NullSpendError,
+  BudgetExceededError,
+  MandateViolationError,
+  SessionLimitExceededError,
+  VelocityExceededError,
+  TagBudgetExceededError,
+} from "@nullspend/sdk";
 
 try {
   await seam.proposeAndWait({ ... });
@@ -128,6 +148,10 @@ try {
     // Human rejected (or action expired)
   } else if (err instanceof TimeoutError) {
     // No decision within timeoutMs
+  } else if (err instanceof VelocityExceededError) {
+    // Spending too fast — err.retryAfterSeconds, err.limitMicrodollars
+  } else if (err instanceof TagBudgetExceededError) {
+    // Tag budget exhausted — err.tagKey, err.tagValue, err.remainingMicrodollars
   } else if (err instanceof NullSpendError) {
     // API error (err.statusCode has the HTTP status)
   }

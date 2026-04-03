@@ -161,6 +161,9 @@ export function buildTrackedFetch(
 
     // Proxy 429 interception: detect NullSpend denial codes from proxy
     if (response.status === 429 && enforcement) {
+      // Read Retry-After header before parsing body (used by velocity_exceeded)
+      const retryAfterHeader = parseInt(response.headers.get("Retry-After") ?? "", 10) || undefined;
+
       try {
         const cloned = response.clone();
         const json = await cloned.json() as Record<string, unknown>;
@@ -180,9 +183,24 @@ export function buildTrackedFetch(
           }
 
           if (code === "velocity_exceeded") {
-            const retryAfter = details?.retry_after_seconds as number | undefined;
-            safeDenied(onDenied, { type: "velocity", retryAfterSeconds: retryAfter }, onCostError);
-            throw new VelocityExceededError(retryAfter);
+            // Proxy sends details: { limitMicrodollars, windowSeconds, currentMicrodollars }
+            // Retry-after is in the Retry-After HTTP header, not in the JSON body
+            const velLimit = details?.limitMicrodollars as number | undefined;
+            const velWindow = details?.windowSeconds as number | undefined;
+            const velCurrent = details?.currentMicrodollars as number | undefined;
+            safeDenied(onDenied, {
+              type: "velocity",
+              retryAfterSeconds: retryAfterHeader,
+              limit: velLimit,
+              window: velWindow,
+              current: velCurrent,
+            }, onCostError);
+            throw new VelocityExceededError({
+              retryAfterSeconds: retryAfterHeader,
+              limit: velLimit,
+              window: velWindow,
+              current: velCurrent,
+            });
           }
 
           if (code === "session_limit_exceeded") {
@@ -193,12 +211,14 @@ export function buildTrackedFetch(
           }
 
           if (code === "tag_budget_exceeded") {
+            // Proxy sends budget_spend_microdollars, not remaining — compute remaining
             const tagKey = details?.tag_key as string | undefined;
             const tagValue = details?.tag_value as string | undefined;
             const limit = details?.budget_limit_microdollars as number | undefined;
-            const remaining = details?.remaining_microdollars as number | undefined;
-            safeDenied(onDenied, { type: "tag_budget", tagKey, tagValue, remaining, limit }, onCostError);
-            throw new TagBudgetExceededError({ tagKey, tagValue, remaining, limit });
+            const spend = details?.budget_spend_microdollars as number | undefined;
+            const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
+            safeDenied(onDenied, { type: "tag_budget", tagKey, tagValue, remaining, limit, spend }, onCostError);
+            throw new TagBudgetExceededError({ tagKey, tagValue, remaining, limit, spend });
           }
         }
       } catch (err) {

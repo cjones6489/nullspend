@@ -1648,7 +1648,11 @@ describe("buildTrackedFetch", () => {
       expect(response.status).toBe(429);
     });
 
-    it("proxy 429 with velocity_exceeded throws VelocityExceededError", async () => {
+    // Velocity — uses actual proxy response shape:
+    // details: { limitMicrodollars, windowSeconds, currentMicrodollars }
+    // Retry-After: HTTP header (not in JSON body)
+
+    it("proxy 429 with velocity_exceeded reads Retry-After header and details", async () => {
       const policyCache = createMockPolicyCache();
 
       const trackedFetch = buildTrackedFetch(
@@ -1658,13 +1662,27 @@ describe("buildTrackedFetch", () => {
         policyCache,
       );
 
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "velocity_exceeded",
-          message: "Spending too fast",
-          details: { retry_after_seconds: 30 },
+      // Actual proxy response shape from shared.ts:101-117
+      mockFetch.mockResolvedValue(new Response(
+        JSON.stringify({
+          error: {
+            code: "velocity_exceeded",
+            message: "Request blocked: spending rate exceeds velocity limit. Retry after cooldown.",
+            details: {
+              limitMicrodollars: 500_000,
+              windowSeconds: 60,
+              currentMicrodollars: 750_000,
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "30",
+          },
         },
-      }, 429));
+      ));
 
       try {
         await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
@@ -1673,10 +1691,13 @@ describe("buildTrackedFetch", () => {
         expect(err).toBeInstanceOf(VelocityExceededError);
         const velErr = err as InstanceType<typeof VelocityExceededError>;
         expect(velErr.retryAfterSeconds).toBe(30);
+        expect(velErr.limitMicrodollars).toBe(500_000);
+        expect(velErr.windowSeconds).toBe(60);
+        expect(velErr.currentMicrodollars).toBe(750_000);
       }
     });
 
-    it("proxy 429 velocity_exceeded fires onDenied with type velocity", async () => {
+    it("proxy 429 velocity_exceeded fires onDenied with full velocity context", async () => {
       const policyCache = createMockPolicyCache();
       const denied: DenialReason[] = [];
 
@@ -1687,18 +1708,78 @@ describe("buildTrackedFetch", () => {
         policyCache,
       );
 
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "velocity_exceeded",
-          message: "Spending too fast",
-          details: { retry_after_seconds: 15 },
+      mockFetch.mockResolvedValue(new Response(
+        JSON.stringify({
+          error: {
+            code: "velocity_exceeded",
+            message: "Spending too fast",
+            details: {
+              limitMicrodollars: 200_000,
+              windowSeconds: 120,
+              currentMicrodollars: 300_000,
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "15",
+          },
         },
-      }, 429));
+      ));
 
       await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
 
       expect(denied).toHaveLength(1);
-      expect(denied[0]).toEqual({ type: "velocity", retryAfterSeconds: 15 });
+      expect(denied[0]).toEqual({
+        type: "velocity",
+        retryAfterSeconds: 15,
+        limit: 200_000,
+        window: 120,
+        current: 300_000,
+      });
+    });
+
+    it("proxy 429 velocity_exceeded with null details still reads Retry-After", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true },
+        queueCost,
+        policyCache,
+      );
+
+      // Proxy sends details: null when velocityDetails is undefined
+      mockFetch.mockResolvedValue(new Response(
+        JSON.stringify({
+          error: {
+            code: "velocity_exceeded",
+            message: "Velocity limit exceeded",
+            details: null,
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "60",
+          },
+        },
+      ));
+
+      try {
+        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(VelocityExceededError);
+        const velErr = err as InstanceType<typeof VelocityExceededError>;
+        expect(velErr.retryAfterSeconds).toBe(60);
+        expect(velErr.limitMicrodollars).toBeUndefined();
+        expect(velErr.windowSeconds).toBeUndefined();
+        expect(velErr.currentMicrodollars).toBeUndefined();
+      }
     });
 
     it("proxy 429 with session_limit_exceeded throws SessionLimitExceededError", async () => {
@@ -1711,11 +1792,13 @@ describe("buildTrackedFetch", () => {
         policyCache,
       );
 
+      // Actual proxy response shape from shared.ts:133-152
       mockFetch.mockResolvedValue(mockFetchJsonResponse({
         error: {
           code: "session_limit_exceeded",
-          message: "Session limit reached",
+          message: "Request blocked: session spend exceeds session limit. Start a new session.",
           details: {
+            session_id: "task-042",
             session_spend_microdollars: 950_000,
             session_limit_microdollars: 1_000_000,
           },
@@ -1733,7 +1816,11 @@ describe("buildTrackedFetch", () => {
       }
     });
 
-    it("proxy 429 with tag_budget_exceeded throws TagBudgetExceededError", async () => {
+    // Tag budget — uses actual proxy response shape:
+    // details: { tag_key, tag_value, budget_limit_microdollars, budget_spend_microdollars }
+    // remaining is computed (limit - spend), NOT sent by proxy
+
+    it("proxy 429 with tag_budget_exceeded computes remaining from limit - spend", async () => {
       const policyCache = createMockPolicyCache();
 
       const trackedFetch = buildTrackedFetch(
@@ -1743,15 +1830,16 @@ describe("buildTrackedFetch", () => {
         policyCache,
       );
 
+      // Actual proxy response shape from shared.ts:169-189
       mockFetch.mockResolvedValue(mockFetchJsonResponse({
         error: {
           code: "tag_budget_exceeded",
-          message: "Tag budget exceeded",
+          message: "Request blocked: estimated cost exceeds tag budget limit.",
           details: {
             tag_key: "env",
             tag_value: "prod",
             budget_limit_microdollars: 5_000_000,
-            remaining_microdollars: 0,
+            budget_spend_microdollars: 4_800_000,
           },
         },
       }, 429));
@@ -1765,11 +1853,13 @@ describe("buildTrackedFetch", () => {
         expect(tagErr.tagKey).toBe("env");
         expect(tagErr.tagValue).toBe("prod");
         expect(tagErr.limitMicrodollars).toBe(5_000_000);
-        expect(tagErr.remainingMicrodollars).toBe(0);
+        expect(tagErr.spendMicrodollars).toBe(4_800_000);
+        // remaining = limit - spend = 5M - 4.8M = 200K
+        expect(tagErr.remainingMicrodollars).toBe(200_000);
       }
     });
 
-    it("proxy 429 tag_budget_exceeded fires onDenied with type tag_budget", async () => {
+    it("proxy 429 tag_budget_exceeded fires onDenied with computed remaining and spend", async () => {
       const policyCache = createMockPolicyCache();
       const denied: DenialReason[] = [];
 
@@ -1780,6 +1870,7 @@ describe("buildTrackedFetch", () => {
         policyCache,
       );
 
+      // Fully exhausted tag budget
       mockFetch.mockResolvedValue(mockFetchJsonResponse({
         error: {
           code: "tag_budget_exceeded",
@@ -1788,7 +1879,7 @@ describe("buildTrackedFetch", () => {
             tag_key: "customer",
             tag_value: "acme",
             budget_limit_microdollars: 1_000_000,
-            remaining_microdollars: 0,
+            budget_spend_microdollars: 1_200_000,
           },
         },
       }, 429));
@@ -1800,9 +1891,47 @@ describe("buildTrackedFetch", () => {
         type: "tag_budget",
         tagKey: "customer",
         tagValue: "acme",
-        remaining: 0,
+        remaining: 0, // clamped: max(0, 1M - 1.2M) = 0
         limit: 1_000_000,
+        spend: 1_200_000,
       });
+    });
+
+    it("proxy 429 with rate_limited code passes through (not a NullSpend denial)", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true },
+        queueCost,
+        policyCache,
+      );
+
+      // Proxy IP/key rate limit — different from budget denials
+      mockFetch.mockResolvedValue(new Response(
+        JSON.stringify({
+          error: {
+            code: "rate_limited",
+            message: "Too many requests",
+            details: null,
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "60",
+          },
+        },
+      ));
+
+      const response = await trackedFetch(OPENAI_URL, {
+        method: "POST",
+        body: makeOpenAIBody(),
+      });
+
+      // rate_limited is not a budget/velocity/session/tag denial — passes through
+      expect(response.status).toBe(429);
     });
   });
 });

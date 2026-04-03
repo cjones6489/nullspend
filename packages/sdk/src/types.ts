@@ -229,8 +229,8 @@ export type DenialReason =
   | { type: "budget"; remaining: number; entityType?: string; entityId?: string; limit?: number; spend?: number }
   | { type: "mandate"; mandate: string; requested: string; allowed: string[] }
   | { type: "session_limit"; sessionSpend: number; sessionLimit: number }
-  | { type: "velocity"; retryAfterSeconds?: number }
-  | { type: "tag_budget"; tagKey?: string; tagValue?: string; remaining?: number; limit?: number };
+  | { type: "velocity"; retryAfterSeconds?: number; limit?: number; window?: number; current?: number }
+  | { type: "tag_budget"; tagKey?: string; tagValue?: string; remaining?: number; limit?: number; spend?: number };
 
 export interface ReportCostResponse {
   id: string;
