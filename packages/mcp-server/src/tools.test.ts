@@ -99,11 +99,282 @@ describe("registerTools", () => {
     mockGetAction = vi.fn();
   });
 
-  it("registers propose_action and check_action", () => {
+  it("registers all tools including budget negotiation", () => {
     const { tools } = captureTools(TEST_CONFIG);
     const names = tools.map((t) => t.name);
+    expect(names).toContain("request_budget_increase");
+    expect(names).toContain("check_budget");
     expect(names).toContain("propose_action");
     expect(names).toContain("check_action");
+    expect(names).toContain("get_budgets");
+    expect(names).toContain("get_spend_summary");
+    expect(names).toContain("get_recent_costs");
+  });
+
+  // -------------------------------------------------------------------------
+  // request_budget_increase
+  // -------------------------------------------------------------------------
+  describe("request_budget_increase", () => {
+    it("creates budget_increase action with dollar-to-microdollar conversion", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-1", status: "pending" });
+      mockGetAction.mockResolvedValue(
+        mockAction({ id: "act-bi-1", actionType: "budget_increase", status: "approved", approvedAt: "2026-01-01T00:01:00Z" }),
+      );
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      const result = await tool.cb({
+        amount: 5,
+        reason: "Need more budget to finish processing",
+        timeoutSeconds: 5,
+      });
+
+      const { data, isError } = parseResult(result);
+      expect(isError).toBe(false);
+      expect(data.approved).toBe(true);
+      expect(data.requestedDollars).toBe(5);
+      expect(data.message).toContain("$5");
+      expect(data.message).toContain("approved");
+
+      // Verify microdollar conversion
+      expect(mockCreateAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionType: "budget_increase",
+          payload: expect.objectContaining({
+            requestedAmountMicrodollars: 5_000_000,
+          }),
+        }),
+      );
+    });
+
+    it("returns rejected status when human rejects", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-2", status: "pending" });
+      mockGetAction.mockResolvedValue(
+        mockAction({ id: "act-bi-2", actionType: "budget_increase", status: "rejected", rejectedAt: "2026-01-01T00:01:00Z" }),
+      );
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      const result = await tool.cb({
+        amount: 10,
+        reason: "Exploration task",
+        timeoutSeconds: 5,
+      });
+
+      const { data, isError } = parseResult(result);
+      expect(isError).toBe(false);
+      expect(data.approved).toBe(false);
+      expect(data.rejected).toBe(true);
+      expect(data.status).toBe("rejected");
+    });
+
+    it("returns timeout when no decision within deadline", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-3", status: "pending" });
+      mockGetAction.mockResolvedValue(mockAction({ status: "pending" }));
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      const result = await tool.cb({
+        amount: 1,
+        reason: "Quick task",
+        timeoutSeconds: 0,
+      });
+
+      const { data, isError } = parseResult(result);
+      expect(isError).toBe(false);
+      expect(data.timedOut).toBe(true);
+      expect(data.approved).toBe(false);
+      expect(data.message).toContain("check_action");
+    });
+
+    it("passes optional context fields to payload", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-4", status: "pending" });
+      mockGetAction.mockResolvedValue(
+        mockAction({ id: "act-bi-4", status: "approved", approvedAt: "2026-01-01T00:01:00Z" }),
+      );
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      await tool.cb({
+        amount: 3.50,
+        reason: "Finishing research",
+        entityType: "user",
+        entityId: "user-42",
+        currentLimitDollars: 10,
+        currentSpendDollars: 9.50,
+        agentId: "research-bot",
+        timeoutSeconds: 5,
+      });
+
+      expect(mockCreateAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: "research-bot",
+          payload: expect.objectContaining({
+            entityType: "user",
+            entityId: "user-42",
+            requestedAmountMicrodollars: 3_500_000,
+            currentLimitMicrodollars: 10_000_000,
+            currentSpendMicrodollars: 9_500_000,
+          }),
+        }),
+      );
+    });
+
+    it("stamps MCP metadata on the action", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-5", status: "pending" });
+      mockGetAction.mockResolvedValue(
+        mockAction({ id: "act-bi-5", status: "approved", approvedAt: "2026-01-01T00:01:00Z" }),
+      );
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      await tool.cb({ amount: 2, reason: "More budget please", timeoutSeconds: 5 });
+
+      expect(mockCreateAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            sourceFramework: "mcp",
+            transport: "stdio",
+            summary: "Budget increase: +$2 — More budget please",
+          }),
+        }),
+      );
+    });
+
+    it("returns error when SDK throws", async () => {
+      mockCreateAction.mockRejectedValue(new Error("connection refused"));
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      const result = await tool.cb({ amount: 5, reason: "test" });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("connection refused");
+    });
+
+    it("uses config.agentId when agentId not provided", async () => {
+      mockCreateAction.mockResolvedValue({ id: "act-bi-6", status: "pending" });
+      mockGetAction.mockResolvedValue(
+        mockAction({ id: "act-bi-6", status: "approved", approvedAt: "2026-01-01T00:01:00Z" }),
+      );
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "request_budget_increase");
+
+      await tool.cb({ amount: 1, reason: "test", timeoutSeconds: 5 });
+
+      expect(mockCreateAction).toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: "test-agent" }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // check_budget
+  // -------------------------------------------------------------------------
+  describe("check_budget", () => {
+    it("returns budget status with most constrained entity", async () => {
+      mockListBudgets.mockResolvedValue({
+        data: [
+          {
+            id: "b-1", entityType: "api_key", entityId: "key-1",
+            maxBudgetMicrodollars: 10_000_000, spendMicrodollars: 9_500_000,
+            policy: "strict_block", resetInterval: "monthly",
+          },
+          {
+            id: "b-2", entityType: "user", entityId: "user-1",
+            maxBudgetMicrodollars: 50_000_000, spendMicrodollars: 5_000_000,
+            policy: "warn", resetInterval: "monthly",
+          },
+        ],
+      });
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "check_budget");
+
+      const result = await tool.cb({});
+      const { data, isError } = parseResult(result);
+
+      expect(isError).toBe(false);
+      expect(data.hasBudgets).toBe(true);
+      expect(data.budgets).toHaveLength(2);
+      expect(data.mostConstrained.entityType).toBe("api_key");
+      expect(data.mostConstrained.remainingDollars).toBe(0.5);
+      expect(data.mostConstrained.willBlock).toBe(false);
+      expect(data.message).toContain("$0.50");
+    });
+
+    it("detects exhausted strict_block budget", async () => {
+      mockListBudgets.mockResolvedValue({
+        data: [{
+          id: "b-1", entityType: "api_key", entityId: "key-1",
+          maxBudgetMicrodollars: 5_000_000, spendMicrodollars: 5_500_000,
+          policy: "strict_block", resetInterval: "monthly",
+        }],
+      });
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "check_budget");
+
+      const result = await tool.cb({});
+      const { data } = parseResult(result);
+
+      expect(data.budgets[0].willBlock).toBe(true);
+      expect(data.budgets[0].remainingDollars).toBe(0);
+      expect(data.mostConstrained.willBlock).toBe(true);
+      expect(data.message).toContain("exhausted");
+      expect(data.message).toContain("request_budget_increase");
+    });
+
+    it("returns empty state when no budgets configured", async () => {
+      mockListBudgets.mockResolvedValue({ data: [] });
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "check_budget");
+
+      const result = await tool.cb({});
+      const { data } = parseResult(result);
+
+      expect(data.hasBudgets).toBe(false);
+      expect(data.budgets).toEqual([]);
+      expect(data.message).toContain("No budgets configured");
+    });
+
+    it("warn policy does not set willBlock", async () => {
+      mockListBudgets.mockResolvedValue({
+        data: [{
+          id: "b-1", entityType: "user", entityId: "user-1",
+          maxBudgetMicrodollars: 1_000_000, spendMicrodollars: 2_000_000,
+          policy: "warn", resetInterval: "monthly",
+        }],
+      });
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "check_budget");
+
+      const result = await tool.cb({});
+      const { data } = parseResult(result);
+
+      expect(data.budgets[0].willBlock).toBe(false);
+      expect(data.budgets[0].remainingDollars).toBe(0);
+    });
+
+    it("returns error on API failure", async () => {
+      mockListBudgets.mockRejectedValue(new Error("unauthorized"));
+
+      const { tools } = captureTools(TEST_CONFIG);
+      const tool = getToolByName(tools, "check_budget");
+
+      const result = await tool.cb({});
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("unauthorized");
+    });
   });
 
   describe("propose_action", () => {

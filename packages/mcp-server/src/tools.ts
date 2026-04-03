@@ -35,11 +35,181 @@ export function registerTools(
     apiKey: config.nullspendApiKey,
   });
 
+  registerRequestBudgetIncrease(server, sdk, config, shutdownSignal);
+  registerCheckBudget(server, sdk);
   registerProposeAction(server, sdk, config, shutdownSignal);
   registerCheckAction(server, sdk);
   registerGetBudgets(server, sdk);
   registerGetSpendSummary(server, sdk);
   registerGetRecentCosts(server, sdk);
+}
+
+// ---------------------------------------------------------------------------
+// Budget negotiation tools
+// ---------------------------------------------------------------------------
+
+function registerRequestBudgetIncrease(
+  server: McpServer,
+  sdk: NullSpend,
+  config: McpServerConfig,
+  shutdownSignal: AbortSignal,
+) {
+  server.tool(
+    "request_budget_increase",
+    "Request a budget increase from a human approver. " +
+      "The request is sent to Slack (if configured) or the NullSpend dashboard. " +
+      "Blocks until approved, rejected, or timed out.",
+    {
+      amount: z.number().positive().describe("Amount to request in dollars (e.g. 5 for $5)"),
+      reason: z.string().min(1).describe("Why you need more budget — shown to the human approver"),
+      entityType: z.string().optional().describe("Budget entity type (e.g. api_key, user). Default: api_key"),
+      entityId: z.string().optional().describe("Budget entity ID. Default: inferred from API key"),
+      currentLimitDollars: z.number().optional().describe("Current budget limit in dollars (for context)"),
+      currentSpendDollars: z.number().optional().describe("Current spend in dollars (for context)"),
+      agentId: z.string().optional().describe("Agent identifier"),
+      timeoutSeconds: z.number().optional().describe(
+        `Seconds to wait for a decision (default: ${DEFAULT_TIMEOUT_SECONDS})`,
+      ),
+    },
+    async (params) => {
+      try {
+        const agentId = params.agentId ?? config.agentId;
+        const timeoutMs = (params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS) * 1_000;
+        const amountMicrodollars = Math.round(params.amount * 1_000_000);
+
+        const { id } = await sdk.createAction({
+          agentId,
+          actionType: "budget_increase",
+          payload: {
+            entityType: params.entityType ?? "api_key",
+            entityId: params.entityId ?? "unknown",
+            requestedAmountMicrodollars: amountMicrodollars,
+            currentLimitMicrodollars: Math.round((params.currentLimitDollars ?? 0) * 1_000_000),
+            currentSpendMicrodollars: Math.round((params.currentSpendDollars ?? 0) * 1_000_000),
+            reason: params.reason,
+          },
+          metadata: {
+            ...MCP_METADATA,
+            summary: `Budget increase: +$${params.amount} — ${params.reason}`,
+          },
+          expiresInSeconds: params.timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS,
+        });
+
+        try {
+          const action = await waitWithAbort(sdk, id, timeoutMs, shutdownSignal);
+
+          if (action.status === "approved") {
+            return successResult({
+              actionId: id,
+              status: "approved",
+              approved: true,
+              rejected: false,
+              requestedDollars: params.amount,
+              message: `Budget increase of $${params.amount} was approved. You may now retry your request.`,
+            });
+          }
+
+          if (action.status === "rejected") {
+            return successResult({
+              actionId: id,
+              status: "rejected",
+              approved: false,
+              rejected: true,
+              requestedDollars: params.amount,
+              message: `Budget increase of $${params.amount} was rejected. Reason: ${params.reason}`,
+            });
+          }
+
+          return successResult({
+            actionId: id,
+            status: action.status,
+            approved: false,
+            rejected: false,
+            message: `Budget increase request ${id} is ${action.status}.`,
+          });
+        } catch (err) {
+          if (err instanceof TimeoutError) {
+            return successResult({
+              actionId: id,
+              status: "pending",
+              approved: false,
+              rejected: false,
+              timedOut: true,
+              message: `Timed out waiting for budget increase approval. Use check_action with ID ${id} to poll later.`,
+            });
+          }
+          throw err;
+        }
+      } catch (err) {
+        return errorResult(classifiedError(err));
+      }
+    },
+  );
+}
+
+function registerCheckBudget(server: McpServer, sdk: NullSpend) {
+  server.tool(
+    "check_budget",
+    "Check your current budget status before making an expensive request. " +
+      "Returns remaining budget, spend, and policy for each budget entity.",
+    {},
+    async () => {
+      try {
+        const { data: budgets } = await sdk.listBudgets();
+
+        if (budgets.length === 0) {
+          return successResult({
+            hasBudgets: false,
+            budgets: [],
+            message: "No budgets configured. All requests are allowed without spending limits.",
+          });
+        }
+
+        const formatted = budgets.map((b) => {
+          const limit = b.maxBudgetMicrodollars / 1_000_000;
+          const spend = b.spendMicrodollars / 1_000_000;
+          const remaining = Math.max(0, limit - spend);
+          const percentUsed = b.maxBudgetMicrodollars > 0
+            ? Math.min(100, Math.round((b.spendMicrodollars / b.maxBudgetMicrodollars) * 100))
+            : 0;
+
+          return {
+            entityType: b.entityType,
+            entityId: b.entityId,
+            limitDollars: limit,
+            spendDollars: spend,
+            remainingDollars: remaining,
+            percentUsed,
+            policy: b.policy,
+            resetInterval: b.resetInterval,
+            willBlock: b.policy === "strict_block" && remaining <= 0,
+          };
+        });
+
+        const mostConstrained = formatted.reduce((min, b) =>
+          b.remainingDollars < min.remainingDollars ? b : min,
+        );
+
+        return successResult({
+          hasBudgets: true,
+          budgets: formatted,
+          mostConstrained: {
+            entityType: mostConstrained.entityType,
+            entityId: mostConstrained.entityId,
+            remainingDollars: mostConstrained.remainingDollars,
+            willBlock: mostConstrained.willBlock,
+          },
+          message: mostConstrained.willBlock
+            ? `Budget exhausted for ${mostConstrained.entityType}/${mostConstrained.entityId}. ` +
+              `Use request_budget_increase to ask for more.`
+            : `$${mostConstrained.remainingDollars.toFixed(2)} remaining on most constrained budget ` +
+              `(${mostConstrained.entityType}/${mostConstrained.entityId}).`,
+        });
+      } catch (err) {
+        return errorResult(classifiedError(err));
+      }
+    },
+  );
 }
 
 function registerProposeAction(
