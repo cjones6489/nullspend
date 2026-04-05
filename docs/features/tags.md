@@ -149,9 +149,22 @@ You can create budgets scoped to a specific tag key-value pair. When spend for t
 
 Tag budgets support the same features as user and API key budgets: reset intervals, threshold alerts, and velocity limits. See [Budgets](budgets.md) for configuration details.
 
+## Reserved Tag: `customer`
+
+The `customer` tag has special meaning in NullSpend. When you tag requests with `customer=acme-corp`, the [Margins](margins.md) feature can match that tag to a Stripe customer and calculate per-customer profitability.
+
+```
+X-NullSpend-Tags: {"customer": "acme-corp", "env": "production"}
+```
+
+The value can be anything you use to identify the customer: a slug, a Stripe customer ID (`cus_xxx`), or a company name. NullSpend auto-matches Stripe customers to these tag values during revenue sync.
+
+You can also create a tag budget for the `customer` key to enforce per-customer spending limits.
+
 ## Related
 
 - [Custom Headers Reference](../api-reference/custom-headers.md#x-nullspend-tags) — header format and validation
 - [Cost Tracking](cost-tracking.md) — how costs are calculated
 - [Budgets](budgets.md) — enforce spending limits including per-tag budgets
+- [Margins](margins.md) — per-customer profitability using the `customer` tag
 - [Webhook Event Types](../webhooks/event-types.md) — tags in webhook payloads

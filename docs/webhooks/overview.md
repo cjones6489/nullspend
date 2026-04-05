@@ -14,7 +14,7 @@ Webhooks send real-time HTTP POST notifications to your server when events happe
 
 ## Event Types
 
-NullSpend emits 15 event types:
+NullSpend emits 16 event types:
 
 | Event | Fires When |
 |---|---|
@@ -28,6 +28,7 @@ NullSpend emits 15 event types:
 | `velocity.recovered` | Velocity cooldown expired — circuit breaker closed |
 | `session.limit_exceeded` | Session spend cap exceeded |
 | `tag_budget.exceeded` | Tag-level budget exceeded |
+| `margin.threshold_crossed` | Customer margin worsened to a lower health tier |
 | `action.created` | HITL approval action created |
 | `action.approved` | HITL action approved |
 | `action.rejected` | HITL action rejected |
