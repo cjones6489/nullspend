@@ -84,6 +84,13 @@ See @TESTING.md for the full test map (~230 files, ~3,940+ tests across 4 tiers)
 - Dashboard tests: co-located with source files
 - When adding a new model to pricing-data.json, update the `-all-models.test.ts` files too
 
+## Design System
+
+Always read DESIGN.md before making any visual or UI decisions.
+All font choices, colors, spacing, and aesthetic direction are defined there.
+Do not deviate without explicit user approval.
+In QA mode, flag any code that doesn't match DESIGN.md.
+
 ## Compact instructions
 
 When compacting, preserve: recent code changes, test results, architectural decisions made during this session, and any user preferences expressed. Discard: verbose file reads, exploration output, debugging traces, and old search results.
