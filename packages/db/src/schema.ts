@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -379,3 +380,66 @@ export const sessions = pgTable("sessions", {
 ]);
 
 export type SessionRow = typeof sessions.$inferSelect;
+
+// ── Margins (Stripe connections, customer revenue, mappings) ─────────
+
+export const STRIPE_CONNECTION_STATUSES = ["active", "error", "revoked"] as const;
+export type StripeConnectionStatus = (typeof STRIPE_CONNECTION_STATUSES)[number];
+
+export const stripeConnections = pgTable("stripe_connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  encryptedKey: text("encrypted_key").notNull(),
+  keyPrefix: text("key_prefix").notNull(),
+  status: text("status").$type<StripeConnectionStatus>().notNull().default("active"),
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("stripe_connections_org_id_idx").on(table.orgId),
+]);
+
+export type StripeConnectionRow = typeof stripeConnections.$inferSelect;
+export type NewStripeConnectionRow = typeof stripeConnections.$inferInsert;
+
+export const customerRevenue = pgTable("customer_revenue", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  stripeCustomerId: text("stripe_customer_id").notNull(),
+  customerName: text("customer_name"),
+  customerEmail: text("customer_email"),
+  avatarUrl: text("avatar_url"),
+  periodStart: timestamp("period_start", { withTimezone: true, mode: "date" }).notNull(),
+  amountMicrodollars: bigint("amount_microdollars", { mode: "number" }).notNull(),
+  invoiceCount: integer("invoice_count").notNull().default(1),
+  currency: text("currency").notNull().default("usd"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("customer_revenue_org_customer_period_idx").on(table.orgId, table.stripeCustomerId, table.periodStart),
+  index("customer_revenue_org_period_idx").on(table.orgId, table.periodStart),
+]);
+
+export type CustomerRevenueRow = typeof customerRevenue.$inferSelect;
+export type NewCustomerRevenueRow = typeof customerRevenue.$inferInsert;
+
+export const MATCH_TYPES = ["auto", "manual"] as const;
+export type MatchType = (typeof MATCH_TYPES)[number];
+
+export const customerMappings = pgTable("customer_mappings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  stripeCustomerId: text("stripe_customer_id").notNull(),
+  tagKey: text("tag_key").notNull().default("customer"),
+  tagValue: text("tag_value").notNull(),
+  matchType: text("match_type").$type<MatchType>().notNull(),
+  confidence: real("confidence"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("customer_mappings_org_stripe_tag_idx").on(table.orgId, table.stripeCustomerId, table.tagKey),
+  uniqueIndex("customer_mappings_org_tag_value_idx").on(table.orgId, table.tagKey, table.tagValue),
+]);
+
+export type CustomerMappingRow = typeof customerMappings.$inferSelect;
+export type NewCustomerMappingRow = typeof customerMappings.$inferInsert;

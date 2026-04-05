@@ -28,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiKeys } from "@/lib/queries/api-keys";
 import { useBudgets } from "@/lib/queries/budgets";
 import { useCostSummary } from "@/lib/queries/cost-event-summary";
+import { useMarginTable } from "@/lib/queries/margins";
 import { formatMicrodollars, formatChartDollars } from "@/lib/utils/format";
 
 const PROXY_URL = process.env.NEXT_PUBLIC_NULLSPEND_PROXY_URL ?? "https://proxy.nullspend.com/v1";
@@ -83,6 +84,13 @@ export default function HomePage() {
   const { data: summaryData, isLoading: summaryLoading } = useCostSummary("7d");
   const { data: budgetsData, isLoading: budgetsLoading } = useBudgets();
 
+  // Margin badge — current month
+  const marginPeriod = (() => {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  })();
+  const { data: marginData } = useMarginTable(marginPeriod);
+
   const keys = keysData?.data ?? [];
   const totals = summaryData?.totals;
   const daily = summaryData?.daily;
@@ -131,6 +139,45 @@ export default function HomePage() {
             href="/app/budgets"
           />
         </div>
+      )}
+
+      {/* Margin health badge */}
+      {marginData && marginData.summary.syncStatus !== "disconnected" && (
+        <Link href="/app/margins">
+          <Card className="border-border/50 transition-colors hover:bg-accent/40">
+            <CardContent className="flex items-center justify-between p-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-md bg-muted p-2">
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="font-mono text-lg font-semibold tabular-nums text-foreground">
+                    {marginData.summary.blendedMarginPercent.toFixed(0)}% margin
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {marginData.summary.criticalCount} critical, {marginData.summary.atRiskCount} at risk
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs text-muted-foreground">View margins →</span>
+            </CardContent>
+          </Card>
+        </Link>
+      )}
+      {marginData && marginData.summary.syncStatus === "disconnected" && hasData && (
+        <Link href="/app/margins">
+          <Card className="border-border/50 border-dashed transition-colors hover:bg-accent/40">
+            <CardContent className="flex items-center gap-3 p-4">
+              <div className="rounded-md bg-muted p-2">
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">Connect Stripe</p>
+                <p className="text-[11px] text-muted-foreground">See customer margins and profitability</p>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       )}
 
       {/* Spend chart */}

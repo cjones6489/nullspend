@@ -85,6 +85,13 @@
       "when": 1773524441065,
       "tag": "0011_late_devos",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1775361930461,
+      "tag": "0012_clammy_mantis",
+      "breakpoints": true
     }
   ]
 }

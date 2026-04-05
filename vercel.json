@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/stripe/revenue-sync",
+      "schedule": "0 */2 * * *"
+    }
+  ]
+}
