@@ -122,11 +122,11 @@ export async function getMarginTable(
   // Build revenue lookup: stripeCustomerId -> period -> amount
   const revenueLookup = new Map<string, Map<string, { amount: number; name: string | null; avatar: string | null }>>();
   for (const row of revenueRows) {
-    const period = formatPeriod(row.periodStart);
+    const rowPeriod = formatPeriod(row.periodStart);
     if (!revenueLookup.has(row.stripeCustomerId)) {
       revenueLookup.set(row.stripeCustomerId, new Map());
     }
-    revenueLookup.get(row.stripeCustomerId)!.set(period, {
+    revenueLookup.get(row.stripeCustomerId)!.set(rowPeriod, {
       amount: row.amountMicrodollars,
       name: row.customerName,
       avatar: row.avatarUrl,
@@ -208,6 +208,9 @@ export async function getMarginTable(
     const budgetSuggestionMicrodollars = healthTier === "critical" && periodRevenue > 0
       ? Math.round(periodRevenue * 0.5) // maxBudget = revenue * (1 - 0.5)
       : null;
+
+    // Skip ghost rows — mapped customers with no data in this period
+    if (periodRevenue === 0 && periodCost === 0) continue;
 
     totalRevenue += periodRevenue;
     totalCost += periodCost;

@@ -9,8 +9,12 @@ import {
   ArrowUp,
   ArrowUpDown,
   Check,
+  ChevronDown,
+  ChevronUp,
   RefreshCw,
+  Trash2,
   TrendingDown,
+  X,
   XCircle,
 } from "lucide-react";
 import {
@@ -42,7 +46,15 @@ import {
   useMarginTable,
   useSyncNow,
   useConnectStripe,
+  useUnmatchedCustomers,
+  useCustomerMappings,
+  useCreateMapping,
+  useDeleteMapping,
   type HealthTier,
+  type UnmatchedStripeCustomer,
+  type UnmappedTagValue,
+  type PendingAutoMatch,
+  type CustomerMappingResponse,
 } from "@/lib/queries/margins";
 import { formatMicrodollars } from "@/lib/utils/format";
 import { cn } from "@/lib/utils";
@@ -181,9 +193,19 @@ export default function MarginsPage() {
     if (!stripeKey.trim()) return;
     connectStripe.mutate(stripeKey.trim(), {
       onSuccess: () => {
-        toast.success("Stripe connected — syncing now...");
+        toast.success("Stripe connected");
         setStripeKey("");
-        syncNow.mutate(undefined, { onSuccess: () => refetch() });
+        // Refetch connection status first so the Sync Now button appears,
+        // then trigger sync so the user sees the spinner.
+        refetch().then(() => {
+          syncNow.mutate(undefined, {
+            onSuccess: () => {
+              toast.success("Initial sync complete");
+              refetch();
+            },
+            onError: () => toast.error("Initial sync failed — try Sync Now"),
+          });
+        });
       },
       onError: (err) => toast.error(err.message),
     });
@@ -282,6 +304,11 @@ export default function MarginsPage() {
             ? "Your Stripe key was revoked. Disconnect and reconnect with a new restricted key."
             : `Sync error: ${summary.lastSyncAt ? "Last successful sync " + new Date(summary.lastSyncAt).toLocaleString() : "Never synced successfully"}.`}
         </div>
+      )}
+
+      {/* Customer Mapping Management — visible when Stripe is connected and healthy */}
+      {!isDisconnected && !isLoading && summary?.syncStatus !== "error" && summary?.syncStatus !== "revoked" && (
+        <CustomerMappingsSection />
       )}
 
       {isEmpty && !isDisconnected && (
@@ -425,9 +452,13 @@ export default function MarginsPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
-                      {(c.customerName ?? c.tagValue).charAt(0).toUpperCase()}
-                    </div>
+                    {c.avatarUrl ? (
+                      <img src={c.avatarUrl} alt="" className="h-8 w-8 rounded-full" />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+                        {(c.customerName ?? c.tagValue).charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm font-medium text-foreground">{c.customerName ?? c.tagValue}</p>
                       <HealthBadge tier={c.healthTier} />
@@ -467,6 +498,260 @@ export default function MarginsPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Customer Mapping Management ─────────────────────────────────────
+
+function CustomerMappingsSection() {
+  const [open, setOpen] = useState(true);
+  const { data: unmatched, isLoading, isError } = useUnmatchedCustomers();
+  const { data: mappings } = useCustomerMappings();
+  const createMapping = useCreateMapping();
+  const deleteMapping = useDeleteMapping();
+
+  const customerNames = unmatched?.customerNames ?? {};
+  const confirmedMappings = mappings?.filter((m) => m.matchType === "manual" && m.tagKey === "customer") ?? [];
+  const isMutating = createMapping.isPending || deleteMapping.isPending;
+
+  const hasPending = (unmatched?.pendingAutoMatches.length ?? 0) > 0;
+  const hasUnmatched = (unmatched?.unmatchedStripeCustomers.length ?? 0) > 0;
+  const hasConfirmed = confirmedMappings.length > 0;
+  const totalCount =
+    (unmatched?.pendingAutoMatches.length ?? 0) +
+    (unmatched?.unmatchedStripeCustomers.length ?? 0) +
+    confirmedMappings.length;
+
+  if (isLoading) return null;
+  // If unmatched endpoint errors but we have confirmed mappings, still show them
+  if (isError && !hasConfirmed) {
+    return (
+      <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-400">
+        Failed to load customer mapping data.
+      </div>
+    );
+  }
+  if (!hasPending && !hasUnmatched && !hasConfirmed) return null;
+
+  const handleConfirm = (match: PendingAutoMatch) => {
+    createMapping.mutate(
+      { stripeCustomerId: match.stripeCustomerId, tagValue: match.tagValue },
+      {
+        onSuccess: () => toast.success(`Confirmed mapping for ${match.customerName ?? match.stripeCustomerId}`),
+        onError: () => toast.error("Failed to confirm mapping"),
+      },
+    );
+  };
+
+  const handleReject = (match: PendingAutoMatch) => {
+    deleteMapping.mutate(match.id, {
+      onSuccess: () => toast.success("Auto-match rejected"),
+      onError: () => toast.error("Failed to reject mapping"),
+    });
+  };
+
+  const handleManualMap = (customer: UnmatchedStripeCustomer, tagValue: string) => {
+    createMapping.mutate(
+      { stripeCustomerId: customer.stripeCustomerId, tagValue },
+      {
+        onSuccess: () => toast.success(`Mapped ${customer.customerName ?? customer.stripeCustomerId} → ${tagValue}`),
+        onError: () => toast.error("Failed to create mapping"),
+      },
+    );
+  };
+
+  const handleRemove = (mapping: CustomerMappingResponse) => {
+    deleteMapping.mutate(mapping.id, {
+      onSuccess: () => toast.success("Mapping removed"),
+      onError: () => toast.error("Failed to remove mapping"),
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-card">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="text-sm font-medium text-foreground">
+          Customer Mappings
+          <span className="ml-2 text-xs text-muted-foreground">({totalCount})</span>
+        </span>
+        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="space-y-4 border-t border-border/50 px-4 py-4">
+          {/* Inline error when unmatched endpoint fails but confirmed mappings loaded */}
+          {isError && (
+            <div className="rounded-md border border-red-500/20 bg-red-500/5 p-2 text-xs text-red-400">
+              Could not load unmatched customers and auto-matches.
+            </div>
+          )}
+
+          {/* Pending Auto-Matches */}
+          {hasPending && (
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Pending Auto-Matches ({unmatched!.pendingAutoMatches.length})
+              </p>
+              <div className="space-y-2">
+                {unmatched!.pendingAutoMatches.map((match) => (
+                  <div
+                    key={match.id}
+                    className="flex items-center justify-between rounded-md border border-border/30 bg-background px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-400/10 text-[10px] font-bold text-blue-400">
+                        {(match.customerName ?? match.stripeCustomerId).charAt(0).toUpperCase()}
+                      </div>
+                      <span className="font-medium text-foreground">
+                        {match.customerName ?? match.stripeCustomerId}
+                      </span>
+                      <span className="text-muted-foreground">→</span>
+                      <code className="rounded bg-muted px-1 text-xs">{match.tagValue}</code>
+                      {match.confidence !== null && (
+                        <span className="text-[11px] text-muted-foreground">
+                          ({(match.confidence * 100).toFixed(0)}%)
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-green-400 hover:bg-green-400/10 hover:text-green-300"
+                        onClick={() => handleConfirm(match)}
+                        disabled={isMutating}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-red-400 hover:bg-red-400/10 hover:text-red-300"
+                        onClick={() => handleReject(match)}
+                        disabled={isMutating}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Unmatched Stripe Customers */}
+          {hasUnmatched && (
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Unmatched Stripe Customers ({unmatched!.unmatchedStripeCustomers.length})
+              </p>
+              <div className="space-y-2">
+                {unmatched!.unmatchedStripeCustomers.map((customer) => (
+                  <UnmatchedCustomerRow
+                    key={customer.stripeCustomerId}
+                    customer={customer}
+                    tagOptions={unmatched!.unmappedTagValues}
+                    onMap={handleManualMap}
+                    disabled={isMutating}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Confirmed Mappings */}
+          {hasConfirmed && (
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Confirmed Mappings ({confirmedMappings.length})
+              </p>
+              <div className="space-y-2">
+                {confirmedMappings.map((mapping) => (
+                  <div
+                    key={mapping.id}
+                    className="flex items-center justify-between rounded-md border border-border/30 bg-background px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <span className="font-medium text-foreground">
+                        {customerNames[mapping.stripeCustomerId] ?? mapping.stripeCustomerId}
+                      </span>
+                      <span className="text-muted-foreground">→</span>
+                      <code className="rounded bg-muted px-1 text-xs">{mapping.tagValue}</code>
+                      <span className="text-[11px] text-muted-foreground">({mapping.matchType})</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-red-400"
+                      onClick={() => handleRemove(mapping)}
+                      disabled={isMutating}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnmatchedCustomerRow({
+  customer,
+  tagOptions,
+  onMap,
+  disabled,
+}: {
+  customer: UnmatchedStripeCustomer;
+  tagOptions: UnmappedTagValue[];
+  onMap: (customer: UnmatchedStripeCustomer, tagValue: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border/30 bg-background px-3 py-2">
+      <div className="flex items-center gap-2 text-[13px]">
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
+          {(customer.customerName ?? customer.stripeCustomerId).charAt(0).toUpperCase()}
+        </div>
+        <div>
+          <span className="font-medium text-foreground">
+            {customer.customerName ?? customer.stripeCustomerId}
+          </span>
+          <span className="ml-2 text-[11px] text-muted-foreground">
+            ({formatMicrodollars(customer.totalRevenueMicrodollars)} revenue)
+          </span>
+        </div>
+      </div>
+      <div className="w-56">
+        {tagOptions.length > 0 ? (
+          <Select
+            defaultValue=""
+            onValueChange={(v) => { if (v) onMap(customer, v); }}
+            disabled={disabled}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select tag value..." />
+            </SelectTrigger>
+            <SelectContent>
+              {tagOptions.map((t) => (
+                <SelectItem key={t.tagValue} value={t.tagValue}>
+                  {t.tagValue} ({formatMicrodollars(t.totalCostMicrodollars)})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="text-xs text-muted-foreground">No unmapped tags</span>
+        )}
+      </div>
     </div>
   );
 }

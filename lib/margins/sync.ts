@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
+import { STRIPE_API_VERSION } from "@/lib/stripe/client";
 import { stripeConnections, customerRevenue } from "@nullspend/db";
 import { decryptStripeKey } from "./encryption";
 import { runAutoMatch } from "./auto-match";
@@ -58,12 +59,12 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
   } catch {
     await db
       .update(stripeConnections)
-      .set({ status: "error", lastError: "Decryption failed — re-connect Stripe." })
+      .set({ status: "error", lastError: "Decryption failed — re-connect Stripe.", updatedAt: new Date() })
       .where(eq(stripeConnections.id, connection.id));
     return { ...result, error: "Decryption failed" };
   }
 
-  const stripe = new Stripe(stripeKey, { apiVersion: "2026-02-25.clover" });
+  const stripe = new Stripe(stripeKey, { apiVersion: STRIPE_API_VERSION });
 
   // Get all paid invoices for the last 3 calendar months + current month
   const now = new Date();
@@ -221,6 +222,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
         status: "active",
         lastSyncAt: new Date(),
         lastError: null,
+        updatedAt: new Date(),
       })
       .where(eq(stripeConnections.id, connection.id));
 
@@ -237,6 +239,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       .set({
         status: isAuthError ? "revoked" : "error",
         lastError: message,
+        updatedAt: new Date(),
       })
       .where(eq(stripeConnections.id, connection.id));
 
@@ -253,6 +256,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
  * Stops early if approaching the function timeout to avoid partial syncs.
  */
 const MAX_CRON_DURATION_MS = 50_000; // 50s — leave 10s buffer for Vercel's 60s limit
+const PER_ORG_TIMEOUT_MS = 15_000; // 15s — prevent one slow org from starving others
 
 export async function syncAllOrgs(): Promise<SyncResult[]> {
   const cronStart = Date.now();
@@ -272,8 +276,30 @@ export async function syncAllOrgs(): Promise<SyncResult[]> {
       );
       break;
     }
-    const result = await syncOrgRevenue(conn.orgId);
-    results.push(result);
+
+    // Per-org timeout: abort if a single sync takes too long
+    try {
+      const result = await Promise.race([
+        syncOrgRevenue(conn.orgId),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Per-org sync timeout")), PER_ORG_TIMEOUT_MS),
+        ),
+      ]);
+      results.push(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      log.error({ err, orgId: conn.orgId }, "Org sync failed or timed out");
+      results.push({
+        orgId: conn.orgId,
+        customersProcessed: 0,
+        periodsUpdated: 0,
+        autoMatchesCreated: 0,
+        invoicesFetched: 0,
+        invoicesSkipped: 0,
+        durationMs: PER_ORG_TIMEOUT_MS,
+        error: message,
+      });
+    }
   }
   return results;
 }

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
+import { STRIPE_API_VERSION } from "@/lib/stripe/client";
 import { stripeConnections } from "@nullspend/db";
 import { encryptStripeKey } from "@/lib/margins/encryption";
 import { withRequestContext } from "@/lib/observability";
@@ -84,7 +85,7 @@ export const POST = withRequestContext(async (request: Request) => {
   }
 
   // Test the key with a minimal API call
-  const stripe = new Stripe(rawKey, { apiVersion: "2026-02-25.clover" });
+  const stripe = new Stripe(rawKey, { apiVersion: STRIPE_API_VERSION });
   try {
     await stripe.customers.list({ limit: 1 });
   } catch (err) {

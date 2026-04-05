@@ -259,6 +259,13 @@ export async function getAttributionByKey(orgId: string, periodDays: number, lim
 export async function getAttributionByTag(orgId: string, tagKey: string, periodDays: number, limit: number, options?: AggregateOptions) {
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
+
+  // Validate tagKey — only allow simple identifiers
+  if (!/^[a-zA-Z_][a-zA-Z0-9_-]{0,99}$/.test(tagKey)) {
+    throw new Error(`Invalid tag key: ${tagKey}`);
+  }
+
+  // Parameterized: Drizzle renders the same $N placeholder in SELECT and GROUP BY
   const tagExpr = sql<string>`${costEvents.tags}->>${tagKey}`;
 
   return db

@@ -1,5 +1,8 @@
 import Stripe from "stripe";
 
+/** Pinned Stripe API version — single source of truth for the entire app. */
+export const STRIPE_API_VERSION = "2026-02-25.clover" as Stripe.LatestApiVersion;
+
 declare global {
   var __stripe: Stripe | undefined;
 }
@@ -8,9 +11,7 @@ export function getStripe(): Stripe {
   if (!globalThis.__stripe) {
     const key = process.env.STRIPE_SECRET_KEY;
     if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-    globalThis.__stripe = new Stripe(key, {
-      apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
-    });
+    globalThis.__stripe = new Stripe(key, { apiVersion: STRIPE_API_VERSION });
   }
   return globalThis.__stripe;
 }

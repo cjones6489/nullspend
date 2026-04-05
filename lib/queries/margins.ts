@@ -8,6 +8,7 @@ export const marginKeys = {
   detail: (customer: string, period: string) => [...marginKeys.all, "detail", customer, period] as const,
   connection: () => [...marginKeys.all, "connection"] as const,
   mappings: () => [...marginKeys.all, "mappings"] as const,
+  unmatched: () => [...marginKeys.all, "unmatched"] as const,
 };
 
 export function useMarginTable(period: string, options?: { enabled?: boolean }) {
@@ -43,6 +44,14 @@ export function useCustomerMappings() {
   return useQuery({
     queryKey: marginKeys.mappings(),
     queryFn: () => apiGet<{ data: CustomerMappingResponse[] }>("/api/customer-mappings").then((r) => r.data),
+    staleTime: 120_000,
+  });
+}
+
+export function useUnmatchedCustomers() {
+  return useQuery({
+    queryKey: marginKeys.unmatched(),
+    queryFn: () => apiGet<{ data: UnmatchedCustomersResponse }>("/api/margins/unmatched").then((r) => r.data),
     staleTime: 120_000,
   });
 }
@@ -148,6 +157,8 @@ export interface StripeConnectionResponse {
   id: string;
   keyPrefix: string;
   status: string;
+  lastSyncAt: string | null;
+  lastError: string | null;
   createdAt: string;
 }
 
@@ -160,4 +171,33 @@ export interface CustomerMappingResponse {
   matchType: string;
   confidence: number | null;
   createdAt: string;
+}
+
+export interface UnmatchedStripeCustomer {
+  stripeCustomerId: string;
+  customerName: string | null;
+  customerEmail: string | null;
+  totalRevenueMicrodollars: number;
+}
+
+export interface UnmappedTagValue {
+  tagValue: string;
+  totalCostMicrodollars: number;
+  requestCount: number;
+}
+
+export interface PendingAutoMatch {
+  id: string;
+  stripeCustomerId: string;
+  customerName: string | null;
+  tagValue: string;
+  confidence: number | null;
+}
+
+export interface UnmatchedCustomersResponse {
+  unmatchedStripeCustomers: UnmatchedStripeCustomer[];
+  unmappedTagValues: UnmappedTagValue[];
+  pendingAutoMatches: PendingAutoMatch[];
+  /** stripeCustomerId → customerName for all known revenue customers */
+  customerNames: Record<string, string>;
 }
