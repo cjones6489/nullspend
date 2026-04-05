@@ -1,11 +1,13 @@
 "use client";
 
-import { Activity, BarChart3, BookOpen, Clock, CreditCard, DollarSign, ExternalLink, Home, Inbox, Key, MessageSquare, PieChart, Settings, Shield, TrendingUp, Wrench } from "lucide-react";
+import { useState } from "react";
+import { Activity, BarChart3, BookOpen, Clock, CreditCard, DollarSign, ExternalLink, Home, Inbox, Key, Menu, MessageSquare, PieChart, Settings, Shield, TrendingUp, Wrench } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { OrgSwitcher } from "@/components/dashboard/org-switcher";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import type { LucideIcon } from "lucide-react";
 
 interface NavItem {
@@ -45,29 +47,21 @@ const navSections: { label: string; items: NavItem[] }[] = [
 
 const settingsItem: NavItem = { href: "/app/settings", label: "Settings", icon: Settings };
 
-export function Sidebar() {
+function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-56 flex-col border-r border-border/50 bg-sidebar">
-      <div className="flex h-14 items-center gap-2 border-b border-border/50 px-5">
-        <Shield className="h-4 w-4 text-primary" />
-        <Link
-          href="/app/home"
-          className="font-mono text-sm font-semibold tracking-tight text-foreground"
-        >
-          NullSpend
-        </Link>
-      </div>
+    <>
       <div className="border-b border-border/50 py-1.5">
         <OrgSwitcher />
       </div>
       <nav className="flex flex-1 flex-col p-2">
         <Link
           href="/app/home"
+          onClick={onNavigate}
           aria-current={pathname === "/app/home" ? "page" : undefined}
           className={cn(
-            "flex items-center gap-2.5 rounded-md px-3 py-1.5 font-mono text-[13px] font-medium transition-colors",
+            "flex items-center gap-2.5 rounded-md px-3 py-2 font-mono text-[13px] font-medium transition-colors",
             pathname === "/app/home"
               ? "bg-accent text-accent-foreground"
               : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -88,9 +82,10 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-md px-3 py-1.5 font-mono text-[13px] font-medium transition-colors",
+                      "flex items-center gap-2.5 rounded-md px-3 py-2 font-mono text-[13px] font-medium transition-colors",
                       isActive
                         ? "bg-accent text-accent-foreground"
                         : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -109,7 +104,7 @@ export function Sidebar() {
             href="/docs"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            className="flex items-center gap-2.5 rounded-md px-3 py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           >
             <BookOpen className="h-3.5 w-3.5" />
             Documentation
@@ -117,9 +112,10 @@ export function Sidebar() {
           </a>
           <Link
             href={settingsItem.href}
+            onClick={onNavigate}
             aria-current={pathname === settingsItem.href || pathname.startsWith(settingsItem.href + "/") ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2.5 rounded-md px-3 py-1.5 font-mono text-[13px] font-medium transition-colors",
+              "flex items-center gap-2.5 rounded-md px-3 py-2 font-mono text-[13px] font-medium transition-colors",
               pathname === settingsItem.href || pathname.startsWith(settingsItem.href + "/")
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -140,6 +136,52 @@ export function Sidebar() {
           v0.1.0
         </a>
       </div>
+    </>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <aside className="hidden md:flex w-56 flex-col border-r border-border/50 bg-sidebar">
+      <div className="flex h-14 items-center gap-2 border-b border-border/50 px-5">
+        <Shield className="h-4 w-4 text-primary" />
+        <Link
+          href="/app/home"
+          className="font-mono text-sm font-semibold tracking-tight text-foreground"
+        >
+          NullSpend
+        </Link>
+      </div>
+      <SidebarNav />
     </aside>
+  );
+}
+
+export function MobileSidebar() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex md:hidden h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
+        aria-label="Open navigation"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="left" className="w-56 p-0 bg-sidebar border-border/50">
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <div className="flex h-14 items-center gap-2 border-b border-border/50 px-5">
+            <Shield className="h-4 w-4 text-primary" />
+            <span className="font-mono text-sm font-semibold tracking-tight text-foreground">
+              NullSpend
+            </span>
+          </div>
+          <SidebarNav onNavigate={() => setOpen(false)} />
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
