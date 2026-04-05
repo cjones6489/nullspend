@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~3,890+ tests across ~220 files organized into four tiers.
+NullSpend has ~3,940+ tests across ~230 files organized into four tiers.
 
 ## Quick Reference
 
@@ -238,7 +238,7 @@ Intensity levels control concurrency (light: 10-15, medium: 25-40, heavy: 50-80)
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. ~1,535 tests across 119 files.
+Co-located with source files. ~1,734 tests across 140 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback
@@ -275,6 +275,29 @@ Co-located with source files. ~1,535 tests across 119 files.
 - `lib/queries/actions.test.ts`, `lib/utils/format.test.ts`, `lib/slack/*.test.ts`
 - `lib/webhooks/dispatch.test.ts` — Cost event webhook builders (proxy/dashboard shape parity), `dispatchToEndpoints` signing/filtering/expiry, `buildThinCostEventPayload`, `dispatchCostEventToEndpoints` (thin/full/mixed/undefined fallback/event filter/expiry), non-cost-event to thin endpoint
 - `components/actions/action-timeline.test.ts`
+
+**Margins** (`lib/margins/`, `app/api/margins/`)
+- `lib/margins/margin-query.test.ts` — `computeHealthTier` boundary values (5 tests)
+- `lib/margins/margin-query-edge-cases.test.ts` — NaN, Infinity, -0, zero revenue/cost, budget suggestions, blended margin (10 tests)
+- `lib/margins/getMarginTable.test.ts` — `computeProjection` unit tests (10), `getMarginTable` integration tests (23): ghost-row filter, sparkline, projection, tier worsening, sorting, blended margin, budget suggestions, health tier counts, name fallback, connection status
+- `lib/margins/getCustomerDetail.test.ts` — `getCustomerDetail`: null mapping, revenue over time, model breakdown, margin edge cases, name from current period (10 tests)
+- `lib/margins/sync.test.ts` — `syncOrgRevenue`: no connection, revoked, decrypt fail, duration tracking (4 tests)
+- `lib/margins/sync-edge-cases.test.ts` — Null created timestamp, non-USD filtering, skippedCurrencies tracking (multi-currency + empty), error status passthrough (7 tests)
+- `lib/margins/sync-updatedAt.test.ts` — `updatedAt` set on success/decrypt-fail/API-error, invoice processing: microdollar conversion, aggregation, deleted/string customers, metadata passthrough, dedup (9 tests)
+- `lib/margins/auto-match.test.ts` — `runAutoMatch`: metadata match, ID match, conflict prevention, preference ordering (6 tests)
+- `lib/margins/auto-match-edge-cases.test.ts` — Double-mapping prevention, conflict counting, empty/undefined metadata (5 tests)
+- `lib/margins/encryption.test.ts` — AES-256-GCM round-trip, AAD validation, randomization, truncation, key validation (13 tests)
+- `lib/margins/periods.test.ts` — Period formatting, parsing, labels (12 tests)
+- `lib/margins/webhook.test.ts` — `buildMarginThresholdPayload`, `detectWorseningCrossings` (14 tests)
+- `lib/margins/margin-slack-message.test.ts` — `buildMarginAlertMessage`: structure, URLs, emojis, escaping, null name (7); `dispatchMarginSlackAlert`: webhook send, config skip, inactive skip, error handling, HTTPS validation (5)
+- `app/api/margins/route.test.ts` — Period validation, default period, CSV format, CSV escaping, CSV injection defense, empty CSV, JSON fallback (10 tests)
+- `app/api/margins/route-edge-cases.test.ts` — Month validation (00, 13, 99), SQL injection, empty period (7 tests)
+- `app/api/margins/[customer]/route.test.ts` — Period validation, auth, 404, URL decoding, SQL injection (9 tests)
+- `app/api/margins/unmatched/route.test.ts` — Unmatched customers, unmapped tags, auto-matches, null normalization, auth, errors (16 tests)
+- `app/api/stripe/connect/route.test.ts` — Key validation, race conditions, Stripe errors (9 tests)
+- `app/api/stripe/disconnect/route.test.ts` — Cascade delete, auth, 404 (5 tests)
+- `app/api/stripe/revenue-sync/route.test.ts` — Cron auth, session auth, aggregate counts (6 tests)
+- `app/api/customer-mappings/route.test.ts` — GET list, POST create, DELETE validation/404/success (10 tests)
 
 ---
 

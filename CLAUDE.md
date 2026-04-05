@@ -53,6 +53,12 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 - Dual-auth routes use `assertApiKeyOrSession` which returns `{ userId, orgId }` — orgId is guaranteed non-null (null orgId returns 403)
 - Error responses: `{ error: { code: "machine_code", message: "Human readable text.", details: null } }` — consistent across dashboard and proxy
 - HTTP status semantics: 401 = identity unknown, 403 = identity known but unauthorized
+- Stripe API version pinned in `lib/stripe/client.ts` (`STRIPE_API_VERSION`) — single source of truth
+- Two Stripe integrations: own billing (`lib/stripe/`, `STRIPE_SECRET_KEY`) and customer revenue sync (`lib/margins/`, per-org encrypted keys via `STRIPE_ENCRYPTION_KEY`)
+- Margins use the `customer` tag key convention — cost events tagged with `X-NullSpend-Tags: customer=acme-corp`
+- Margin health tiers: healthy (>=50%), moderate (20-49%), at_risk (0-19%), critical (<0%)
+- Revenue sync uses DELETE+re-INSERT replace strategy per customer per period (idempotent)
+- Margin threshold crossings dispatch both webhooks and Slack alerts independently (per-crossing error isolation)
 
 ## Dependencies
 
@@ -72,7 +78,7 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 
 ## Testing
 
-See @TESTING.md for the full test map (~219 files, ~3,780+ tests across 4 tiers). Key points:
+See @TESTING.md for the full test map (~230 files, ~3,940+ tests across 4 tiers). Key points:
 
 - Proxy tests: `apps/proxy/src/__tests__/` — naming convention: `{module}.test.ts`, `-edge-cases.test.ts`, `-all-models.test.ts`
 - Dashboard tests: co-located with source files

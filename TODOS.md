@@ -2,17 +2,9 @@
 
 ## Attribution
 
-### Functional index for hot tag keys
+### ~~Functional index for hot tag keys~~
 
-**What:** Add a PostgreSQL functional index on the `customer` tag key. Ships alongside the Margins feature.
-
-**Why:** Tag-based GROUP BY (`tags->>'customer'`) scans the full orgId+createdAt result set and extracts JSONB values. At 4.5M+ rows this hits 2-5s. A functional index turns it into an index scan (<100ms). The Margins feature depends on this query pattern.
-
-**Context:** `CREATE INDEX CONCURRENTLY ON cost_events ((tags->>'customer'), created_at) WHERE tags ? 'customer'`. Zero-downtime, no lock. ~50MB disk + write overhead. The standard tag key is `customer` (not `customer_id`).
-
-**Effort:** S
-**Priority:** P1 (ships with Margins)
-**Depends on:** None (ships alongside Margins feature)
+**Completed:** 2026-04-04 (migration 0052_cost_events_customer_tag_index.sql)
 
 ### Per-customer cost threshold alerting
 
@@ -42,17 +34,21 @@
 
 ## Margins
 
-### CSV/PDF export for margin table
+### ~~CSV export for margin table~~
 
-**What:** Let users download the margin table as CSV or styled PDF for board decks.
+**Completed:** 2026-04-05 (GET /api/margins?format=csv with RFC 4180 escaping + formula injection defense)
 
-**Why:** The CFO use case. Board-ready margin reports differentiate NullSpend from "I maintain a spreadsheet." The CSV pattern already exists in the attribution API.
+### PDF export for margin table
 
-**Context:** CSV export can copy the existing `format=csv` pattern from `/api/cost-events/attribution`. PDF is harder (requires HTML-to-PDF pipeline, e.g., Puppeteer or a service like DocRaptor). Consider CSV-only for v1 fast-follow, PDF as Phase 2.
+**What:** Let users download the margin table as a styled PDF for board decks.
 
-**Effort:** S
-**Priority:** P2
-**Depends on:** Margin table shipped
+**Why:** The CFO use case. CSV is shipped. PDF adds polish for investor/board presentations.
+
+**Context:** Requires HTML-to-PDF pipeline (e.g., Puppeteer, DocRaptor, or a headless Chrome service). The margin table data is already available via the API.
+
+**Effort:** M
+**Priority:** P3
+**Depends on:** CSV export shipped
 
 ### Stripe key rotation support
 
@@ -66,16 +62,8 @@
 **Priority:** P3
 **Depends on:** Margin table shipped
 
-### Margin-driven Slack alerts
+### ~~Margin-driven Slack alerts~~
 
-**What:** When `margin.threshold_crossed` fires AND a Slack config exists, send a rich Slack message with customer details, margin data, and action buttons.
-
-**Why:** The Slack alert is the killer feature for eng managers. It turns "dashboard you check" into "system that alerts you." Phase 4 lock-in starts here. Reuses existing Slack message infrastructure from budget negotiation.
-
-**Context:** Budget negotiation already sends rich Slack messages with action buttons (`lib/slack/budget-message.ts`). Margin alerts follow the same pattern: build a message payload with customer name, margin %, revenue, cost, and action URLs (View Margins, Set Budget Cap).
-
-**Effort:** S
-**Priority:** P1
-**Depends on:** Margin webhook event + Slack integration (both already exist)
+**Completed:** 2026-04-05 (lib/margins/margin-slack-message.ts — rich Block Kit messages with View Margins + Set Budget Cap deep links, HTTPS validation, per-crossing error isolation)
 
 ## Completed

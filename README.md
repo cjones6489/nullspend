@@ -139,8 +139,14 @@ viewer). Per-org billing, shared budgets, and feature gating by tier.
 breakdown, provider comparison, activity log, and budget management. Webhook
 notifications when budgets cross thresholds.
 
-**Slack integration** — Get notified on budget events. Approve or reject
-human-in-the-loop actions directly from Slack.
+**Margins** — Connect Stripe to see per-customer profitability. Auto-match
+Stripe customers to cost tags, track revenue vs AI cost, and get health tier
+ratings (healthy/moderate/at-risk/critical). 3-month sparkline trends with
+trajectory projection show where each customer is headed. Slack alerts fire
+when a customer's margin crosses into a worse tier. CSV export for board decks.
+
+**Slack integration** — Get notified on budget events and margin alerts. Approve
+or reject human-in-the-loop actions directly from Slack.
 
 **Request logging** — Opt-in capture of full request and response bodies for
 debugging and audit (Pro/Enterprise). Both streaming (SSE) and non-streaming
@@ -181,7 +187,7 @@ RLS on all database tables. Rate limiting (per-IP and per-key). Nonce-based CSP.
                ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  Dashboard (Next.js on Vercel)                                │
-│  Analytics · Budgets · Activity · Webhooks · API Keys        │
+│  Analytics · Budgets · Margins · Activity · Webhooks · Keys  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -273,10 +279,10 @@ when changes span dashboard and proxy.
 
 ## Test suite
 
-~2,900+ tests across 4 tiers:
+~3,900+ tests across 4 tiers:
 
-- **Tier 1 — Unit tests:** 1,080+ dashboard tests, 1,210+ proxy tests, 627
-  cost-engine tests. All mocked, runs in <20s.
+- **Tier 1 — Unit tests:** 1,734+ dashboard tests, 1,309+ proxy tests, 700
+  cost-engine tests, 49 claude-agent tests. All mocked, runs in <20s.
 - **Tier 2 — Integration tests:** Currently empty — budget enforcement moved
   from Redis Lua to Durable Objects (tested in Tier 1).
 - **Tier 3 — Smoke tests:** 25 files hitting the deployed proxy with real
