@@ -55,6 +55,15 @@ Session-authenticated endpoints require a browser session cookie from the NullSp
 | `POST /api/webhooks/:id/test` | Test webhook | Session |
 | `POST /api/webhooks/:id/rotate-secret` | Rotate secret | Session |
 | `GET /api/webhooks/:id/deliveries` | Delivery history | Session |
+| `GET /api/margins` | Margin table | Session |
+| `GET /api/margins/:customer` | Customer detail | Session |
+| `GET /api/margins/unmatched` | Unmatched customers | Session |
+| `POST /api/stripe/connect` | Connect Stripe | Session (admin) |
+| `DELETE /api/stripe/disconnect` | Disconnect Stripe | Session (admin) |
+| `GET /api/stripe/revenue-sync` | Trigger sync | Cron or Session |
+| `GET /api/customer-mappings` | List mappings | Session |
+| `POST /api/customer-mappings` | Create mapping | Session |
+| `DELETE /api/customer-mappings` | Delete mapping | Session |
 
 ---
 

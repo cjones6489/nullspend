@@ -1,6 +1,6 @@
 # Webhook Event Types
 
-NullSpend emits 15 event types. Each event is delivered as an HTTP POST with a JSON body.
+NullSpend emits 16 event types. Each event is delivered as an HTTP POST with a JSON body.
 
 ## Event Envelope
 
@@ -455,6 +455,60 @@ Fires when a tag-level budget is exceeded.
 
 ---
 
+## Margin Events
+
+### `margin.threshold_crossed`
+
+Fires when a customer's margin crosses into a **worse** health tier (e.g., moderate to at-risk). Improving margins do not trigger this event.
+
+Dispatched from the dashboard during revenue sync, not from the proxy.
+
+**`data.object` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `customer.stripeId` | string | Stripe customer ID |
+| `customer.name` | string or null | Customer display name |
+| `customer.tagValue` | string | Cost event tag value |
+| `margin.previous` | number | Previous margin as a decimal (e.g., 0.25 = 25%) |
+| `margin.current` | number | Current margin as a decimal |
+| `margin.previousTier` | string | `"healthy"`, `"moderate"`, `"at_risk"`, or `"critical"` |
+| `margin.currentTier` | string | New (worse) tier |
+| `revenue_microdollars` | integer | Current period revenue |
+| `cost_microdollars` | integer | Current period AI cost |
+| `period` | string | Calendar month (`YYYY-MM`) |
+
+**Example:**
+
+```json
+{
+  "id": "evt_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "type": "margin.threshold_crossed",
+  "api_version": "2026-04-01",
+  "created_at": 1711036800,
+  "data": {
+    "object": {
+      "customer": {
+        "stripeId": "cus_abc123",
+        "name": "Acme Corp",
+        "tagValue": "acme-corp"
+      },
+      "margin": {
+        "previous": 0.25,
+        "current": -0.05,
+        "previousTier": "moderate",
+        "currentTier": "critical"
+      },
+      "revenue_microdollars": 50000000,
+      "cost_microdollars": 52500000,
+      "period": "2026-04"
+    }
+  }
+}
+```
+
+---
+
 ## HITL Action Events
 
 See [Human-in-the-Loop](../features/human-in-the-loop.md) for the full approval workflow, state machine, and SDK integration.
@@ -537,3 +591,4 @@ Sent when you click "Test" in the dashboard. Use it to verify your endpoint is r
 - [Velocity Limits](../features/velocity-limits.md) — sliding window algorithm and circuit breaker
 - [Session Limits](../features/session-limits.md) — per-conversation spend caps
 - [Tags](../features/tags.md) — tags included in cost event payloads
+- [Margins](../features/margins.md) — customer profitability tracking that triggers margin events
