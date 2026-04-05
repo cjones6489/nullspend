@@ -74,6 +74,7 @@ export function ProviderBreakdown({
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={formatChartDollars}
+                tick={{ fontFamily: "var(--font-mono)" }}
               />
               <YAxis
                 type="category"

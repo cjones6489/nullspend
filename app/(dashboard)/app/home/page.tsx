@@ -210,7 +210,7 @@ export default function HomePage() {
                 />
                 <YAxis
                   tickFormatter={(v: number) => formatChartDollars(v)}
-                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)", fontFamily: "var(--font-mono)" }}
                   axisLine={false}
                   tickLine={false}
                   width={50}

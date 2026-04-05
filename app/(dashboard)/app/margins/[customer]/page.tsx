@@ -164,7 +164,7 @@ export default function CustomerDetailPage() {
               />
               <YAxis
                 tickFormatter={(v: number) => `$${v}`}
-                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)", fontFamily: "var(--font-mono)" }}
                 axisLine={false}
                 tickLine={false}
                 width={50}

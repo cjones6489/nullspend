@@ -55,6 +55,7 @@ export function SpendChart({ data }: { data: DailySpend[] }) {
               tickLine={false}
               axisLine={false}
               tickFormatter={formatChartDollars}
+              tick={{ fontFamily: "var(--font-mono)" }}
               width={60}
             />
             <ChartTooltip

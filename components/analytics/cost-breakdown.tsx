@@ -89,6 +89,7 @@ export function CostBreakdown({
               tickLine={false}
               axisLine={false}
               tickFormatter={formatChartDollars}
+              tick={{ fontFamily: "var(--font-mono)" }}
             />
             <YAxis
               type="category"

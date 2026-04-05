@@ -67,6 +67,7 @@ export function ModelBreakdown({ data }: { data: ModelBreakdownData[] }) {
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={formatChartDollars}
+                tick={{ fontFamily: "var(--font-mono)" }}
               />
               <YAxis
                 type="category"
