@@ -11,6 +11,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Download,
   RefreshCw,
   Trash2,
   TrendingDown,
@@ -51,6 +52,7 @@ import {
   useCreateMapping,
   useDeleteMapping,
   type HealthTier,
+  type SparklinePoint,
   type UnmatchedStripeCustomer,
   type UnmappedTagValue,
   type PendingAutoMatch,
@@ -95,17 +97,29 @@ function HealthBadge({ tier }: { tier: HealthTier }) {
   );
 }
 
-function MiniSparkline({ id, data }: { id: string; data: { period: string; marginPercent: number }[] }) {
-  const color = data.length > 0 && data[data.length - 1].marginPercent < 0
+function MiniSparkline({ id, data }: { id: string; data: SparklinePoint[] }) {
+  // Use the last actual (non-projected) point for color
+  const lastActual = [...data].reverse().find((d) => !d.projected);
+  const color = lastActual && lastActual.marginPercent < 0
     ? "var(--color-destructive, #ef4444)"
     : "var(--color-primary, #22c55e)";
 
   const gradientId = `spark-${id}`;
+  const hasProjection = data.some((d) => d.projected);
+
+  // For the projected dashed line, we need actual + projected as separate series.
+  // "actual" has marginPercent for non-projected points, null for projected.
+  // "projected" has null for all but last actual + projected points (to connect them).
+  const chartData = data.map((d, i) => ({
+    period: d.period,
+    actual: d.projected ? null : d.marginPercent,
+    projected: (d.projected || (hasProjection && i === data.length - 2)) ? d.marginPercent : null,
+  }));
 
   return (
     <div className="h-6 w-16">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data}>
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+        <AreaChart data={hasProjection ? chartData : data}>
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity={0.3} />
@@ -113,13 +127,26 @@ function MiniSparkline({ id, data }: { id: string; data: { period: string; margi
             </linearGradient>
           </defs>
           <Area
-            dataKey="marginPercent"
+            dataKey={hasProjection ? "actual" : "marginPercent"}
             stroke={color}
             fill={`url(#${gradientId})`}
             strokeWidth={1.5}
             dot={false}
             isAnimationActive={false}
+            connectNulls={false}
           />
+          {hasProjection && (
+            <Area
+              dataKey="projected"
+              stroke={color}
+              fill="none"
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+              dot={false}
+              isAnimationActive={false}
+              connectNulls
+            />
+          )}
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -239,6 +266,17 @@ export default function MarginsPage() {
               })}
             </SelectContent>
           </Select>
+          {!isDisconnected && data && data.customers.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => window.open(`/api/margins?period=${period}&format=csv`, "_blank")}
+            >
+              <Download className="mr-1.5 h-3 w-3" />
+              CSV
+            </Button>
+          )}
           {!isDisconnected && (
             <Button
               variant="outline"
@@ -303,6 +341,19 @@ export default function MarginsPage() {
           {summary.syncStatus === "revoked"
             ? "Your Stripe key was revoked. Disconnect and reconnect with a new restricted key."
             : `Sync error: ${summary.lastSyncAt ? "Last successful sync " + new Date(summary.lastSyncAt).toLocaleString() : "Never synced successfully"}.`}
+        </div>
+      )}
+
+      {/* Multi-currency banner */}
+      {summary?.skippedCurrencies && Object.keys(summary.skippedCurrencies).length > 0 && (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-400">
+          {(() => {
+            const entries = Object.entries(summary.skippedCurrencies);
+            const parts = entries.map(([curr, count]) =>
+              `${count} ${count === 1 ? "invoice" : "invoices"} in ${curr.toUpperCase()}`
+            );
+            return `${parts.join(", ")} skipped. Margins show USD revenue only.`;
+          })()}
         </div>
       )}
 
@@ -431,7 +482,14 @@ export default function MarginsPage() {
                       {formatMicrodollars(c.marginMicrodollars)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <HealthBadge tier={c.healthTier} />
+                      <div className="inline-flex items-center gap-1">
+                        <HealthBadge tier={c.healthTier} />
+                        {c.projectedTierWorsening && (
+                          <span title="Projected to worsen">
+                            <TrendingDown className="h-3 w-3 text-amber-400" />
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-center">
                       <MiniSparkline id={c.tagValue} data={c.sparkline} />

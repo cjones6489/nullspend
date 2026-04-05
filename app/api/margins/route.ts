@@ -22,5 +22,37 @@ export const GET = withRequestContext(async (request: Request) => {
   }
 
   const result = await getMarginTable(orgId, period);
+
+  // CSV export
+  const format = url.searchParams.get("format");
+  if (format === "csv") {
+    const rows = result.customers.map((c) => [
+      csvEscape(c.customerName ?? c.tagValue),
+      csvEscape(c.stripeCustomerId),
+      csvEscape(c.tagValue),
+      (c.revenueMicrodollars / 1_000_000).toFixed(2),
+      (c.costMicrodollars / 1_000_000).toFixed(2),
+      c.marginPercent.toFixed(2),
+      (c.marginMicrodollars / 1_000_000).toFixed(2),
+      c.healthTier,
+    ]);
+    const header = ["Customer", "Stripe ID", "Tag Value", "Revenue ($)", "Cost ($)", "Margin (%)", "Margin ($)", "Health Tier"];
+    const csv = [header.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    return new Response(csv, {
+      headers: {
+        "Content-Type": "text/csv",
+        "Content-Disposition": `attachment; filename="margins-${period}.csv"`,
+      },
+    });
+  }
+
   return NextResponse.json({ data: result });
 });
+
+/** RFC 4180: wrap in quotes if value contains comma, quote, or newline. */
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}

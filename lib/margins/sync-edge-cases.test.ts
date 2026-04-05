@@ -139,6 +139,42 @@ describe("syncOrgRevenue edge cases", () => {
 
     const result = await syncOrgRevenue("org-1");
     expect(result.invoicesSkipped).toBe(1);
+    expect(result.skippedCurrencies).toEqual({ eur: 1 });
+  });
+
+  it("tracks multiple non-USD currencies separately", async () => {
+    mockDbWithConnection({ id: "c1", orgId: "org-1", status: "active", encryptedKey: "enc" });
+    mockDecryptStripeKey.mockReturnValue("sk_test_123");
+
+    let callCount = 0;
+    mockStripeInvoicesList.mockReturnValue({
+      [Symbol.asyncIterator]: () => ({
+        next: () => {
+          callCount++;
+          const invoices = [
+            { id: "inv_1", created: 1700000000, customer: { id: "cus_1", deleted: false, name: "A", email: null, metadata: {} }, currency: "eur", amount_paid: 1000 },
+            { id: "inv_2", created: 1700000001, customer: { id: "cus_2", deleted: false, name: "B", email: null, metadata: {} }, currency: "gbp", amount_paid: 2000 },
+            { id: "inv_3", created: 1700000002, customer: { id: "cus_3", deleted: false, name: "C", email: null, metadata: {} }, currency: "eur", amount_paid: 500 },
+          ];
+          if (callCount <= invoices.length) {
+            return Promise.resolve({ done: false, value: invoices[callCount - 1] });
+          }
+          return Promise.resolve({ done: true, value: undefined });
+        },
+      }),
+    });
+
+    const result = await syncOrgRevenue("org-1");
+    expect(result.invoicesSkipped).toBe(3);
+    expect(result.skippedCurrencies).toEqual({ eur: 2, gbp: 1 });
+  });
+
+  it("returns empty skippedCurrencies when all invoices are USD", async () => {
+    mockDbWithConnection({ id: "c1", orgId: "org-1", status: "active", encryptedKey: "enc" });
+    mockDecryptStripeKey.mockReturnValue("sk_test_123");
+    // Default empty iterator from beforeEach — no invoices at all
+    const result = await syncOrgRevenue("org-1");
+    expect(result.skippedCurrencies).toEqual({});
   });
 
   it("skips connection with error status (only revoked checked explicitly)", async () => {

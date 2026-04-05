@@ -111,6 +111,12 @@ export function useDeleteMapping() {
 
 export type HealthTier = "healthy" | "moderate" | "at_risk" | "critical";
 
+export interface SparklinePoint {
+  period: string;
+  marginPercent: number;
+  projected?: boolean;
+}
+
 export interface CustomerMarginResponse {
   stripeCustomerId: string;
   customerName: string | null;
@@ -121,7 +127,8 @@ export interface CustomerMarginResponse {
   marginMicrodollars: number;
   marginPercent: number;
   healthTier: HealthTier;
-  sparkline: { period: string; marginPercent: number }[];
+  sparkline: SparklinePoint[];
+  projectedTierWorsening: boolean;
   budgetSuggestionMicrodollars: number | null;
 }
 
@@ -133,6 +140,7 @@ export interface MarginSummaryResponse {
   atRiskCount: number;
   lastSyncAt: string | null;
   syncStatus: string;
+  skippedCurrencies: Record<string, number> | null;
 }
 
 export interface MarginTableResponse {

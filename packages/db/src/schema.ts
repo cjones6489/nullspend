@@ -394,6 +394,7 @@ export const stripeConnections = pgTable("stripe_connections", {
   status: text("status").$type<StripeConnectionStatus>().notNull().default("active"),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   lastError: text("last_error"),
+  lastSyncMeta: jsonb("last_sync_meta").$type<{ skippedCurrencies?: Record<string, number> }>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

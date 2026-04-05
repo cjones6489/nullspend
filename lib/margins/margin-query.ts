@@ -22,6 +22,12 @@ export function computeHealthTier(marginPercent: number): HealthTier {
 
 // ── Types ────────────────────────────────────────────────────────────
 
+export interface SparklinePoint {
+  period: string;
+  marginPercent: number;
+  projected?: boolean;
+}
+
 export interface CustomerMargin {
   stripeCustomerId: string;
   customerName: string | null;
@@ -32,8 +38,43 @@ export interface CustomerMargin {
   marginMicrodollars: number;
   marginPercent: number;
   healthTier: HealthTier;
-  sparkline: { period: string; marginPercent: number }[];
+  sparkline: SparklinePoint[];
+  projectedTierWorsening: boolean;
   budgetSuggestionMicrodollars: number | null;
+}
+
+/**
+ * Least-squares linear regression over sparkline points.
+ * Returns the projected margin % for the next period, or null if insufficient data.
+ * Requires all 3 sparkline points to have activity (revenue or cost > 0 in at least
+ * one of those periods for this customer) to avoid projecting from empty data.
+ */
+export function computeProjection(
+  sparkline: { marginPercent: number; hasData: boolean }[],
+): number | null {
+  // Need all 3 points with data to project
+  if (sparkline.length < 3 || !sparkline.every((p) => p.hasData)) return null;
+
+  // Least-squares: y = a + bx where x = 0, 1, 2 and projected x = 3
+  const n = sparkline.length;
+  const xMean = (n - 1) / 2; // 0+1+2 / 3 = 1
+  const yMean = sparkline.reduce((s, p) => s + p.marginPercent, 0) / n;
+
+  let numerator = 0;
+  let denominator = 0;
+  for (let i = 0; i < n; i++) {
+    numerator += (i - xMean) * (sparkline[i].marginPercent - yMean);
+    denominator += (i - xMean) * (i - xMean);
+  }
+
+  // denominator = 0 means all x values identical (impossible with 0,1,2) but guard anyway
+  if (denominator === 0) return yMean;
+
+  const slope = numerator / denominator;
+  const intercept = yMean - slope * xMean;
+  const projected = intercept + slope * n; // x = 3
+
+  return Math.round(projected * 100) / 100;
 }
 
 export interface MarginSummary {
@@ -44,6 +85,7 @@ export interface MarginSummary {
   atRiskCount: number;
   lastSyncAt: string | null;
   syncStatus: string;
+  skippedCurrencies: Record<string, number> | null;
 }
 
 export interface MarginTableResult {
@@ -64,6 +106,7 @@ export async function getMarginTable(
     .select({
       lastSyncAt: stripeConnections.lastSyncAt,
       status: stripeConnections.status,
+      lastSyncMeta: stripeConnections.lastSyncMeta,
     })
     .from(stripeConnections)
     .where(eq(stripeConnections.orgId, orgId))
@@ -71,6 +114,7 @@ export async function getMarginTable(
 
   const lastSyncAt = connection?.lastSyncAt?.toISOString() ?? null;
   const syncStatus = connection?.status ?? "disconnected";
+  const skippedCurrencies = connection?.lastSyncMeta?.skippedCurrencies ?? null;
 
   // Get periods for sparkline (3 months including requested)
   const [year, month] = period.split("-").map(Number);
@@ -102,6 +146,7 @@ export async function getMarginTable(
         atRiskCount: 0,
         lastSyncAt,
         syncStatus,
+        skippedCurrencies,
       },
       customers: [],
     };
@@ -195,14 +240,29 @@ export async function getMarginTable(
       : periodCost > 0 ? -100 : 0;
     const healthTier = computeHealthTier(marginPercent);
 
-    // Sparkline data
-    const sparkline = sparklinePeriods.map((p) => {
+    // Sparkline data (with hasData flag for projection)
+    const sparklineRaw = sparklinePeriods.map((p) => {
       const pStr = formatPeriod(p);
       const rev = revenueByPeriod?.get(pStr)?.amount ?? 0;
       const cost = costByPeriod?.get(pStr) ?? 0;
       const mp = rev > 0 ? ((rev - cost) / rev) * 100 : cost > 0 ? -100 : 0;
-      return { period: pStr, marginPercent: Math.round(mp * 100) / 100 };
+      return { period: pStr, marginPercent: Math.round(mp * 100) / 100, hasData: rev > 0 || cost > 0 };
     });
+
+    // Trajectory projection
+    const projectedMargin = computeProjection(sparklineRaw);
+    const sparkline: SparklinePoint[] = sparklineRaw.map(({ period, marginPercent: mp }) => ({ period, marginPercent: mp }));
+    if (projectedMargin !== null) {
+      // Add projected point as next month
+      const nextMonth = new Date(Date.UTC(year, month, 1)); // month is already 1-based, so this is next month
+      sparkline.push({ period: formatPeriod(nextMonth), marginPercent: projectedMargin, projected: true });
+    }
+
+    // Tier worsening check: does projection cross into a worse tier?
+    const projectedTierWorsening = projectedMargin !== null
+      && computeHealthTier(projectedMargin) !== healthTier
+      && ["moderate", "at_risk", "critical"].indexOf(computeHealthTier(projectedMargin))
+         > ["moderate", "at_risk", "critical"].indexOf(healthTier);
 
     // Budget suggestion for critical customers
     const budgetSuggestionMicrodollars = healthTier === "critical" && periodRevenue > 0
@@ -228,6 +288,7 @@ export async function getMarginTable(
       marginPercent: Math.round(marginPercent * 100) / 100,
       healthTier,
       sparkline,
+      projectedTierWorsening,
       budgetSuggestionMicrodollars,
     });
   }
@@ -248,6 +309,7 @@ export async function getMarginTable(
       atRiskCount,
       lastSyncAt,
       syncStatus,
+      skippedCurrencies,
     },
     customers,
   };

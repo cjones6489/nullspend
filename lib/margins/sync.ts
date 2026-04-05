@@ -7,7 +7,9 @@ import { stripeConnections, customerRevenue } from "@nullspend/db";
 import { decryptStripeKey } from "./encryption";
 import { runAutoMatch } from "./auto-match";
 import { getMarginTable } from "./margin-query";
+import { computeHealthTier } from "./margin-query";
 import { detectWorseningCrossings, buildMarginThresholdPayload } from "./webhook";
+import { buildMarginAlertMessage, dispatchMarginSlackAlert } from "./margin-slack-message";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { formatPeriod } from "./periods";
 import { getLogger } from "@/lib/observability";
@@ -21,6 +23,7 @@ interface SyncResult {
   autoMatchesCreated: number;
   invoicesFetched: number;
   invoicesSkipped: number;
+  skippedCurrencies: Record<string, number>;
   durationMs: number;
   error?: string;
 }
@@ -39,6 +42,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
     autoMatchesCreated: 0,
     invoicesFetched: 0,
     invoicesSkipped: 0,
+    skippedCurrencies: {},
     durationMs: 0,
   };
 
@@ -98,9 +102,11 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       const customer = invoice.customer;
       if (customer.deleted) { result.invoicesSkipped++; continue; }
 
-      // Skip non-USD
+      // Skip non-USD (track skipped currencies for banner)
       if (invoice.currency !== "usd") {
-        log.warn({ orgId, invoiceId: invoice.id, currency: invoice.currency }, "Skipping non-USD invoice");
+        const curr = invoice.currency ?? "unknown";
+        result.skippedCurrencies[curr] = (result.skippedCurrencies[curr] ?? 0) + 1;
+        log.warn({ orgId, invoiceId: invoice.id, currency: curr }, "Skipping non-USD invoice");
         result.invoicesSkipped++;
         continue;
       }
@@ -176,43 +182,81 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
     // Run auto-match
     result.autoMatchesCreated = await runAutoMatch(orgId, stripeCustomers);
 
-    // Detect margin threshold crossings and fire webhooks
+    // Detect margin threshold crossings (compute once, dispatch to webhook + Slack independently)
+    let crossings: { tagValue: string; previousMarginPercent: number; currentMarginPercent: number }[] = [];
+    let marginData: Awaited<ReturnType<typeof getMarginTable>> | null = null;
+    let currentPeriod = "";
+
     try {
-      const currentPeriod = formatPeriod(new Date());
-      const marginData = await getMarginTable(orgId, currentPeriod);
+      currentPeriod = formatPeriod(new Date());
+      marginData = await getMarginTable(orgId, currentPeriod);
       const currentMargins = marginData.customers.map((c) => ({
         tagValue: c.tagValue,
         marginPercent: c.marginPercent,
       }));
 
-      // Compare against previous period to detect worsening
       const prevMonth = new Date();
       prevMonth.setUTCMonth(prevMonth.getUTCMonth() - 1);
-      const prevPeriod = formatPeriod(prevMonth);
-      const prevData = await getMarginTable(orgId, prevPeriod);
+      const prevData = await getMarginTable(orgId, formatPeriod(prevMonth));
       const prevMargins = prevData.customers.map((c) => ({
         tagValue: c.tagValue,
         marginPercent: c.marginPercent,
       }));
 
-      const crossings = detectWorseningCrossings(prevMargins, currentMargins);
-      for (const crossing of crossings) {
-        const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
-        if (!customer) continue;
-        const event = buildMarginThresholdPayload({
-          stripeCustomerId: customer.stripeCustomerId,
-          customerName: customer.customerName,
-          tagValue: crossing.tagValue,
-          previousMarginPercent: crossing.previousMarginPercent,
-          currentMarginPercent: crossing.currentMarginPercent,
-          revenueMicrodollars: customer.revenueMicrodollars,
-          costMicrodollars: customer.costMicrodollars,
-          period: currentPeriod,
-        });
-        await dispatchWebhookEvent(orgId, event);
-      }
+      crossings = detectWorseningCrossings(prevMargins, currentMargins);
     } catch (err) {
       log.warn({ err, orgId }, "Margin threshold detection failed (non-fatal)");
+    }
+
+    // Dispatch webhook events (independent of Slack)
+    if (crossings.length > 0 && marginData) {
+      try {
+        for (const crossing of crossings) {
+          const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
+          if (!customer) continue;
+          const event = buildMarginThresholdPayload({
+            stripeCustomerId: customer.stripeCustomerId,
+            customerName: customer.customerName,
+            tagValue: crossing.tagValue,
+            previousMarginPercent: crossing.previousMarginPercent,
+            currentMarginPercent: crossing.currentMarginPercent,
+            revenueMicrodollars: customer.revenueMicrodollars,
+            costMicrodollars: customer.costMicrodollars,
+            period: currentPeriod,
+          });
+          await dispatchWebhookEvent(orgId, event);
+        }
+        log.info({ orgId, count: crossings.length }, "Margin webhook events dispatched");
+      } catch (err) {
+        log.warn({ err, orgId }, "Margin webhook dispatch failed (non-fatal)");
+      }
+    }
+
+    // Dispatch Slack alerts (independent of webhooks)
+    if (crossings.length > 0 && marginData) {
+      try {
+        for (const crossing of crossings) {
+          const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
+          if (!customer) continue;
+          const message = buildMarginAlertMessage({
+            customerName: customer.customerName,
+            tagValue: crossing.tagValue,
+            previousMarginPercent: crossing.previousMarginPercent,
+            currentMarginPercent: crossing.currentMarginPercent,
+            previousTier: computeHealthTier(crossing.previousMarginPercent),
+            currentTier: computeHealthTier(crossing.currentMarginPercent),
+            revenueMicrodollars: customer.revenueMicrodollars,
+            costMicrodollars: customer.costMicrodollars,
+            period: currentPeriod,
+          });
+          await dispatchMarginSlackAlert(orgId, message);
+        }
+        if (crossings.length > 0) {
+          log.info({ orgId, count: crossings.length }, "Margin Slack alerts dispatched");
+        }
+      } catch (err) {
+        log.warn({ err, orgId }, "Margin Slack alert dispatch failed (non-fatal)");
+      }
     }
 
     // Update connection status
@@ -222,6 +266,11 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
         status: "active",
         lastSyncAt: new Date(),
         lastError: null,
+        lastSyncMeta: {
+          skippedCurrencies: Object.keys(result.skippedCurrencies).length > 0
+            ? result.skippedCurrencies
+            : undefined,
+        },
         updatedAt: new Date(),
       })
       .where(eq(stripeConnections.id, connection.id));
@@ -296,6 +345,7 @@ export async function syncAllOrgs(): Promise<SyncResult[]> {
         autoMatchesCreated: 0,
         invoicesFetched: 0,
         invoicesSkipped: 0,
+        skippedCurrencies: {},
         durationMs: PER_ORG_TIMEOUT_MS,
         error: message,
       });

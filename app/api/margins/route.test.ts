@@ -82,4 +82,88 @@ describe("GET /api/margins", () => {
     expect(body.data.summary.lastSyncAt).toBe("2026-04-04T10:00:00Z");
     expect(body.data.summary.syncStatus).toBe("active");
   });
+
+  it("returns CSV when format=csv", async () => {
+    mockGetMarginTable.mockResolvedValue({
+      summary: {},
+      customers: [
+        {
+          stripeCustomerId: "cus_1",
+          customerName: "Acme Corp",
+          tagValue: "acme",
+          revenueMicrodollars: 100_000_000,
+          costMicrodollars: 30_000_000,
+          marginMicrodollars: 70_000_000,
+          marginPercent: 70,
+          healthTier: "healthy",
+          sparkline: [],
+          projectedTierWorsening: false,
+          budgetSuggestionMicrodollars: null,
+          avatarUrl: null,
+        },
+      ],
+    });
+
+    const req = new Request("http://localhost/api/margins?format=csv");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/csv");
+    expect(res.headers.get("Content-Disposition")).toContain("margins-2026-04.csv");
+
+    const csv = await res.text();
+    const lines = csv.split("\n");
+    expect(lines[0]).toBe("Customer,Stripe ID,Tag Value,Revenue ($),Cost ($),Margin (%),Margin ($),Health Tier");
+    expect(lines[1]).toContain("Acme Corp");
+    expect(lines[1]).toContain("100.00");
+    expect(lines[1]).toContain("healthy");
+  });
+
+  it("escapes CSV special characters in customer names", async () => {
+    mockGetMarginTable.mockResolvedValue({
+      summary: {},
+      customers: [
+        {
+          stripeCustomerId: "cus_1",
+          customerName: 'Acme, Inc. "Best"',
+          tagValue: "acme",
+          revenueMicrodollars: 50_000_000,
+          costMicrodollars: 10_000_000,
+          marginMicrodollars: 40_000_000,
+          marginPercent: 80,
+          healthTier: "healthy",
+          sparkline: [],
+          projectedTierWorsening: false,
+          budgetSuggestionMicrodollars: null,
+          avatarUrl: null,
+        },
+      ],
+    });
+
+    const req = new Request("http://localhost/api/margins?format=csv");
+    const res = await GET(req);
+    const csv = await res.text();
+    // RFC 4180: commas and quotes wrapped in quotes, inner quotes doubled
+    expect(csv).toContain('"Acme, Inc. ""Best"""');
+  });
+
+  it("returns JSON when format is not csv", async () => {
+    mockGetMarginTable.mockResolvedValue({ summary: {}, customers: [] });
+
+    const req = new Request("http://localhost/api/margins?format=json");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("application/json");
+  });
+
+  it("returns CSV with headers only when no customers", async () => {
+    mockGetMarginTable.mockResolvedValue({ summary: {}, customers: [] });
+
+    const req = new Request("http://localhost/api/margins?format=csv");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const csv = await res.text();
+    const lines = csv.split("\n");
+    expect(lines).toHaveLength(1); // header only, no data rows
+    expect(lines[0]).toContain("Customer");
+  });
 });

@@ -260,13 +260,17 @@ export async function getAttributionByTag(orgId: string, tagKey: string, periodD
   const db = getDb();
   const cutoff = makeCutoff(periodDays);
 
-  // Validate tagKey — only allow simple identifiers
+  // Validate tagKey to prevent injection — only allow simple identifiers
   if (!/^[a-zA-Z_][a-zA-Z0-9_-]{0,99}$/.test(tagKey)) {
     throw new Error(`Invalid tag key: ${tagKey}`);
   }
 
-  // Parameterized: Drizzle renders the same $N placeholder in SELECT and GROUP BY
-  const tagExpr = sql<string>`${costEvents.tags}->>${tagKey}`;
+  // Use sql.raw for the key in the ->> operator so Drizzle renders the same
+  // expression in both SELECT and GROUP BY. Without this, Drizzle qualifies the
+  // column differently in each context (SELECT: unqualified, GROUP BY: qualified),
+  // causing PostgreSQL error 42803. The tagKey is regex-validated above.
+  const safeKey = sql.raw(`'${tagKey}'`);
+  const tagExpr = sql<string>`${costEvents.tags}->>${safeKey}`;
 
   return db
     .select({

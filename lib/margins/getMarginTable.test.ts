@@ -19,7 +19,7 @@ vi.mock("./periods", async (importOriginal) => {
   return actual;
 });
 
-import { getMarginTable } from "./margin-query";
+import { getMarginTable, computeProjection } from "./margin-query";
 import { stripeConnections, customerMappings, customerRevenue, costEvents } from "@nullspend/db";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -84,6 +84,79 @@ beforeEach(() => {
 });
 
 // ── Tests ────────────────────────────────────────────────────────────
+
+describe("computeProjection", () => {
+  it("returns projected margin for declining trend", () => {
+    // 50, 40, 30 → slope = -10 → projected = 20
+    const result = computeProjection([
+      { marginPercent: 50, hasData: true },
+      { marginPercent: 40, hasData: true },
+      { marginPercent: 30, hasData: true },
+    ]);
+    expect(result).toBe(20);
+  });
+
+  it("returns projected margin for improving trend", () => {
+    // 30, 40, 50 → slope = +10 → projected = 60
+    const result = computeProjection([
+      { marginPercent: 30, hasData: true },
+      { marginPercent: 40, hasData: true },
+      { marginPercent: 50, hasData: true },
+    ]);
+    expect(result).toBe(60);
+  });
+
+  it("returns same value for flat trend", () => {
+    // 60, 60, 60 → slope = 0 → projected = 60
+    const result = computeProjection([
+      { marginPercent: 60, hasData: true },
+      { marginPercent: 60, hasData: true },
+      { marginPercent: 60, hasData: true },
+    ]);
+    expect(result).toBe(60);
+  });
+
+  it("returns null when any point lacks data", () => {
+    const result = computeProjection([
+      { marginPercent: 0, hasData: false },
+      { marginPercent: 0, hasData: false },
+      { marginPercent: 50, hasData: true },
+    ]);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for fewer than 3 points", () => {
+    const result = computeProjection([
+      { marginPercent: 50, hasData: true },
+      { marginPercent: 40, hasData: true },
+    ]);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for empty array", () => {
+    expect(computeProjection([])).toBeNull();
+  });
+
+  it("projects into negative (crossing into critical)", () => {
+    // 10, 5, 0 → slope = -5 → projected = -5
+    const result = computeProjection([
+      { marginPercent: 10, hasData: true },
+      { marginPercent: 5, hasData: true },
+      { marginPercent: 0, hasData: true },
+    ]);
+    expect(result).toBe(-5);
+  });
+
+  it("handles negative margins", () => {
+    // -10, -20, -30 → slope = -10 → projected = -40
+    const result = computeProjection([
+      { marginPercent: -10, hasData: true },
+      { marginPercent: -20, hasData: true },
+      { marginPercent: -30, hasData: true },
+    ]);
+    expect(result).toBe(-40);
+  });
+});
 
 describe("getMarginTable", () => {
   // ── Connection status ──────────────────────────────────────────────
@@ -389,13 +462,18 @@ describe("getMarginTable", () => {
 
     const result = await getMarginTable(ORG_ID, PERIOD);
     const sparkline = result.customers[0].sparkline;
-    expect(sparkline).toHaveLength(3);
+    // 3 actual + 1 projected (all 3 periods have data → projection fires)
+    expect(sparkline).toHaveLength(4);
     expect(sparkline[0].period).toBe("2026-02");
     expect(sparkline[0].marginPercent).toBe(50); // (100-50)/100*100
     expect(sparkline[1].period).toBe("2026-03");
     expect(sparkline[1].marginPercent).toBe(40); // (100-60)/100*100
     expect(sparkline[2].period).toBe("2026-04");
     expect(sparkline[2].marginPercent).toBe(30); // (100-70)/100*100
+    // Projected: linear regression slope = -10 per period → 30 - 10 = 20
+    expect(sparkline[3].period).toBe("2026-05");
+    expect(sparkline[3].marginPercent).toBe(20);
+    expect(sparkline[3].projected).toBe(true);
   });
 
   it("sparkline uses 0% for periods with no data", async () => {
@@ -413,6 +491,8 @@ describe("getMarginTable", () => {
 
     const result = await getMarginTable(ORG_ID, PERIOD);
     const sparkline = result.customers[0].sparkline;
+    // Only 1 of 3 periods has data → no projection (stays at 3 points)
+    expect(sparkline).toHaveLength(3);
     expect(sparkline[0].marginPercent).toBe(0); // no data → 0%
     expect(sparkline[1].marginPercent).toBe(0);
     expect(sparkline[2].marginPercent).toBe(70); // current period
@@ -465,5 +545,102 @@ describe("getMarginTable", () => {
     const result = await getMarginTable(ORG_ID, PERIOD);
     expect(result.summary.criticalCount).toBe(1);
     expect(result.summary.atRiskCount).toBe(1);
+  });
+
+  // ── Trajectory projection ──────────────────────────────────────────
+
+  it("projects declining margin trend and flags tier worsening", async () => {
+    // 3 months: 80%, 60%, 40% → slope = -20/period → projected = 20% (moderate)
+    // Current tier = moderate (40%), projected = moderate (20%) → same tier, no warning
+    setupMockDb({
+      connection: { lastSyncAt: new Date(), status: "active" },
+      mappings: [{ stripeCustomerId: "cus_1", tagKey: "customer", tagValue: "declining" }],
+      revenueRows: [
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 1, 1)), amountMicrodollars: 100_000_000, customerName: "Declining", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 2, 1)), amountMicrodollars: 100_000_000, customerName: "Declining", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 3, 1)), amountMicrodollars: 100_000_000, customerName: "Declining", avatarUrl: null },
+      ],
+      costRows: [
+        { tagValue: "declining", period: "2026-02", totalCost: 20_000_000 },  // 80%
+        { tagValue: "declining", period: "2026-03", totalCost: 40_000_000 },  // 60%
+        { tagValue: "declining", period: "2026-04", totalCost: 60_000_000 },  // 40%
+      ],
+    });
+
+    const result = await getMarginTable(ORG_ID, PERIOD);
+    const customer = result.customers[0];
+    expect(customer.sparkline).toHaveLength(4);
+    expect(customer.sparkline[3].projected).toBe(true);
+    expect(customer.sparkline[3].marginPercent).toBe(20); // slope -20 → 40 - 20 = 20
+    // Current tier = moderate (40%), projected = moderate (20%) → no worsening
+    expect(customer.projectedTierWorsening).toBe(false);
+  });
+
+  it("flags tier worsening when projection crosses threshold", async () => {
+    // 3 months: 30%, 25%, 20% → slope = -5/period → projected = 15% (at_risk)
+    // Current = moderate (20%), projected = at_risk (15%) → WARNING
+    setupMockDb({
+      connection: { lastSyncAt: new Date(), status: "active" },
+      mappings: [{ stripeCustomerId: "cus_1", tagKey: "customer", tagValue: "crossing" }],
+      revenueRows: [
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 1, 1)), amountMicrodollars: 100_000_000, customerName: "Crossing", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 2, 1)), amountMicrodollars: 100_000_000, customerName: "Crossing", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 3, 1)), amountMicrodollars: 100_000_000, customerName: "Crossing", avatarUrl: null },
+      ],
+      costRows: [
+        { tagValue: "crossing", period: "2026-02", totalCost: 70_000_000 },  // 30%
+        { tagValue: "crossing", period: "2026-03", totalCost: 75_000_000 },  // 25%
+        { tagValue: "crossing", period: "2026-04", totalCost: 80_000_000 },  // 20%
+      ],
+    });
+
+    const result = await getMarginTable(ORG_ID, PERIOD);
+    const customer = result.customers[0];
+    expect(customer.healthTier).toBe("moderate"); // 20% is moderate
+    expect(customer.sparkline[3].projected).toBe(true);
+    expect(customer.sparkline[3].marginPercent).toBe(15); // slope -5 → 20 - 5 = 15
+    expect(customer.projectedTierWorsening).toBe(true); // moderate → at_risk
+  });
+
+  it("does not flag worsening when projection stays in same tier", async () => {
+    // All 3 months at 60% → flat slope → projected = 60% → still healthy
+    setupMockDb({
+      connection: { lastSyncAt: new Date(), status: "active" },
+      mappings: [{ stripeCustomerId: "cus_1", tagKey: "customer", tagValue: "stable" }],
+      revenueRows: [
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 1, 1)), amountMicrodollars: 100_000_000, customerName: "Stable", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 2, 1)), amountMicrodollars: 100_000_000, customerName: "Stable", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 3, 1)), amountMicrodollars: 100_000_000, customerName: "Stable", avatarUrl: null },
+      ],
+      costRows: [
+        { tagValue: "stable", period: "2026-02", totalCost: 40_000_000 },  // 60%
+        { tagValue: "stable", period: "2026-03", totalCost: 40_000_000 },  // 60%
+        { tagValue: "stable", period: "2026-04", totalCost: 40_000_000 },  // 60%
+      ],
+    });
+
+    const result = await getMarginTable(ORG_ID, PERIOD);
+    const customer = result.customers[0];
+    expect(customer.sparkline[3].marginPercent).toBe(60); // flat → 60%
+    expect(customer.projectedTierWorsening).toBe(false);
+  });
+
+  it("does not project when insufficient data (only 1 period)", async () => {
+    setupMockDb({
+      connection: { lastSyncAt: new Date(), status: "active" },
+      mappings: [{ stripeCustomerId: "cus_1", tagKey: "customer", tagValue: "new-cust" }],
+      revenueRows: [
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 3, 1)), amountMicrodollars: 100_000_000, customerName: "New", avatarUrl: null },
+      ],
+      costRows: [
+        { tagValue: "new-cust", period: "2026-04", totalCost: 30_000_000 },
+      ],
+    });
+
+    const result = await getMarginTable(ORG_ID, PERIOD);
+    const customer = result.customers[0];
+    expect(customer.sparkline).toHaveLength(3); // no projected 4th point
+    expect(customer.sparkline.every((s) => !s.projected)).toBe(true);
+    expect(customer.projectedTierWorsening).toBe(false);
   });
 });
