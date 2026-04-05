@@ -5,7 +5,7 @@ import { getDb } from "@/lib/db/client";
 import { stripeConnections, customerRevenue } from "@nullspend/db";
 import { decryptStripeKey } from "./encryption";
 import { runAutoMatch } from "./auto-match";
-import { getMarginTable, computeHealthTier } from "./margin-query";
+import { getMarginTable } from "./margin-query";
 import { detectWorseningCrossings, buildMarginThresholdPayload } from "./webhook";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { formatPeriod } from "./periods";
@@ -18,6 +18,8 @@ interface SyncResult {
   customersProcessed: number;
   periodsUpdated: number;
   autoMatchesCreated: number;
+  invoicesFetched: number;
+  durationMs: number;
   error?: string;
 }
 
@@ -26,12 +28,15 @@ interface SyncResult {
  * Replace strategy: DELETE + re-INSERT per customer per period.
  */
 export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
+  const startTime = Date.now();
   const db = getDb();
   const result: SyncResult = {
     orgId,
     customersProcessed: 0,
     periodsUpdated: 0,
     autoMatchesCreated: 0,
+    invoicesFetched: 0,
+    durationMs: 0,
   };
 
   // Load connection
@@ -84,6 +89,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       limit: 100,
       expand: ["data.customer"],
     })) {
+      result.invoicesFetched++;
       if (!invoice.customer || typeof invoice.customer === "string") continue;
       const customer = invoice.customer;
       if (customer.deleted) continue; // skip deleted customers
@@ -214,6 +220,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       })
       .where(eq(stripeConnections.id, connection.id));
 
+    result.durationMs = Date.now() - startTime;
     log.info(result, "Revenue sync complete");
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -230,6 +237,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       .where(eq(stripeConnections.id, connection.id));
 
     result.error = message;
+    result.durationMs = Date.now() - startTime;
   }
 
   return result;

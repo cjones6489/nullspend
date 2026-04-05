@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { customerMappings, costEvents } from "@nullspend/db";
@@ -27,7 +27,8 @@ export async function runAutoMatch(
 ): Promise<number> {
   const db = getDb();
 
-  // Get distinct customer tag values from cost_events
+  // Get distinct customer tag values from cost_events (last 90 days to avoid full table scan)
+  const lookbackCutoff = new Date(Date.now() - 90 * 86_400_000);
   const tagValues = await db
     .select({
       tagValue: sql<string>`DISTINCT ${costEvents.tags}->>'customer'`.mapWith(String),
@@ -37,6 +38,7 @@ export async function runAutoMatch(
       and(
         eq(costEvents.orgId, orgId),
         sql`${costEvents.tags} ? 'customer'`,
+        gte(costEvents.createdAt, lookbackCutoff),
       ),
     )
     .limit(10_000);

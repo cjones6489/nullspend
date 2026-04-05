@@ -99,9 +99,10 @@ export const DELETE = withRequestContext(async (request: Request) => {
   const url = new URL(request.url);
   const mappingId = url.searchParams.get("id");
 
-  if (!mappingId) {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!mappingId || !UUID_RE.test(mappingId)) {
     return NextResponse.json(
-      { error: { code: "validation_error", message: "id query parameter is required.", details: null } },
+      { error: { code: "validation_error", message: "id must be a valid UUID.", details: null } },
       { status: 400 },
     );
   }

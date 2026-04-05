@@ -91,22 +91,30 @@ describe("DELETE /api/customer-mappings", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 for invalid UUID", async () => {
+    const req = new Request("http://localhost/api/customer-mappings?id=not-a-uuid", { method: "DELETE" });
+    const res = await DELETE(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain("UUID");
+  });
+
   it("returns 404 if mapping not found", async () => {
     mockGetDb.mockReturnValue({
       delete: () => ({ where: () => ({ returning: () => Promise.resolve([]) }) }),
     });
 
-    const req = new Request("http://localhost/api/customer-mappings?id=not-found", { method: "DELETE" });
+    const req = new Request("http://localhost/api/customer-mappings?id=00000000-0000-0000-0000-000000000000", { method: "DELETE" });
     const res = await DELETE(req);
     expect(res.status).toBe(404);
   });
 
   it("deletes mapping successfully", async () => {
     mockGetDb.mockReturnValue({
-      delete: () => ({ where: () => ({ returning: () => Promise.resolve([{ id: "m-1" }]) }) }),
+      delete: () => ({ where: () => ({ returning: () => Promise.resolve([{ id: "11111111-1111-1111-1111-111111111111" }]) }) }),
     });
 
-    const req = new Request("http://localhost/api/customer-mappings?id=m-1", { method: "DELETE" });
+    const req = new Request("http://localhost/api/customer-mappings?id=11111111-1111-1111-1111-111111111111", { method: "DELETE" });
     const res = await DELETE(req);
     expect(res.status).toBe(200);
     const body = await res.json();

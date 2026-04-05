@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, sql, desc } from "drizzle-orm";
+import { and, eq, gte, sql, desc } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import {
@@ -135,7 +135,9 @@ export async function getMarginTable(
 
   // Get cost by customer tag for all sparkline periods
   const tagValues = mappings.map((m) => m.tagValue);
-  const costRows = await db
+
+  // Short-circuit: no tag values means no cost data to query
+  const costRows = tagValues.length === 0 ? [] : await db
     .select({
       tagValue: sql<string>`${costEvents.tags}->>'customer'`.mapWith(String),
       period: sql<string>`to_char(${costEvents.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM')`.mapWith(String),
