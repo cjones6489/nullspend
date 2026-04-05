@@ -1,4 +1,4 @@
-import { and, eq, gte, sql, desc } from "drizzle-orm";
+import { and, eq, gte, inArray, sql, desc } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import {
@@ -146,7 +146,7 @@ export async function getMarginTable(
       and(
         eq(costEvents.orgId, orgId),
         gte(costEvents.createdAt, oldestPeriod),
-        sql`${costEvents.tags}->>'customer' = ANY(${tagValues})`,
+        sql`${costEvents.tags}->>'customer' IN (${sql.join(tagValues.map(v => sql`${v}`), sql`, `)})`,
       ),
     )
     .groupBy(
