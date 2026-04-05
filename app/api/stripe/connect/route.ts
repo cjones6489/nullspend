@@ -58,8 +58,8 @@ export const POST = withRequestContext(async (request: Request) => {
     );
   }
 
-  // Validate restricted key prefix
-  if (!rawKey.startsWith("rk_")) {
+  // Validate restricted key prefix (allow sk_test_ in development)
+  if (!rawKey.startsWith("rk_") && !rawKey.startsWith("sk_test_")) {
     return NextResponse.json(
       { error: { code: "validation_error", message: "Use a Stripe restricted key (rk_live_... or rk_test_...).", details: null } },
       { status: 400 },
