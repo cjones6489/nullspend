@@ -10,11 +10,12 @@ export const marginKeys = {
   mappings: () => [...marginKeys.all, "mappings"] as const,
 };
 
-export function useMarginTable(period: string) {
+export function useMarginTable(period: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: marginKeys.table(period),
     queryFn: () => apiGet<{ data: MarginTableResponse }>(`/api/margins?period=${period}`).then((r) => r.data),
     staleTime: 120_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

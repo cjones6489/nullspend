@@ -28,7 +28,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useApiKeys } from "@/lib/queries/api-keys";
 import { useBudgets } from "@/lib/queries/budgets";
 import { useCostSummary } from "@/lib/queries/cost-event-summary";
-import { useMarginTable } from "@/lib/queries/margins";
+import { useMarginTable, useStripeConnection } from "@/lib/queries/margins";
 import { formatMicrodollars, formatChartDollars } from "@/lib/utils/format";
 
 const PROXY_URL = process.env.NEXT_PUBLIC_NULLSPEND_PROXY_URL ?? "https://proxy.nullspend.com/v1";
@@ -84,12 +84,14 @@ export default function HomePage() {
   const { data: summaryData, isLoading: summaryLoading } = useCostSummary("7d");
   const { data: budgetsData, isLoading: budgetsLoading } = useBudgets();
 
-  // Margin badge — current month
+  // Margin badge — only fetch if Stripe is connected (avoids 4 wasted DB queries per home page load)
+  const { data: stripeConnection } = useStripeConnection();
+  const isStripeConnected = stripeConnection !== null && stripeConnection !== undefined;
   const marginPeriod = (() => {
     const now = new Date();
     return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   })();
-  const { data: marginData } = useMarginTable(marginPeriod);
+  const { data: marginData } = useMarginTable(marginPeriod, { enabled: isStripeConnected });
 
   const keys = keysData?.data ?? [];
   const totals = summaryData?.totals;
@@ -164,7 +166,7 @@ export default function HomePage() {
           </Card>
         </Link>
       )}
-      {marginData && marginData.summary.syncStatus === "disconnected" && hasData && (
+      {!isStripeConnected && hasData && (
         <Link href="/app/margins">
           <Card className="border-border/50 border-dashed transition-colors hover:bg-accent/40">
             <CardContent className="flex items-center gap-3 p-4">

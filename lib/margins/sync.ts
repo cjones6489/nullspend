@@ -19,6 +19,7 @@ interface SyncResult {
   periodsUpdated: number;
   autoMatchesCreated: number;
   invoicesFetched: number;
+  invoicesSkipped: number;
   durationMs: number;
   error?: string;
 }
@@ -36,6 +37,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
     periodsUpdated: 0,
     autoMatchesCreated: 0,
     invoicesFetched: 0,
+    invoicesSkipped: 0,
     durationMs: 0,
   };
 
@@ -90,13 +92,15 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       expand: ["data.customer"],
     })) {
       result.invoicesFetched++;
-      if (!invoice.customer || typeof invoice.customer === "string") continue;
+      if (!invoice.created) { result.invoicesSkipped++; continue; }
+      if (!invoice.customer || typeof invoice.customer === "string") { result.invoicesSkipped++; continue; }
       const customer = invoice.customer;
-      if (customer.deleted) continue; // skip deleted customers
+      if (customer.deleted) { result.invoicesSkipped++; continue; }
 
       // Skip non-USD
       if (invoice.currency !== "usd") {
         log.warn({ orgId, invoiceId: invoice.id, currency: invoice.currency }, "Skipping non-USD invoice");
+        result.invoicesSkipped++;
         continue;
       }
 
@@ -246,8 +250,12 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
 /**
  * Sync all orgs with active Stripe connections.
  * Called by Vercel Cron (sequential per-org).
+ * Stops early if approaching the function timeout to avoid partial syncs.
  */
+const MAX_CRON_DURATION_MS = 50_000; // 50s — leave 10s buffer for Vercel's 60s limit
+
 export async function syncAllOrgs(): Promise<SyncResult[]> {
+  const cronStart = Date.now();
   const db = getDb();
   const connections = await db
     .select({ orgId: stripeConnections.orgId })
@@ -256,6 +264,14 @@ export async function syncAllOrgs(): Promise<SyncResult[]> {
 
   const results: SyncResult[] = [];
   for (const conn of connections) {
+    // Timeout guard: stop before Vercel kills the function
+    if (Date.now() - cronStart > MAX_CRON_DURATION_MS) {
+      log.warn(
+        { synced: results.length, remaining: connections.length - results.length },
+        "Cron timeout approaching — stopping early. Remaining orgs will sync next cycle.",
+      );
+      break;
+    }
     const result = await syncOrgRevenue(conn.orgId);
     results.push(result);
   }

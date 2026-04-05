@@ -4,7 +4,7 @@ const mockGetDb = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({ getDb: () => mockGetDb() }));
 vi.mock("@nullspend/db", () => ({
-  customerMappings: { orgId: "org_id", tagKey: "tag_key", stripeCustomerId: "stripe_customer_id", tagValue: "tag_value" },
+  customerMappings: { id: "id", orgId: "org_id", tagKey: "tag_key", stripeCustomerId: "stripe_customer_id", tagValue: "tag_value" },
   costEvents: { orgId: "org_id", tags: "tags", createdAt: "created_at" },
 }));
 
@@ -15,6 +15,16 @@ const ORG_ID = "org-test";
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+function mockInsertSuccess() {
+  return {
+    values: (v: unknown) => ({
+      onConflictDoNothing: () => ({
+        returning: () => Promise.resolve([{ id: "m-1" }]),
+      }),
+    }),
+  };
+}
 
 describe("runAutoMatch", () => {
   it("returns 0 if no customer tag values exist in cost_events", async () => {
@@ -35,17 +45,14 @@ describe("runAutoMatch", () => {
         from: () => ({
           where: () => {
             callCount++;
-            if (callCount === 1) {
-              return { limit: () => Promise.resolve([{ tagValue: "acme" }]) };
-            }
-            return Promise.resolve([]); // existing mappings
+            if (callCount === 1) return { limit: () => Promise.resolve([{ tagValue: "acme" }]) };
+            return Promise.resolve([]);
           },
         }),
       }),
     });
 
     const result = await runAutoMatch(ORG_ID, []);
-    // No customers means no candidates
     expect(result).toBe(0);
   });
 
@@ -56,20 +63,12 @@ describe("runAutoMatch", () => {
         from: () => ({
           where: () => {
             callCount++;
-            if (callCount === 1) {
-              // cost_events distinct tags
-              return { limit: () => Promise.resolve([{ tagValue: "acme" }]) };
-            }
-            // existing mappings
+            if (callCount === 1) return { limit: () => Promise.resolve([{ tagValue: "acme" }]) };
             return Promise.resolve([]);
           },
         }),
       }),
-      insert: () => ({
-        values: () => ({
-          onConflictDoNothing: () => Promise.resolve(),
-        }),
-      }),
+      insert: mockInsertSuccess,
     });
 
     const result = await runAutoMatch(ORG_ID, [
@@ -85,18 +84,12 @@ describe("runAutoMatch", () => {
         from: () => ({
           where: () => {
             callCount++;
-            if (callCount === 1) {
-              return { limit: () => Promise.resolve([{ tagValue: "cus_abc" }]) };
-            }
+            if (callCount === 1) return { limit: () => Promise.resolve([{ tagValue: "cus_abc" }]) };
             return Promise.resolve([]);
           },
         }),
       }),
-      insert: () => ({
-        values: () => ({
-          onConflictDoNothing: () => Promise.resolve(),
-        }),
-      }),
+      insert: mockInsertSuccess,
     });
 
     const result = await runAutoMatch(ORG_ID, [
@@ -112,10 +105,7 @@ describe("runAutoMatch", () => {
         from: () => ({
           where: () => {
             callCount++;
-            if (callCount === 1) {
-              return { limit: () => Promise.resolve([{ tagValue: "acme" }]) };
-            }
-            // existing mappings already have cus_1
+            if (callCount === 1) return { limit: () => Promise.resolve([{ tagValue: "acme" }]) };
             return Promise.resolve([{ stripeCustomerId: "cus_1", tagValue: "acme" }]);
           },
         }),
@@ -136,9 +126,7 @@ describe("runAutoMatch", () => {
         from: () => ({
           where: () => {
             callCount++;
-            if (callCount === 1) {
-              return { limit: () => Promise.resolve([{ tagValue: "acme" }, { tagValue: "cus_1" }]) };
-            }
+            if (callCount === 1) return { limit: () => Promise.resolve([{ tagValue: "acme" }, { tagValue: "cus_1" }]) };
             return Promise.resolve([]);
           },
         }),
@@ -146,7 +134,11 @@ describe("runAutoMatch", () => {
       insert: () => ({
         values: (v: unknown) => {
           insertedValues.push(v);
-          return { onConflictDoNothing: () => Promise.resolve() };
+          return {
+            onConflictDoNothing: () => ({
+              returning: () => Promise.resolve([{ id: "m-1" }]),
+            }),
+          };
         },
       }),
     });
@@ -155,7 +147,6 @@ describe("runAutoMatch", () => {
       { id: "cus_1", metadata: { nullspend_customer: "acme" } },
     ]);
     expect(result).toBe(1);
-    // Should match via metadata (confidence 1.0), not customer ID
     expect(insertedValues[0]).toMatchObject({ tagValue: "acme", confidence: 1.0 });
   });
 });

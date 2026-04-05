@@ -179,8 +179,15 @@ export async function getMarginTable(
 
     const periodRevenue = revenueByPeriod?.get(requestedPeriodStr)?.amount ?? 0;
     const periodCost = costByPeriod?.get(requestedPeriodStr) ?? 0;
-    const name = revenueByPeriod?.get(requestedPeriodStr)?.name ?? null;
-    const avatar = revenueByPeriod?.get(requestedPeriodStr)?.avatar ?? null;
+
+    // Customer name/avatar: prefer requested period, fall back to any period with data
+    let name = revenueByPeriod?.get(requestedPeriodStr)?.name ?? null;
+    let avatar = revenueByPeriod?.get(requestedPeriodStr)?.avatar ?? null;
+    if (!name && revenueByPeriod) {
+      for (const entry of revenueByPeriod.values()) {
+        if (entry.name) { name = entry.name; avatar = entry.avatar; break; }
+      }
+    }
 
     const marginMicrodollars = periodRevenue - periodCost;
     const marginPercent = periodRevenue > 0

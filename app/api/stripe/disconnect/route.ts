@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { resolveSessionContext } from "@/lib/auth/session";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
-import { stripeConnections } from "@nullspend/db";
+import { stripeConnections, customerRevenue, customerMappings } from "@nullspend/db";
 import { withRequestContext } from "@/lib/observability";
 
 export const DELETE = withRequestContext(async (_request: Request) => {
@@ -12,10 +12,16 @@ export const DELETE = withRequestContext(async (_request: Request) => {
   await assertOrgRole(userId, orgId, "admin");
 
   const db = getDb();
-  const deleted = await db
-    .delete(stripeConnections)
-    .where(eq(stripeConnections.orgId, orgId))
-    .returning({ id: stripeConnections.id });
+
+  // Cascade: remove connection + all revenue and mapping data for this org
+  const deleted = await db.transaction(async (tx) => {
+    await tx.delete(customerRevenue).where(eq(customerRevenue.orgId, orgId));
+    await tx.delete(customerMappings).where(eq(customerMappings.orgId, orgId));
+    return tx
+      .delete(stripeConnections)
+      .where(eq(stripeConnections.orgId, orgId))
+      .returning({ id: stripeConnections.id });
+  });
 
   if (deleted.length === 0) {
     return NextResponse.json(

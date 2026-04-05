@@ -99,7 +99,7 @@ export async function runAutoMatch(
   let inserted = 0;
   for (const c of candidates) {
     try {
-      await db
+      const rows = await db
         .insert(customerMappings)
         .values({
           orgId,
@@ -109,8 +109,9 @@ export async function runAutoMatch(
           matchType: c.matchType,
           confidence: c.confidence,
         })
-        .onConflictDoNothing();
-      inserted++;
+        .onConflictDoNothing()
+        .returning({ id: customerMappings.id });
+      if (rows.length > 0) inserted++;
     } catch (err) {
       log.warn({ err, stripeCustomerId: c.stripeCustomerId }, "Auto-match insert failed");
     }
