@@ -166,4 +166,37 @@ describe("GET /api/margins", () => {
     expect(lines).toHaveLength(1); // header only, no data rows
     expect(lines[0]).toContain("Customer");
   });
+
+  it("defends against CSV formula injection in customer names", async () => {
+    mockGetMarginTable.mockResolvedValue({
+      summary: {},
+      customers: [
+        {
+          stripeCustomerId: "cus_1",
+          customerName: "=CMD|'/C calc'!A0",
+          tagValue: "+dangerous",
+          revenueMicrodollars: 10_000_000,
+          costMicrodollars: 5_000_000,
+          marginMicrodollars: 5_000_000,
+          marginPercent: 50,
+          healthTier: "healthy",
+          sparkline: [],
+          projectedTierWorsening: false,
+          budgetSuggestionMicrodollars: null,
+          avatarUrl: null,
+        },
+      ],
+    });
+
+    const req = new Request("http://localhost/api/margins?format=csv");
+    const res = await GET(req);
+    const csv = await res.text();
+    const lines = csv.split("\n");
+    // Customer name: formula trigger "=" must be prefixed with single-quote
+    // The cell value should start with '= not bare =
+    const dataLine = lines[1];
+    expect(dataLine).toMatch(/^'=/); // first cell starts with '=
+    // Tag value starting with + also gets prefixed
+    expect(dataLine).toContain("'+dangerous");
+  });
 });

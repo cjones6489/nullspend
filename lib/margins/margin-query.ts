@@ -74,6 +74,9 @@ export function computeProjection(
   const intercept = yMean - slope * xMean;
   const projected = intercept + slope * n; // x = 3
 
+  // Guard against corrupted input producing NaN/Infinity
+  if (!Number.isFinite(projected)) return null;
+
   return Math.round(projected * 100) / 100;
 }
 

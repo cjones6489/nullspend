@@ -49,10 +49,20 @@ export const GET = withRequestContext(async (request: Request) => {
   return NextResponse.json({ data: result });
 });
 
-/** RFC 4180: wrap in quotes if value contains comma, quote, or newline. */
+/**
+ * RFC 4180 CSV escaping + formula injection defense.
+ * Wraps in quotes if value contains comma, quote, or newline.
+ * Prefixes formula-trigger characters (=, +, -, @) with a single quote
+ * to prevent arbitrary formula execution in Excel/Sheets.
+ */
 function csvEscape(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  let safe = value;
+  // Defense against CSV formula injection: prefix trigger chars with '
+  if (/^[=+\-@\t\r]/.test(safe)) {
+    safe = `'${safe}`;
   }
-  return value;
+  if (/[",\n\r]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
+  }
+  return safe;
 }

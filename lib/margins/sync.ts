@@ -208,10 +208,11 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       log.warn({ err, orgId }, "Margin threshold detection failed (non-fatal)");
     }
 
-    // Dispatch webhook events (independent of Slack)
+    // Dispatch webhook events (independent of Slack, per-crossing isolation)
     if (crossings.length > 0 && marginData) {
-      try {
-        for (const crossing of crossings) {
+      let webhooksSent = 0;
+      for (const crossing of crossings) {
+        try {
           const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
           if (!customer) continue;
           const event = buildMarginThresholdPayload({
@@ -225,17 +226,21 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
             period: currentPeriod,
           });
           await dispatchWebhookEvent(orgId, event);
+          webhooksSent++;
+        } catch (err) {
+          log.warn({ err, orgId, tagValue: crossing.tagValue }, "Margin webhook dispatch failed for crossing (non-fatal)");
         }
-        log.info({ orgId, count: crossings.length }, "Margin webhook events dispatched");
-      } catch (err) {
-        log.warn({ err, orgId }, "Margin webhook dispatch failed (non-fatal)");
+      }
+      if (webhooksSent > 0) {
+        log.info({ orgId, sent: webhooksSent, total: crossings.length }, "Margin webhook events dispatched");
       }
     }
 
-    // Dispatch Slack alerts (independent of webhooks)
+    // Dispatch Slack alerts (independent of webhooks, per-crossing isolation)
     if (crossings.length > 0 && marginData) {
-      try {
-        for (const crossing of crossings) {
+      let slackSent = 0;
+      for (const crossing of crossings) {
+        try {
           const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
           if (!customer) continue;
           const message = buildMarginAlertMessage({
@@ -250,12 +255,13 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
             period: currentPeriod,
           });
           await dispatchMarginSlackAlert(orgId, message);
+          slackSent++;
+        } catch (err) {
+          log.warn({ err, orgId, tagValue: crossing.tagValue }, "Margin Slack alert failed for crossing (non-fatal)");
         }
-        if (crossings.length > 0) {
-          log.info({ orgId, count: crossings.length }, "Margin Slack alerts dispatched");
-        }
-      } catch (err) {
-        log.warn({ err, orgId }, "Margin Slack alert dispatch failed (non-fatal)");
+      }
+      if (slackSent > 0) {
+        log.info({ orgId, sent: slackSent, total: crossings.length }, "Margin Slack alerts dispatched");
       }
     }
 
@@ -327,15 +333,18 @@ export async function syncAllOrgs(): Promise<SyncResult[]> {
     }
 
     // Per-org timeout: abort if a single sync takes too long
+    let timerId: ReturnType<typeof setTimeout> | undefined;
     try {
       const result = await Promise.race([
         syncOrgRevenue(conn.orgId),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Per-org sync timeout")), PER_ORG_TIMEOUT_MS),
-        ),
+        new Promise<never>((_, reject) => {
+          timerId = setTimeout(() => reject(new Error("Per-org sync timeout")), PER_ORG_TIMEOUT_MS);
+        }),
       ]);
+      clearTimeout(timerId);
       results.push(result);
     } catch (err) {
+      clearTimeout(timerId);
       const message = err instanceof Error ? err.message : "Unknown error";
       log.error({ err, orgId: conn.orgId }, "Org sync failed or timed out");
       results.push({

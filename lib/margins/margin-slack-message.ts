@@ -120,6 +120,12 @@ export async function dispatchMarginSlackAlert(
     return; // No Slack config — skip silently
   }
 
+  // SSRF defense: only POST to HTTPS Slack webhook URLs
+  if (!config.webhookUrl.startsWith("https://")) {
+    log.warn({ orgId }, "Slack webhook URL is not HTTPS — skipping margin alert");
+    return;
+  }
+
   const response = await fetch(config.webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

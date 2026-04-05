@@ -156,6 +156,24 @@ describe("computeProjection", () => {
     ]);
     expect(result).toBe(-40);
   });
+
+  it("returns null for NaN input (corrupted data)", () => {
+    const result = computeProjection([
+      { marginPercent: NaN, hasData: true },
+      { marginPercent: NaN, hasData: true },
+      { marginPercent: NaN, hasData: true },
+    ]);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for Infinity input", () => {
+    const result = computeProjection([
+      { marginPercent: Infinity, hasData: true },
+      { marginPercent: 50, hasData: true },
+      { marginPercent: 30, hasData: true },
+    ]);
+    expect(result).toBeNull();
+  });
 });
 
 describe("getMarginTable", () => {
@@ -623,6 +641,32 @@ describe("getMarginTable", () => {
     const customer = result.customers[0];
     expect(customer.sparkline[3].marginPercent).toBe(60); // flat → 60%
     expect(customer.projectedTierWorsening).toBe(false);
+  });
+
+  it("flags worsening when healthy projects to moderate (indexOf -1 edge case)", async () => {
+    // 3 months: 60%, 55%, 50% → slope = -5 → projected = 45% (moderate)
+    // Current = healthy (50%), projected = moderate (45%) → WARNING
+    setupMockDb({
+      connection: { lastSyncAt: new Date(), status: "active" },
+      mappings: [{ stripeCustomerId: "cus_1", tagKey: "customer", tagValue: "sliding" }],
+      revenueRows: [
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 1, 1)), amountMicrodollars: 100_000_000, customerName: "Sliding", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 2, 1)), amountMicrodollars: 100_000_000, customerName: "Sliding", avatarUrl: null },
+        { stripeCustomerId: "cus_1", periodStart: new Date(Date.UTC(2026, 3, 1)), amountMicrodollars: 100_000_000, customerName: "Sliding", avatarUrl: null },
+      ],
+      costRows: [
+        { tagValue: "sliding", period: "2026-02", totalCost: 40_000_000 },  // 60%
+        { tagValue: "sliding", period: "2026-03", totalCost: 45_000_000 },  // 55%
+        { tagValue: "sliding", period: "2026-04", totalCost: 50_000_000 },  // 50%
+      ],
+    });
+
+    const result = await getMarginTable(ORG_ID, PERIOD);
+    const customer = result.customers[0];
+    expect(customer.healthTier).toBe("healthy"); // 50% is healthy
+    expect(customer.sparkline[3].projected).toBe(true);
+    expect(customer.sparkline[3].marginPercent).toBe(45); // slope -5 → 50 - 5 = 45
+    expect(customer.projectedTierWorsening).toBe(true); // healthy → moderate
   });
 
   it("does not project when insufficient data (only 1 period)", async () => {

@@ -163,4 +163,23 @@ describe("dispatchMarginSlackAlert", () => {
     // Should not throw
     await expect(dispatchMarginSlackAlert("org-1", message)).resolves.toBeUndefined();
   });
+
+  it("rejects non-HTTPS webhook URLs (SSRF defense)", async () => {
+    mockGetDb.mockReturnValue({
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([{
+              orgId: "org-1",
+              isActive: true,
+              webhookUrl: "http://169.254.169.254/latest/meta-data/",
+            }]),
+          }),
+        }),
+      }),
+    });
+
+    await dispatchMarginSlackAlert("org-1", message);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
