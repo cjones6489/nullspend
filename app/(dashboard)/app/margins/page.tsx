@@ -196,7 +196,7 @@ export default function MarginsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Margins</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            {summary
+            {summary && !isDisconnected
               ? `${summary.blendedMarginPercent.toFixed(0)}% margin | ${summary.criticalCount} critical, ${summary.atRiskCount} at risk`
               : "Customer profitability by Stripe revenue vs AI cost."}
           </p>
