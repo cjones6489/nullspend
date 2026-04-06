@@ -47,7 +47,7 @@ function setupMockDb(opts: MockDbOptions = {}) {
   const costRows = opts.costRows ?? [];
 
   mockGetDb.mockReturnValue({
-    select: (fields?: unknown) => ({
+    select: (_fields?: unknown) => ({
       from: (table: unknown) => {
         // Connection query
         if (table === stripeConnections) {

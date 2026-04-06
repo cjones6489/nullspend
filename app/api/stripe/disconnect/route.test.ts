@@ -33,7 +33,7 @@ function setupDbMock(connectionRows: { id: string }[]) {
     transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         delete: () => ({
-          where: (condition: unknown) => {
+          where: (_condition: unknown) => {
             // Distinguish between the three delete calls by returning different promises
             return {
               returning: () => mockDeleteConnections(),

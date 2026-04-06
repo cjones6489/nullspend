@@ -2,8 +2,13 @@ import { z } from "zod";
 
 import { nsIdOutputNullable } from "@/lib/ids/prefixed-id";
 
+const safeIdentifier = z.string().min(1).max(100).regex(
+  /^[a-zA-Z_][a-zA-Z0-9_-]*$/,
+  "Must be alphanumeric, underscore, or hyphen (start with letter or underscore)",
+);
+
 export const attributionQuerySchema = z.object({
-  groupBy: z.string().min(1).max(100),
+  groupBy: safeIdentifier,
   period: z.enum(["7d", "30d", "90d"]).default("30d"),
   limit: z.coerce.number().int().min(1).max(500).default(100),
   excludeEstimated: z.enum(["true", "false"]).default("false"),
@@ -31,7 +36,7 @@ export const attributionResponseSchema = z.object({
 });
 
 export const attributionDetailQuerySchema = z.object({
-  groupBy: z.string().min(1).max(100),
+  groupBy: safeIdentifier,
   period: z.enum(["7d", "30d", "90d"]).default("30d"),
   excludeEstimated: z.enum(["true", "false"]).default("false"),
 });

@@ -18,15 +18,22 @@ import { getDb } from "@/lib/db/client";
 // Tables and columns that the application code requires.
 // If any are missing, routes will 500 at runtime.
 const REQUIRED_SCHEMA: Array<{ table: string; columns: string[] }> = [
-  { table: "actions", columns: ["id", "owner_user_id", "status", "agent_id", "action_type", "payload_json"] },
-  { table: "api_keys", columns: ["id", "user_id", "key_hash", "revoked_at"] },
-  { table: "cost_events", columns: ["id", "user_id", "cost_microdollars", "cost_breakdown"] },
-  { table: "budgets", columns: ["id", "entity_type", "entity_id", "max_budget_microdollars"] },
-  { table: "webhook_endpoints", columns: ["id", "user_id", "url", "signing_secret"] },
+  { table: "organizations", columns: ["id", "name", "owner_user_id"] },
+  { table: "org_memberships", columns: ["id", "org_id", "user_id", "role"] },
+  { table: "org_invitations", columns: ["id", "org_id", "email", "role"] },
+  { table: "actions", columns: ["id", "org_id", "owner_user_id", "status", "agent_id", "action_type", "payload_json"] },
+  { table: "api_keys", columns: ["id", "org_id", "user_id", "key_hash", "revoked_at"] },
+  { table: "cost_events", columns: ["id", "org_id", "user_id", "cost_microdollars", "cost_breakdown"] },
+  { table: "budgets", columns: ["id", "org_id", "entity_type", "entity_id", "max_budget_microdollars"] },
+  { table: "webhook_endpoints", columns: ["id", "org_id", "user_id", "url", "signing_secret"] },
   { table: "webhook_deliveries", columns: ["id", "endpoint_id", "event_id"] },
   { table: "subscriptions", columns: ["id", "user_id", "stripe_customer_id"] },
-  { table: "tool_costs", columns: ["id", "user_id", "server_name", "tool_name"] },
-  { table: "slack_configs", columns: ["id", "user_id"] },
+  { table: "tool_costs", columns: ["id", "org_id", "user_id", "server_name", "tool_name"] },
+  { table: "slack_configs", columns: ["id", "org_id", "user_id"] },
+  { table: "audit_events", columns: ["id", "org_id", "user_id", "action"] },
+  { table: "stripe_connections", columns: ["id", "org_id"] },
+  { table: "customer_mappings", columns: ["id", "org_id", "tag_value", "stripe_customer_id"] },
+  { table: "customer_revenue", columns: ["id", "org_id", "tag_value", "period"] },
 ];
 
 interface ComponentStatus {

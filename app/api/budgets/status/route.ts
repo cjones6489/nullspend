@@ -13,6 +13,14 @@ export const GET = withRequestContext(async (request: Request) => {
   if (authResult instanceof Response) return authResult;
 
   const { userId, orgId, keyId, rateLimit } = authResult;
+
+  if (!orgId) {
+    return NextResponse.json(
+      { error: { code: "forbidden", message: "Organization context required.", details: null } },
+      { status: 403 },
+    );
+  }
+
   const db = getDb();
 
   const entityCondition = keyId
@@ -22,9 +30,7 @@ export const GET = withRequestContext(async (request: Request) => {
       )
     : and(eq(budgets.entityType, "user"), eq(budgets.entityId, userId));
 
-  const condition = orgId
-    ? and(eq(budgets.orgId, orgId), entityCondition)
-    : entityCondition;
+  const condition = and(eq(budgets.orgId, orgId), entityCondition);
 
   const rows = await db.select().from(budgets).where(condition);
 

@@ -53,7 +53,7 @@ function setupMockDb(opts: MockDetailOptions = {}) {
   let costQueryCount = 0;
 
   mockGetDb.mockReturnValue({
-    select: (fields?: unknown) => ({
+    select: (_fields?: unknown) => ({
       from: (table: unknown) => {
         // Mapping lookup
         if (table === customerMappings) {

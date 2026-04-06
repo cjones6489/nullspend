@@ -119,7 +119,7 @@ export default function HomePage() {
   const keys = keysData?.data ?? [];
   const totals = summaryData?.totals;
   const daily = summaryData?.daily;
-  const budgets = budgetsData?.data ?? [];
+  const budgets = useMemo(() => budgetsData?.data ?? [], [budgetsData?.data]);
   const models = summaryData?.models ?? [];
   const events = recentEventsData?.data ?? [];
   const hasData = keys.length > 0;

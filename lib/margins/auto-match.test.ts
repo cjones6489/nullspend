@@ -18,7 +18,7 @@ beforeEach(() => {
 
 function mockInsertSuccess() {
   return {
-    values: (v: unknown) => ({
+    values: (_v: unknown) => ({
       onConflictDoNothing: () => ({
         returning: () => Promise.resolve([{ id: "m-1" }]),
       }),

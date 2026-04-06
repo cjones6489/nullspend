@@ -28,7 +28,7 @@ describe("runAutoMatch edge cases", () => {
       insert: () => ({
         values: () => ({
           onConflictDoNothing: () => ({
-            returning: (arg: unknown) => {
+            returning: (_arg: unknown) => {
               // First insert succeeds, second would conflict
               return Promise.resolve([{ id: "m-1" }]);
             },

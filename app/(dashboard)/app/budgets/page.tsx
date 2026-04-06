@@ -85,7 +85,9 @@ export default function BudgetsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editBudget, setEditBudget] = useState<EditBudgetData | undefined>();
   const [defaultValues, setDefaultValues] = useState<DefaultValues | undefined>();
-  const [highlightedBudgetId, setHighlightedBudgetId] = useState<string | null>(null);
+  const [highlightedBudgetId, setHighlightedBudgetId] = useState<string | null>(
+    () => searchParams.get("selected"),
+  );
   const deepLinkHandled = useRef(false);
 
   const budgets = data?.data ?? [];
@@ -95,34 +97,33 @@ export default function BudgetsPage() {
   const velocityEntries = velocityData?.velocityState ?? [];
   const keyMap = new Map(keys.map((k) => [k.id, k.name]));
 
-  // Deep-link: ?create=api_key&entityId=xxx → auto-open create dialog pre-filled
-  // Deep-link: ?selected=xxx → highlight that budget row
+  // Deep-link: ?create=api_key&entityId=xxx → open create dialog once data loads
+  // Using requestAnimationFrame to batch state updates outside the render cycle
   useEffect(() => {
     if (deepLinkHandled.current) return;
-    if (!data || !keysData) return; // wait for both to load
+    if (!data || !keysData) return;
 
     const keyIds = (keysData.data ?? []).map((k) => k.id);
     const result = parseDeepLink(searchParams, keyIds);
 
-    let timerId: ReturnType<typeof setTimeout> | undefined;
-
     if (result.action === "create") {
       deepLinkHandled.current = true;
-      setDefaultValues({
-        entityType: "api_key",
-        entityId: result.entityId,
+      requestAnimationFrame(() => {
+        setDefaultValues({
+          entityType: "api_key",
+          entityId: result.entityId,
+        });
+        setCreateOpen(true);
       });
-      setCreateOpen(true);
-    } else if (result.action === "highlight" && result.budgetId) {
-      deepLinkHandled.current = true;
-      setHighlightedBudgetId(result.budgetId);
-      timerId = setTimeout(() => setHighlightedBudgetId(null), 3000);
     }
-
-    return () => {
-      if (timerId) clearTimeout(timerId);
-    };
   }, [data, keysData, searchParams]);
+
+  // Auto-clear highlight after 3 seconds
+  useEffect(() => {
+    if (!highlightedBudgetId) return;
+    const timerId = setTimeout(() => setHighlightedBudgetId(null), 3000);
+    return () => clearTimeout(timerId);
+  }, [highlightedBudgetId]);
 
   function handleEditClick(budget: BudgetData) {
     const isDefaultThresholds =
