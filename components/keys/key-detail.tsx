@@ -1,21 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, X } from "lucide-react";
+import { Loader2, Pencil, Plus, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useUpdateApiKey, useRevokeApiKey } from "@/lib/queries/api-keys";
-import { useCostEvents } from "@/lib/queries/cost-events";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { KeyPolicySummary } from "@/components/keys/key-policy-summary";
-import { KeyBudgetSummary } from "@/components/keys/key-budget-summary";
-import { KeyTagBudgets } from "@/components/keys/key-tag-budgets";
 import { RevokeKeyDialog } from "@/components/keys/revoke-key-dialog";
+import { validateTagAdd } from "@/components/keys/tag-utils";
 import type { ApiKeyRecord } from "@/lib/validations/api-keys";
 
 interface KeyDetailProps {
@@ -23,39 +27,13 @@ interface KeyDetailProps {
   canManage: boolean;
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  proxy: "Proxy",
-  api: "SDK",
-  mcp: "MCP",
-};
-
-const SOURCE_STYLES: Record<string, string> = {
-  proxy: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  api: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  mcp: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-};
-
 export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
   const updateKey = useUpdateApiKey();
   const revokeKey = useRevokeApiKey();
   const [revokeOpen, setRevokeOpen] = useState(false);
-  const { data: eventsData } = useCostEvents({ apiKeyId: apiKey.id });
-  const activeSources = useMemo(() => {
-    const events = eventsData?.pages.flatMap((p) => p.data) ?? [];
-    return [...new Set(events.map((e) => e.source))].sort();
-  }, [eventsData]);
+  const [tagsOpen, setTagsOpen] = useState(false);
 
-  const handleUpdateTags = async (tags: Record<string, string>) => {
-    try {
-      await updateKey.mutateAsync({
-        id: apiKey.id,
-        input: { defaultTags: tags },
-      });
-      toast.success("Tags updated");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update tags");
-    }
-  };
+  const tagEntries = Object.entries(apiKey.defaultTags);
 
   const handleRevoke = async () => {
     try {
@@ -69,7 +47,7 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="space-y-6">
+      <div className="space-y-4">
         {/* Header */}
         <div>
           <h2 className="text-lg font-semibold text-foreground">{apiKey.name}</h2>
@@ -93,58 +71,43 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </div>
         </div>
 
-        {/* Traffic sources */}
-        {activeSources.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Sources
-            </span>
-            <div className="flex gap-1.5">
-              {activeSources.map((source) => (
-                <span
-                  key={source}
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${SOURCE_STYLES[source] ?? "bg-secondary text-muted-foreground border-border/50"}`}
+        {/* Tags (read-only badges + edit icon) */}
+        <div className="flex items-center gap-2">
+          {tagEntries.length > 0 ? (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {tagEntries.map(([k, v]) => (
+                  <Badge key={k} variant="secondary" className="font-mono text-[11px]">
+                    {k}={v}
+                  </Badge>
+                ))}
+              </div>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => setTagsOpen(true)}
+                  className="rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
-                  {SOURCE_LABELS[source] ?? source}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+            </>
+          ) : canManage ? (
+            <button
+              type="button"
+              onClick={() => setTagsOpen(true)}
+              className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              + Add tags
+            </button>
+          ) : (
+            <span className="text-[13px] text-muted-foreground">No tags</span>
+          )}
+        </div>
 
-        {/* Policy (read-only summary) */}
-        <KeyPolicySummary
-          allowedProviders={apiKey.allowedProviders}
-          allowedModels={apiKey.allowedModels}
-        />
-
-        {/* Budget (read-only summary with deep-link) */}
-        <KeyBudgetSummary keyId={apiKey.id} />
-
-        {/* Default Tags */}
-        <Card className="border-border/50 bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Default Tags
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TagEditor
-              key={apiKey.id}
-              tags={apiKey.defaultTags}
-              onSave={handleUpdateTags}
-              disabled={!canManage}
-              saving={updateKey.isPending}
-            />
-          </CardContent>
-        </Card>
-
-        {/* Tag Budgets (matched from default tags) */}
-        <KeyTagBudgets defaultTags={apiKey.defaultTags} />
-
-        {/* Actions */}
+        {/* Revoke */}
         {canManage && (
-          <div className="flex gap-3 border-t border-border/30 pt-4">
+          <div className="border-t border-border/30 pt-4">
             <RevokeKeyDialog
               open={revokeOpen}
               onOpenChange={setRevokeOpen}
@@ -155,43 +118,59 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </div>
         )}
       </div>
+
+      {/* Edit Tags Dialog */}
+      <EditTagsDialog
+        key={apiKey.id}
+        open={tagsOpen}
+        onOpenChange={setTagsOpen}
+        tags={apiKey.defaultTags}
+        saving={updateKey.isPending}
+        onSave={async (tags) => {
+          await updateKey.mutateAsync({
+            id: apiKey.id,
+            input: { defaultTags: tags },
+          });
+          toast.success("Tags updated");
+          setTagsOpen(false);
+        }}
+      />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Tag Editor (inline)
+// Edit Tags Dialog
 // ---------------------------------------------------------------------------
 
-function TagEditor({
+function EditTagsDialog({
+  open,
+  onOpenChange,
   tags,
-  onSave,
-  disabled,
   saving,
+  onSave,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   tags: Record<string, string>;
+  saving: boolean;
   onSave: (tags: Record<string, string>) => Promise<void>;
-  disabled?: boolean;
-  saving?: boolean;
 }) {
-  // State is initialized from props. Parent uses key={apiKey.id} to
-  // remount this component when the selected key changes.
-  const [editing, setEditing] = useState(false);
   const [localTags, setLocalTags] = useState<Record<string, string>>(tags);
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
 
-  const entries = Object.entries(editing ? localTags : tags);
+  const entries = Object.entries(localTags);
 
   const addTag = () => {
     const k = newKey.trim();
-    const v = newValue.trim();
     if (!k) return;
-    if (k.startsWith("_ns_")) {
-      toast.error("Tags starting with _ns_ are reserved");
+    const error = validateTagAdd(k, localTags, newValue.trim());
+    if (error) {
+      toast.error(error);
       return;
     }
-    setLocalTags((prev) => ({ ...prev, [k]: v }));
+    setLocalTags((prev) => ({ ...prev, [k]: newValue.trim() }));
     setNewKey("");
     setNewValue("");
   };
@@ -204,108 +183,93 @@ function TagEditor({
     });
   };
 
-  if (!editing) {
-    return (
-      <div>
-        {entries.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">
-            No default tags. Tags are merged into every request from this key.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {entries.map(([k, v]) => (
-              <Badge key={k} variant="secondary" className="font-mono text-[11px]">
-                {k}={v}
-              </Badge>
-            ))}
-          </div>
-        )}
-        {!disabled && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => setEditing(true)}
-          >
-            {entries.length === 0 ? "Add Tags" : "Edit Tags"}
-          </Button>
-        )}
-      </div>
-    );
-  }
+  const handleClose = (value: boolean) => {
+    if (!value) {
+      setLocalTags(tags);
+      setNewKey("");
+      setNewValue("");
+    }
+    onOpenChange(value);
+  };
 
   return (
-    <div className="space-y-3">
-      {entries.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {entries.map(([k, v]) => (
-            <Badge key={k} variant="secondary" className="gap-1 font-mono text-[11px]">
-              {k}={v}
-              <button
-                type="button"
-                onClick={() => removeTag(k)}
-                className="ml-0.5 rounded-full p-0.5 hover:bg-foreground/10"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </Badge>
-          ))}
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent>
+        <DialogTitle>Edit Default Tags</DialogTitle>
+        <DialogDescription>
+          Tags are merged into every request from this key.
+        </DialogDescription>
+
+        <div className="space-y-3 py-2">
+          {entries.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {entries.map(([k, v]) => (
+                <Badge key={k} variant="secondary" className="gap-1 font-mono text-[11px]">
+                  {k}={v}
+                  <button
+                    type="button"
+                    onClick={() => removeTag(k)}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-foreground/10"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Input
+              value={newKey}
+              onChange={(e) => setNewKey(e.target.value)}
+              placeholder="key"
+              className="h-8 w-32 font-mono text-xs"
+            />
+            <Input
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addTag();
+                }
+              }}
+              placeholder="value"
+              className="h-8 flex-1 font-mono text-xs"
+            />
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1" onClick={addTag}>
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground">
+            Max 10 tags. Keys must be alphanumeric/underscore/hyphen. Tags starting with _ns_ are reserved.
+          </p>
         </div>
-      )}
 
-      <div className="flex gap-2">
-        <Input
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          placeholder="key"
-          className="h-8 w-32 font-mono text-xs"
-        />
-        <Input
-          value={newValue}
-          onChange={(e) => setNewValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addTag();
-            }
-          }}
-          placeholder="value"
-          className="h-8 flex-1 font-mono text-xs"
-        />
-        <Button type="button" variant="outline" size="sm" className="h-8 gap-1" onClick={addTag}>
-          <Plus className="h-3 w-3" />
-        </Button>
-      </div>
-
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          onClick={async () => {
-            await onSave(localTags);
-            setEditing(false);
-          }}
-          disabled={saving}
-          className="gap-1.5"
-        >
-          {saving && <Loader2 className="h-3 w-3 animate-spin" />}
-          Save Tags
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setLocalTags(tags);
-            setEditing(false);
-          }}
-          disabled={saving}
-        >
-          Cancel
-        </Button>
-      </div>
-
-      <p className="text-[10px] text-muted-foreground">
-        Max 10 tags. Keys must be alphanumeric/underscore/hyphen. Tags starting with _ns_ are reserved.
-      </p>
-    </div>
+        <DialogFooter>
+          <DialogClose
+            className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
+          >
+            Cancel
+          </DialogClose>
+          <Button
+            size="sm"
+            onClick={async () => {
+              try {
+                await onSave(localTags);
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : "Failed to update tags");
+              }
+            }}
+            disabled={saving}
+            className="gap-1.5"
+          >
+            {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

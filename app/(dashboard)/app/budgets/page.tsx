@@ -57,6 +57,7 @@ import {
   formatMicrodollars,
 } from "@/lib/utils/format";
 import { cn } from "@/lib/utils";
+import { parseDeepLink } from "./deep-link";
 
 interface BudgetData {
   id: string;
@@ -100,25 +101,28 @@ export default function BudgetsPage() {
     if (deepLinkHandled.current) return;
     if (!data || !keysData) return; // wait for both to load
 
-    const createType = searchParams.get("create");
-    const entityId = searchParams.get("entityId");
-    const selectedId = searchParams.get("selected");
+    const keyIds = (keysData.data ?? []).map((k) => k.id);
+    const result = parseDeepLink(searchParams, keyIds);
 
-    if (createType === "api_key" && entityId) {
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+
+    if (result.action === "create") {
       deepLinkHandled.current = true;
-      const keyExists = keys.some((k) => k.id === entityId);
       setDefaultValues({
         entityType: "api_key",
-        entityId: keyExists ? entityId : undefined,
+        entityId: result.entityId,
       });
       setCreateOpen(true);
-    } else if (selectedId) {
+    } else if (result.action === "highlight" && result.budgetId) {
       deepLinkHandled.current = true;
-      setHighlightedBudgetId(selectedId);
-      // Clear highlight after 3 seconds
-      setTimeout(() => setHighlightedBudgetId(null), 3000);
+      setHighlightedBudgetId(result.budgetId);
+      timerId = setTimeout(() => setHighlightedBudgetId(null), 3000);
     }
-  }, [data, keysData, searchParams, keys]);
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [data, keysData, searchParams]);
 
   function handleEditClick(budget: BudgetData) {
     const isDefaultThresholds =
