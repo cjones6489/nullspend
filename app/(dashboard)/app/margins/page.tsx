@@ -25,6 +25,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
+import { MarginPreviewTable } from "@/components/margins/preview-table";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -331,6 +332,9 @@ export default function MarginsPage() {
             >
               {connectStripe.isPending ? "Connecting..." : "Connect"}
             </Button>
+          </div>
+          <div className="mt-4 max-w-lg">
+            <MarginPreviewTable />
           </div>
         </div>
       )}

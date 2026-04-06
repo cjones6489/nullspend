@@ -41,7 +41,7 @@ export function SpendChart({ data }: { data: DailySpend[] }) {
         <CardTitle className="text-sm font-medium">Daily Spend</CardTitle>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
+        <ChartContainer config={chartConfig} className="min-h-[280px] w-full">
           <AreaChart data={data} accessibilityLayer>
             <CartesianGrid vertical={false} />
             <XAxis

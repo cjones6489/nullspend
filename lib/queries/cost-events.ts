@@ -84,6 +84,15 @@ export function useSession(sessionId: string) {
   });
 }
 
+export function useRecentCostEvents(limit: number) {
+  return useQuery<CostEventsPage>({
+    queryKey: [...costEventKeys.lists(), "recent", limit] as const,
+    queryFn: () => apiGet(`/api/cost-events?limit=${limit}`),
+    staleTime: 30_000,
+    retry: retryOnServerError,
+  });
+}
+
 export function useCostEvents(filters: CostEventFilters = {}) {
   return useInfiniteQuery({
     queryKey: costEventKeys.list(filters),
