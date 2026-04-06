@@ -12,8 +12,8 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { useUpdateApiKey, useRevokeApiKey } from "@/lib/queries/api-keys";
 import { useCostEvents } from "@/lib/queries/cost-events";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { PolicyEditor } from "@/components/keys/policy-editor";
-import { KeyBudgetSection } from "@/components/keys/key-budget-section";
+import { KeyPolicySummary } from "@/components/keys/key-policy-summary";
+import { KeyBudgetSummary } from "@/components/keys/key-budget-summary";
 import { KeyTagBudgets } from "@/components/keys/key-tag-budgets";
 import { RevokeKeyDialog } from "@/components/keys/revoke-key-dialog";
 import type { ApiKeyRecord } from "@/lib/validations/api-keys";
@@ -44,24 +44,6 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
     const events = eventsData?.pages.flatMap((p) => p.data) ?? [];
     return [...new Set(events.map((e) => e.source))].sort();
   }, [eventsData]);
-
-  const handleUpdatePolicy = async (
-    allowedProviders: string[] | null,
-    allowedModels: string[] | null,
-  ) => {
-    try {
-      await updateKey.mutateAsync({
-        id: apiKey.id,
-        input: {
-          allowedProviders: allowedProviders as ("openai" | "anthropic")[] | null | undefined,
-          allowedModels,
-        },
-      });
-      toast.success("Policy updated");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update policy");
-    }
-  };
 
   const handleUpdateTags = async (tags: Record<string, string>) => {
     try {
@@ -130,27 +112,14 @@ export function KeyDetail({ apiKey, canManage }: KeyDetailProps) {
           </div>
         )}
 
-        {/* Policy (providers + models) */}
-        <Card className="border-border/50 bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Policy
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PolicyEditor
-              key={apiKey.id}
-              allowedProviders={apiKey.allowedProviders}
-              allowedModels={apiKey.allowedModels}
-              onSave={handleUpdatePolicy}
-              disabled={!canManage}
-              saving={updateKey.isPending}
-            />
-          </CardContent>
-        </Card>
+        {/* Policy (read-only summary) */}
+        <KeyPolicySummary
+          allowedProviders={apiKey.allowedProviders}
+          allowedModels={apiKey.allowedModels}
+        />
 
-        {/* Budget + Velocity + Session */}
-        <KeyBudgetSection keyId={apiKey.id} canManage={canManage} />
+        {/* Budget (read-only summary with deep-link) */}
+        <KeyBudgetSummary keyId={apiKey.id} />
 
         {/* Default Tags */}
         <Card className="border-border/50 bg-card">

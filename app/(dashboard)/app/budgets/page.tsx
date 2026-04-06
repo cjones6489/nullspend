@@ -2,7 +2,8 @@
 
 import { ChevronDown, ChevronRight, Clock, DollarSign, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Zap } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -77,18 +78,47 @@ export default function BudgetsPage() {
   const { data, isLoading, error } = useBudgets();
   const { data: keysData } = useApiKeys();
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const canCreate = session?.role === "owner" || session?.role === "admin" || session?.role === "member";
   const canManage = session?.role === "owner" || session?.role === "admin";
   const [createOpen, setCreateOpen] = useState(false);
   const [editBudget, setEditBudget] = useState<EditBudgetData | undefined>();
+  const [defaultValues, setDefaultValues] = useState<DefaultValues | undefined>();
+  const [highlightedBudgetId, setHighlightedBudgetId] = useState<string | null>(null);
+  const deepLinkHandled = useRef(false);
 
   const budgets = data?.data ?? [];
+  const keys = keysData?.data ?? [];
   const hasAnyVelocity = budgets.some((b) => b.velocityLimitMicrodollars != null);
   const { data: velocityData } = useVelocityStatus(hasAnyVelocity);
   const velocityEntries = velocityData?.velocityState ?? [];
-  const keyMap = new Map(
-    (keysData?.data ?? []).map((k) => [k.id, k.name]),
-  );
+  const keyMap = new Map(keys.map((k) => [k.id, k.name]));
+
+  // Deep-link: ?create=api_key&entityId=xxx → auto-open create dialog pre-filled
+  // Deep-link: ?selected=xxx → highlight that budget row
+  useEffect(() => {
+    if (deepLinkHandled.current) return;
+    if (!data || !keysData) return; // wait for both to load
+
+    const createType = searchParams.get("create");
+    const entityId = searchParams.get("entityId");
+    const selectedId = searchParams.get("selected");
+
+    if (createType === "api_key" && entityId) {
+      deepLinkHandled.current = true;
+      const keyExists = keys.some((k) => k.id === entityId);
+      setDefaultValues({
+        entityType: "api_key",
+        entityId: keyExists ? entityId : undefined,
+      });
+      setCreateOpen(true);
+    } else if (selectedId) {
+      deepLinkHandled.current = true;
+      setHighlightedBudgetId(selectedId);
+      // Clear highlight after 3 seconds
+      setTimeout(() => setHighlightedBudgetId(null), 3000);
+    }
+  }, [data, keysData, searchParams, keys]);
 
   function handleEditClick(budget: BudgetData) {
     const isDefaultThresholds =
@@ -143,8 +173,15 @@ export default function BudgetsPage() {
         )}
       </div>
 
-      {/* Create dialog (no trigger — opened by header button or empty state CTA) */}
-      <BudgetDialog open={createOpen} onOpenChange={setCreateOpen} />
+      {/* Create dialog (no trigger — opened by header button, empty state CTA, or deep-link) */}
+      <BudgetDialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setDefaultValues(undefined);
+        }}
+        defaultValues={defaultValues}
+      />
 
       {/* Edit dialog (no trigger — opened by row menu) */}
       {canManage && editBudget && (
@@ -208,6 +245,7 @@ export default function BudgetsPage() {
                     onEditClick={() => handleEditClick(budget)}
                     velocityEntries={velocityEntries}
                     canManage={!!canManage}
+                    highlighted={budget.id === highlightedBudgetId}
                   />
                 ))}
               </TableBody>
@@ -276,12 +314,14 @@ function BudgetRow({
   onEditClick,
   velocityEntries,
   canManage,
+  highlighted,
 }: {
   budget: BudgetData;
   entityName: string;
   onEditClick: () => void;
   velocityEntries: VelocityStateEntry[];
   canManage: boolean;
+  highlighted?: boolean;
 }) {
   const resetBudget = useResetBudget();
   const deleteBudget = useDeleteBudget();
@@ -349,7 +389,10 @@ function BudgetRow({
   return (
     <>
     <TableRow
-      className="border-border/30 cursor-pointer transition-colors hover:bg-accent/40"
+      className={cn(
+        "border-border/30 cursor-pointer transition-colors hover:bg-accent/40",
+        highlighted && "ring-1 ring-primary/50 bg-primary/5",
+      )}
       onClick={() => setExpanded((e) => !e)}
     >
       <TableCell>
@@ -589,14 +632,21 @@ interface EditBudgetData {
   sessionLimitDollars: string;
 }
 
+interface DefaultValues {
+  entityType: "api_key";
+  entityId?: string;
+}
+
 function BudgetDialog({
   open,
   onOpenChange,
   editBudget,
+  defaultValues,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editBudget?: EditBudgetData;
+  defaultValues?: DefaultValues;
 }) {
   const isEdit = !!editBudget;
   const createBudget = useCreateBudget();
@@ -605,10 +655,12 @@ function BudgetDialog({
   const keys = keysData?.data ?? [];
 
   const [entityType, setEntityType] = useState<"user" | "api_key" | "tag">(
-    editBudget?.entityType ?? "user",
+    editBudget?.entityType ?? defaultValues?.entityType ?? "user",
   );
   const [selectedKeyId, setSelectedKeyId] = useState(
-    editBudget?.entityType === "api_key" ? editBudget.entityId : "",
+    editBudget?.entityType === "api_key"
+      ? editBudget.entityId
+      : defaultValues?.entityId ?? "",
   );
   const [tagKey, setTagKey] = useState(
     editBudget?.entityType === "tag" ? editBudget.entityId.split("=")[0] : "",
