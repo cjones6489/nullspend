@@ -161,7 +161,7 @@ function SortIcon({ field, active, dir }: { field: string; active: string; dir: 
     : <ArrowDown className="ml-1 inline h-3 w-3" />;
 }
 
-export default function MarginsPage() {
+export default function CustomersPage() {
   const router = useRouter();
   const periods = useMemo(() => previousPeriods(6), []);
   const [period, setPeriod] = useState(currentPeriod());
@@ -211,7 +211,7 @@ export default function MarginsPage() {
       return sortDir === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
     });
     return items;
-  }, [data, sortField, sortDir]);
+  }, [data, sortField, sortDir, healthFilter]);
 
   const summary = data?.summary;
   const isEmpty = data && data.customers.length === 0;
@@ -378,9 +378,15 @@ export default function MarginsPage() {
 
       {isEmpty && !isDisconnected && (
         <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border/50 py-16 text-center">
-          <p className="text-sm font-medium text-foreground">No customer data yet</p>
+          <p className="text-sm font-medium text-foreground">
+            {summary && summary.totalRevenueMicrodollars > 0
+              ? "Revenue data ready"
+              : "No customer data yet"}
+          </p>
           <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-            Add <code className="rounded bg-muted px-1">X-NullSpend-Customer: acme-corp</code> to your API requests, then connect Stripe to see per-customer margins.
+            {summary && summary.totalRevenueMicrodollars > 0
+              ? <>We see your Stripe revenue. Add <code className="rounded bg-muted px-1">X-NullSpend-Customer: acme-corp</code> to your API requests to match cost to revenue.</>
+              : <>Add <code className="rounded bg-muted px-1">X-NullSpend-Customer: acme-corp</code> to your API requests, then connect Stripe to see per-customer margins.</>}
           </p>
         </div>
       )}
