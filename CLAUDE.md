@@ -55,7 +55,8 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 - HTTP status semantics: 401 = identity unknown, 403 = identity known but unauthorized
 - Stripe API version pinned in `lib/stripe/client.ts` (`STRIPE_API_VERSION`) — single source of truth
 - Two Stripe integrations: own billing (`lib/stripe/`, `STRIPE_SECRET_KEY`) and customer revenue sync (`lib/margins/`, per-org encrypted keys via `STRIPE_ENCRYPTION_KEY`)
-- Margins use the `customer` tag key convention — cost events tagged with `X-NullSpend-Tags: customer=acme-corp`
+- Customer attribution: `X-NullSpend-Customer` header (preferred) or `tags["customer"]` fallback. Dedicated `customer_id` column on cost events with B-tree index. Header takes precedence over tag. Auto-injected into tags for tag-budget compat.
+- Customers page (`/app/customers`) replaces Margins page. `/app/margins` redirects. Detail at `/app/margins/[customer]` unchanged.
 - Margin health tiers: healthy (>=50%), moderate (20-49%), at_risk (0-19%), critical (<0%)
 - Revenue sync uses DELETE+re-INSERT replace strategy per customer per period (idempotent)
 - Margin threshold crossings dispatch both webhooks and Slack alerts independently (per-crossing error isolation)

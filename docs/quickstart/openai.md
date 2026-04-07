@@ -92,6 +92,7 @@ Open the [NullSpend dashboard](https://nullspend.com/app/analytics). Cost events
 ## What's Next
 
 - **[Set a budget](../features/budgets.md)** — Go to Budgets → Create Budget. The proxy blocks requests with `429` when the ceiling is hit.
+- **[Track per-customer costs](../features/tags.md#customer-attribution)** — Add the `X-NullSpend-Customer` header to see profitability per customer.
 - **[Add tags](../features/tags.md)** — Attribute costs to teams or features with the [`X-NullSpend-Tags`](../api-reference/custom-headers.md#x-nullspend-tags) header.
 - **[Configure webhooks](../webhooks/overview.md)** — Get notified on cost events, budget thresholds, and velocity alerts.
 - **Anthropic too?** — [Anthropic Quickstart](anthropic.md)

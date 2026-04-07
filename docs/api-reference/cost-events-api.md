@@ -33,6 +33,7 @@ API key
 | `eventType` | body | string | No | `"llm"`, `"tool"`, or `"custom"`. Default `"custom"`. |
 | `toolName` | body | string | No | Tool name for tool-use events. Max 200 chars. |
 | `toolServer` | body | string | No | Tool server name. Max 200 chars. |
+| `customer` | body | string | No | Customer identifier for per-customer profitability. Max 256 chars, min 1 char. |
 | `tags` | body | object | No | Key-value metadata. Max 10 keys, key 1–64 chars (`^[a-zA-Z0-9_-]+$`), value max 256 chars. |
 | `idempotencyKey` | body | string | No | Deduplication key. Max 200 chars. Alternative to `Idempotency-Key` header. |
 | `Idempotency-Key` | header | string | No | Deduplication key. Takes priority over body field. |

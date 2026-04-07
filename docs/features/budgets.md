@@ -32,13 +32,16 @@ Budget enforcement uses a Cloudflare Durable Object with embedded SQLite. All ch
 
 ## Budget Entity Types
 
-| Entity Type | What It Scopes To |
-|---|---|
-| `user` | All requests from a user account (across all their API keys) |
-| `api_key` | Requests from a specific API key |
-| `tag` | Requests carrying a specific tag key-value pair |
+| Entity Type | What It Scopes To | Entity ID format |
+|---|---|---|
+| `user` | All requests from a user account (across all their API keys) | `ns_usr_<uuid>` |
+| `api_key` | Requests from a specific API key | `ns_key_<uuid>` |
+| `tag` | Requests carrying a specific tag key-value pair | `key=value` |
+| `customer` | Requests attributed to a specific customer | Customer identifier string |
 
-A single request can match multiple budgets (e.g., a user budget + an API key budget + a tag budget). All matching budgets must have sufficient remaining balance for the request to proceed.
+A single request can match multiple budgets (e.g., a user budget + an API key budget + a customer budget). All matching budgets must have sufficient remaining balance for the request to proceed.
+
+**Note:** Do not create both a `customer` budget and a `tag` budget with entity ID `customer=<same-value>` for the same customer. Both would fire on the same request, resulting in double-charging.
 
 ## Configuration
 

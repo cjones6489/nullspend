@@ -348,9 +348,10 @@ Enable `enforcement: true` to check budgets, model mandates, and session limits 
 const openai = new OpenAI({
   fetch: ns.createTrackedFetch("openai", {
     enforcement: true,
+    customer: "acme-corp",
     sessionId: "task-042",
     sessionLimitMicrodollars: 5_000_000, // $5 per session
-    tags: { team: "backend", customer: "acme" },
+    tags: { team: "backend" },
     onDenied: (reason) => {
       if (reason.type === "budget") console.log(`Budget: ${reason.remaining} remaining`);
       if (reason.type === "mandate") console.log(`Mandate: ${reason.mandate} blocks ${reason.requested}`);
@@ -368,6 +369,7 @@ const openai = new OpenAI({
 | `enforcement` | `boolean` | `false` | Enable budget, mandate, and session limit checks |
 | `sessionId` | `string` | — | Session identifier for cost correlation and session limits |
 | `sessionLimitMicrodollars` | `number` | — | Manual per-session spend cap (takes precedence over policy) |
+| `customer` | `string` | — | Customer identifier for per-customer profitability tracking |
 | `tags` | `Record<string, string>` | — | Tags attached to every cost event |
 | `traceId` | `string` | — | Distributed trace ID |
 | `actionId` | `string` | — | HITL action ID for cost correlation |

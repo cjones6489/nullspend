@@ -23,6 +23,26 @@ Keys are hashed with SHA-256 before storage and validated with timing-safe compa
 
 ---
 
+### `X-NullSpend-Customer`
+
+Identify the end customer this request serves. Used for per-customer profitability tracking in the [Customers](../features/margins.md) dashboard.
+
+| Property | Value |
+|---|---|
+| Format | String |
+| Max length | 256 characters |
+| Pattern | `[a-zA-Z0-9._:-]+` |
+| If invalid | Request proceeds; `X-NullSpend-Warning: invalid_customer` set on response |
+| If omitted | Falls back to `tags["customer"]` if present |
+
+```bash
+X-NullSpend-Customer: acme-corp
+```
+
+When set, the value is written to the `customer_id` column on cost events (indexed for fast queries). It is also auto-injected into tags as `customer=<value>` so tag-based budgets continue to work. If both the header and `tags["customer"]` are set, the header takes precedence.
+
+---
+
 ### `X-NullSpend-Tags`
 
 Attach metadata to a request for cost attribution. Tags appear in the dashboard and are included in webhook payloads.
@@ -179,6 +199,14 @@ Server-Timing: preflight;dur=0;desc="Auth + rate limit",body;dur=0;desc="Body pa
 ```
 
 Steps (`preflight`, `body`, `budget`) are only included when measured. The `overhead`, `upstream`, and `total` entries are always present.
+
+### `X-NullSpend-Warning`
+
+Set when the proxy detects a non-fatal issue with the request. The request still proceeds.
+
+| Value | Meaning |
+|---|---|
+| `invalid_customer` | `X-NullSpend-Customer` header was present but failed validation (bad characters or too long). Customer attribution was skipped for this request. |
 
 ### Rate Limit Headers (on `429` responses only)
 

@@ -149,17 +149,29 @@ You can create budgets scoped to a specific tag key-value pair. When spend for t
 
 Tag budgets support the same features as user and API key budgets: reset intervals, threshold alerts, and velocity limits. See [Budgets](budgets.md) for configuration details.
 
-## Reserved Tag: `customer`
+## Customer Attribution
 
-The `customer` tag has special meaning in NullSpend. When you tag requests with `customer=acme-corp`, the [Margins](margins.md) feature can match that tag to a Stripe customer and calculate per-customer profitability.
+NullSpend supports two ways to identify the end customer a request serves:
+
+### Dedicated header (recommended)
+
+```bash
+X-NullSpend-Customer: acme-corp
+```
+
+The `X-NullSpend-Customer` header writes to a dedicated indexed column, is auto-injected into tags for budget compatibility, and powers the [Customers](margins.md) dashboard. See [Custom Headers](../api-reference/custom-headers.md#x-nullspend-customer) for validation rules.
+
+### Tag fallback (backward compatible)
 
 ```
 X-NullSpend-Tags: {"customer": "acme-corp", "env": "production"}
 ```
 
-The value can be anything you use to identify the customer: a slug, a Stripe customer ID (`cus_xxx`), or a company name. NullSpend auto-matches Stripe customers to these tag values during revenue sync.
+If no `X-NullSpend-Customer` header is set, NullSpend falls back to `tags["customer"]` for customer attribution. This works identically for margins, budgets, and the Customers dashboard.
 
-You can also create a tag budget for the `customer` key to enforce per-customer spending limits.
+### Customer budgets
+
+You can create budgets scoped to a specific customer (entity type `customer`) or via the tag convention (entity type `tag`, entity ID `customer=acme-corp`). Both enforce spending limits. Do not create both for the same customer.
 
 ## Related
 
