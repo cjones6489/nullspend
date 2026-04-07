@@ -533,4 +533,45 @@ describe("GET /api/cost-events", () => {
       }),
     );
   });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // API key auth path (SDK callers)
+  // ──────────────────────────────────────────────────────────────────────
+
+  it("authorizes via API key header (SDK path)", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-from-key",
+      orgId: "org-from-key",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    mockedListCostEvents.mockResolvedValue({ data: [], cursor: null });
+
+    const request = new Request("http://localhost:3000/api/cost-events", {
+      headers: { "x-nullspend-key": "ns_live_sk_test" },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    // orgId from API key auth, not session
+    expect(mockedListCostEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "org-from-key" }),
+    );
+  });
+
+  it("returns 403 when API key has no orgId", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue({
+      userId: "user-from-key",
+      orgId: null,
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+
+    const request = new Request("http://localhost:3000/api/cost-events", {
+      headers: { "x-nullspend-key": "ns_live_sk_test" },
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(403);
+  });
 });

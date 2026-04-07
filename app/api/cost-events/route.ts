@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
-import { assertOrgRole } from "@/lib/auth/org-authorization";
-import { resolveSessionContext } from "@/lib/auth/session";
+import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
 import { authenticateApiKey, applyRateLimitHeaders } from "@/lib/auth/with-api-key-auth";
 import { costEventInputSchema, insertCostEvent } from "@/lib/cost-events/ingest";
 import { toExternalId } from "@/lib/ids/prefixed-id";
@@ -26,8 +25,10 @@ import {
 const log = getLogger("cost-events");
 
 export const GET = withRequestContext(async (request: Request) => {
-  const { userId, orgId } = await resolveSessionContext();
-  await assertOrgRole(userId, orgId, "viewer");
+  // Dual auth: API key (for SDK listCostEvents) or session (for dashboard UI).
+  const auth = await assertApiKeyOrSession(request, "viewer");
+  if (auth instanceof Response) return auth;
+  const { orgId } = auth;
   const url = new URL(request.url);
 
   // Parse tag.* query params for JSONB containment filtering
