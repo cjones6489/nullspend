@@ -659,9 +659,13 @@ function BudgetDialog({
   const { data: keysData } = useApiKeys();
   const keys = keysData?.data ?? [];
 
-  const [entityType, setEntityType] = useState<"user" | "api_key" | "tag">(
+  const [entityType, setEntityType] = useState<"user" | "api_key" | "tag" | "customer">(
     editBudget?.entityType ?? defaultValues?.entityType ?? "user",
   );
+  const [customerId, setCustomerId] = useState(
+    editBudget?.entityType === "customer" ? editBudget.entityId : "",
+  );
+  const { data: existingBudgets } = useBudgets();
   const [selectedKeyId, setSelectedKeyId] = useState(
     editBudget?.entityType === "api_key"
       ? editBudget.entityId
@@ -692,6 +696,7 @@ function BudgetDialog({
     setSelectedKeyId("");
     setTagKey("");
     setTagValue("");
+    setCustomerId("");
     setLimitDollars("");
     setPolicy("strict_block");
     setResetInterval("none");
@@ -718,7 +723,9 @@ function BudgetDialog({
         ? userId
         : entityType === "tag"
           ? `${tagKey.trim()}=${tagValue.trim()}`
-          : selectedKeyId;
+          : entityType === "customer"
+            ? customerId.trim()
+            : selectedKeyId;
 
     if (!entityId) {
       toast.error(
@@ -726,7 +733,9 @@ function BudgetDialog({
           ? "Could not determine your user ID"
           : entityType === "tag"
             ? "Enter a tag key and value"
-            : "Select an API key",
+            : entityType === "customer"
+              ? "Enter a customer ID"
+              : "Select an API key",
       );
       return;
     }
@@ -823,6 +832,7 @@ function BudgetDialog({
     (isEdit || (
       entityType === "user" ? !!userId :
       entityType === "tag" ? !!(tagKey.trim() && tagValue.trim()) :
+      entityType === "customer" ? !!customerId.trim() :
       !!selectedKeyId
     ));
 
@@ -881,11 +891,26 @@ function BudgetDialog({
               >
                 Tag
               </button>
+              <button
+                type="button"
+                onClick={() => !isEdit && setEntityType("customer")}
+                disabled={isEdit}
+                className={cn(
+                  "flex-1 rounded-md border px-3 py-2 text-xs font-medium transition-colors",
+                  entityType === "customer"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border/50 bg-secondary text-muted-foreground hover:text-foreground",
+                  isEdit && "cursor-default opacity-60",
+                )}
+              >
+                Customer
+              </button>
             </div>
             <p className="text-[10px] text-muted-foreground/70">
               {entityType === "user" && "Caps total spend across all keys and requests."}
               {entityType === "api_key" && "Caps spend for one specific API key."}
               {entityType === "tag" && "Caps spend for all requests with a matching tag, regardless of which key sends them."}
+              {entityType === "customer" && "Caps spend for all requests attributed to a specific customer via X-NullSpend-Customer header."}
             </p>
           </div>
 
@@ -965,12 +990,51 @@ function BudgetDialog({
                         Enter a tag to see which keys it applies to.
                       </p>
                     )}
+                    {tagKey.trim() === "customer" && tagValue.trim() && existingBudgets?.data?.some(
+                      (b) => b.entityType === "customer" && b.entityId === tagValue.trim(),
+                    ) && (
+                      <p className="text-[10px] text-amber-400">
+                        A customer budget for {tagValue.trim()} already exists. Creating both will result in double-charging. Use the Customer budget type instead.
+                      </p>
+                    )}
                     <p className="text-[10px] text-muted-foreground/70">
                       Tag budgets apply to all requests with this tag, from any key.
                     </p>
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {entityType === "customer" && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Customer ID</Label>
+              {isEdit ? (
+                <p className="text-xs font-mono text-foreground/80">{editBudget?.entityId}</p>
+              ) : (
+                <Input
+                  placeholder="e.g. acme-corp"
+                  value={customerId}
+                  onChange={(e) => setCustomerId(e.target.value)}
+                  className="h-9 font-mono text-[13px]"
+                />
+              )}
+              {(() => {
+                const cid = customerId.trim();
+                if (!cid || !existingBudgets?.data) return null;
+                const conflict = existingBudgets.data.find(
+                  (b) => b.entityType === "tag" && b.entityId === `customer=${cid}`,
+                );
+                if (!conflict) return null;
+                return (
+                  <p className="text-[10px] text-amber-400">
+                    A tag budget for customer={cid} already exists. Creating both will result in double-charging. Consider removing the tag budget first.
+                  </p>
+                );
+              })()}
+              <p className="text-[10px] text-muted-foreground/70">
+                The customer ID from X-NullSpend-Customer header or tags[&quot;customer&quot;].
+              </p>
             </div>
           )}
 
