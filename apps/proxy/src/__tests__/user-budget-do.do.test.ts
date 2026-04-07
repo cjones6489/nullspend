@@ -1054,4 +1054,57 @@ describe("Tag Budget Enforcement (DO)", () => {
     // soft_block should NOT deny
     expect(result.status).toBe("approved");
   });
+
+  // ── Customer budget enforcement ────────────────────────────────────
+
+  it("customer budget included in check via customer= tag entry", async () => {
+    const stub = getStub("user-customer-1");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("customer", "acme-corp", 50_000_000, 0, "strict_block", null, 0);
+
+    // "customer=acme-corp" is the auto-injected tag entry
+    const result = await stub.checkAndReserve(null, 1_000_000, 30_000, null, ["customer=acme-corp"]);
+    expect(result.status).toBe("approved");
+    expect(result.hasBudgets).toBe(true);
+    const customerEntity = result.checkedEntities!.find(e => e.entityType === "customer");
+    expect(customerEntity).toBeDefined();
+    expect(customerEntity!.entityId).toBe("acme-corp");
+  });
+
+  it("customer budget denied when exhausted (strict_block)", async () => {
+    const stub = getStub("user-customer-denied");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("customer", "acme-corp", 1_000_000, 999_000, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 500_000, 30_000, null, ["customer=acme-corp"]);
+    expect(result.status).toBe("denied");
+    expect(result.deniedEntity).toBe("customer:acme-corp");
+  });
+
+  it("customer budget not checked when no customer= tag entry", async () => {
+    const stub = getStub("user-customer-absent");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("customer", "acme-corp", 1_000, 999, "strict_block", null, 0);
+
+    // Tags have env=prod but not customer=acme-corp
+    const result = await stub.checkAndReserve(null, 500_000, 30_000, null, ["env=prod"]);
+    expect(result.status).toBe("approved");
+    // Only user budget checked
+    expect(result.checkedEntities).toHaveLength(1);
+    expect(result.checkedEntities![0].entityType).toBe("user");
+  });
+
+  it("both customer budget and tag budget for same customer are checked", async () => {
+    const stub = getStub("user-customer-dual");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("customer", "acme-corp", 50_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("tag", "customer=acme-corp", 50_000_000, 0, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 1_000_000, 30_000, null, ["customer=acme-corp"]);
+    expect(result.status).toBe("approved");
+    // All three: user + tag + customer
+    expect(result.checkedEntities).toHaveLength(3);
+    const types = result.checkedEntities!.map(e => e.entityType).sort();
+    expect(types).toEqual(["customer", "tag", "user"]);
+  });
 });

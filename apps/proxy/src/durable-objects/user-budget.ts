@@ -283,6 +283,16 @@ export class UserBudgetDO extends DurableObject {
         params.push(...tagEntityIds);
       }
 
+      // Customer budget: extract customer ID from auto-injected "customer=<id>" tag entry
+      const customerTag = tagEntityIds.find((t) => t.startsWith("customer="));
+      if (customerTag) {
+        const customerId = customerTag.slice("customer=".length);
+        if (customerId) {
+          query += " OR (entity_type = 'customer' AND entity_id = ?)";
+          params.push(customerId);
+        }
+      }
+
       const rows: BudgetRow[] = this.ctx.storage.sql
         .exec<BudgetRow>(query, ...params)
         .toArray();
