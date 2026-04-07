@@ -118,6 +118,26 @@ export async function lookupBudgetsForDO(
         result.push(mapRow(row, "tag", row.entity_id));
       }
     }
+
+    // Customer budget lookup: query by org_id + entity_type='customer' + entity_id
+    // Uses the auto-injected customer tag (from X-NullSpend-Customer header or tags["customer"]).
+    const customerId = tags?.["customer"];
+    if (customerId && orgId) {
+      const customerRows = await sql<BudgetDbRow[]>`
+        SELECT entity_type, entity_id, max_budget_microdollars, spend_microdollars,
+               policy, reset_interval, current_period_start,
+               velocity_limit_microdollars, velocity_window_seconds, velocity_cooldown_seconds,
+               threshold_percentages, session_limit_microdollars
+        FROM budgets
+        WHERE org_id = ${orgId}
+          AND entity_type = 'customer'
+          AND entity_id = ${customerId}
+      `;
+
+      for (const row of customerRows) {
+        result.push(mapRow(row, "customer", row.entity_id));
+      }
+    }
   } catch (err) {
     console.error(
       "[budget-do-lookup] Postgres lookup failed:",

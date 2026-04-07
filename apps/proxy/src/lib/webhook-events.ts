@@ -18,6 +18,7 @@ export type WebhookEventType =
   | "velocity.recovered"
   | "session.limit_exceeded"
   | "tag_budget.exceeded"
+  | "customer_budget.exceeded"
   | "test.ping";
 
 export interface WebhookEvent {
@@ -370,6 +371,40 @@ export function buildTagBudgetExceededPayload(
         budget_entity_id: data.budgetEntityId,
         tag_key: data.tagKey,
         tag_value: data.tagValue,
+        budget_limit_microdollars: data.budgetLimitMicrodollars,
+        budget_spend_microdollars: data.budgetSpendMicrodollars,
+        estimated_request_cost_microdollars: data.estimatedRequestCostMicrodollars,
+        model: data.model,
+        provider: data.provider,
+        blocked_at: new Date().toISOString(),
+      },
+    },
+  };
+}
+
+interface CustomerBudgetExceededData {
+  customerId: string;
+  budgetLimitMicrodollars: number;
+  budgetSpendMicrodollars: number;
+  estimatedRequestCostMicrodollars: number;
+  model: string;
+  provider: string;
+}
+
+export function buildCustomerBudgetExceededPayload(
+  data: CustomerBudgetExceededData,
+  apiVersion: string = CURRENT_API_VERSION,
+): WebhookEvent {
+  return {
+    id: `evt_${crypto.randomUUID()}`,
+    type: "customer_budget.exceeded",
+    api_version: apiVersion,
+    created_at: Math.floor(Date.now() / 1000),
+    data: {
+      object: {
+        budget_entity_type: "customer",
+        budget_entity_id: data.customerId,
+        customer_id: data.customerId,
         budget_limit_microdollars: data.budgetLimitMicrodollars,
         budget_spend_microdollars: data.budgetSpendMicrodollars,
         estimated_request_cost_microdollars: data.estimatedRequestCostMicrodollars,

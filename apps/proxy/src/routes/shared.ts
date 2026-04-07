@@ -7,6 +7,7 @@ import {
   buildVelocityRecoveredPayload,
   buildSessionLimitExceededPayload,
   buildTagBudgetExceededPayload,
+  buildCustomerBudgetExceededPayload,
   buildBudgetExceededPayload,
   buildCostEventPayload,
   buildThinCostEventPayload,
@@ -174,6 +175,41 @@ export function handleBudgetDenials(
           details: {
             tag_key: outcome.tagKey ?? null,
             tag_value: outcome.tagValue ?? null,
+            budget_limit_microdollars: outcome.maxBudget ?? 0,
+            budget_spend_microdollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+          },
+        },
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "X-NullSpend-Trace-Id": ctx.traceId,
+        },
+      },
+    );
+  }
+
+  // Customer budget denial
+  if (outcome.status === "denied" && outcome.deniedEntityType === "customer") {
+    dispatchDenialWebhook(ctx, env, logPrefix, () =>
+      buildCustomerBudgetExceededPayload({
+        customerId: outcome.deniedEntityId ?? "unknown",
+        budgetLimitMicrodollars: outcome.maxBudget ?? 0,
+        budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+        estimatedRequestCostMicrodollars: estimate,
+        model: requestModel,
+        provider,
+      }, ctx.auth.apiVersion),
+    );
+    emitMetric("budget_denied", { reason: "customer_budget_exceeded", provider, entityType: "customer" });
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: "customer_budget_exceeded",
+          message: "Request blocked: estimated cost exceeds customer budget limit.",
+          details: {
+            customer_id: outcome.deniedEntityId ?? null,
             budget_limit_microdollars: outcome.maxBudget ?? 0,
             budget_spend_microdollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
           },
