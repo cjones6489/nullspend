@@ -2342,4 +2342,32 @@ describe("customer()", () => {
     // customer() calls createTrackedFetch which requires costReporting
     expect(() => client.customer("acme-corp")).toThrow("costReporting");
   });
+
+  it("throws on empty customerId", () => {
+    const client = makeClient();
+    expect(() => client.customer("")).toThrow("non-empty");
+    expect(() => client.customer("   ")).toThrow("non-empty");
+    client.shutdown();
+  });
+
+  it("session.fetch() returns the same instance for the same provider (memoized)", () => {
+    const client = makeClient();
+    const session = client.customer("acme-corp");
+
+    const first = session.fetch("openai");
+    const second = session.fetch("openai");
+    expect(first).toBe(second);
+
+    client.shutdown();
+  });
+
+  it("session.fetch('openai') returns the same instance as session.openai", () => {
+    const client = makeClient();
+    const session = client.customer("acme-corp");
+
+    expect(session.fetch("openai")).toBe(session.openai);
+    expect(session.fetch("anthropic")).toBe(session.anthropic);
+
+    client.shutdown();
+  });
 });

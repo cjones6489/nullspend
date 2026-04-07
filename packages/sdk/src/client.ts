@@ -228,6 +228,10 @@ export class NullSpend {
     customerId: string,
     options?: CustomerSessionOptions,
   ): CustomerSession {
+    if (!customerId || !customerId.trim()) {
+      throw new NullSpendError("customer() requires a non-empty customerId");
+    }
+
     const tags = { ...options?.tags };
     if (options?.plan) tags.plan = options.plan;
 
@@ -241,8 +245,15 @@ export class NullSpend {
       onDenied: options?.onDenied,
     };
 
-    const fetchForProvider = (provider: TrackedProvider) =>
-      this.createTrackedFetch(provider, baseOptions);
+    const cache = new Map<TrackedProvider, typeof globalThis.fetch>();
+    const fetchForProvider = (provider: TrackedProvider) => {
+      let f = cache.get(provider);
+      if (!f) {
+        f = this.createTrackedFetch(provider, baseOptions);
+        cache.set(provider, f);
+      }
+      return f;
+    };
 
     return {
       openai: fetchForProvider("openai"),

@@ -340,6 +340,43 @@ const anthropic = new Anthropic({ fetch: ns.createTrackedFetch("anthropic") });
 
 Cost events are calculated locally using the built-in pricing engine and reported asynchronously in batches. Your requests go directly to the provider — no proxy required.
 
+### Customer Sessions
+
+For multi-tenant apps, use `ns.customer()` to scope all AI requests to a specific customer. Set it once in middleware and every request gets customer tracking, plan tagging, and budget enforcement.
+
+```typescript
+// Middleware — runs once per request, uses the customer from auth context
+app.use("/api/ai/*", (req, res, next) => {
+  const session = ns.customer(req.auth.orgSlug, { plan: req.auth.plan });
+  req.openai = new OpenAI({ fetch: session.openai });
+  req.anthropic = new Anthropic({ fetch: session.anthropic });
+  next();
+});
+
+// Route handlers — just use the pre-configured clients
+app.post("/api/ai/chat", async (req, res) => {
+  const response = await req.openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: req.body.messages,
+  });
+  res.json(response);
+});
+```
+
+### `CustomerSessionOptions`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `plan` | `string` | — | Customer's plan tier (attached as `plan` tag) |
+| `sessionId` | `string` | — | Session ID for session-level spend limits |
+| `sessionLimitMicrodollars` | `number` | — | Manual per-session spend cap |
+| `tags` | `Record<string, string>` | — | Additional tags merged with customer context |
+| `enforcement` | `boolean` | `false` | Enable budget, mandate, and session limit checks |
+| `onCostError` | `(error: Error) => void` | `console.warn` | Called on non-fatal cost tracking errors |
+| `onDenied` | `(reason: DenialReason) => void` | — | Called before throwing enforcement errors |
+
+The returned `CustomerSession` object has `.openai` and `.anthropic` fetch functions, plus `.fetch(provider)` for any provider. All three are memoized per provider.
+
 ### Enforcement Mode
 
 Enable `enforcement: true` to check budgets, model mandates, and session limits before each request:
