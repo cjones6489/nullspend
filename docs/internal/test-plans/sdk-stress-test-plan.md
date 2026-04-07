@@ -1461,3 +1461,41 @@ Good luck.
 Then and only then: stress test implementation with Phase 0 transport matrix first (§15a-2) and corrected fixture math (§15a-5).
 
 **CRITICAL**: this test is PRODUCTION-MUTATING by design (§15b-6). Manual runs only. Do not wire into CI.
+
+---
+
+## 15c. Post-implementation `/review` follow-ups (P2)
+
+The adversarial review pass on the shipped stress test surfaced 27 findings.
+12 were auto-fixed before ship (9 mechanical + 3 critical: teardown api_keys race, stressAuthHeaders auto-tag, cleanup org scoping). The remaining 15 are deferred to follow-up PRs.
+
+| # | File | Severity | Summary |
+|---|---|---|---|
+| 15c-1 | tracked-fetch.ts | bug | Proxy 429 interception is dead code in proxy bailout mode (already logged as a finding inside the test). Real SDK fix worth a separate PR — see §15b-1 for context. |
+| 15c-2 | proxy/cost-logger.ts:58, :133 | ✅ FIXED in this PR | `JSON.stringify(event.tags)` double-encoded tags + cost_breakdown + tool_calls_requested into JSONB string columns instead of objects. Silently broke `lib/cost-events/aggregate-cost-events.ts`, `lib/cost-events/list-cost-events.ts`, and `lib/margins/auto-match.ts` for all proxy/mcp-written rows since commit 3012a56 (Mar 23 2026). Fixed by switching to `sql.json(value)` for all 3 affected columns in both single and batch insert paths. Existing 64 broken rows must be repaired via `pnpm jsonb:repair` immediately after deploying the proxy fix. **Deploy procedure: deploy proxy → run repair script (with `CLEANUP_CONFIRM=yes`) → verify with `SELECT jsonb_typeof(tags), COUNT(*) FROM cost_events GROUP BY 1;`.** Brief window between deploy and repair: dashboard tag-based features silently miss the 64 historical rows (they're old test data, not user-facing). |
+| 15c-3 | stress-sdk-features.test.ts:977-1045 | quality | §6.8 fail-open session limit test is a known no-op that burns ~15 real OpenAI requests per run. Either delete + log gap once in beforeAll, or rewrite against a mock upstream. |
+| 15c-4 | stress-sdk-features.test.ts:1132-1136 | quality | OpenAI/Anthropic streaming tests' `reader.read()` loop doesn't release the reader on error path. Wrap in try/finally with `reader.cancel()`. |
+| 15c-5 | stress-sdk-features.test.ts:357-360 | quality | Dashboard reachability check accepts any non-throwing response (including 500). Could mask a broken dashboard. Make stricter: probe `/api/cost-events` HEAD expecting 401. |
+| 15c-6 | stress-sdk-features.test.ts beforeAll | quality | DO invalidation loop runs sequentially with 5s timeout per budget. At heavy intensity (20+ budgets) this can approach the 180s afterAll cap. Parallelize with `Promise.all`. |
+| 15c-7 | stress-sdk-features.test.ts:316 | quality | `postgres()` connection lacks `prepare: false`. Safe today (DATABASE_URL is direct, not Hyperdrive) but worth adding for env-config robustness. |
+| 15c-8 | stress-sdk-features.test.ts:326-338 | quality | STRESS_USER_ID is never inserted into the `users` table. Works today (no FK), but fragile if a future migration adds one or if downstream workers join `cost_events` to `users`. |
+| 15c-9 | stress-sdk-features.test.ts:262 | quality | `makeStressNs` falls back to `http://127.0.0.1:3000` when DASHBOARD_URL is unset. Could silently target a wrong service on the dev box. Throw a clear error instead. |
+| 15c-10 | stress-sdk-features.test.ts:15-19 | quality | Top-of-file docstring lists `NULLSPEND_API_KEY` as required but the test never references it. Documentation drift — remove from docstring. |
+| 15c-11 | stress-sdk-features.test.ts:797-803 | quality | `p1NsMandate` constructed at Phase 1 beforeAll even when §6.6 is skipped. Move construction inside the §6.6 describe so it's not paid for when skipped. |
+| 15c-12 | stress-sdk-features.test.ts:1062-1066 | quality | §6.9 KNOWN GAP test mutates user budget and restores in finally. If restore fails, no observability. Add a "mutation_leaked" warn finding on restore failure. |
+| 15c-13 | stress-sdk-features.test.ts:498-518 | quality | Findings JSON write swallows errors via console.warn. Already added stdout fallback — could go further and write to `os.tmpdir()` as secondary fallback. |
+| 15c-14 | scripts/cleanup-stress-sdk.ts | quality | Cleanup script doesn't differentiate between "abandoned crash data" and "another run currently in flight". Add a recency filter (only delete rows older than 1 hour) to prevent stomping on a parallel run. |
+| 15c-15 | stress-sdk-features.test.ts:648-693 | quality | §0.3 direct-provider test does not invalidate policy cache before exercising. If a previous run cached a restrictive budget on the dashboard side, the SDK could deny client-side and the test would fail with a cryptic error from inside `session.openai()`. |
+| 15c-16 | stress-sdk-features.test.ts | quality | `waitForQueueDrain` equates "DB count stable for ~6s" with "Cloudflare Queue drained". Queue retries can arrive after longer gaps. Tighten the quiet window or drive cleanup off exact request IDs / queue metrics. (codex adversarial review, MEDIUM) |
+| 15c-17 | stress-sdk-features.test.ts §6.9 KNOWN GAP | design | The §6.9 KNOWN GAP test passes on a known SDK bug (proxy 429 interception is dead code in proxy bailout mode). Codex argues the test should FAIL until the SDK is fixed. Current design choice: document the gap and ship; the SDK fix is filed as 15c-1. Reconsider if the gap regresses. (codex P1, design choice) |
+| 15c-18 | packages/sdk/src/cost-reporter.ts shutdown() | ✅ FIXED in this PR | `shutdown()` short-circuited when `this.flushing` was set, leaving any events queued during the in-flight flush UNFLUSHED. Stress test §5.10 demonstrated this empirically (dropped 15 of 20 events at batchSize=5). Fixed by adding a drain loop — shutdown() now awaits in-flight flush, checks for new queue entries, runs another flush() if needed, repeats up to MAX_DRAIN_ITERATIONS=16. Verified by SDK unit test in cost-reporter.test.ts and §5.10 stress test. |
+
+### Codex review summary
+
+Two adversarial passes (Claude subagent + codex CLI) plus the structured codex review found 36 distinct issues total:
+- Auto-fixed before ship: **18** (Claude pass: 12; codex adversarial: 4 of 5; codex structured: 2 of 3)
+- Filed in this section as 15c-1 through 15c-17: **17** (P2 quality + 1 design choice)
+
+Where Claude and codex disagreed: codex caught 5 things Claude missed (stressAuthHeaders override, tag backfill SQL on JSON-string column, waitForBudgetLive accepting any 429, cleanup substring, §9.1 weak verification, §8.3 fixed sleeps). Cross-model adversarial review delivered measurable additional coverage as predicted in §15a-1's outside-voice rationale.
+
+These are P2 quality improvements unless explicitly P1. None block ship. Each is small (5-30 lines) and isolated.

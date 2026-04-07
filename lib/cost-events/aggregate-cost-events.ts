@@ -368,12 +368,18 @@ export async function getDistinctTagKeys(orgId: string) {
   const db = getDb();
   const cutoff = makeCutoff(7);
 
+  // Filter to object-typed tags. After deploying the proxy fix
+  // (cost-logger.ts) and running `pnpm jsonb:repair`, all rows are
+  // object-typed and this filter is a no-op. The filter exists as a
+  // safety net during the brief deploy → repair window so jsonb_object_keys
+  // doesn't raise on legacy string-encoded rows.
   const rows = await db.execute<{ key: string }>(
     sql`SELECT DISTINCT key FROM (
       SELECT jsonb_object_keys(${costEvents.tags}) AS key
       FROM ${costEvents}
       WHERE ${costEvents.orgId} = ${orgId}
         AND ${costEvents.createdAt} >= ${cutoff}
+        AND jsonb_typeof(${costEvents.tags}) = 'object'
     ) sub
     WHERE key NOT LIKE '_ns_%'
     ORDER BY key

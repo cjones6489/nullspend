@@ -25,6 +25,55 @@ pnpm deploy           # Deploy to Cloudflare
 - `makeEnv()` helper returns typed `Env` with test values
 - `makeCtx()` helper returns mock `ExecutionContext`
 
+## Stress tests
+
+Stress tests live alongside smoke tests in this directory and run via
+`vitest.stress.config.ts`. They hit the live deployed proxy + Hyperdrive
++ Postgres + Cloudflare Queue stack and **mutate real production data**.
+Manual runs only — never wire into CI.
+
+```bash
+pnpm test:stress                       # all stress files (default medium intensity)
+STRESS_INTENSITY=light pnpm test:stress # smaller fixtures, fewer concurrent reqs
+STRESS_INTENSITY=heavy pnpm test:stress # max load
+pnpm stress:cleanup                    # crash-recovery: purge stress-sdk-% leftovers
+```
+
+### `stress-sdk-features.test.ts`
+
+Validates the `@nullspend/sdk` surface area against the deployed proxy
+under concurrent load (Phase 0 transport matrix → Phase 1 functional
+tests → Phase 2 concurrent stress → Phase 3 mid-test mutation → Phase 4
+verification). See `docs/internal/test-plans/sdk-stress-test-plan.md`
+§15/§15a/§15b for the design corrections this file implements.
+
+**Prerequisites:**
+- `pnpm dev` running in another terminal (the SDK direct-mode tests
+  hit `http://127.0.0.1:3000/api/cost-events`). Tests auto-skip the
+  direct-mode subset if the dashboard is unreachable at startup.
+- `.env.smoke` populated with `PROXY_URL`, `NULLSPEND_API_KEY`,
+  `NULLSPEND_SMOKE_KEY_ID`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+  `INTERNAL_SECRET`, `DATABASE_URL`, and `NULLSPEND_DASHBOARD_URL`.
+
+**Production mutation warning:** the test creates an isolated stress
+user + api_key in `beforeAll` and tears them down in `afterAll`, so all
+attribution-level data is contained. **But** the proxy-side path still
+writes real cost events through Cloudflare Queue → Hyperdrive → DO state
+on the deployed worker. The infrastructure is real even though the
+identity is isolated. Manual runs only — **never wire into CI**.
+
+**Cost:** ~$0.02 per medium run, ~$0.05 per heavy run, when the test
+works on the first try. Run light first.
+
+**Findings log:** each run writes
+`stress-sdk-findings-${TEST_RUN_ID}.json` alongside the test file with
+every observation tagged `info`/`warn`/`bug`. Findings files are
+git-ignored.
+
+**Crash recovery:** if a run crashes mid-test, leftover fixtures stay in
+the live DB. Run `pnpm stress:cleanup` to purge anything matching the
+`stress-sdk-%` prefix.
+
 ## Architecture
 
 **Entry & Routing**

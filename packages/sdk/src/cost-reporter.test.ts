@@ -242,6 +242,76 @@ describe("shutdown()", () => {
     expect(thrown).toBeInstanceOf(NullSpendError);
     expect((thrown as Error).message).toBe("CostReporter is shut down");
   });
+
+  it("drains events queued during in-flight flush (regression test for shutdown race)", async () => {
+    // Reproduces the bug discovered by stress test §5.10:
+    // 1. Enqueue events past batchSize → triggers auto-flush
+    // 2. Enqueue more events while the flush is in flight
+    // 3. Call shutdown() — must drain BOTH the in-flight batch AND the
+    //    events that accumulated after the flush started
+    //
+    // Pre-fix behavior: shutdown() short-circuited because this.flushing
+    // was set, leaving the post-flush-start events unflushed (data loss).
+    // Post-fix behavior: shutdown() loops until queue is empty AND no
+    // flush is in flight.
+    //
+    // Uses a deferred-resolve sendBatch (no real timers) so we have full
+    // control over when each batch completes — works with fake timers.
+    const sentBatches: number[][] = [];
+    const pending: Array<() => void> = [];
+    const slowSendBatch = vi.fn((events: CostEventInput[]) => {
+      sentBatches.push(events.map((e) => Number(e.tags?.idx ?? 0)));
+      return new Promise<void>((resolve) => {
+        pending.push(resolve);
+      });
+    });
+    const reporter = new CostReporter(
+      { batchSize: 5, flushIntervalMs: 100_000 }, // never timer-flush
+      slowSendBatch,
+    );
+
+    // Enqueue 5 events — triggers auto-flush.
+    for (let i = 0; i < 5; i++) {
+      reporter.enqueue({ ...makeEvent(i), tags: { idx: String(i) } });
+    }
+    // Let the fire-and-forget flush() actually start.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(slowSendBatch).toHaveBeenCalledTimes(1);
+    expect(pending).toHaveLength(1);
+
+    // Enqueue 15 more events while the first flush is in flight (not yet
+    // resolved). These will accumulate in the queue.
+    for (let i = 5; i < 20; i++) {
+      reporter.enqueue({ ...makeEvent(i), tags: { idx: String(i) } });
+    }
+
+    // Kick off shutdown (do not await yet).
+    const shutdownPromise = reporter.shutdown();
+
+    // Resolve the in-flight batch. shutdown's drain loop should then
+    // launch a second flush() for the 15 queued events.
+    pending[0]();
+    await vi.advanceTimersByTimeAsync(0);
+    // Now there should be a second sendBatch in flight (3 batches × 5
+    // events sent serially via doFlush).
+    while (pending.length > 1) {
+      // Resolve each chunk in turn.
+      const next = pending.shift();
+      next?.();
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    // Resolve any remaining
+    while (pending.length > 0) {
+      pending.shift()?.();
+      await vi.advanceTimersByTimeAsync(0);
+    }
+
+    await shutdownPromise;
+
+    // Verify every event was sent exactly once.
+    const sentIndices = sentBatches.flat().sort((a, b) => a - b);
+    expect(sentIndices).toEqual(Array.from({ length: 20 }, (_, i) => i));
+  });
 });
 
 // ---------------------------------------------------------------------------

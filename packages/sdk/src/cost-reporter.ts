@@ -113,7 +113,7 @@ export class CostReporter {
 
   async shutdown(): Promise<void> {
     if (this._isShutDown) {
-      // If already shut down, wait for any in-flight flush to complete
+      // Already shut down — wait for any in-flight flush to complete.
       if (this.flushing) {
         await this.flushing;
       }
@@ -127,7 +127,50 @@ export class CostReporter {
       this.flushTimer = null;
     }
 
-    await this.flush();
+    // Drain loop: flush() short-circuits if a flush is already in flight,
+    // returning the existing promise. After awaiting that, the queue may
+    // still contain events that were enqueue()d during the in-flight flush.
+    // Loop until queue is empty AND no flush is in flight.
+    //
+    // Bounded to MAX_DRAIN_ITERATIONS so a pathological producer can't
+    // keep us looping forever. Each iteration flushes the entire current
+    // queue snapshot, so non-pathological cases converge in 1-2 iterations.
+    const MAX_DRAIN_ITERATIONS = 16;
+    let iterations = 0;
+    while (
+      (this.queue.length > 0 || this.flushing !== null) &&
+      iterations < MAX_DRAIN_ITERATIONS
+    ) {
+      iterations++;
+      // Wait for any in-flight flush first.
+      if (this.flushing) {
+        await this.flushing;
+      }
+      // If the queue accumulated more events during the in-flight flush,
+      // run another flush() to drain them. flush() will splice the queue
+      // atomically inside doFlush().
+      if (this.queue.length > 0) {
+        await this.flush();
+      }
+    }
+
+    if (this.queue.length > 0) {
+      // Pathological case: producer kept enqueueing for MAX_DRAIN_ITERATIONS
+      // batches. Drop the snapshot (we cannot loop forever) and signal
+      // the loss via BOTH onFlushError AND console.warn so a no-op or
+      // throwing callback cannot make the loss silent.
+      const dropped = this.queue.splice(0);
+      const errMessage = `CostReporter.shutdown drain exhausted ${MAX_DRAIN_ITERATIONS} iterations, ${dropped.length} events dropped`;
+      try {
+        if (this.onFlushError) {
+          this.onFlushError(new Error(errMessage), dropped);
+        }
+      } catch { /* ignore callback error */ }
+      // Always emit a stderr warning, even if the callback fired correctly.
+      // This guarantees the loss is visible in logs / CI output regardless
+      // of how the caller's callback behaves.
+      console.warn(`[CostReporter] ${errMessage}`);
+    }
   }
 
   private async doFlush(): Promise<void> {
