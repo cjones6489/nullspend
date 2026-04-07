@@ -89,6 +89,10 @@ export async function handleBudgetInvalidation(
           ? { [body.entityId.slice(0, eqIdx)]: body.entityId.slice(eqIdx + 1) }
           : { [body.entityId]: "" };
         identity = { keyId: null, orgId: body.ownerId, userId: null, tags: tagObj };
+      } else if (body.entityType === "customer") {
+        // customer entities: pass the customer ID via tags["customer"] so
+        // lookupBudgetsForDO's customer branch finds it.
+        identity = { keyId: null, orgId: body.ownerId, userId: null, tags: { customer: body.entityId } };
       } else if (body.entityType === "user") {
         // entityId is the userId for "user" entity budgets
         identity = { keyId: null, orgId: body.ownerId, userId: body.entityId, tags: {} };

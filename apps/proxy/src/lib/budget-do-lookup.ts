@@ -77,7 +77,9 @@ export async function lookupBudgetsForDO(
     entities.push({ type: "user", id: userId });
   }
 
-  if (entities.length === 0) return [];
+  // Note: do NOT early-return when entities is empty — tag/customer lookups
+  // below may still find budgets scoped only by org_id (e.g., /internal sync
+  // for a customer or tag budget arrives with no keyId/userId).
 
   const result: DOBudgetEntity[] = [];
 
@@ -99,23 +101,28 @@ export async function lookupBudgetsForDO(
       }
     }
 
-    // Tag budget lookup: query by org_id + entity_type='tag' + entity_id IN (tag keys)
+    // Tag budget lookup: one query per tag entity ID. Done sequentially rather
+    // than via ANY(...) because postgres.js + Hyperdrive don't reliably bind
+    // a JS string[] as a Postgres text[] (values with "=" and "-" in tag
+    // strings get rejected as "malformed array literal"). The per-tag loop
+    // is fine: entity counts are tiny (1-3 tags per request).
     const tags = identity.tags;
     if (Object.keys(tags).length > 0 && orgId) {
       const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
-      const tagRows = await sql<BudgetDbRow[]>`
-        SELECT entity_type, entity_id, max_budget_microdollars, spend_microdollars,
-               policy, reset_interval, current_period_start,
-               velocity_limit_microdollars, velocity_window_seconds, velocity_cooldown_seconds,
-               threshold_percentages, session_limit_microdollars
-        FROM budgets
-        WHERE org_id = ${orgId}
-          AND entity_type = 'tag'
-          AND entity_id = ANY(${tagEntityIds})
-      `;
-
-      for (const row of tagRows) {
-        result.push(mapRow(row, "tag", row.entity_id));
+      for (const tagEntityId of tagEntityIds) {
+        const tagRows = await sql<BudgetDbRow[]>`
+          SELECT entity_type, entity_id, max_budget_microdollars, spend_microdollars,
+                 policy, reset_interval, current_period_start,
+                 velocity_limit_microdollars, velocity_window_seconds, velocity_cooldown_seconds,
+                 threshold_percentages, session_limit_microdollars
+          FROM budgets
+          WHERE org_id = ${orgId}
+            AND entity_type = 'tag'
+            AND entity_id = ${tagEntityId}
+        `;
+        for (const row of tagRows) {
+          result.push(mapRow(row, "tag", row.entity_id));
+        }
       }
     }
 
