@@ -161,6 +161,7 @@ export async function handleChatCompletions(
       traceId: ctx.traceId,
       toolDefinitionTokens,
       tags: { ...ctx.tags, ...rateLimitTags, ...metadataTags },
+      customerId: ctx.customerId,
       budgetStatus,
       estimatedCostMicrodollars: estimate,
       orgId: ctx.auth.orgId,

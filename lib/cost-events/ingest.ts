@@ -33,6 +33,7 @@ export const costEventInputSchema = z.object({
     (t) => Object.keys(t).length <= 10 && Object.keys(t).every(k => /^[a-zA-Z0-9_-]{1,64}$/.test(k)),
     { message: "Tags: max 10 keys, key must be 1-64 alphanumeric/underscore/hyphen chars" },
   ),
+  customer: z.string().max(256).optional(),
 });
 
 export type CostEventInput = z.infer<typeof costEventInputSchema>;
@@ -84,6 +85,7 @@ function buildInsertValues(input: CostEventInput, requestId: string, ctx: Insert
     sessionId: input.sessionId ?? null,
     traceId: input.traceId ?? null,
     tags: input.tags ?? {},
+    customerId: input.customer ?? (input.tags?.["customer"] ?? null),
     costBreakdown: input.costBreakdown ?? null,
     source: "api" as const,
   };
@@ -157,6 +159,7 @@ export interface InsertedCostEventRow {
   requestId: string;
   source: string;
   tags: Record<string, string>;
+  customerId: string | null;
 }
 
 /**
@@ -195,6 +198,7 @@ export async function insertCostEventsBatch(
       requestId: costEvents.requestId,
       source: costEvents.source,
       tags: costEvents.tags,
+      customerId: costEvents.customerId,
       costBreakdown: costEvents.costBreakdown,
     });
 

@@ -13,6 +13,8 @@ export interface RequestContext {
   sessionId: string | null;     // from x-nullspend-session
   traceId: string;              // from traceparent / x-nullspend-trace-id / auto-generated
   tags: Record<string, string>; // from x-nullspend-tags
+  customerId: string | null;   // from x-nullspend-customer or tags["customer"]
+  customerWarning: string | null; // set when customer header is present but invalid
   webhookDispatcher: WebhookDispatcher | null;
   resolvedApiVersion: string;
   requestStartMs: number;       // performance.now() at request entry

@@ -19,6 +19,7 @@ export const costEventRecordSchema = z.object({
   traceId: z.string().nullable(),
   sessionId: z.string().nullable(),
   tags: z.record(z.string(), z.string()).default({}),
+  customerId: z.string().max(256).nullable().optional(),
   keyName: z.string().nullable(),
   budgetStatus: z.enum(["skipped", "approved", "denied"]).nullable().optional(),
   stopReason: z.string().nullable().optional(),

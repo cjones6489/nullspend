@@ -9,6 +9,7 @@ import { resolveApiVersion } from "./lib/api-version.js";
 import { errorResponse } from "./lib/errors.js";
 import { createWebhookDispatcher } from "./lib/webhook-dispatch.js";
 import { mergeTags } from "./lib/tags.js";
+import { parseCustomerHeader, resolveCustomerId } from "./lib/customer.js";
 import { resolveTraceId } from "./lib/trace-context.js";
 import { emitMetric } from "./lib/metrics.js";
 import type { RequestContext, RouteHandler } from "./lib/context.js";
@@ -259,6 +260,9 @@ export default {
 
       const tags = mergeTags(auth.defaultTags, request.headers.get("x-nullspend-tags"));
 
+      const customerHeaderResult = parseCustomerHeader(request.headers.get("x-nullspend-customer"));
+      const customerId = resolveCustomerId(customerHeaderResult, tags);
+
       const rawSessionId = request.headers.get("x-nullspend-session");
       if (rawSessionId && rawSessionId.length > MAX_SESSION_ID_LENGTH) {
         emitMetric("request_error", { status: 400, reason: "session_id_too_long" });
@@ -276,6 +280,8 @@ export default {
         sessionId: rawSessionId?.trim() || null,
         traceId,
         tags,
+        customerId,
+        customerWarning: customerHeaderResult.warning,
         webhookDispatcher,
         resolvedApiVersion,
         requestStartMs,
@@ -286,6 +292,9 @@ export default {
       const response = await handler(request, env, ctx);
       if (Object.keys(ctx.tags).length > 0) {
         response.headers.set("X-NullSpend-Effective-Tags", JSON.stringify(ctx.tags));
+      }
+      if (ctx.customerWarning) {
+        response.headers.set("X-NullSpend-Warning", ctx.customerWarning);
       }
       return response;
     } catch (err) {

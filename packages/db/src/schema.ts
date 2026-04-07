@@ -111,10 +111,10 @@ export type SlackConfigRow = typeof slackConfigs.$inferSelect;
 
 export const budgets = pgTable("budgets", {
   id: uuid("id").defaultRandom().primaryKey(),
-  // DB CHECK allows: user, agent, api_key, team, tag.
+  // DB CHECK allows: user, agent, api_key, team, tag, customer.
   // "agent" and "team" are reserved for future use — gated by Zod validation
-  // in lib/validations/budgets.ts which only accepts: api_key, user, tag.
-  entityType: text("entity_type").$type<"user" | "api_key" | "tag">().notNull(),
+  // in lib/validations/budgets.ts which only accepts: api_key, user, tag, customer.
+  entityType: text("entity_type").$type<"user" | "api_key" | "tag" | "customer">().notNull(),
   entityId: text("entity_id").notNull(),
   maxBudgetMicrodollars: bigint("max_budget_microdollars", { mode: "number" }).notNull(),
   spendMicrodollars: bigint("spend_microdollars", { mode: "number" }).notNull().default(0),
@@ -166,6 +166,7 @@ export const costEvents = pgTable("cost_events", {
   source: text("source").$type<CostEventSource>().notNull().default("proxy"),
   costBreakdown: jsonb("cost_breakdown").$type<{ input?: number; output?: number; cached?: number; reasoning?: number; toolDefinition?: number } | null>(),
   tags: jsonb("tags").$type<Record<string, string>>().notNull().default(sql`'{}'`),
+  customerId: text("customer_id"),
   budgetStatus: text("budget_status").$type<"skipped" | "approved" | "denied">(),
   stopReason: text("stop_reason"),
   estimatedCostMicrodollars: bigint("estimated_cost_microdollars", { mode: "number" }),
@@ -181,6 +182,7 @@ export const costEvents = pgTable("cost_events", {
   index("cost_events_trace_id_idx").on(table.traceId).where(sql`trace_id IS NOT NULL`),
   index("cost_events_tags_idx").using("gin", table.tags),
   index("cost_events_org_id_created_at_idx").on(table.orgId, table.createdAt),
+  index("cost_events_customer_id_idx").on(table.customerId).where(sql`customer_id IS NOT NULL`),
 ]);
 
 export type CostEventRow = typeof costEvents.$inferSelect;

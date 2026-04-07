@@ -187,7 +187,7 @@ export async function getMarginTable(
   // Short-circuit: no tag values means no cost data to query
   const costRows = tagValues.length === 0 ? [] : await db
     .select({
-      tagValue: sql<string>`${costEvents.tags}->>'customer'`.mapWith(String),
+      tagValue: sql<string>`coalesce(${costEvents.customerId}, ${costEvents.tags}->>'customer')`.mapWith(String),
       period: sql<string>`to_char(${costEvents.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM')`.mapWith(String),
       totalCost: sql`cast(coalesce(sum(${costEvents.costMicrodollars}), 0) as bigint)`.mapWith(Number),
     })
@@ -196,11 +196,11 @@ export async function getMarginTable(
       and(
         eq(costEvents.orgId, orgId),
         gte(costEvents.createdAt, oldestPeriod),
-        sql`${costEvents.tags}->>'customer' IN (${sql.join(tagValues.map(v => sql`${v}`), sql`, `)})`,
+        sql`coalesce(${costEvents.customerId}, ${costEvents.tags}->>'customer') IN (${sql.join(tagValues.map(v => sql`${v}`), sql`, `)})`,
       ),
     )
     .groupBy(
-      sql`${costEvents.tags}->>'customer'`,
+      sql`coalesce(${costEvents.customerId}, ${costEvents.tags}->>'customer')`,
       sql`to_char(${costEvents.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM')`,
     );
 
@@ -388,7 +388,7 @@ export async function getCustomerDetail(
       and(
         eq(costEvents.orgId, orgId),
         gte(costEvents.createdAt, oldestPeriod),
-        sql`${costEvents.tags}->>'customer' = ${tagValue}`,
+        sql`coalesce(${costEvents.customerId}, ${costEvents.tags}->>'customer') = ${tagValue}`,
       ),
     )
     .groupBy(sql`to_char(${costEvents.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM')`);
@@ -417,7 +417,7 @@ export async function getCustomerDetail(
       and(
         eq(costEvents.orgId, orgId),
         gte(costEvents.createdAt, requestedPeriod),
-        sql`${costEvents.tags}->>'customer' = ${tagValue}`,
+        sql`coalesce(${costEvents.customerId}, ${costEvents.tags}->>'customer') = ${tagValue}`,
         sql`to_char(${costEvents.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM') = ${requestedPeriodStr}`,
       ),
     )

@@ -34,7 +34,7 @@ export interface BudgetSpendResult {
  * - Uses atomic SQL increment (not read-then-write)
  * - Returns pre/post spend for threshold detection
  *
- * Matches budget entities by: api_key, user, and tag budgets (same as proxy).
+ * Matches budget entities by: api_key, user, tag, and customer budgets (same as proxy).
  */
 export async function updateBudgetSpendFromCostEvent(
   orgId: string,
@@ -42,6 +42,7 @@ export async function updateBudgetSpendFromCostEvent(
   costMicrodollars: number,
   tags?: Record<string, string>,
   userId?: string,
+  customerId?: string | null,
 ): Promise<BudgetSpendResult> {
   if (costMicrodollars <= 0) return { updatedEntities: [] };
 
@@ -61,11 +62,12 @@ export async function updateBudgetSpendFromCostEvent(
     .where(eq(budgets.orgId, orgId));
 
   // Filter to entities that match this cost event.
-  // Matches: api_key (by key ID), user (by user ID), tag (by key=value).
+  // Matches: api_key (by key ID), user (by user ID), tag (by key=value), customer (by customer ID).
   // Same entity types the proxy matches in lookupBudgetsForDO.
   const entitiesToUpdate = matchingBudgets.filter((b) => {
     if (b.entityType === "api_key" && apiKeyId && b.entityId === apiKeyId) return true;
     if (b.entityType === "user" && userId && b.entityId === userId) return true;
+    if (b.entityType === "customer" && customerId && b.entityId === customerId) return true;
     if (b.entityType === "tag" && tags) {
       // Tag budgets have entityId format "key=value"
       const eqIdx = b.entityId.indexOf("=");

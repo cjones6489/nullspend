@@ -39,6 +39,8 @@ function makeCtx(overrides: Partial<RequestContext> = {}): RequestContext {
     sessionId: null,
     traceId: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
     tags: {},
+    customerId: null,
+    customerWarning: null,
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
     requestStartMs: performance.now(),

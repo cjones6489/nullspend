@@ -27,6 +27,7 @@ export interface EnrichmentFields {
   traceId: string;
   toolDefinitionTokens: number;
   tags: Record<string, string>;
+  customerId: string | null;
   budgetStatus: "skipped" | "approved" | "denied";
   estimatedCostMicrodollars: number;
   orgId: string | null;

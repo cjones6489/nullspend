@@ -94,6 +94,7 @@ function makeInsertedRow(overrides?: Record<string, unknown>) {
     requestId: "sdk_abc",
     source: "api",
     tags: {} as Record<string, string>,
+    customerId: null as string | null,
     ...overrides,
   };
 }
@@ -315,10 +316,10 @@ describe("POST /api/cost-events/batch", () => {
 
     // Per-event: 1500 + 2500, NOT aggregated 4000
     expect(mockedUpdateBudgetSpend).toHaveBeenNthCalledWith(1,
-      "org-test-1", "key-1", 1500, undefined, "user-1",
+      "org-test-1", "key-1", 1500, undefined, "user-1", null,
     );
     expect(mockedUpdateBudgetSpend).toHaveBeenNthCalledWith(2,
-      "org-test-1", "key-1", 2500, undefined, "user-1",
+      "org-test-1", "key-1", 2500, undefined, "user-1", null,
     );
   });
 
@@ -396,6 +397,7 @@ describe("POST /api/cost-events/batch", () => {
       5000,
       undefined,
       "user-1",
+      null,
     );
   });
 

@@ -31,13 +31,13 @@ export async function runAutoMatch(
   const lookbackCutoff = new Date(Date.now() - 90 * 86_400_000);
   const tagValues = await db
     .select({
-      tagValue: sql<string>`DISTINCT ${costEvents.tags}->>'customer'`.mapWith(String),
+      tagValue: sql<string>`DISTINCT coalesce(${costEvents.customerId}, ${costEvents.tags}->>'customer')`.mapWith(String),
     })
     .from(costEvents)
     .where(
       and(
         eq(costEvents.orgId, orgId),
-        sql`${costEvents.tags} ? 'customer'`,
+        sql`(${costEvents.customerId} IS NOT NULL OR ${costEvents.tags} ? 'customer')`,
         gte(costEvents.createdAt, lookbackCutoff),
       ),
     )

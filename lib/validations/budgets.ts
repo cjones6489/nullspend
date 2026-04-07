@@ -6,7 +6,7 @@ export const budgetIdParamsSchema = z.object({
   id: nsIdInput("bgt"),
 });
 
-const entityTypeSchema = z.enum(["api_key", "user", "tag"]);
+const entityTypeSchema = z.enum(["api_key", "user", "tag", "customer"]);
 export const policySchema = z.enum(["strict_block", "soft_block", "warn"]);
 
 function entityIdPrefixForType(entityType: "api_key" | "user"): "key" | "usr" {
@@ -41,6 +41,25 @@ export const createBudgetInputSchema = z
     policy: policySchema.optional(),
   })
   .superRefine((val, ctx) => {
+    // Customer entity IDs are plain customer identifier strings
+    if (val.entityType === "customer") {
+      if (!val.entityId || val.entityId.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["entityId"],
+          message: "Customer entityId must not be empty",
+        });
+      }
+      if (val.entityId.length > 256) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["entityId"],
+          message: "Customer entityId must be 256 characters or fewer",
+        });
+      }
+      return;
+    }
+
     // Tag entity IDs are "key=value" strings, not prefixed UUIDs
     if (val.entityType === "tag") {
       if (!TAG_ENTITY_ID_REGEX.test(val.entityId)) {
@@ -80,8 +99,8 @@ export const createBudgetInputSchema = z
     }
   })
   .transform((val) => {
-    // Tag entity IDs pass through as-is (not UUIDs, no prefix to strip)
-    if (val.entityType === "tag") return val;
+    // Tag and customer entity IDs pass through as-is (not UUIDs, no prefix to strip)
+    if (val.entityType === "tag" || val.entityType === "customer") return val;
     return {
       ...val,
       entityId: fromExternalIdOfType(entityIdPrefixForType(val.entityType), val.entityId),

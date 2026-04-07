@@ -92,6 +92,8 @@ function makeCtx(
     sessionId: null,
     traceId: "trace-456",
     tags: {},
+    customerId: null,
+    customerWarning: null,
     webhookDispatcher: null,
     resolvedApiVersion: "2026-04-01",
     requestStartMs: performance.now(),

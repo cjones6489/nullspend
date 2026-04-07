@@ -91,6 +91,7 @@ export const POST = withRequestContext(async (request: Request) => {
                 row.costMicrodollars,
                 tags,
                 authResult.userId,
+                row.customerId,
               );
 
               if (updatedEntities.length > 0) {
