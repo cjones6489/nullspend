@@ -309,11 +309,17 @@ describe("buildTrackedFetch", () => {
   // -------------------------------------------------------------------------
 
   describe("proxy detection guard", () => {
-    it("passes through when URL contains proxy.nullspend.com", async () => {
+    it("passes through when URL starts with the configured proxyUrl", async () => {
       mockFetch.mockResolvedValue(openaiJsonResponse());
-      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        undefined,
+        queueCost,
+        null,
+        "https://proxy.example.com",
+      );
 
-      await trackedFetch("https://proxy.nullspend.com/v1/chat/completions", {
+      await trackedFetch("https://proxy.example.com/v1/chat/completions", {
         method: "POST",
         body: makeOpenAIBody(),
       });
@@ -360,6 +366,336 @@ describe("buildTrackedFetch", () => {
       });
 
       expect(queueCost).not.toHaveBeenCalled();
+    });
+
+    it("passes through when configurable proxyUrl matches the request URL", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        undefined,
+        queueCost,
+        null,
+        "https://nullspend.cjones6489.workers.dev",
+      );
+
+      await trackedFetch(
+        "https://nullspend.cjones6489.workers.dev/v1/chat/completions",
+        { method: "POST", body: makeOpenAIBody() },
+      );
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // No client-side cost tracking when proxy is detected
+      expect(queueCost).not.toHaveBeenCalled();
+    });
+
+    it("does NOT match a different host even when proxyUrl is configured", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        undefined,
+        queueCost,
+        null,
+        "https://nullspend.cjones6489.workers.dev",
+      );
+
+      // Direct call to api.openai.com should still be tracked client-side
+      await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+
+      expect(queueCost).toHaveBeenCalledTimes(1);
+    });
+
+    // ────────────────────────────────────────────────────────────────
+    // Regression: proxyUrl origin comparison (no substring bypass)
+    // ────────────────────────────────────────────────────────────────
+
+    it("does NOT match a confusable hostname (origin comparison, not substring)", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        undefined,
+        queueCost,
+        null,
+        "https://proxy.example.com",
+      );
+
+      // Attacker-style URL that starts with the proxy URL but hits a different origin
+      await trackedFetch(
+        "https://proxy.example.com.evil.com/v1/chat/completions",
+        { method: "POST", body: makeOpenAIBody() },
+      );
+
+      // Must NOT be treated as proxied — client-side tracking should still run
+      expect(queueCost).toHaveBeenCalledTimes(1);
+    });
+
+    it("matches different ports on same host correctly", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        undefined,
+        queueCost,
+        null,
+        "http://localhost:8787",
+      );
+
+      // Exact port match should be detected as proxied
+      await trackedFetch(
+        "http://localhost:8787/v1/chat/completions",
+        { method: "POST", body: makeOpenAIBody() },
+      );
+      expect(queueCost).not.toHaveBeenCalled();
+
+      // Different port — same hostname but different origin — should NOT match
+      await trackedFetch(
+        "http://localhost:3000/v1/chat/completions",
+        { method: "POST", body: makeOpenAIBody() },
+      );
+      expect(queueCost).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Customer header injection (X-NullSpend-Customer)
+  // -------------------------------------------------------------------------
+
+  describe("X-NullSpend-Customer header injection", () => {
+    it("injects X-NullSpend-Customer when options.customer is set (direct mode)", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = new Headers(callInit.headers);
+      expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+    });
+
+    it("injects X-NullSpend-Customer BEFORE the proxy bailout (proxy mode)", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+        "https://nullspend.cjones6489.workers.dev",
+      );
+
+      await trackedFetch(
+        "https://nullspend.cjones6489.workers.dev/v1/chat/completions",
+        { method: "POST", body: makeOpenAIBody() },
+      );
+
+      // SDK should bail out (no client-side tracking) BUT the header must be on the wire
+      expect(queueCost).not.toHaveBeenCalled();
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = new Headers(callInit.headers);
+      expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+    });
+
+    it("does NOT inject the header when customer is undefined", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+
+      await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = new Headers(callInit.headers ?? {});
+      expect(headers.has("X-NullSpend-Customer")).toBe(false);
+    });
+
+    it("preserves other headers when injecting customer", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      await trackedFetch(OPENAI_URL, {
+        method: "POST",
+        body: makeOpenAIBody(),
+        headers: { Authorization: "Bearer sk-test", "X-Custom": "keep-me" },
+      });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = new Headers(callInit.headers);
+      expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+      expect(headers.get("Authorization")).toBe("Bearer sk-test");
+      expect(headers.get("X-Custom")).toBe("keep-me");
+    });
+
+    it("preserves existing headers when they are an array of tuples", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      await trackedFetch(OPENAI_URL, {
+        method: "POST",
+        body: makeOpenAIBody(),
+        headers: [
+          ["Authorization", "Bearer sk-test"],
+          ["X-Custom", "keep-me"],
+        ],
+      });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = new Headers(callInit.headers);
+      expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+      expect(headers.get("Authorization")).toBe("Bearer sk-test");
+      expect(headers.get("X-Custom")).toBe("keep-me");
+    });
+
+    it("preserves existing headers when they are a Headers instance", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      const existing = new Headers({
+        Authorization: "Bearer sk-test",
+        "X-Custom": "keep-me",
+      });
+      await trackedFetch(OPENAI_URL, {
+        method: "POST",
+        body: makeOpenAIBody(),
+        headers: existing,
+      });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = new Headers(callInit.headers);
+      expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+      expect(headers.get("Authorization")).toBe("Bearer sk-test");
+      expect(headers.get("X-Custom")).toBe("keep-me");
+      // Original Headers instance should not be mutated
+      expect(existing.has("X-NullSpend-Customer")).toBe(false);
+    });
+
+    // ────────────────────────────────────────────────────────────────
+    // Regression: Request-object input must preserve Authorization
+    // ────────────────────────────────────────────────────────────────
+
+    it("preserves Authorization when input is a Request and init is absent", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      // Caller passes a Request object (not url+init). Without the fix, the
+      // addHeader path would create a new init with only the customer header,
+      // and fetch(request, init) would REPLACE the Request's headers entirely.
+      const request = new Request(OPENAI_URL, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk-test", "X-Custom": "keep-me" },
+        body: makeOpenAIBody(),
+      });
+
+      await trackedFetch(request);
+
+      // The fetch call should have received a Request (not url+init) with
+      // the customer header injected but the original headers preserved.
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const passedInput = mockFetch.mock.calls[0][0];
+      expect(passedInput).toBeInstanceOf(Request);
+      const passedHeaders = (passedInput as Request).headers;
+      expect(passedHeaders.get("X-NullSpend-Customer")).toBe("acme-corp");
+      expect(passedHeaders.get("Authorization")).toBe("Bearer sk-test");
+      expect(passedHeaders.get("X-Custom")).toBe("keep-me");
+      // Original Request should not be mutated
+      expect(request.headers.has("X-NullSpend-Customer")).toBe(false);
+    });
+
+    it("preserves Authorization when input is a Request AND init has headers", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      // When init.headers is set, fetch uses init.headers and ignores the
+      // Request's headers. The customer header must be added to init.
+      const request = new Request(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+      await trackedFetch(request, {
+        headers: { Authorization: "Bearer sk-test", "X-Custom": "keep-me" },
+      });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const headers = new Headers(callInit.headers);
+      expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+      expect(headers.get("Authorization")).toBe("Bearer sk-test");
+      expect(headers.get("X-Custom")).toBe("keep-me");
+    });
+
+    // ────────────────────────────────────────────────────────────────
+    // Regression: case-insensitive header dedup
+    // ────────────────────────────────────────────────────────────────
+
+    it("case-insensitively dedupes when caller sets x-nullspend-customer in lowercase (plain object)", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      await trackedFetch(OPENAI_URL, {
+        method: "POST",
+        body: makeOpenAIBody(),
+        headers: { "x-nullspend-customer": "stale-value" }, // lowercase, stale
+      });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const rawHeaders = callInit.headers as Record<string, string>;
+      // Should only have one customer header entry, with the new value
+      const keys = Object.keys(rawHeaders).filter((k) => k.toLowerCase() === "x-nullspend-customer");
+      expect(keys).toHaveLength(1);
+      const headers = new Headers(rawHeaders);
+      expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+    });
+
+    it("case-insensitively dedupes when caller sets x-nullspend-customer in array tuples", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { customer: "acme-corp" },
+        queueCost,
+        null,
+      );
+
+      await trackedFetch(OPENAI_URL, {
+        method: "POST",
+        body: makeOpenAIBody(),
+        headers: [
+          ["x-nullspend-customer", "stale-value"],
+          ["Authorization", "Bearer sk-test"],
+        ],
+      });
+
+      const callInit = mockFetch.mock.calls[0][1] as RequestInit;
+      const tuples = callInit.headers as [string, string][];
+      // Should have exactly one customer entry (new), plus the Authorization
+      const customerEntries = tuples.filter(([k]) => k.toLowerCase() === "x-nullspend-customer");
+      expect(customerEntries).toHaveLength(1);
+      expect(customerEntries[0][1]).toBe("acme-corp");
+      expect(tuples.some(([k, v]) => k === "Authorization" && v === "Bearer sk-test")).toBe(true);
     });
   });
 
@@ -1555,6 +1891,145 @@ describe("buildTrackedFetch", () => {
         expect(budgetErr.entityId).toBe("key-1");
         expect(budgetErr.limitMicrodollars).toBe(5_000_000);
         expect(budgetErr.spendMicrodollars).toBe(4_900_000);
+      }
+    });
+
+    it("proxy 429 with customer_budget_exceeded code throws BudgetExceededError", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true, customer: "acme-corp" },
+        queueCost,
+        policyCache,
+      );
+
+      // Proxy emits this code (not budget_exceeded) for customer-entity denials.
+      // Details schema: { customer_id, budget_limit_microdollars, budget_spend_microdollars }
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "customer_budget_exceeded",
+          message: "Request blocked: estimated cost exceeds customer budget limit.",
+          details: {
+            customer_id: "acme-corp",
+            budget_limit_microdollars: 1_000_000,
+            budget_spend_microdollars: 999_500,
+          },
+        },
+      }, 429));
+
+      try {
+        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetExceededError);
+        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+        expect(budgetErr.entityType).toBe("customer");
+        expect(budgetErr.entityId).toBe("acme-corp");
+        expect(budgetErr.limitMicrodollars).toBe(1_000_000);
+        expect(budgetErr.spendMicrodollars).toBe(999_500);
+        expect(budgetErr.remainingMicrodollars).toBe(500);
+      }
+    });
+
+    it("customer_budget_exceeded with null customer_id falls back to SDK-side customer", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true, customer: "acme-corp" },
+        queueCost,
+        policyCache,
+      );
+
+      // Proxy's shared.ts:212 can emit customer_id as null, not just string
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "customer_budget_exceeded",
+          details: {
+            customer_id: null, // proxy null case
+            budget_limit_microdollars: 1_000_000,
+            budget_spend_microdollars: 999_500,
+          },
+        },
+      }, 429));
+
+      try {
+        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetExceededError);
+        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+        expect(budgetErr.entityType).toBe("customer");
+        // Should fall back to the SDK-side customer, not remain null
+        expect(budgetErr.entityId).toBe("acme-corp");
+        expect(budgetErr.limitMicrodollars).toBe(1_000_000);
+        expect(budgetErr.spendMicrodollars).toBe(999_500);
+      }
+    });
+
+    it("customer_budget_exceeded with missing details produces undefined fields, not NaN", async () => {
+      const policyCache = createMockPolicyCache();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true, customer: "acme-corp" },
+        queueCost,
+        policyCache,
+      );
+
+      // Missing details object entirely
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: { code: "customer_budget_exceeded" },
+      }, 429));
+
+      try {
+        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(BudgetExceededError);
+        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+        expect(budgetErr.entityId).toBe("acme-corp"); // fallback
+        expect(budgetErr.limitMicrodollars).toBeUndefined();
+        expect(budgetErr.spendMicrodollars).toBeUndefined();
+        expect(budgetErr.remainingMicrodollars).toBe(0); // max(0, 0-0)
+        expect(Number.isNaN(budgetErr.remainingMicrodollars)).toBe(false);
+      }
+    });
+
+    it("customer_budget_exceeded fires onDenied with type=budget and entityType=customer", async () => {
+      const policyCache = createMockPolicyCache();
+      const onDenied = vi.fn();
+
+      const trackedFetch = buildTrackedFetch(
+        "openai",
+        { enforcement: true, onDenied, customer: "acme-corp" },
+        queueCost,
+        policyCache,
+      );
+
+      mockFetch.mockResolvedValue(mockFetchJsonResponse({
+        error: {
+          code: "customer_budget_exceeded",
+          details: {
+            customer_id: "acme-corp",
+            budget_limit_microdollars: 1_000_000,
+            budget_spend_microdollars: 1_000_000,
+          },
+        },
+      }, 429));
+
+      await expect(
+        trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() }),
+      ).rejects.toThrow(BudgetExceededError);
+
+      expect(onDenied).toHaveBeenCalledTimes(1);
+      const reason = onDenied.mock.calls[0][0] as DenialReason;
+      expect(reason.type).toBe("budget");
+      if (reason.type === "budget") {
+        expect(reason.entityType).toBe("customer");
+        expect(reason.entityId).toBe("acme-corp");
+        expect(reason.remaining).toBe(0);
       }
     });
 

@@ -1,4 +1,5 @@
 import { CostReporter } from "./cost-reporter.js";
+import { validateCustomerId } from "./customer-id.js";
 import { NullSpendError, RejectedError, TimeoutError } from "./errors.js";
 import { buildTrackedFetch } from "./tracked-fetch.js";
 import { createPolicyCache } from "./policy-cache.js";
@@ -53,6 +54,7 @@ function toFiniteInt(value: number | undefined, fallback: number): number {
 export class NullSpend {
   private readonly baseUrl: string;
   private readonly apiKey: string;
+  private readonly proxyUrl: string | undefined;
   private readonly _fetch: typeof globalThis.fetch;
   private readonly requestTimeoutMs: number;
   private readonly maxRetries: number;
@@ -76,6 +78,25 @@ export class NullSpend {
 
     this.baseUrl = config.baseUrl.replace(/\/+$/, "");
     this.apiKey = config.apiKey;
+    // Validate proxyUrl at construction time so missing-scheme bugs fail fast
+    // instead of silently causing client-side double-counting in proxy mode.
+    if (config.proxyUrl !== undefined) {
+      const stripped = config.proxyUrl.replace(/\/+$/, "");
+      try {
+        // Reject strings that URL accepts but aren't absolute HTTP(S) URLs.
+        const parsed = new URL(stripped);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          throw new Error(`proxyUrl must use http or https (got ${parsed.protocol})`);
+        }
+        this.proxyUrl = stripped;
+      } catch {
+        throw new NullSpendError(
+          `proxyUrl must be a valid absolute URL (e.g., "https://proxy.example.com"), got: ${JSON.stringify(config.proxyUrl)}`,
+        );
+      }
+    } else {
+      this.proxyUrl = undefined;
+    }
     this.apiVersion = config.apiVersion ?? SDK_API_VERSION;
     this._fetch = config.fetch ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = Math.max(
@@ -207,6 +228,7 @@ export class NullSpend {
       options,
       (event) => this.queueCost(event),
       policyCache,
+      this.proxyUrl,
     );
   }
 
@@ -228,15 +250,15 @@ export class NullSpend {
     customerId: string,
     options?: CustomerSessionOptions,
   ): CustomerSession {
-    if (!customerId || !customerId.trim()) {
-      throw new NullSpendError("customer() requires a non-empty customerId");
-    }
+    // Delegates to shared helper so direct callers of createTrackedFetch get
+    // identical validation behavior (see buildTrackedFetch).
+    const trimmedCustomerId = validateCustomerId(customerId);
 
     const tags = { ...options?.tags };
     if (options?.plan) tags.plan = options.plan;
 
     const baseOptions: TrackedFetchOptions = {
-      customer: customerId,
+      customer: trimmedCustomerId,
       tags: Object.keys(tags).length > 0 ? tags : undefined,
       sessionId: options?.sessionId,
       sessionLimitMicrodollars: options?.sessionLimitMicrodollars,
@@ -259,7 +281,7 @@ export class NullSpend {
       openai: fetchForProvider("openai"),
       anthropic: fetchForProvider("anthropic"),
       fetch: fetchForProvider,
-      customerId,
+      customerId: trimmedCustomerId,
     };
   }
 

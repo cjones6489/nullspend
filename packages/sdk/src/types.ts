@@ -50,6 +50,14 @@ export interface CostReportingConfig {
 export interface NullSpendConfig {
   baseUrl: string;
   apiKey: string;
+  /**
+   * Proxy base URL used to detect when a tracked fetch request is going through
+   * the NullSpend proxy. When the request URL starts with this value, the SDK
+   * skips client-side cost tracking and lets the proxy handle accounting.
+   * Optional — header-based detection (`x-nullspend-key`) still works as a fallback.
+   * Example: "https://nullspend.cjones6489.workers.dev"
+   */
+  proxyUrl?: string;
   /** Override the API version sent via NullSpend-Version header. Defaults to the SDK's built-in version. */
   apiVersion?: string;
   /** Custom fetch implementation (defaults to globalThis.fetch). */

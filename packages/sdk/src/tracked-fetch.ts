@@ -1,5 +1,6 @@
 import type { CostEventInput, TrackedFetchOptions, TrackedProvider } from "./types.js";
 import type { PolicyCache } from "./policy-cache.js";
+import { validateCustomerId } from "./customer-id.js";
 import {
   BudgetExceededError,
   MandateViolationError,
@@ -28,14 +29,23 @@ import { getModelPricing } from "@nullspend/cost-engine";
 /**
  * Build a tracked fetch function that intercepts LLM API calls and
  * automatically reports cost events.
+ *
+ * @param proxyUrl Optional proxy base URL. When set, requests whose URL starts
+ *   with this value are detected as proxied and pass through without client-side
+ *   tracking. Header-based detection (`x-nullspend-key`) is the always-on fallback.
  */
 export function buildTrackedFetch(
   provider: TrackedProvider,
   options: TrackedFetchOptions | undefined,
   queueCost: (event: CostEventInput) => void,
   policyCache: PolicyCache | null,
+  proxyUrl?: string,
 ): typeof globalThis.fetch {
-  const customer = options?.customer;
+  // Validate + normalize customer here so direct callers of createTrackedFetch
+  // get the same fail-fast behavior as NullSpend.customer(). Throws on invalid
+  // input — that is intentional, we want the error at fetch-builder construction
+  // time, not at first request.
+  const customer = options?.customer !== undefined ? validateCustomerId(options.customer) : undefined;
   const sessionId = options?.sessionId;
   const tags = options?.tags;
   const traceId = options?.traceId;
@@ -62,8 +72,27 @@ export function buildTrackedFetch(
     // Resolve URL from input
     const url = resolveUrl(input);
 
+    // Inject X-NullSpend-Customer header if customer is set. This MUST happen
+    // before the isProxied bailout — otherwise the header never reaches the
+    // proxy and customer attribution is silently lost.
+    //
+    // WHATWG subtlety: when input is a Request and init.headers is set,
+    // init.headers REPLACES the Request's headers entirely (dropping any
+    // Authorization the caller baked into the Request). So if the caller
+    // passed a Request without init.headers, we must inject the header into
+    // a cloned Request instead of synthesizing an init.
+    if (customer) {
+      if (input instanceof Request && !init?.headers) {
+        const newHeaders = new Headers(input.headers);
+        newHeaders.set("X-NullSpend-Customer", customer);
+        input = new Request(input, { headers: newHeaders });
+      } else {
+        init = addHeader(init, "X-NullSpend-Customer", customer);
+      }
+    }
+
     // Proxy detection guard: skip tracking if going through the proxy
-    if (isProxied(url, init)) {
+    if (isProxied(url, init, proxyUrl)) {
       return globalThis.fetch(input, init);
     }
 
@@ -183,6 +212,20 @@ export function buildTrackedFetch(
             throw new BudgetExceededError({ remaining, entityType, entityId, limit, spend });
           }
 
+          if (code === "customer_budget_exceeded") {
+            // Proxy emits a distinct code for customer-entity denials.
+            // Details shape: { customer_id, budget_limit_microdollars, budget_spend_microdollars }
+            // customer_id can be null per shared.ts:212; coerce to undefined.
+            // Fall back to the SDK-side customer when the proxy didn't echo it.
+            const rawCustomerId = details?.customer_id;
+            const entityId = (typeof rawCustomerId === "string" ? rawCustomerId : undefined) ?? customer ?? undefined;
+            const limit = toFiniteNumber(details?.budget_limit_microdollars);
+            const spend = toFiniteNumber(details?.budget_spend_microdollars);
+            const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
+            safeDenied(onDenied, { type: "budget", remaining, entityType: "customer", entityId, limit, spend }, onCostError);
+            throw new BudgetExceededError({ remaining, entityType: "customer", entityId, limit, spend });
+          }
+
           if (code === "velocity_exceeded") {
             // Proxy sends details: { limitMicrodollars, windowSeconds, currentMicrodollars }
             // Retry-after is in the Retry-After HTTP header, not in the JSON body
@@ -289,8 +332,22 @@ function resolveUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
-function isProxied(url: string, init?: RequestInit): boolean {
-  if (url.includes("proxy.nullspend.com")) return true;
+function isProxied(url: string, init?: RequestInit, proxyUrl?: string): boolean {
+  // Configurable proxyUrl match via URL origin (not substring — substring
+  // matching allows "https://host.evil.com" to spoof "https://host").
+  // The client constructor validates proxyUrl with `new URL()`, so we only
+  // need to handle parse failures on the request URL side defensively.
+  if (proxyUrl) {
+    try {
+      const requestOrigin = new URL(url).origin;
+      const proxyOrigin = new URL(proxyUrl).origin;
+      if (requestOrigin === proxyOrigin) return true;
+    } catch {
+      // Invalid URL on request side — fall through to header check
+    }
+  }
+  // Header-based detection is the always-on fallback so callers can opt in
+  // by setting x-nullspend-key on the request explicitly.
   if (init?.headers) {
     const headers = init.headers;
     if (headers instanceof Headers) {
@@ -304,6 +361,54 @@ function isProxied(url: string, init?: RequestInit): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Coerce an unknown value to a finite number, or undefined if not coercible.
+ * Guards against proxy details fields being strings or non-finite values.
+ */
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+/**
+ * Add a header to a RequestInit, returning a new RequestInit. Handles all three
+ * header formats (Headers object, array of tuples, plain object) without
+ * mutating the caller's input.
+ *
+ * Case-insensitively dedupes existing entries with the same name so we never
+ * emit duplicate headers (which have ambiguous semantics across fetch runtimes).
+ */
+function addHeader(init: RequestInit | undefined, name: string, value: string): RequestInit {
+  const existing = init?.headers;
+  if (existing instanceof Headers) {
+    const next = new Headers(existing);
+    next.set(name, value);  // Headers.set() is case-insensitive per spec
+    return { ...init, headers: next };
+  }
+  const lowerName = name.toLowerCase();
+  if (Array.isArray(existing)) {
+    // Strip any existing entries with the same header name (case-insensitive),
+    // then append the new one.
+    const filtered = existing.filter(([k]) => k.toLowerCase() !== lowerName);
+    return { ...init, headers: [...filtered, [name, value]] };
+  }
+  if (existing && typeof existing === "object") {
+    // Strip any existing keys with the same name (case-insensitive),
+    // then set the new one. Preserves the canonical casing the caller uses.
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(existing as Record<string, string>)) {
+      if (k.toLowerCase() !== lowerName) next[k] = v;
+    }
+    next[name] = value;
+    return { ...init, headers: next };
+  }
+  return { ...init, headers: { [name]: value } };
 }
 
 function extractBody(input: RequestInfo | URL, init?: RequestInit): string | null {
