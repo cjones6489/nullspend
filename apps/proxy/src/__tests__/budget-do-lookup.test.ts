@@ -188,4 +188,47 @@ describe("lookupBudgetsForDO", () => {
     expect(result).toHaveLength(1);
     expect(mockSql).toHaveBeenCalledTimes(1); // only api_key query
   });
+
+  it("looks up customer budget when customer tag is present", async () => {
+    // user query (no user budget) + tag query (no tags) + customer query (found)
+    mockSql
+      .mockResolvedValueOnce([]) // user query
+      .mockResolvedValueOnce([]) // tag query
+      .mockResolvedValueOnce([makeBudgetRow({ entity_type: "customer", entity_id: "acme-corp" })]);
+
+    const result = await lookupBudgetsForDO("postgres://test", {
+      keyId: null, orgId: "org-1", userId: "user-1", tags: { customer: "acme-corp" },
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].entityType).toBe("customer");
+    expect(result[0].entityId).toBe("acme-corp");
+  });
+
+  it("does not look up customer budget when no customer tag", async () => {
+    mockSql
+      .mockResolvedValueOnce([]) // user query
+      .mockResolvedValueOnce([]); // tag query (env=prod)
+
+    const result = await lookupBudgetsForDO("postgres://test", {
+      keyId: null, orgId: "org-1", userId: "user-1", tags: { env: "prod" },
+    });
+
+    expect(result).toHaveLength(0);
+    expect(mockSql).toHaveBeenCalledTimes(2); // user + tag, no customer query
+  });
+
+  it("returns both tag and customer budgets when both exist", async () => {
+    mockSql
+      .mockResolvedValueOnce([]) // user query
+      .mockResolvedValueOnce([makeBudgetRow({ entity_type: "tag", entity_id: "customer=acme-corp" })]) // tag query
+      .mockResolvedValueOnce([makeBudgetRow({ entity_type: "customer", entity_id: "acme-corp" })]); // customer query
+
+    const result = await lookupBudgetsForDO("postgres://test", {
+      keyId: null, orgId: "org-1", userId: "user-1", tags: { customer: "acme-corp" },
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.map(r => r.entityType)).toEqual(["tag", "customer"]);
+  });
 });

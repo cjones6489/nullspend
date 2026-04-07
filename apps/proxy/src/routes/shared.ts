@@ -81,6 +81,7 @@ export function handleBudgetDenials(
     const reason = outcome.velocityDenied ? "velocity_exceeded"
       : outcome.sessionLimitDenied ? "session_limit_exceeded"
       : outcome.tagBudgetDenied ? "tag_budget_exceeded"
+      : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
       : "budget_exceeded";
     emitMetric("budget_denied", { reason, provider, entityType: outcome.deniedEntityType ?? "unknown" });
   }
@@ -202,7 +203,6 @@ export function handleBudgetDenials(
         provider,
       }, ctx.auth.apiVersion),
     );
-    emitMetric("budget_denied", { reason: "customer_budget_exceeded", provider, entityType: "customer" });
     return new Response(
       JSON.stringify({
         error: {

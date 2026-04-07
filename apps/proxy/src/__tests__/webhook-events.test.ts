@@ -8,6 +8,7 @@ import {
   buildTestPingPayload,
   buildThinCostEventPayload,
   buildTagBudgetExceededPayload,
+  buildCustomerBudgetExceededPayload,
   CURRENT_API_VERSION,
 } from "../lib/webhook-events.js";
 
@@ -462,6 +463,46 @@ describe("buildTagBudgetExceededPayload", () => {
     expect(event.type).toBe("tag_budget.exceeded");
     expect(event.api_version).toBe("2025-01-01");
     expect(event.created_at).toBeGreaterThan(0);
+  });
+});
+
+describe("buildCustomerBudgetExceededPayload", () => {
+  it("builds valid customer_budget.exceeded event", () => {
+    const event = buildCustomerBudgetExceededPayload({
+      customerId: "acme-corp",
+      budgetLimitMicrodollars: 50_000_000,
+      budgetSpendMicrodollars: 49_500_000,
+      estimatedRequestCostMicrodollars: 1_000_000,
+      model: "gpt-4o",
+      provider: "openai",
+    });
+
+    expect(event.type).toBe("customer_budget.exceeded");
+    expect(event.id).toMatch(/^evt_/);
+    expect(event.api_version).toBe(CURRENT_API_VERSION);
+    expect(typeof event.created_at).toBe("number");
+  });
+
+  it("includes customer_id in data.object", () => {
+    const event = buildCustomerBudgetExceededPayload({
+      customerId: "acme-corp",
+      budgetLimitMicrodollars: 100_000_000,
+      budgetSpendMicrodollars: 95_000_000,
+      estimatedRequestCostMicrodollars: 10_000_000,
+      model: "claude-sonnet-4-20250514",
+      provider: "anthropic",
+    });
+
+    const obj = event.data.object;
+    expect(obj.customer_id).toBe("acme-corp");
+    expect(obj.budget_entity_type).toBe("customer");
+    expect(obj.budget_entity_id).toBe("acme-corp");
+    expect(obj.budget_limit_microdollars).toBe(100_000_000);
+    expect(obj.budget_spend_microdollars).toBe(95_000_000);
+    expect(obj.estimated_request_cost_microdollars).toBe(10_000_000);
+    expect(obj.model).toBe("claude-sonnet-4-20250514");
+    expect(obj.provider).toBe("anthropic");
+    expect(obj.blocked_at).toBeDefined();
   });
 });
 
