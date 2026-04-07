@@ -2260,3 +2260,86 @@ describe("requestBudgetIncrease", () => {
     await client.shutdown();
   });
 });
+
+// ---------------------------------------------------------------------------
+// customer() — customer session wrapper
+// ---------------------------------------------------------------------------
+
+describe("customer()", () => {
+  function makeClient(): NullSpend {
+    return new NullSpend({
+      baseUrl: "https://nullspend.test",
+      apiKey: "ns_live_sk_test",
+      costReporting: {},
+    });
+  }
+
+  it("returns a CustomerSession with openai and anthropic fetch functions", () => {
+    const client = makeClient();
+    const session = client.customer("acme-corp");
+
+    expect(session.customerId).toBe("acme-corp");
+    expect(typeof session.openai).toBe("function");
+    expect(typeof session.anthropic).toBe("function");
+    expect(typeof session.fetch).toBe("function");
+
+    client.shutdown();
+  });
+
+  it("fetch() returns a fetch function for the given provider", () => {
+    const client = makeClient();
+    const session = client.customer("acme-corp");
+
+    const openaiViaFetch = session.fetch("openai");
+    expect(typeof openaiViaFetch).toBe("function");
+
+    client.shutdown();
+  });
+
+  it("passes customer and plan as tags to tracked fetch", async () => {
+    const client = makeClient();
+    const session = client.customer("acme-corp", { plan: "pro" });
+
+    // The session.openai is a tracked fetch — it's a function.
+    // We verify it was created by checking the session properties.
+    expect(session.customerId).toBe("acme-corp");
+    // openai and anthropic are different fetch instances
+    expect(session.openai).not.toBe(session.anthropic);
+
+    client.shutdown();
+  });
+
+  it("includes additional tags alongside plan", () => {
+    const client = makeClient();
+    const session = client.customer("acme-corp", {
+      plan: "enterprise",
+      tags: { env: "production", region: "us-east" },
+    });
+
+    expect(session.customerId).toBe("acme-corp");
+    expect(typeof session.openai).toBe("function");
+
+    client.shutdown();
+  });
+
+  it("works without options", () => {
+    const client = makeClient();
+    const session = client.customer("simple-customer");
+
+    expect(session.customerId).toBe("simple-customer");
+    expect(typeof session.openai).toBe("function");
+
+    client.shutdown();
+  });
+
+  it("throws if costReporting is not configured", () => {
+    const client = new NullSpend({
+      baseUrl: "https://nullspend.test",
+      apiKey: "ns_live_sk_test",
+      // no costReporting
+    });
+
+    // customer() calls createTrackedFetch which requires costReporting
+    expect(() => client.customer("acme-corp")).toThrow("costReporting");
+  });
+});

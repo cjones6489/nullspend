@@ -236,6 +236,38 @@ export type DenialReason =
   | { type: "velocity"; retryAfterSeconds?: number; limit?: number; window?: number; current?: number }
   | { type: "tag_budget"; tagKey?: string; tagValue?: string; remaining?: number; limit?: number; spend?: number };
 
+// ---------------------------------------------------------------------------
+// Customer session
+// ---------------------------------------------------------------------------
+
+export interface CustomerSessionOptions {
+  /** Customer's plan tier (attached as a tag for filtering/enforcement). */
+  plan?: string;
+  /** Session ID for session-level spend limits. */
+  sessionId?: string;
+  /** Per-session spend limit in microdollars. */
+  sessionLimitMicrodollars?: number;
+  /** Additional tags merged with customer context. */
+  tags?: Record<string, string>;
+  /** Enable cooperative budget + mandate enforcement. */
+  enforcement?: boolean;
+  /** Called when cost tracking encounters a non-fatal error. */
+  onCostError?: (error: Error) => void;
+  /** Called before throwing enforcement errors. */
+  onDenied?: (reason: DenialReason) => void;
+}
+
+export interface CustomerSession {
+  /** Pre-configured fetch for OpenAI SDK. Usage: `new OpenAI({ fetch: session.openai })` */
+  openai: typeof globalThis.fetch;
+  /** Pre-configured fetch for Anthropic SDK. Usage: `new Anthropic({ fetch: session.anthropic })` */
+  anthropic: typeof globalThis.fetch;
+  /** Get a tracked fetch for a specific provider. */
+  fetch: (provider: TrackedProvider) => typeof globalThis.fetch;
+  /** The customer ID this session is scoped to. */
+  readonly customerId: string;
+}
+
 export interface ReportCostResponse {
   id: string;
   createdAt: string;

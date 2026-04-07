@@ -32,6 +32,8 @@ import type {
   RetryInfo,
   TrackedFetchOptions,
   TrackedProvider,
+  CustomerSession,
+  CustomerSessionOptions,
   WaitForDecisionOptions,
 } from "./types.js";
 
@@ -206,6 +208,48 @@ export class NullSpend {
       (event) => this.queueCost(event),
       policyCache,
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Customer session
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a customer-scoped session with pre-configured fetch functions
+   * for each provider. Use in middleware to scope all AI requests to a customer.
+   *
+   * ```ts
+   * const session = ns.customer("acme-corp", { plan: "pro" });
+   * const openai = new OpenAI({ fetch: session.openai });
+   * const anthropic = new Anthropic({ fetch: session.anthropic });
+   * ```
+   */
+  customer(
+    customerId: string,
+    options?: CustomerSessionOptions,
+  ): CustomerSession {
+    const tags = { ...options?.tags };
+    if (options?.plan) tags.plan = options.plan;
+
+    const baseOptions: TrackedFetchOptions = {
+      customer: customerId,
+      tags: Object.keys(tags).length > 0 ? tags : undefined,
+      sessionId: options?.sessionId,
+      sessionLimitMicrodollars: options?.sessionLimitMicrodollars,
+      enforcement: options?.enforcement,
+      onCostError: options?.onCostError,
+      onDenied: options?.onDenied,
+    };
+
+    const fetchForProvider = (provider: TrackedProvider) =>
+      this.createTrackedFetch(provider, baseOptions);
+
+    return {
+      openai: fetchForProvider("openai"),
+      anthropic: fetchForProvider("anthropic"),
+      fetch: fetchForProvider,
+      customerId,
+    };
   }
 
   // -------------------------------------------------------------------------
