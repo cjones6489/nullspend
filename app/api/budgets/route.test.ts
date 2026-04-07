@@ -4,10 +4,16 @@ import { resolveSessionContext } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 import { LimitExceededError, SpendCapExceededError } from "@/lib/utils/http";
+import { eq } from "drizzle-orm";
 import { GET, POST } from "@/app/api/budgets/route";
 
 vi.mock("@/lib/auth/session", () => ({
   resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
+}));
+
+vi.mock("@/lib/auth/with-api-key-auth", () => ({
+  authenticateApiKey: vi.fn(),
+  applyRateLimitHeaders: vi.fn((res) => res),
 }));
 
 vi.mock("@/lib/auth/org-authorization", () => ({
@@ -18,6 +24,17 @@ vi.mock("@/lib/auth/org-authorization", () => ({
 vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(),
 }));
+
+// Spy on drizzle's eq() so we can inspect what column/value combinations the
+// route actually uses to scope its queries — needed to verify that API-key
+// auth results in a query scoped to the API-key's orgId (not a leaked session one).
+vi.mock("drizzle-orm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("drizzle-orm")>();
+  return {
+    ...actual,
+    eq: vi.fn((col, val) => ({ _mockEq: true, col, val })),
+  };
+});
 
 vi.mock("@/lib/observability/sentry", () => ({
   captureExceptionWithContext: vi.fn(),
@@ -247,6 +264,62 @@ describe("GET /api/budgets", () => {
     expect(json.data[0].entityType).toBe("tag");
     // Tag entityId should pass through as-is, not get UUID prefix wrapping
     expect(json.data[0].entityId).toBe("customer=acme");
+  });
+
+  // ──────────────────────────────────────────────────────────────────────
+  // API key auth path (SDK callers)
+  // ──────────────────────────────────────────────────────────────────────
+
+  it("authorizes via API key header (SDK path) and scopes query to API-key org", async () => {
+    const { authenticateApiKey } = await import("@/lib/auth/with-api-key-auth");
+    const mockAuth = vi.mocked(authenticateApiKey);
+    mockAuth.mockResolvedValue({
+      userId: "user-from-key",
+      orgId: "org-from-api-key",
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+    // Snapshot session-helper call count BEFORE this test so we can detect a fresh call
+    const sessionCallsBefore = mockedResolveSessionContext.mock.calls.length;
+    mockWhere.mockResolvedValueOnce([makeBudgetRow()]);
+
+    const req = new Request("http://localhost/api/budgets", {
+      headers: { "x-nullspend-key": "ns_live_sk_test" },
+    });
+    const response = await GET(req);
+
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data).toHaveLength(1);
+    // Session helper should NOT be called when API key is present
+    expect(mockedResolveSessionContext.mock.calls.length).toBe(sessionCallsBefore);
+    // API key auth should have been invoked
+    expect(mockAuth).toHaveBeenCalled();
+    // And the DB query must be scoped by the API-key's orgId, not a leaked session orgId.
+    // eq() is mocked to capture col/val pairs so we can assert directly.
+    const mockedEq = vi.mocked(eq);
+    const orgIdCalls = mockedEq.mock.calls.filter((call) => call[1] === "org-from-api-key");
+    expect(orgIdCalls.length).toBeGreaterThan(0);
+    // And no query should have used the stale session orgId
+    const wrongCalls = mockedEq.mock.calls.filter((call) => call[1] === "org-test-1");
+    expect(wrongCalls.length).toBe(0);
+  });
+
+  it("returns 403 when API key has no orgId", async () => {
+    const { authenticateApiKey } = await import("@/lib/auth/with-api-key-auth");
+    vi.mocked(authenticateApiKey).mockResolvedValue({
+      userId: "user-from-key",
+      orgId: null,
+      keyId: "key-1",
+      apiVersion: "2026-04-01",
+    });
+
+    const req = new Request("http://localhost/api/budgets", {
+      headers: { "x-nullspend-key": "ns_live_sk_test" },
+    });
+    const response = await GET(req);
+
+    expect(response.status).toBe(403);
   });
 });
 

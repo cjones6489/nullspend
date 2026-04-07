@@ -905,36 +905,423 @@ Target file length: 900–1200 lines including helpers and comments.
 
 ---
 
-## 15. Open Questions for Fresh Session
+## 15. Open Questions — RESOLVED via /plan-eng-review on 2026-04-06
 
-These MUST be answered before writing the test. Recommend running `/plan-eng-review` on this doc to surface more.
+All 12 questions resolved. 6 architectural issues + 15 outside-voice (codex) findings folded into §15a corrections below. **Before implementing, read §15 AND §15a — they override conflicting text elsewhere in the plan.**
 
-1. **NULLSPEND_DASHBOARD_URL** — what's the correct URL? Does the dashboard have `/api/cost-events/batch` deployed and reachable from this machine? If yes: add to `.env.smoke`. If no: Phase 1.4 and 2.6 skip until it's set up.
+### Answered questions
 
-2. **API key mandate restrictions** — §6.6 requires an API key with `allowedModels = ["gpt-4o-mini"]` to test mandate violation. The existing `NULLSPEND_SMOKE_KEY_ID` probably has no restrictions. Options:
-   - (a) Create a second key manually via dashboard before the test run, add `NULLSPEND_MANDATE_KEY_ID` env var
-   - (b) Insert + delete a key row directly via SQL in the test (requires raw SQL that mirrors the dashboard's key hash generation — brittle)
-   - (c) Skip §6.6 and document as unverified
+1. **NULLSPEND_DASHBOARD_URL = `http://127.0.0.1:3000`** — use local dev server. Add to `.env.smoke`. Phase 1.4 and 2.6 require `pnpm dev` running in another terminal. Tests skip gracefully (via `describe.skipIf(!DASHBOARD_URL)` + health check on boot) if dev server is down. `POST /api/cost-events` and `POST /api/cost-events/batch` both exist and accept API key auth (verified: `app/api/cost-events/route.ts`, `.../batch/route.ts`).
 
-3. **Anthropic rate limits** — heavy intensity fires ~120 Anthropic calls. Will we hit rate limits on claude-3-haiku? Need to verify tier. If limited, add backoff or reduce heavy counts.
+2. **Mandate key: SQL insert in `beforeAll`.** Generate raw key via `crypto.randomBytes(32).toString("hex")`, hash via `hashKey()` from `lib/auth/api-key.ts:32-34` (SHA-256), INSERT INTO api_keys with `allowed_models = ARRAY['gpt-4o-mini']`, store raw key + id in test state, DELETE in `afterAll`. Schema verified: `packages/db/src/schema.ts:41-60` has `allowed_models` and `allowed_providers` TEXT[] columns.
 
-4. **Policy endpoint existence** — does `GET /api/policy` exist on the dashboard? If not, `createTrackedFetch` with enforcement will fail policy fetch, fall-open, and §6.9 (proxy 429 interception) becomes the only enforcement path. Verify before testing.
+3. **Anthropic rate limits** — negligible. At ~120 calls for heavy intensity at ~5 µ¢ per call, we won't hit tier-1 limits. Add upstream-429-only backoff (see correction §15a-10).
 
-5. **Reservation table visibility** — §9.3 wants to verify DO reservations table is empty. Does the `/internal/velocity-state` or similar endpoint expose reservation count? If not, add a new read-only endpoint or skip the assertion.
+4. **Policy endpoint exists** — `app/api/policy/route.ts:115-225`, API-key auth, returns `{ budget, allowed_models, allowed_providers, cheapest_*, restrictions_active, session_limit_microdollars }`. SDK falls open on fetch failure (verified: `packages/sdk/src/policy-cache.ts:81-93`).
 
-6. **requestId generation** — in direct-mode cost event ingest (§6.4), does the SDK auto-generate requestId or does the caller need to? Check ingest Zod schema in `lib/cost-events/ingest.ts`. Test must match.
+5. **Reservation visibility** — drop §9.3 explicit reservation-table check. Use indirect spend reconciliation from §7.1 as the invariant: `budgets.spend_microdollars` must equal `SUM(cost_events.cost_microdollars)` for the entity within ±2%. If reservations leak, spend drifts, assertion fails.
 
-7. **SMOKE_ORG_ID derivation** — current smoke tests look it up via `SELECT DISTINCT org_id FROM budgets WHERE user_id = ${SMOKE_USER_ID}`. This assumes a budget exists. Stress test should use `SELECT org_id FROM api_keys WHERE id = ${SMOKE_KEY_ID}` instead — more reliable.
+6. **requestId auto-generated** — `lib/cost-events/ingest.ts:59-66` generates `sdk_${crypto.randomUUID()}` if not provided. For idempotency tests, the test MUST set explicit `idempotencyKey` per event (see correction §15a-6).
 
-8. **§6.9 proxy detection** — if isProxied() doesn't match our proxy URL and we rely on x-nullspend-key header detection, does that actually hit the interception code path? Trace through tracked-fetch.ts carefully. Test may need a temporary workaround to force the code path.
+7. **SMOKE_ORG_ID derivation** — already correct. `apps/proxy/smoke-test-helpers.ts:51-53` does `SELECT org_id FROM api_keys WHERE id = ${NULLSPEND_SMOKE_KEY_ID}`. Stress test reuses this via shared helper.
 
-9. **Anthropic request format** — the proxy uses smallAnthropicRequest() with `claude-3-haiku-20240307`. Is this model still supported? Anthropic has deprecated several 3.x models. Verify before the test run.
+8. **isProxied detection** — works via header (`x-nullspend-key` presence, any value, case-insensitive). Verified: `packages/sdk/src/tracked-fetch.ts:292-307`. BUT see correction §15a-1: we're fixing `isProxied` to be env-driven and injecting `X-NullSpend-Customer` before the bailout, so tests don't need the header workaround.
 
-10. **Test parallelism across stress files** — `fileParallelism: false` is set. Does this stress test need to run after existing stress files (race with shared NULLSPEND_SMOKE_USER_ID budget state)? Probably yes — use the same user ID but distinct entity types/IDs to avoid conflicts.
+9. **Anthropic model** — `claude-3-haiku-20240307` is in the pricing catalog (`packages/cost-engine/src/pricing-data.json:250-256`) and used by existing `smoke-test-helpers.ts` `smallAnthropicRequest()`. Pin to this model; verify with a live call in Phase 0 before running the suite.
 
-11. **Cleanup idempotency** — if the test crashes mid-run, can the next run's teardown clean up the stale fixtures? Recommend a manual cleanup helper: `pnpm stress:cleanup` that deletes everything matching `stress-sdk-%`. Add to package.json.
+10. **Test parallelism** — `fileParallelism: false` in `vitest.stress.config.ts` already sequentializes stress files. Phases within the file run in declaration order. Use per-phase entity IDs (`stress-sdk-${RUN}-p0-*`, `-p1-*`, etc.) to isolate fixtures between phases (see §15a-4).
 
-12. **Cost event ingest auth** — direct-mode ingest uses the same NULLSPEND_API_KEY. Does `/api/cost-events/batch` accept the proxy API key, or does it require a different token type (e.g., session)? Check `app/api/cost-events/batch/route.ts`.
+11. **Cleanup idempotency** — YES, add `apps/proxy/scripts/cleanup-stress-sdk.ts` script wired to `pnpm stress:cleanup`. Deletes all rows matching `stress-sdk-%` prefix across `budgets`, `cost_events` (via containment), and `api_keys`. Safety net for crash recovery. The in-run teardown uses poll-until-stable drain (§15a-3).
+
+12. **Cost event ingest auth** — API key only (`authenticateApiKey()` in both route handlers). `NULLSPEND_API_KEY` works for both single and batch endpoints. Session auth NOT required.
+
+---
+
+## 15a. Review Corrections — MUST-READ before implementation
+
+This section supersedes anything earlier in the plan that contradicts it. 11 corrections from the Claude review + outside voice (codex).
+
+### 15a-1. Fix SDK gaps INLINE before testing (scope expansion)
+
+The stress test depends on two SDK bugs being fixed first:
+
+**Fix A — Inject `X-NullSpend-Customer` header in `packages/sdk/src/tracked-fetch.ts`.** Before the `isProxied()` bailout at line 66-68, inject the customer header if `options.customer` is set. The whole customer() primitive is silently broken today — in proxy mode, the SDK stores customer ID in `metadata` but never sends it to the proxy, so every request lands with `cost_events.customer_id = NULL`.
+
+```typescript
+// tracked-fetch.ts, around line 62
+return async function trackedFetch(input, init) {
+  const url = resolveUrl(input);
+
+  // NEW: Inject X-NullSpend-Customer header if customer is set.
+  // Must happen BEFORE isProxied check so proxy-mode requests carry it.
+  if (customer) {
+    init = addHeader(init, "X-NullSpend-Customer", customer);
+  }
+
+  if (isProxied(url, init)) {
+    return globalThis.fetch(input, init);
+  }
+  // ...
+};
+```
+
+**Fix B — Make `isProxied()` env-driven, not hardcoded.** Line 293 currently hardcodes `proxy.nullspend.com`. Replace with a URL match against a configurable list or against the SDK client's known proxy URL. Simplest: accept `proxyUrl` in `NullSpend` constructor, pass through to `buildTrackedFetch`, match against that.
+
+Both fixes have unit test updates in `packages/sdk/src/tracked-fetch.test.ts`. No API surface change for users; purely additive.
+
+### 15a-2. Plan file restructure: Phase 0 = 4-case transport matrix FIRST
+
+Replace the current Phase 1 (§6.1-6.3) opener with a new **Phase 0: Transport Matrix** that runs BEFORE everything else. If any of these four cases fail, stop the suite — nothing else in the plan will work.
+
+```
+Phase 0: Transport Matrix (4 cases)
+═══════════════════════════════════════════════════════════════
+
+0.1  DIRECT INGEST
+     SDK → POST http://127.0.0.1:3000/api/cost-events
+     Expected: cost_events row with customer_id populated, no proxy involved
+
+0.2  PROXIED PASS-THROUGH (proxy-only accounting)
+     OpenAI SDK with fetch=session.openai → proxy URL
+     SDK sets X-NullSpend-Customer (post-fix §15a-1)
+     SDK detects proxy via env-driven isProxied (post-fix §15a-1)
+     SDK does NOT track cost client-side (bailout)
+     Expected: exactly 1 cost_events row per request, populated by proxy,
+               customer_id = "acme", no SDK double-count
+
+0.3  DIRECT PROVIDER (SDK-only accounting)
+     OpenAI SDK with fetch=session.openai → api.openai.com directly
+     SDK tracks cost event, queues via CostReporter
+     Flushes to http://127.0.0.1:3000/api/cost-events
+     Expected: exactly 1 cost_events row per request from SDK ingest path,
+               customer_id = "acme", no proxy involvement
+
+0.4  BUDGET MUTATION
+     Customer budget at 100 µ¢ → 1 request denied → SQL UPDATE to 1_000_000 µ¢ →
+     syncBudget + verification probe → 1 request succeeds
+     Expected: denial before mutation, success after, no stale DO state
+```
+
+Phase 0 runs at minimum intensity (1 customer, ~4 requests total) before any stress. If it fails, the whole suite aborts with an actionable error.
+
+### 15a-3. Drop §6.1.1/1.2/1.3/1.6 — unit test duplication
+
+Constructor validation (missing baseUrl, missing apiKey, default apiVersion) is already covered by `packages/sdk/src/client.test.ts`. Delete these from the stress suite. Keep §6.1.4/1.5 (costReporting presence/absence) because they exercise live queue behavior.
+
+### 15a-4. Per-phase entity IDs
+
+Extend `PREFIX` with phase suffix: `stress-sdk-${RUN}-p0-customer-01`, `stress-sdk-${RUN}-p1-customer-01`, `stress-sdk-${RUN}-p2-customer-01`, `stress-sdk-${RUN}-p3-customer-01`. Cleanup still works via `LIKE 'stress-sdk-${RUN}-%'`. This isolates Phase 2 spend from Phase 3 mutation assertions.
+
+**ALSO**: the long-lived `ns` / `nsProxy` instances leak in-process state (PolicyCache, session spend counters, customer-session memoization, CostReporter queue) across phases. Per-phase isolation requires **constructing a fresh `NullSpend` instance at the start of each phase** and calling `shutdown()` at the end. Per-phase entity IDs alone do NOT address in-process cache leaks.
+
+### 15a-5. Fixture sizing — math was broken in plan §5.1
+
+All numbers in §5.1 are orders of magnitude wrong. At ~5 µ¢/request (OpenAI gpt-4o-mini max_tokens=3), the original `sessionLimitMicrodollars = 5000` allows ~1000 requests, not 3. Corrected table:
+
+| Fixture | entity_id (p=phase) | max_budget | velocity | session_limit | Trips after ~N reqs |
+|---|---|---|---|---|---|
+| customer-generous-01..05 | p2-customer-01..05 | 1_000_000 (=$1) | — | — | never (for concurrent happy path) |
+| customer-tight-01..03 | p0/p1/p2-tight-01..03 | 1 µ¢ | — | — | immediately (any req) |
+| customer-velocity | p2-velocity | 1_000_000 | 15 µ¢ / 10s, cooldown 5s | — | 3rd req in window |
+| customer-session (in-test construction) | n/a — test sets manualSessionLimit in tracked-fetch options | — | — | 20 µ¢ | 4th req (cumulative ~20 µ¢) |
+| customer-plan-pro | p1/p2-plan-pro | 500_000 | — | — | never (for plan tag test) |
+
+Bake the math into the plan: "assume ~5 µ¢/request OpenAI, ~7 µ¢/request Anthropic". Any fixture that relies on enforcement must multiply by 3-5x the expected request count + buffer for per-request estimate variance.
+
+### 15a-6. Idempotency test needs explicit keys
+
+§6.4.2 and §7.6 assert "batch retry doesn't duplicate". Since `ingest.ts:59-66` auto-generates `sdk_${uuid}` when `idempotencyKey` is absent, the auto-generated IDs are different every call — the assertion proves nothing. Fix: every event in the idempotency test must set an explicit `idempotencyKey: \`stress-sdk-${RUN}-batch-${i}\``. Second dispatch with the same keys hits `ON CONFLICT DO NOTHING` and returns `inserted: 0`.
+
+### 15a-7. 429 backoff must distinguish upstream vs NullSpend denials
+
+Plan §5.5.9 says "backoff if 429". BUT proxy 429s carry NullSpend enforcement denial codes (budget_exceeded, velocity_exceeded, session_limit_exceeded, tag_budget_exceeded) — retrying those corrupts the test. Rule:
+
+```typescript
+function shouldRetry429(res: Response, body: any): boolean {
+  // Only retry upstream provider rate limits, never NullSpend denials.
+  const code = body?.error?.code;
+  const NULLSPEND_DENIAL_CODES = new Set([
+    "budget_exceeded", "velocity_exceeded",
+    "session_limit_exceeded", "tag_budget_exceeded",
+    "customer_budget_exceeded",
+  ]);
+  return res.status === 429 && !NULLSPEND_DENIAL_CODES.has(code);
+}
+```
+
+### 15a-8. Cleanup uses `@>` containment, not `->>`
+
+The `cost_events_tags_idx` GIN index (`packages/db/src/schema.ts:183`) uses the default `jsonb_ops` operator class, which supports `@>` (containment) but NOT `->>` (key extraction). Plan §4.6 cleanup SQL must use:
+
+```typescript
+await sql`DELETE FROM cost_events WHERE tags @> ${sql.json({ _ns_test_run_id: TEST_RUN_ID })}`;
+```
+
+NOT:
+```typescript
+// BAD: seq scan despite GIN index
+await sql`DELETE FROM cost_events WHERE tags->>'_ns_test_run_id' = ${TEST_RUN_ID}`;
+```
+
+### 15a-9. Cleanup uses poll-until-stable drain, not fixed 15s wait
+
+Plan §5.6 step 1 says "Wait 15 seconds for in-flight reconciliations". Replace with:
+
+```typescript
+async function waitForQueueDrain(
+  sql: postgres.Sql,
+  runId: string,
+  opts: { maxWaitMs: number; pollIntervalMs: number; stableForSamples: number }
+): Promise<number> {
+  const deadline = Date.now() + opts.maxWaitMs;
+  let lastCount = -1;
+  let stableCount = 0;
+  while (Date.now() < deadline) {
+    const [{ count }] = await sql<[{ count: number }]>`
+      SELECT COUNT(*)::int FROM cost_events
+      WHERE tags @> ${sql.json({ _ns_test_run_id: runId })}
+    `;
+    if (count === lastCount) {
+      stableCount++;
+      if (stableCount >= opts.stableForSamples) return count;
+    } else {
+      stableCount = 0;
+      lastCount = count;
+    }
+    await new Promise(r => setTimeout(r, opts.pollIntervalMs));
+  }
+  return lastCount;
+}
+// Call: await waitForQueueDrain(sql, TEST_RUN_ID, { maxWaitMs: 60_000, pollIntervalMs: 2000, stableForSamples: 3 });
+```
+
+Same pattern for Phase 4 verification (§9.1, §9.2): poll-until-stable before asserting counts.
+
+### 15a-10. DO sync barrier needs an actual probe
+
+Plan §5.5.6-8 relies on `syncBudget()` + fixed `2000ms` + "one budget is readable". That doesn't prove the specific entity under test is live in the DO. Replace with an active probe:
+
+```typescript
+async function waitForBudgetLive(
+  entityId: string,
+  expectedMaxMicrodollars: number,
+  maxWaitMs = 10_000
+): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    // Send a probe request with a tiny estimate. If the DO has the budget
+    // with the expected max, the request is either approved (if budget has room)
+    // or denied with budget_exceeded (if tight). Either way, DO is live.
+    const res = await fetch(`${BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "X-NullSpend-Customer": entityId,
+      },
+      body: smallRequest({ max_tokens: 1 }),
+    });
+    // If we get 200 or 429:budget_exceeded, the DO sees the budget.
+    if (res.status === 200 || res.status === 429) {
+      const body = await res.json().catch(() => null);
+      if (res.status === 200 || body?.error?.code === "customer_budget_exceeded") return;
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+  throw new Error(`Budget ${entityId} not live in DO after ${maxWaitMs}ms`);
+}
+```
+
+Also bump the default post-sync wait from 2000ms to 5000ms as a floor.
+
+### 15a-11. Remove §9.4 margin-query verification
+
+Plan §9.4 re-verifies the `coalesce(customer_id, tags->>'customer')` pattern on margins. This is already covered by `apps/proxy/smoke-customer-primitive.test.ts` and unit tests. It's noise in an SDK/proxy/DO/queue stress file. Delete.
+
+### 15a-12. Queue-drop test doesn't actually pressure the queue
+
+§7.6 pushes `BATCH_EVENTS = 50` events (medium) or 100 (heavy) into a queue with `maxQueueSize = 1000` default. "No drops" under that load proves nothing about drop behavior. Either:
+- (a) Explicitly set `maxQueueSize: 20` in the test's NullSpend config so the flood overflows, verify `onDropped` callback fires
+- (b) Rename the test to "batch flush under normal load" and drop the drop-behavior claim
+
+**Recommended: (a)** — the whole point of this test is to verify `onDropped`. Config override is one line.
+
+### 15a-13. Rewrite §7.7 policy cache staleness (drop the 60s TTL wait)
+
+Plan §7.7 waits 60s for TTL expiry. Unit tests in `packages/sdk/src/policy-cache.test.ts` already cover TTL expiry. Keep only the interesting half: mutate budget → stale cache → proxy returns 429 → SDK intercepts. No long wait.
+
+### 15a-14. Bundle 4 coverage gaps into Phase 1
+
+- **§6.10 Streaming response tracking** (OpenAI + Anthropic) — SSE parser edge cases, usage extraction. One test per provider. Happy path streaming call → assert cost event has correct tokens.
+- **§6.11 Read APIs** — `checkBudget()`, `listBudgets()`, `listCostEvents()`. One test each, minimal assertions (200 OK, shape matches).
+- **§6.12 Batch size boundaries** — 100 events (max, OK), 101 events (rejected 400 by Zod schema).
+- **§6.13 Shutdown idempotency** — `ns.shutdown()` twice → no throw. `ns.shutdown()` during active `flush()` → drain completes, no dropped events.
+
+### 15a-15. Post-teardown assertion placement
+
+Plan §9.5 ("after teardown: counts should be 0") cannot live in a normal `it()` because `afterAll` runs after all `it()` blocks. Move §9.5 assertions INTO the `afterAll` body itself, after the cleanup steps. If they fail, `afterAll` throws and the suite reports the failure. Do not try to run them in a `describe` block after teardown.
+
+### 15a-16. Findings log format
+
+Plan §14's `findings` array is console-logged only. Change to write a JSON file: `apps/proxy/stress-sdk-findings-${RUN}.json` alongside the test output. This makes findings grep-able and diff-able across runs. ~10 lines.
+
+### 15a-17. Shared smoke user budget isolation
+
+§5.3 reuses the smoke user budget. To avoid assertions depending on external traffic on the shared user/key, all stress test assertions must scope by `customer_id IS NOT NULL AND customer_id LIKE 'stress-sdk-${RUN}-%'`. Do NOT assert over `SUM(cost_events WHERE user_id = ${SMOKE_USER_ID})` — that's polluted by other smoke traffic.
+
+### 15a-18. `.env.smoke` additions
+
+```bash
+# Added by /plan-eng-review 2026-04-06
+NULLSPEND_DASHBOARD_URL=http://127.0.0.1:3000
+# Requires `pnpm dev` running in a separate terminal for direct-mode tests.
+# Tests auto-skip if dev server is unreachable at startup.
+```
+
+---
+
+## 15b. Second codex pass — CRITICAL additions (2026-04-07)
+
+A second codex review ran against the plan with higher reasoning effort and surfaced **4 more high-severity issues Claude review missed**. These are verified by direct code reads and supersede conflicting assumptions earlier in this plan. Do not implement without reading this section.
+
+### 15b-1. SDK doesn't map `customer_budget_exceeded` — §6.9.1 will fall through as raw 429 (CRITICAL)
+
+**Verified**:
+- `apps/proxy/src/routes/shared.ts:84,209` emits `code: "customer_budget_exceeded"` for customer budget denials (not `budget_exceeded`)
+- `packages/sdk/src/tracked-fetch.ts:176` only maps `budget_exceeded`, `velocity_exceeded` (:186), `session_limit_exceeded` (:207), `tag_budget_exceeded` (:214)
+- **No case for `customer_budget_exceeded`** — the 429 falls through the switch and is returned as a raw Response to the OpenAI SDK, which treats it as a provider error
+
+**Impact**: Plan §6.9.1 expects `throws BudgetExceededError`. Reality: `throws nothing, returns raw 429`. Test would fail as written, or silently pass for the wrong reason.
+
+**Fix required**: Add a case to `tracked-fetch.ts:176-184`:
+
+```typescript
+if (code === "budget_exceeded" || code === "customer_budget_exceeded") {
+  const entityType = details?.entity_type as string | undefined;
+  const entityId = details?.entity_id as string | undefined
+    ?? details?.customer_id as string | undefined;  // customer denial uses customer_id
+  const limit = details?.budget_limit_microdollars as number | undefined;
+  const spend = details?.budget_spend_microdollars as number | undefined;
+  const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
+  safeDenied(onDenied, { type: "budget", remaining, entityType: entityType ?? "customer", entityId, limit, spend }, onCostError);
+  throw new BudgetExceededError({ remaining, entityType: entityType ?? "customer", entityId, limit, spend });
+}
+```
+
+Also add unit test coverage in `packages/sdk/src/tracked-fetch.test.ts`. **This is fix #3 in the §15a-1 SDK work package.**
+
+### 15b-2. Policy endpoint is org-scoped, not request-scoped — §6.7 client-side customer budget denial cannot work (CRITICAL)
+
+**Verified**: `app/api/policy/route.ts:144-185` iterates all budgets for the org, finds the single "most restrictive" (lowest remaining), and returns that as the `budget` field. No filtering by customer/session/tag context. The SDK's `policyCache.checkBudget()` can only validate "is the most restrictive org-wide budget exhausted?" — it cannot answer "is customer `acme`'s budget exhausted?".
+
+**Impact**: Plan §6.7 says "Point SDK at an exhausted customer budget (stress-sdk-${RUN}-tight-01) → policy cache sees remaining ≤ 0 → throws BudgetExceededError". Reality:
+- If the tight customer budget happens to be the most restrictive in the org, the cache sees remaining=0 and throws for EVERY request, regardless of which customer it's for. False positive.
+- If some other budget (api_key, user) is more restrictive, the cache returns that one and the tight customer budget is invisible. False negative.
+- Either way, client-side per-customer budget enforcement is not a thing the current policy endpoint supports.
+
+**Fix options**:
+
+| Option | What | Who breaks it | Who fixes it | Scope impact |
+|---|---|---|---|---|
+| A | Scope §6.7 to user-level budgets only (drop customer-level client-side denial test) | — | plan only | Lose one coverage point, stress test is honest |
+| B | Extend policy endpoint: `GET /api/policy?customer=acme` returns customer-scoped "most restrictive" | — | dashboard + SDK | New endpoint feature, ~50 lines, but it's the right fix for multi-tenant |
+| C | Test customer denial ONLY via proxy 429 interception (§6.9.1), not client-side | — | plan only | Combined with 15b-1 fix, customer denial has one test path, not two |
+
+**Recommendation**: **C + flag the broader issue as a product gap.** The policy endpoint being org-scoped is a real product limitation for multi-tenant SaaS — the target customer wants "preflight this request for acme's budget" and the endpoint can't answer it. Fixing that is a bigger project than this stress test. In the meantime: limit client-side enforcement testing to user-level budgets, rely on proxy 429 interception for customer-level.
+
+**ACTION for implementer**: Drop §6.7 as written. Replace with §6.7b:
+- §6.7b: user-level budget exhaustion → policy cache throws BudgetExceededError (single test, no customer involvement)
+- Customer-level denial fully covered by §6.9.1 after 15b-1 fix lands
+
+### 15b-3. Direct-mode ingest mutates shared smoke user / api_key budget state — teardown does NOT reverse (CRITICAL)
+
+**Verified**:
+- `app/api/cost-events/route.ts:106-108` calls `updateBudgetSpendFromCostEvent(orgId, apiKeyId, cost, tags, userId, customerId)` on every ingested event
+- `app/api/cost-events/batch/route.ts:88` does the same per-event
+- `lib/budgets/update-spend.ts:39-100` atomically increments `budgets.spend_microdollars` for EVERY matching budget entity: `api_key`, `user`, `customer`, `tag`
+- **Teardown only deletes `cost_events` rows — it does NOT decrement the spend it caused**
+
+**Impact**: Every direct-mode test run leaves phantom spend on the NULLSPEND_SMOKE_USER_ID user budget and the NULLSPEND_SMOKE_KEY_ID api_key budget. After 10 stress runs at medium intensity, the shared smoke user budget has accumulated phantom spend from ~2500 events × ~5 µ¢ = ~12_500 µ¢ (~$0.013). After enough runs, the shared smoke user budget can fill up and break unrelated smoke tests.
+
+**Fix**: **Create a dedicated isolated test user + api_key fixture in `beforeAll`** that all stress writes attribute to. Teardown DELETEs that user's budgets and the api_key row entirely. The shared smoke key/user are not touched by direct-mode writes.
+
+```typescript
+// In beforeAll:
+const STRESS_USER_ID = `stress-sdk-${TEST_RUN_ID}-user`;
+const STRESS_KEY_RAW = `ns_live_sk_stress_${TEST_RUN_ID}_${crypto.randomBytes(16).toString("hex")}`;
+const STRESS_KEY_HASH = hashKey(STRESS_KEY_RAW);
+const STRESS_KEY_PREFIX = STRESS_KEY_RAW.slice(0, 12);
+
+const [keyRow] = await sql`
+  INSERT INTO api_keys (user_id, org_id, name, key_hash, key_prefix)
+  VALUES (${STRESS_USER_ID}, ${SMOKE_ORG_ID}, 'stress-sdk-test', ${STRESS_KEY_HASH}, ${STRESS_KEY_PREFIX})
+  RETURNING id
+`;
+const STRESS_KEY_ID = keyRow.id;
+
+// Use STRESS_KEY_RAW as the apiKey for the direct-mode NullSpend client AND as
+// the x-nullspend-key header for proxy-mode requests. All attribution now flows
+// to STRESS_USER_ID / STRESS_KEY_ID, not the shared smoke fixtures.
+
+// In afterAll (AFTER waitForQueueDrain):
+await sql`DELETE FROM budgets WHERE user_id = ${STRESS_USER_ID}`;  // Catches any auto-created or test-attributed user/api_key budgets
+await sql`DELETE FROM api_keys WHERE id = ${STRESS_KEY_ID}`;
+// cost_events rows: still deleted by containment @> query
+```
+
+**This supersedes §5.4 ("NOT creating new API keys")**. The decision reversed: we MUST create an isolated key + user for the stress run. The mandate key from §15a-1 can be the same key (just add `allowed_models = ARRAY['gpt-4o-mini']` to the INSERT — or a SECOND key if we want mandate tests separate from unrestricted tests).
+
+### 15b-4. SDK `listBudgets()` and `listCostEvents()` are broken — auth mismatch (MEDIUM)
+
+**Verified**:
+- `packages/sdk/src/client.ts:280` — `listBudgets()` calls `this.request("GET", "/api/budgets")` with `x-nullspend-key` header (API key auth)
+- `packages/sdk/src/client.ts:295` — `listCostEvents()` calls `this.request("GET", "/api/cost-events?...")` with API key auth
+- `app/api/budgets/route.ts:20-21` — `GET` handler uses ONLY `resolveSessionContext()`, no `authenticateApiKey` anywhere in the file
+- `app/api/cost-events/route.ts:28-29` — `GET` handler uses ONLY `resolveSessionContext()`; the POST handler uses `authenticateApiKey` (line 63)
+
+**Impact**: `ns.listBudgets()` and `ns.listCostEvents()` return 401 Unauthorized. The SDK methods are broken today. Plan §6.11 "Read APIs" (from §15a-14) would fail.
+
+**Fix options**:
+
+| Option | What | Effort |
+|---|---|---|
+| A | Fix dashboard GET routes to accept dual auth (`assertApiKeyOrSession`) | ~5 lines per route, matches existing pattern elsewhere in codebase (see CLAUDE.md `assertApiKeyOrSession`) |
+| B | Remove `listBudgets` / `listCostEvents` from SDK and from stress test §6.11 | Acknowledges the read APIs aren't really SDK-accessible today |
+| C | Keep SDK methods, remove §6.11 tests, file a TODO | Hides the bug |
+
+**Recommendation**: **A** — fix the dashboard routes. The SDK advertises these methods; they should work. `assertApiKeyOrSession` is already used elsewhere in the codebase (per CLAUDE.md) so the pattern is known. ~10 minutes. Then the §6.11 tests become valid.
+
+**ACTION for implementer**: This is a separate SDK/dashboard fix BEFORE the stress test. Add fix #4 to the §15a-1 SDK work package: "Update `app/api/budgets/route.ts` and `app/api/cost-events/route.ts` GET handlers to use `assertApiKeyOrSession` instead of `resolveSessionContext` only."
+
+### 15b-5. Pre-work summary — what MUST ship before the stress test can run
+
+The §15a-1 "fix SDK gaps inline" decision has grown from 2 fixes to 4. Here's the full pre-work list:
+
+**SDK fixes (packages/sdk/src/tracked-fetch.ts + client.ts)**:
+1. Inject `X-NullSpend-Customer` header before `isProxied` bailout (§15a-1A)
+2. Make `isProxied` env-driven or constructor-configured (§15a-1B)
+3. Add `customer_budget_exceeded` to the 429 interception switch (§15b-1)
+4. Update unit tests in `tracked-fetch.test.ts` for all three
+
+**Dashboard fixes (app/api/*/route.ts)**:
+5. `app/api/budgets/route.ts` GET — swap `resolveSessionContext` for `assertApiKeyOrSession` (§15b-4)
+6. `app/api/cost-events/route.ts` GET — swap `resolveSessionContext` for `assertApiKeyOrSession` (§15b-4)
+
+**Plan changes (this doc)**:
+7. Drop §6.7 customer client-side denial test, replace with §6.7b user-level client-side denial test (§15b-2)
+8. Update §5.4 reversal: create isolated test user + api_key (§15b-3)
+
+**Order of operations**:
+1. SDK fixes (1-4) — unit tests pass
+2. Dashboard fixes (5-6) — existing route tests pass
+3. Stress test implementation with §5.4 reversal (7-8)
+
+**Total pre-work effort**: ~1-2 hours with CC assistance. Non-negotiable.
+
+### 15b-6. Open flag: stress test mutates PRODUCTION budget state
+
+Even with the §15b-3 isolation fix, the proxy-side tests (Phase 0.2, §7.1, §7.2, §7.3, §7.4) still write real cost events through the proxy, which triggers real `updateBudgetSpend` calls on the DO and eventually the dashboard DB. The isolated test user/key absorb all of that — but the proxy side of the flow hits live Cloudflare infrastructure, live Hyperdrive, live queue consumer, live DO. **This test is production-mutating by design.** The test isolation is entity-level, not infrastructure-level.
+
+Implication for CI: this stress test CANNOT run in CI against production. It must only run manually. Add to `apps/proxy/CLAUDE.md` or `TESTING.md`: "stress-sdk-features.test.ts is NOT safe for CI — mutates live production data. Manual runs only."
 
 ---
 
@@ -1034,3 +1421,43 @@ The following are intentionally NOT in this test, because they're either covered
 - The `isProxied` hardcode is real. Don't let it block you — use the header path or test direct mode.
 
 Good luck.
+
+---
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 2 | ISSUES_FOUND | 15 + 6 new findings across two passes |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES_OPEN | 27 distinct issues, 4 critical pre-work items, 0 unresolved decisions |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | n/a (test plan, no UI) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | n/a |
+
+**CODEX pass 1 (stdin):** 15 new findings: broken fixture math (critical), post-teardown verification impossible as written, DO sync barrier is fake, in-process cache leaks across phases, queue-drop test doesn't pressure queue, 429 backoff eats enforcement denials, strategic reframe (4-case transport matrix should come first).
+
+**CODEX pass 2 (filesystem, delayed):** 6 additional findings from direct code reads. 4 verified as real bugs by Claude follow-up:
+- `customer_budget_exceeded` not mapped in SDK tracked-fetch.ts:176 (§15b-1)
+- Policy endpoint is org-scoped, can't do per-customer client-side enforcement (§15b-2)
+- Direct-ingest mutates shared smoke user/api_key budget state, teardown doesn't reverse (§15b-3)
+- `listBudgets`/`listCostEvents` SDK methods call session-auth endpoints with API key = broken (§15b-4)
+
+**CROSS-MODEL:** Claude review caught 6 arch + 5 code quality + 1 perf. Codex pass 1 caught 15 more. Codex pass 2 caught 4 more that both earlier reviews missed. Combined: **27 distinct issues**. Both codex passes flagged the shared-smoke-key isolation concern; both flagged the fixture math. Overlapping signal is strong. The pass 2 findings are the most severe because they're verified bugs in shipped code, not just plan concerns.
+
+**UNRESOLVED:** 0 (all decisions answered via AskUserQuestion; §15b fixes are required action items, not decisions)
+
+**VERDICT:** ISSUES_OPEN — eng review produced §15a (18 plan corrections) AND §15b (4 critical code fixes + 2 plan reversals). Implementation pre-work grew from 2 SDK fixes to **6 code fixes across SDK and dashboard** plus 2 plan changes. Total pre-work: ~1-2 hours with CC. The plan file has been updated in place.
+
+**Required pre-work order** (from §15b-5):
+1. SDK tracked-fetch.ts: inject X-NullSpend-Customer header (§15a-1A)
+2. SDK tracked-fetch.ts: env-driven isProxied (§15a-1B)
+3. SDK tracked-fetch.ts: map customer_budget_exceeded (§15b-1)
+4. SDK unit tests for 1-3
+5. Dashboard app/api/budgets/route.ts GET: assertApiKeyOrSession (§15b-4)
+6. Dashboard app/api/cost-events/route.ts GET: assertApiKeyOrSession (§15b-4)
+7. Plan: drop §6.7, add §6.7b user-level-only client-side denial (§15b-2)
+8. Plan: reverse §5.4, create isolated test user + api_key (§15b-3)
+
+Then and only then: stress test implementation with Phase 0 transport matrix first (§15a-2) and corrected fixture math (§15a-5).
+
+**CRITICAL**: this test is PRODUCTION-MUTATING by design (§15b-6). Manual runs only. Do not wire into CI.

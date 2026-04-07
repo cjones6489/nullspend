@@ -3,6 +3,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { ForbiddenError } from "@/lib/auth/errors";
 import { getDb } from "@/lib/db/client";
@@ -17,9 +18,11 @@ import {
 } from "@/lib/validations/budgets";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
-export const GET = withRequestContext(async (_request: Request) => {
-  const { userId, orgId } = await resolveSessionContext();
-  await assertOrgRole(userId, orgId, "viewer");
+export const GET = withRequestContext(async (request: Request) => {
+  // Dual auth: API key (for SDK) or session (for dashboard UI). Both work.
+  const auth = await assertApiKeyOrSession(request, "viewer");
+  if (auth instanceof Response) return auth;
+  const { orgId } = auth;
   const db = getDb();
 
   const rows = await db

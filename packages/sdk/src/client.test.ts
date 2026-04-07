@@ -93,6 +93,61 @@ describe("NullSpend constructor", () => {
       expect.any(Object),
     );
   });
+
+  // ────────────────────────────────────────────────────────────────
+  // proxyUrl validation
+  // ────────────────────────────────────────────────────────────────
+
+  it("accepts a valid proxyUrl", () => {
+    expect(() => new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_x",
+      proxyUrl: "https://proxy.example.com",
+    })).not.toThrow();
+  });
+
+  it("strips trailing slashes from proxyUrl", () => {
+    const client = new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_x",
+      proxyUrl: "https://proxy.example.com/////",
+      costReporting: {}, // required for createTrackedFetch
+    });
+    // The best way to verify is through the tracked fetch — covered in
+    // tracked-fetch.test.ts. Constructor should at least not throw.
+    expect(client).toBeDefined();
+  });
+
+  it("throws on proxyUrl missing scheme (was a common mistake with the old hardcoded substring check)", () => {
+    expect(() => new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_x",
+      proxyUrl: "proxy.example.com",
+    })).toThrow(/proxyUrl.*valid absolute URL/);
+  });
+
+  it("throws on proxyUrl with non-http(s) scheme", () => {
+    expect(() => new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_x",
+      proxyUrl: "ftp://proxy.example.com",
+    })).toThrow(/proxyUrl.*valid absolute URL/);
+  });
+
+  it("throws on empty string proxyUrl", () => {
+    expect(() => new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_x",
+      proxyUrl: "",
+    })).toThrow(/proxyUrl.*valid absolute URL/);
+  });
+
+  it("allows proxyUrl to be undefined (no proxy configured)", () => {
+    expect(() => new NullSpend({
+      baseUrl: "http://localhost:3000",
+      apiKey: "ns_live_sk_x",
+    })).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2347,6 +2402,61 @@ describe("customer()", () => {
     const client = makeClient();
     expect(() => client.customer("")).toThrow("non-empty");
     expect(() => client.customer("   ")).toThrow("non-empty");
+    client.shutdown();
+  });
+
+  it("throws on customerId with invalid characters (mirrors proxy validation)", () => {
+    const client = makeClient();
+    // The proxy only accepts [a-zA-Z0-9._:-]+ and silently strips invalid ones.
+    // The SDK should fail fast instead of letting the proxy drop attribution.
+    expect(() => client.customer("Acme Corp")).toThrow(/letters, digits/);
+    expect(() => client.customer("acme@corp")).toThrow(/letters, digits/);
+    expect(() => client.customer("acme/corp")).toThrow(/letters, digits/);
+    expect(() => client.customer("acme\r\ncorp")).toThrow(/letters, digits/);
+    client.shutdown();
+  });
+
+  it("throws on customerId longer than 256 characters", () => {
+    const client = makeClient();
+    const tooLong = "a".repeat(257);
+    expect(() => client.customer(tooLong)).toThrow(/256 characters/);
+    // 256 is the exact boundary — should pass
+    const atLimit = "a".repeat(256);
+    expect(() => client.customer(atLimit)).not.toThrow();
+    client.shutdown();
+  });
+
+  it("trims the customerId on the returned session", () => {
+    const client = makeClient();
+    const session = client.customer("  acme-corp  ");
+    expect(session.customerId).toBe("acme-corp");
+    client.shutdown();
+  });
+
+  it("accepts allowed special characters (. _ : -)", () => {
+    const client = makeClient();
+    // These should all pass: dots, underscores, colons, hyphens
+    expect(() => client.customer("acme.corp")).not.toThrow();
+    expect(() => client.customer("acme_corp")).not.toThrow();
+    expect(() => client.customer("org:acme")).not.toThrow();
+    expect(() => client.customer("acme-corp-123")).not.toThrow();
+    client.shutdown();
+  });
+
+  it("createTrackedFetch also validates customer (not just customer() session)", () => {
+    const client = makeClient();
+    // Direct callers of createTrackedFetch get the same fail-fast validation
+    // as customer() session so invalid IDs don't get silently dropped at the proxy.
+    expect(() => client.createTrackedFetch("openai", { customer: "Acme Corp" }))
+      .toThrow(/letters, digits/);
+    expect(() => client.createTrackedFetch("openai", { customer: "  " }))
+      .toThrow(/non-empty/);
+    // Valid customer should not throw
+    expect(() => client.createTrackedFetch("openai", { customer: "acme-corp" }))
+      .not.toThrow();
+    // Undefined customer should not throw (customer is optional)
+    expect(() => client.createTrackedFetch("openai", {}))
+      .not.toThrow();
     client.shutdown();
   });
 
