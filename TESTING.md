@@ -215,7 +215,7 @@ Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accura
 
 ## Proxy Stress Tests (`apps/proxy/stress-*.test.ts`)
 
-4 files, 28 tests. More aggressive than smoke tests — designed to find race conditions, degradation thresholds, and state inconsistency. Require a deployed worker, API keys, and `DATABASE_URL`.
+5 files. More aggressive than smoke tests — designed to find race conditions, degradation thresholds, and state inconsistency. Require a deployed worker, API keys, and `DATABASE_URL`.
 
 ```bash
 pnpm proxy:stress                          # Default (medium intensity)
@@ -229,6 +229,7 @@ STRESS_INTENSITY=light pnpm proxy:stress   # Light intensity
 | `stress-budget-races.test.ts` | Budget race conditions: tight budget + concurrent requests, $0 budget enforcement, sequential exhaust, post-reconciliation consistency |
 | `stress-streaming.test.ts` | Rapid abort storms, concurrent stream management, mixed abort+complete, cost events for aborted streams |
 | `stress-recovery.test.ts` | Post-stress health, normal request flow, error handling, DB consistency, negative spend detection |
+| `stress-sdk-features.test.ts` | `@nullspend/sdk` against the deployed proxy: Phase 0 transport matrix → Phase 1 functional → Phase 2 concurrent → Phase 3 mid-test mutation → Phase 4 verification. Production-mutating; manual runs only. Requires `pnpm dev` running for direct-mode subset. See `apps/proxy/CLAUDE.md` and `docs/internal/test-plans/sdk-stress-test-plan.md`. Crash recovery: `pnpm --filter @nullspend/proxy stress:cleanup`. |
 
 Config: `vitest.stress.config.ts` — 300s timeout, sequential files, `.env.smoke` env vars.
 

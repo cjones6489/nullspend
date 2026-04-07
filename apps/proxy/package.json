@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "test:do": "vitest run --config vitest.do.config.mts",
-    "test:stress": "vitest run --config vitest.stress.config.ts"
+    "test:stress": "vitest run --config vitest.stress.config.ts",
+    "stress:cleanup": "tsx scripts/cleanup-stress-sdk.ts",
+    "jsonb:repair": "tsx scripts/repair-jsonb-tags.ts"
   },
   "dependencies": {
     "@nullspend/cost-engine": "workspace:*",
