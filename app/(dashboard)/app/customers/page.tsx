@@ -169,6 +169,7 @@ export default function CustomersPage() {
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [healthFilter, setHealthFilter] = useState<HealthTier | null>(null);
   const [stripeKey, setStripeKey] = useState("");
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const { data, isLoading, isError, refetch, isFetching } = useMarginTable(period);
   const syncNow = useSyncNow();
@@ -239,6 +240,7 @@ export default function CustomersPage() {
           syncNow.mutate(undefined, {
             onSuccess: () => {
               toast.success("Initial sync complete");
+              setShowOnboarding(true);
               refetch();
             },
             onError: () => toast.error("Initial sync failed — try Sync Now"),
@@ -369,6 +371,11 @@ export default function CustomersPage() {
             return `${parts.join(", ")} skipped. Margins show USD revenue only.`;
           })()}
         </div>
+      )}
+
+      {/* Onboarding summary — shown after first Stripe connect + sync */}
+      {showOnboarding && !isDisconnected && !isLoading && (
+        <OnboardingSummary onDismiss={() => setShowOnboarding(false)} />
       )}
 
       {/* Customer Mapping Management — visible when Stripe is connected and healthy */}
@@ -607,6 +614,60 @@ export default function CustomersPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Onboarding Summary ──────────────────────────────────────────────
+
+function OnboardingSummary({ onDismiss }: { onDismiss: () => void }) {
+  const { data: unmatched, isLoading } = useUnmatchedCustomers();
+  const { data: mappings } = useCustomerMappings();
+
+  if (isLoading) return null;
+
+  const autoMatched = unmatched?.pendingAutoMatches.length ?? 0;
+  const unmatchedCount = unmatched?.unmatchedStripeCustomers.length ?? 0;
+  const confirmed = mappings?.filter((m) => m.tagKey === "customer").length ?? 0;
+  const totalStripe = autoMatched + unmatchedCount + confirmed;
+
+  if (totalStripe === 0) return null;
+
+  const matched = autoMatched + confirmed;
+
+  return (
+    <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-foreground">
+            Stripe connected — {totalStripe} {totalStripe === 1 ? "customer" : "customers"} found
+          </p>
+          <p className="text-[13px] text-muted-foreground">
+            {matched > 0 && (
+              <span className="text-primary">{matched} auto-matched</span>
+            )}
+            {matched > 0 && unmatchedCount > 0 && " · "}
+            {unmatchedCount > 0 && (
+              <span>{unmatchedCount} need manual mapping</span>
+            )}
+            {matched === 0 && unmatchedCount === 0 && (
+              <span>All customers matched</span>
+            )}
+          </p>
+          {unmatchedCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Review auto-matches and map remaining customers in the section below.
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded p-1 text-muted-foreground hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
