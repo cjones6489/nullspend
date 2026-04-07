@@ -106,18 +106,6 @@ function logFinding(phase: string, finding: string, severity: "info" | "warn" | 
   console.log(`[${severity.toUpperCase()}] [${phase}] ${finding}`);
 }
 
-// ── Helper: NullSpend denial code set for selective backoff (§15a-7) ──
-// Used by waitForBudgetLive to recognize "DO sees budget" denials. The full
-// shouldRetry429() helper is unused in this file because none of the tests
-// implement retry loops — denial responses go through assertions directly.
-const NULLSPEND_DENIAL_CODES = new Set([
-  "budget_exceeded",
-  "customer_budget_exceeded",
-  "velocity_exceeded",
-  "session_limit_exceeded",
-  "tag_budget_exceeded",
-]);
-
 // Default tags injected on EVERY proxy request so cost_events written by the
 // proxy always carry stress_run_id attribution. Critical for cleanup scoping
 // and to keep webhook/alert listeners from seeing untagged stress traffic.
