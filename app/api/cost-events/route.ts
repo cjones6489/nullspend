@@ -111,6 +111,7 @@ export const POST = withRequestContext(async (request: Request) => {
             input.costMicrodollars,
             input.tags,
             authResult.userId,
+            input.customer ?? (input.tags?.["customer"] ?? null),
           );
           updatedEntities = result.updatedEntities;
         } catch (spendErr) {

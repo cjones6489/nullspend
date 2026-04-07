@@ -289,6 +289,9 @@ export default {
         requestLoggingEnabled: auth.requestLoggingEnabled,
       };
 
+      // Observability: track customer attribution rate
+      emitMetric("customer_attribution", { present: ctx.customerId ? "true" : "false" });
+
       const response = await handler(request, env, ctx);
       if (Object.keys(ctx.tags).length > 0) {
         response.headers.set("X-NullSpend-Effective-Tags", JSON.stringify(ctx.tags));

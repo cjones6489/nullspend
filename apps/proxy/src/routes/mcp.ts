@@ -293,6 +293,7 @@ export async function handleMcpEvents(
         sessionId: ctx.sessionId,
         traceId: ctx.traceId,
         tags: ctx.tags,
+        customerId: ctx.customerId,
         source: "mcp" as const,
       }));
 

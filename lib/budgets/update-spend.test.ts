@@ -373,4 +373,62 @@ describe("updateBudgetSpendFromCostEvent", () => {
     expect(result.updatedEntities[0].previousSpend).toBe(0);
     expect(result.updatedEntities[0].newSpend).toBe(1);
   });
+
+  it("increments spend for matching customer budget entity", async () => {
+    const { db } = buildMockDb(
+      [makeBudgetRow({ entityType: "customer", entityId: "acme-corp" })],
+      [[{ id: "budget-1", spendMicrodollars: 5_001_000 }]],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", null, 1000, undefined, undefined, "acme-corp",
+    );
+    expect(result.updatedEntities).toHaveLength(1);
+    expect(result.updatedEntities[0].entityType).toBe("customer");
+    expect(result.updatedEntities[0].entityId).toBe("acme-corp");
+  });
+
+  it("does not match customer budget when customerId is null", async () => {
+    const { db } = buildMockDb(
+      [makeBudgetRow({ entityType: "customer", entityId: "acme-corp" })],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", null, 1000, undefined, undefined, null,
+    );
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("does not match customer budget when customerId differs", async () => {
+    const { db } = buildMockDb(
+      [makeBudgetRow({ entityType: "customer", entityId: "acme-corp" })],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", null, 1000, undefined, undefined, "other-corp",
+    );
+    expect(result.updatedEntities).toHaveLength(0);
+  });
+
+  it("matches both customer and tag budgets for same customer", async () => {
+    const { db } = buildMockDb(
+      [
+        makeBudgetRow({ id: "b1", entityType: "customer", entityId: "acme-corp" }),
+        makeBudgetRow({ id: "b2", entityType: "tag", entityId: "customer=acme-corp" }),
+      ],
+      [
+        [{ id: "b1", spendMicrodollars: 5_001_000 }],
+        [{ id: "b2", spendMicrodollars: 5_001_000 }],
+      ],
+    );
+    mockedGetDb.mockReturnValue(db);
+
+    const result = await updateBudgetSpendFromCostEvent(
+      "org-1", null, 1000, { customer: "acme-corp" }, undefined, "acme-corp",
+    );
+    expect(result.updatedEntities).toHaveLength(2);
+  });
 });

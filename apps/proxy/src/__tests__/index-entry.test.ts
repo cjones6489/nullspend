@@ -448,6 +448,108 @@ describe("Worker entry point routing", () => {
     });
   });
 
+  describe("customer header", () => {
+    it("sets X-NullSpend-Warning when customer header is invalid", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      mockAuthenticateRequest.mockResolvedValueOnce({
+        userId: "user-1",
+        keyId: "key-1",
+        hasWebhooks: false,
+        hasBudgets: false,
+        orgId: null,
+        apiVersion: "2026-04-01",
+        defaultTags: {},
+      });
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+          "X-NullSpend-Customer": "acme corp invalid!",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-NullSpend-Warning")).toBe("invalid_customer");
+    });
+
+    it("does not set X-NullSpend-Warning for valid customer header", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      mockAuthenticateRequest.mockResolvedValueOnce({
+        userId: "user-1",
+        keyId: "key-1",
+        hasWebhooks: false,
+        hasBudgets: false,
+        orgId: null,
+        apiVersion: "2026-04-01",
+        defaultTags: {},
+      });
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+          "X-NullSpend-Customer": "acme-corp",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      expect(res.headers.get("X-NullSpend-Warning")).toBeNull();
+    });
+
+    it("auto-injects customer into effective tags", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      mockAuthenticateRequest.mockResolvedValueOnce({
+        userId: "user-1",
+        keyId: "key-1",
+        hasWebhooks: false,
+        hasBudgets: false,
+        orgId: null,
+        apiVersion: "2026-04-01",
+        defaultTags: {},
+      });
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+          "X-NullSpend-Customer": "acme-corp",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+      const effectiveTags = JSON.parse(res.headers.get("X-NullSpend-Effective-Tags")!);
+      expect(effectiveTags.customer).toBe("acme-corp");
+    });
+  });
+
   describe("body size limits", () => {
     it("rejects requests with Content-Length exceeding 1MB", async () => {
       const req = new Request("http://localhost/v1/chat/completions", {

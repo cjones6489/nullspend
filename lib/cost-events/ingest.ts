@@ -33,7 +33,7 @@ export const costEventInputSchema = z.object({
     (t) => Object.keys(t).length <= 10 && Object.keys(t).every(k => /^[a-zA-Z0-9_-]{1,64}$/.test(k)),
     { message: "Tags: max 10 keys, key must be 1-64 alphanumeric/underscore/hyphen chars" },
   ),
-  customer: z.string().max(256).optional(),
+  customer: z.string().min(1).max(256).optional(),
 });
 
 export type CostEventInput = z.infer<typeof costEventInputSchema>;

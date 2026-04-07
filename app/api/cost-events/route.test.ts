@@ -264,6 +264,7 @@ describe("POST /api/cost-events", () => {
       1500,
       undefined,
       "user-1",
+      null,
     );
   });
 
@@ -309,6 +310,7 @@ describe("POST /api/cost-events", () => {
       1500,
       { project: "alpha", env: "prod" },
       "user-1",
+      null,
     );
   });
 
