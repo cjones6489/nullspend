@@ -316,8 +316,9 @@ Co-located with source files. ~1,734 tests across 140 files.
 
 **Other packages** — co-located `*.test.ts` files:
 - `packages/db/src/schema.test.ts` — Schema structure validation
-- `packages/sdk/src/client.test.ts` — SDK client behavior, `requestBudgetIncrease` (happy path, rejected, timeout, cache invalidation)
-- `packages/sdk/src/tracked-fetch.test.ts` — Tracked fetch: cost tracking, proxy detection, streaming, enforcement (mandates, budgets, session limits), `onDenied` safety, accumulation, edge cases, enriched budget entity details, proxy 429 interception (NullSpend vs upstream)
+- `packages/sdk/src/client.test.ts` — SDK client behavior, `requestBudgetIncrease` (happy path, rejected, timeout, cache invalidation), `proxyUrl` constructor validation (missing scheme, non-HTTP, empty, trailing slash), `customer()` validation (empty/whitespace, length, character set, special chars, trim), `createTrackedFetch` customer validation parity
+- `packages/sdk/src/tracked-fetch.test.ts` — Tracked fetch: cost tracking, proxy detection (configurable `proxyUrl` via URL origin comparison, `x-nullspend-key` header fallback, confusable hostname rejection, port mismatch), `X-NullSpend-Customer` header injection (direct mode, proxy mode before bailout, Request-object input preserves Authorization, case-insensitive dedup in Headers/array/object forms), streaming, enforcement (mandates, budgets, session limits), `onDenied` safety, accumulation, edge cases, enriched budget entity details, proxy 429 interception (`budget_exceeded`, `customer_budget_exceeded` with null/missing details fallback, `velocity_exceeded`, `session_limit_exceeded`, `tag_budget_exceeded`, NullSpend vs upstream)
+- `packages/sdk/src/customer-id.ts` — Shared customer ID validator (length ≤256, regex `[a-zA-Z0-9._:-]+`) called by both `customer()` and `buildTrackedFetch` so direct and indirect callers get identical fail-fast behavior. Mirrors the proxy's validation in `apps/proxy/src/lib/customer.ts`.
 - `packages/sdk/src/policy-cache.test.ts` — Policy cache: TTL, invalidation, mandate/budget/session-limit checks, fail-open, budget entity details on denial
 - `packages/mcp-server/src/config.test.ts`, `tools.test.ts`
 - `packages/mcp-proxy/src/config.test.ts`, `proxy.test.ts`, `gate.test.ts`
