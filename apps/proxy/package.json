@@ -21,6 +21,7 @@
     "postgres": "^3.4.7"
   },
   "devDependencies": {
+    "@nullspend/sdk": "workspace:*",
     "@types/node": "^25.3.5",
     "typescript": "^5.9.3",
     "@cloudflare/vitest-pool-workers": "^0.13.2",
