@@ -27,7 +27,7 @@ const navSections: { label: string; items: NavItem[] }[] = [
       { href: "/app/budgets", label: "Budgets", icon: DollarSign },
       { href: "/app/tool-costs", label: "Tool Costs", icon: Wrench },
       { href: "/app/attribution", label: "Attribution", icon: PieChart },
-      { href: "/app/margins", label: "Margins", icon: TrendingUp },
+      { href: "/app/customers", label: "Customers", icon: TrendingUp },
     ],
   },
   {
