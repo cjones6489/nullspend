@@ -133,7 +133,7 @@ export default function BudgetsPage() {
       budget.thresholdPercentages[2] === 90 &&
       budget.thresholdPercentages[3] === 95;
     setEditBudget({
-      entityType: budget.entityType as "user" | "api_key" | "tag",
+      entityType: budget.entityType as "user" | "api_key" | "tag" | "customer",
       entityId: budget.entityId,
       policy: budget.policy,
       limitDollars: (budget.maxBudgetMicrodollars / 1_000_000).toString(),
@@ -245,7 +245,9 @@ export default function BudgetsPage() {
                         ? "Your Account"
                         : budget.entityType === "tag"
                           ? budget.entityId
-                          : keyMap.get(budget.entityId) ?? budget.entityId.slice(0, 8)
+                          : budget.entityType === "customer"
+                            ? budget.entityId
+                            : keyMap.get(budget.entityId) ?? budget.entityId.slice(0, 8)
                     }
                     onEditClick={() => handleEditClick(budget)}
                     velocityEntries={velocityEntries}
@@ -422,6 +424,7 @@ function BudgetRow({
                 {budget.entityType === "user" && "All requests across your account"}
                 {budget.entityType === "api_key" && "Requests from this key only"}
                 {budget.entityType === "tag" && `All requests tagged ${budget.entityId} (any key)`}
+                {budget.entityType === "customer" && `All requests for customer ${budget.entityId}`}
               </p>
               <span className={cn(
                 "inline-flex rounded-full border px-1.5 py-0 text-[10px] font-medium leading-4",
@@ -624,7 +627,7 @@ const SOURCE_STYLES: Record<string, string> = {
 };
 
 interface EditBudgetData {
-  entityType: "user" | "api_key" | "tag";
+  entityType: "user" | "api_key" | "tag" | "customer";
   entityId: string;
   policy: string;
   limitDollars: string;
