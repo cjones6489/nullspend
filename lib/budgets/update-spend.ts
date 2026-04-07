@@ -64,6 +64,11 @@ export async function updateBudgetSpendFromCostEvent(
   // Filter to entities that match this cost event.
   // Matches: api_key (by key ID), user (by user ID), tag (by key=value), customer (by customer ID).
   // Same entity types the proxy matches in lookupBudgetsForDO.
+  //
+  // NOTE: If BOTH a customer budget (entityType="customer", entityId="acme-corp") AND
+  // a tag budget (entityType="tag", entityId="customer=acme-corp") exist for the same
+  // customer, BOTH will be charged. This is intentional but may surprise users.
+  // Budget conflict prevention should be enforced at creation time in the UI.
   const entitiesToUpdate = matchingBudgets.filter((b) => {
     if (b.entityType === "api_key" && apiKeyId && b.entityId === apiKeyId) return true;
     if (b.entityType === "user" && userId && b.entityId === userId) return true;

@@ -85,7 +85,7 @@ function buildInsertValues(input: CostEventInput, requestId: string, ctx: Insert
     sessionId: input.sessionId ?? null,
     traceId: input.traceId ?? null,
     tags: input.tags ?? {},
-    customerId: input.customer ?? (input.tags?.["customer"] ?? null),
+    customerId: input.customer || (input.tags?.["customer"] || null),
     costBreakdown: input.costBreakdown ?? null,
     source: "api" as const,
   };
