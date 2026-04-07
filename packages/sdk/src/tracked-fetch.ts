@@ -35,6 +35,7 @@ export function buildTrackedFetch(
   queueCost: (event: CostEventInput) => void,
   policyCache: PolicyCache | null,
 ): typeof globalThis.fetch {
+  const customer = options?.customer;
   const sessionId = options?.sessionId;
   const tags = options?.tags;
   const traceId = options?.traceId;
@@ -52,7 +53,7 @@ export function buildTrackedFetch(
       }
     : queueCost;
 
-  const metadata = { sessionId, traceId, tags };
+  const metadata = { sessionId, traceId, tags, customer };
 
   return async function trackedFetch(
     input: RequestInfo | URL,
@@ -367,7 +368,7 @@ async function handleStreamingResponse(
   model: string,
   response: Response,
   startTime: number,
-  metadata: { sessionId?: string; traceId?: string; tags?: Record<string, string> },
+  metadata: { sessionId?: string; traceId?: string; tags?: Record<string, string>; customer?: string },
   queueCost: (event: CostEventInput) => void,
   onCostError?: (error: Error) => void,
 ): Promise<Response> {
@@ -425,7 +426,7 @@ async function handleNonStreamingResponse(
   model: string,
   response: Response,
   startTime: number,
-  metadata: { sessionId?: string; traceId?: string; tags?: Record<string, string> },
+  metadata: { sessionId?: string; traceId?: string; tags?: Record<string, string>; customer?: string },
   queueCost: (event: CostEventInput) => void,
   onCostError?: (error: Error) => void,
 ): Promise<Response> {

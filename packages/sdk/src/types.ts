@@ -202,6 +202,8 @@ export interface CostEventInput {
   toolName?: string;
   toolServer?: string;
   tags?: Record<string, string>;
+  /** Customer identifier for per-customer profitability tracking. */
+  customer?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +213,8 @@ export interface CostEventInput {
 export type TrackedProvider = "openai" | "anthropic";
 
 export interface TrackedFetchOptions {
+  /** Customer identifier for per-customer profitability tracking. */
+  customer?: string;
   sessionId?: string;
   tags?: Record<string, string>;
   traceId?: string;

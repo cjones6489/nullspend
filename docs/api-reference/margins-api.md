@@ -283,5 +283,5 @@ Delete a mapping by ID. Returns 404 if not found or not owned by the org.
 ## Related
 
 - [Margins Feature Guide](../features/margins.md) — setup, health tiers, Slack alerts
-- [Tags](custom-headers.md) — `X-NullSpend-Tags` header for customer attribution
+- [Customer Attribution](../features/tags.md#customer-attribution) — `X-NullSpend-Customer` header (recommended) or tag fallback
 - [Webhook Event Types](../webhooks/event-types.md) — `margin.threshold_crossed`

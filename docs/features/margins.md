@@ -37,15 +37,15 @@ Go to **Margins** in the dashboard. Paste a Stripe restricted key with invoice a
 
 Use a restricted key (`rk_live_...`), not your secret key. NullSpend only needs to read invoices and customers. The key is encrypted with AES-256-GCM before storage.
 
-### 2. Tag Your Requests
+### 2. Identify Your Customers
 
-Add a `customer` tag to your AI requests so NullSpend can match them to Stripe customers:
+Add the `X-NullSpend-Customer` header to your AI requests so NullSpend can match them to Stripe customers:
 
 ```
-X-NullSpend-Tags: customer=acme-corp
+X-NullSpend-Customer: acme-corp
 ```
 
-The tag value is the identifier you use for this customer. It can be anything: a slug, a Stripe customer ID, or a company name.
+The value is the identifier you use for this customer: a slug, a Stripe customer ID, or a company name. Alternatively, you can use the tag fallback: `X-NullSpend-Tags: {"customer":"acme-corp"}`. See [Customer Attribution](tags.md#customer-attribution) for details.
 
 ### 3. Auto-Match
 
@@ -56,7 +56,7 @@ After the first sync, NullSpend tries to automatically match Stripe customers to
 | Metadata match | Stripe `customer.metadata.nullspend_customer` equals a tag value | 1.0 |
 | Customer ID match | Stripe customer ID (`cus_xxx`) equals a tag value | 0.9 |
 
-Auto-matches appear in the **Pending Auto-Matches** section on the margins page. Confirm or reject each one. You can also manually map any unmatched Stripe customer to a tag value via the dropdown.
+Auto-matches appear in the **Pending Auto-Matches** section on the Customers page. Confirm or reject each one. You can also manually map any unmatched Stripe customer to a tag value via the dropdown.
 
 ### 4. View Margins
 
@@ -103,11 +103,11 @@ The CSV uses RFC 4180 escaping and includes formula injection defense (values st
 
 ## Multi-Currency
 
-Revenue sync currently supports USD invoices only. Non-USD invoices are skipped and counted. If any invoices were skipped, an amber banner appears on the margins page showing the count per currency (e.g., "4 invoices in EUR, 1 in GBP skipped. Margins show USD revenue only.").
+Revenue sync currently supports USD invoices only. Non-USD invoices are skipped and counted. If any invoices were skipped, an amber banner appears on the Customers page showing the count per currency (e.g., "4 invoices in EUR, 1 in GBP skipped. Margins show USD revenue only.").
 
 ## Revenue Sync
 
-Sync runs automatically every 2 hours via Vercel Cron. You can also click **Sync Now** on the margins page to trigger an immediate sync.
+Sync runs automatically every 2 hours via Vercel Cron. You can also click **Sync Now** on the Customers page to trigger an immediate sync.
 
 Each sync:
 1. Fetches all paid invoices from the last 3 calendar months + current month

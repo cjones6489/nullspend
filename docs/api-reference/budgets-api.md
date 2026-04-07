@@ -93,7 +93,7 @@ Session (dashboard)
 
 | Name | In | Type | Required | Description |
 |---|---|---|---|---|
-| `entityType` | body | string | Yes | `"user"` or `"api_key"`. |
+| `entityType` | body | string | Yes | `"user"`, `"api_key"`, `"tag"`, or `"customer"`. |
 | `entityId` | body | string | Yes | Entity ID (`ns_usr_*` or `ns_key_*`). Must be owned by the session user. |
 | `maxBudgetMicrodollars` | body | integer | Yes | Spending limit in microdollars. Must be positive. |
 | `policy` | body | string | No | `"strict_block"`, `"soft_block"`, or `"warn"`. Default: `"strict_block"`. |

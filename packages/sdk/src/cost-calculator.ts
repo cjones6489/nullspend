@@ -23,6 +23,7 @@ export function calculateOpenAICostEvent(
     sessionId?: string;
     traceId?: string;
     tags?: Record<string, string>;
+    customer?: string;
   },
 ): CostEventInput {
   const promptTokens = Math.max(0, Number(usage.prompt_tokens) || 0);
@@ -87,6 +88,7 @@ export function calculateOpenAICostEvent(
     sessionId: metadata.sessionId,
     traceId: metadata.traceId,
     tags: metadata.tags,
+    customer: metadata.customer,
     eventType: "llm",
   };
 }
@@ -108,6 +110,7 @@ export function calculateAnthropicCostEvent(
     sessionId?: string;
     traceId?: string;
     tags?: Record<string, string>;
+    customer?: string;
   },
 ): CostEventInput {
   const inputTokens = Math.max(0, Number(usage.input_tokens) || 0);
@@ -211,6 +214,7 @@ export function calculateAnthropicCostEvent(
     sessionId: metadata.sessionId,
     traceId: metadata.traceId,
     tags: metadata.tags,
+    customer: metadata.customer,
     eventType: "llm",
   };
 }
