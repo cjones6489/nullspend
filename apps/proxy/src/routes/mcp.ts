@@ -1,17 +1,18 @@
 import { waitUntil } from "cloudflare:workers";
 import type { RequestContext } from "../lib/context.js";
 import { errorResponse } from "../lib/errors.js";
-import { lookupBudgetsForDO, type BudgetEntity } from "../lib/budget-do-lookup.js";
+import { lookupBudgetsForDO, lookupCustomerUpgradeUrl, type BudgetEntity } from "../lib/budget-do-lookup.js";
 import { logCostEventsBatchQueued, getCostEventQueue } from "../lib/cost-event-queue.js";
 import { checkBudget, reconcileBudgetQueued, getReconcileQueue } from "../lib/budget-orchestrator.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import { buildCostEventPayload, buildThinCostEventPayload, buildVelocityExceededPayload, buildSessionLimitExceededPayload, buildTagBudgetExceededPayload } from "../lib/webhook-events.js";
+import { buildCostEventPayload, buildThinCostEventPayload, buildVelocityExceededPayload, buildSessionLimitExceededPayload, buildTagBudgetExceededPayload, buildCustomerBudgetExceededPayload, buildBudgetExceededPayload } from "../lib/webhook-events.js";
 import { detectThresholdCrossings } from "../lib/webhook-thresholds.js";
 import { dispatchToEndpoints } from "../lib/webhook-dispatch.js";
 import { expireRotatedSecrets } from "../lib/webhook-expiry.js";
 import { UUID_RE } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
-import { dispatchDenialWebhook, dispatchVelocityRecoveryWebhooks } from "./shared.js";
+import { dispatchDenialWebhook, dispatchVelocityRecoveryWebhooks, buildBudgetHeaders } from "./shared.js";
+import { resolveUpgradeUrl } from "../lib/upgrade-url.js";
 
 // ---------------------------------------------------------------------------
 // POST /v1/mcp/budget/check
@@ -62,10 +63,16 @@ export async function handleMcpBudgetCheck(
     const outcome = await checkBudget(env, ctx, parsed.estimateMicrodollars);
     if (ctx.stepTiming) ctx.stepTiming.budgetCheckMs = Math.round(performance.now() - budgetStartMs);
 
+    // On denial we don't reserve against the DO, so budget headers reflect
+    // the state right before this (rejected) request.
+    const budgetEntities = outcome.budgetEntities;
+    const budgetHeaders = buildBudgetHeaders(budgetEntities, 0);
+
     if (outcome.status === "denied") {
       const reason = outcome.velocityDenied ? "velocity_exceeded"
         : outcome.sessionLimitDenied ? "session_limit_exceeded"
         : outcome.tagBudgetDenied ? "tag_budget_exceeded"
+        : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
         : "budget_exceeded";
       emitMetric("budget_denied", { reason, provider: "mcp", entityType: outcome.deniedEntityType ?? "unknown" });
     }
@@ -83,23 +90,27 @@ export async function handleMcpBudgetCheck(
           provider: "mcp",
         }, ctx.auth.apiVersion),
       );
-      return Response.json({
-        allowed: false,
-        denied: true,
-        reason: "velocity_exceeded",
-        retryAfterSeconds: outcome.retryAfterSeconds ?? 60,
-        velocityDetails: outcome.velocityDetails ?? null,
-        traceId: ctx.traceId,
-      }, {
-        status: 429,
-        headers: {
-          "NullSpend-Version": ctx.resolvedApiVersion,
-          "Retry-After": String(outcome.retryAfterSeconds ?? 60),
-          "X-NullSpend-Trace-Id": ctx.traceId,
-          "X-NullSpend-Denied": "1",
-          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "velocity_exceeded",
+            message: "Request blocked: spending rate exceeds velocity limit. Retry after cooldown.",
+            details: outcome.velocityDetails ?? null,
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "NullSpend-Version": ctx.resolvedApiVersion,
+            "Retry-After": String(outcome.retryAfterSeconds ?? 60),
+            "X-NullSpend-Trace-Id": ctx.traceId,
+            "X-NullSpend-Denied": "1",
+            ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+            ...budgetHeaders,
+          },
         },
-      });
+      );
     }
 
     // Session limit denial
@@ -115,23 +126,30 @@ export async function handleMcpBudgetCheck(
           provider: "mcp",
         }, ctx.auth.apiVersion),
       );
-      return Response.json({
-        allowed: false,
-        denied: true,
-        reason: "session_limit_exceeded",
-        sessionId: outcome.sessionId ?? null,
-        sessionSpendMicrodollars: outcome.sessionSpend ?? 0,
-        sessionLimitMicrodollars: outcome.sessionLimit ?? 0,
-        traceId: ctx.traceId,
-      }, {
-        status: 429,
-        headers: {
-          "NullSpend-Version": ctx.resolvedApiVersion,
-          "X-NullSpend-Trace-Id": ctx.traceId,
-          "X-NullSpend-Denied": "1",
-          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "session_limit_exceeded",
+            message: "Request blocked: session spend exceeds session limit. Start a new session.",
+            details: {
+              session_id: outcome.sessionId ?? null,
+              session_spend_microdollars: outcome.sessionSpend ?? 0,
+              session_limit_microdollars: outcome.sessionLimit ?? 0,
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "NullSpend-Version": ctx.resolvedApiVersion,
+            "X-NullSpend-Trace-Id": ctx.traceId,
+            "X-NullSpend-Denied": "1",
+            ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+            ...budgetHeaders,
+          },
         },
-      });
+      );
     }
 
     // Tag budget denial
@@ -148,50 +166,145 @@ export async function handleMcpBudgetCheck(
           provider: "mcp",
         }, ctx.auth.apiVersion),
       );
-      return Response.json({
-        allowed: false,
-        denied: true,
-        reason: "tag_budget_exceeded",
-        tagKey: outcome.tagKey ?? null,
-        tagValue: outcome.tagValue ?? null,
-        budgetLimitMicrodollars: outcome.maxBudget ?? 0,
-        budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
-        traceId: ctx.traceId,
-      }, {
-        status: 429,
-        headers: {
-          "NullSpend-Version": ctx.resolvedApiVersion,
-          "X-NullSpend-Trace-Id": ctx.traceId,
-          "X-NullSpend-Denied": "1",
-          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "tag_budget_exceeded",
+            message: "Request blocked: estimated cost exceeds tag budget limit.",
+            details: {
+              tag_key: outcome.tagKey ?? null,
+              tag_value: outcome.tagValue ?? null,
+              budget_limit_microdollars: outcome.maxBudget ?? 0,
+              budget_spend_microdollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "NullSpend-Version": ctx.resolvedApiVersion,
+            "X-NullSpend-Trace-Id": ctx.traceId,
+            "X-NullSpend-Denied": "1",
+            ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+            ...budgetHeaders,
+          },
         },
-      });
+      );
     }
 
-    if (outcome.status === "denied") {
-      return Response.json({
-        allowed: false,
-        denied: true,
-        reason: "budget_exceeded",
-        remaining: outcome.remaining,
-        entityType: outcome.deniedEntityType ?? null,
-        entityId: outcome.deniedEntityId ?? null,
-        budgetLimitMicrodollars: outcome.maxBudget ?? null,
-        budgetSpendMicrodollars: outcome.spend != null ? (outcome.spend + (outcome.reserved ?? 0)) : null,
-        traceId: ctx.traceId,
-      }, {
-        status: 429,
-        headers: {
-          "NullSpend-Version": ctx.resolvedApiVersion,
-          "X-NullSpend-Trace-Id": ctx.traceId,
-          "X-NullSpend-Denied": "1",
-          ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+    // Customer budget denial — new in MCP after the envelope migration.
+    // Detected via deniedEntityType === "customer". Per decision 5 + 10 of
+    // the plan, this is one of two denial codes that carries upgrade_url.
+    if (outcome.status === "denied" && outcome.deniedEntityType === "customer") {
+      dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
+        buildCustomerBudgetExceededPayload({
+          customerId: outcome.deniedEntityId ?? "unknown",
+          budgetLimitMicrodollars: outcome.maxBudget ?? 0,
+          budgetSpendMicrodollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+          estimatedRequestCostMicrodollars: parsed.estimateMicrodollars,
+          model: `${parsed.serverName}/${parsed.toolName}`,
+          provider: "mcp",
+        }, ctx.auth.apiVersion),
+      );
+
+      // Resolve upgrade_url: per-customer override takes priority over
+      // org-level. Cold-path DB query, fails open to null.
+      const customerId = outcome.deniedEntityId ?? ctx.customerId ?? null;
+      const customerUrl = customerId && ctx.auth.orgId
+        ? await lookupCustomerUpgradeUrl(ctx.connectionString, ctx.auth.orgId, customerId)
+        : null;
+      const upgradeUrl = resolveUpgradeUrl(ctx.auth.orgUpgradeUrl, customerUrl, customerId);
+
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "customer_budget_exceeded",
+            message: "Request blocked: estimated cost exceeds customer budget limit.",
+            ...(upgradeUrl ? { upgrade_url: upgradeUrl } : {}),
+            details: {
+              customer_id: outcome.deniedEntityId ?? null,
+              budget_limit_microdollars: outcome.maxBudget ?? 0,
+              budget_spend_microdollars: (outcome.spend ?? 0) + (outcome.reserved ?? 0),
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "NullSpend-Version": ctx.resolvedApiVersion,
+            "X-NullSpend-Trace-Id": ctx.traceId,
+            "X-NullSpend-Denied": "1",
+            ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+            ...budgetHeaders,
+          },
         },
-      });
+      );
+    }
+
+    // Generic budget denial
+    if (outcome.status === "denied") {
+      const entityType = outcome.deniedEntityType ?? budgetEntities?.[0]?.entityType ?? "unknown";
+      const entityId = outcome.deniedEntityId ?? budgetEntities?.[0]?.entityId ?? "unknown";
+      const budgetLimit = outcome.maxBudget ?? 0;
+      const budgetSpend = (outcome.spend ?? 0) + (outcome.reserved ?? 0);
+      dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
+        buildBudgetExceededPayload({
+          budgetEntityType: entityType,
+          budgetEntityId: entityId,
+          budgetLimitMicrodollars: budgetLimit,
+          budgetSpendMicrodollars: budgetSpend,
+          estimatedRequestCostMicrodollars: parsed.estimateMicrodollars,
+          model: `${parsed.serverName}/${parsed.toolName}`,
+          provider: "mcp",
+        }),
+      );
+
+      // Generic budget_exceeded uses org-level upgrade URL only (no
+      // per-customer lookup — the denying entity isn't a customer).
+      const genericUpgradeUrl = resolveUpgradeUrl(
+        ctx.auth.orgUpgradeUrl,
+        null,
+        ctx.customerId ?? null,
+      );
+
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "budget_exceeded",
+            message: "Request blocked: estimated cost exceeds remaining budget.",
+            ...(genericUpgradeUrl ? { upgrade_url: genericUpgradeUrl } : {}),
+            details: {
+              entity_type: entityType,
+              entity_id: entityId,
+              budget_limit_microdollars: budgetLimit,
+              budget_spend_microdollars: budgetSpend,
+              estimated_cost_microdollars: parsed.estimateMicrodollars,
+            },
+          },
+        }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "NullSpend-Version": ctx.resolvedApiVersion,
+            "X-NullSpend-Trace-Id": ctx.traceId,
+            "X-NullSpend-Denied": "1",
+            ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+            ...budgetHeaders,
+          },
+        },
+      );
     }
 
     dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "mcp");
 
+    // Approved: MCP's success contract stays flat for backward compat
+    // with the existing cost-tracker consumer in packages/mcp-proxy.
+    // Budget headers are stamped alongside — they're header-only, don't
+    // affect body parsing.
+    const approvedBudgetHeaders = buildBudgetHeaders(budgetEntities, parsed.estimateMicrodollars);
     return Response.json({
       allowed: true,
       reservationId: outcome.reservationId,
@@ -201,6 +314,7 @@ export async function handleMcpBudgetCheck(
         "NullSpend-Version": ctx.resolvedApiVersion,
         "X-NullSpend-Trace-Id": ctx.traceId,
         ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
+        ...approvedBudgetHeaders,
       },
     });
   } catch {

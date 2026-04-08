@@ -264,7 +264,7 @@ describe("handleMcpBudgetCheck", () => {
     expect(json.reservationId).toBe("rsv-123");
   });
 
-  it("returns denied when budget is exceeded", async () => {
+  it("returns denied when budget is exceeded (error envelope shape)", async () => {
     mockDoBudgetCheck.mockResolvedValue({
       status: "denied",
       hasBudgets: true,
@@ -272,7 +272,7 @@ describe("handleMcpBudgetCheck", () => {
       remaining: 10,
       maxBudget: 100,
       spend: 90,
-      checkedEntities: [{ entityType: "user", entityId: "user-1", maxBudget: 100, spend: 90, policy: "strict_block" }],
+      checkedEntities: [{ entityType: "user", entityId: "user-1", maxBudget: 100, spend: 90, reserved: 0, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null }],
     });
 
     const request = makeRequest("/v1/mcp/budget/check", {});
@@ -285,10 +285,21 @@ describe("handleMcpBudgetCheck", () => {
     }));
 
     expect(response.status).toBe(429);
-    const json = await response.json();
-    expect(json.allowed).toBe(false);
-    expect(json.denied).toBe(true);
-    expect(json.remaining).toBe(10);
+    const json = await response.json() as { error: { code: string; details: Record<string, unknown> } };
+    // Post-2026-04-08 migration: MCP denials use the error envelope shape
+    // identical to OpenAI/Anthropic. The flat { allowed, denied, reason, ... }
+    // shape was hard-cut.
+    expect(json.error).toBeDefined();
+    expect(json.error.code).toBe("budget_exceeded");
+    expect(json.error.details.entity_type).toBe("user");
+    expect(json.error.details.entity_id).toBe("user-1");
+    expect(json.error.details.budget_limit_microdollars).toBe(100);
+    expect(json.error.details.budget_spend_microdollars).toBe(90);
+    // X-NullSpend-Denied header gates SDK denial parsing
+    expect(response.headers.get("X-NullSpend-Denied")).toBe("1");
+    // Budget headers stamped on MCP denial too (per Item 1)
+    expect(response.headers.get("X-NullSpend-Budget-Limit")).toBe("100");
+    expect(response.headers.get("X-NullSpend-Budget-Entity")).toBe("user:user-1");
   });
 
   it("returns 503 when budget lookup fails", async () => {

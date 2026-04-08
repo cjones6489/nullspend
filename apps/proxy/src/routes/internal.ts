@@ -7,7 +7,7 @@ import { timingSafeStringEqual } from "../lib/timing-safe-equal.js";
 import { retrieveBodies } from "../lib/body-storage.js";
 
 interface InvalidationBody {
-  action: "remove" | "reset_spend" | "sync";
+  action: "remove" | "reset_spend" | "sync" | "auth_only";
   ownerId: string;
   entityType: string;
   entityId: string;
@@ -24,8 +24,27 @@ function parseBody(raw: unknown): InvalidationBody | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
 
-  if (obj.action !== "remove" && obj.action !== "reset_spend" && obj.action !== "sync") return null;
+  if (
+    obj.action !== "remove" &&
+    obj.action !== "reset_spend" &&
+    obj.action !== "sync" &&
+    obj.action !== "auth_only"
+  ) return null;
   if (!isNonEmptyString(obj.ownerId)) return null;
+
+  // auth_only: skip the DO sync entirely. Used by metadata-only updates
+  // (like upgradeUrl) where there's no budget entity to sync. entityType
+  // and entityId may be omitted; if present, they're ignored.
+  if (obj.action === "auth_only") {
+    return {
+      action: "auth_only",
+      ownerId: obj.ownerId.trim(),
+      entityType: "",
+      entityId: "",
+      ...(typeof obj.sentAt === "number" && { sentAt: obj.sentAt }),
+    };
+  }
+
   if (!isNonEmptyString(obj.entityType)) return null;
   if (!isNonEmptyString(obj.entityId)) return null;
 
@@ -74,7 +93,12 @@ export async function handleBudgetInvalidation(
 
   // Execute
   try {
-    if (body.action === "remove") {
+    if (body.action === "auth_only") {
+      // Metadata-only invalidation: no DO sync, just clear the auth cache.
+      // Used by upgradeUrl edits and other org-metadata changes that
+      // affect the cached identity but no budget entity.
+      // Falls through to the invalidateAuthCacheForOwner call below.
+    } else if (body.action === "remove") {
       await doBudgetRemove(env, body.ownerId, body.entityType, body.entityId);
     } else if (body.action === "reset_spend") {
       await doBudgetResetSpend(env, body.ownerId, body.entityType, body.entityId);

@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
+// Webhook URL validation delegates to the shared isSafeExternalUrl helper.
+// That helper is strictly a superset: it additionally rejects user-info in
+// URLs (the https://evil.com@good.com display-confusable attack), which
+// closes a latent SSRF gap in the original webhook check.
+import { isSafeExternalUrl as isValidWebhookUrl } from "./url-safety";
 
 export const WEBHOOK_EVENT_TYPES = [
   "cost_event.created",
@@ -26,38 +31,6 @@ export const PAYLOAD_MODES = ["full", "thin"] as const;
 
 /** @deprecated Tier limits are enforced server-side. Use TIERS[tier].maxWebhookEndpoints. */
 export const MAX_WEBHOOK_ENDPOINTS_PER_USER = Infinity;
-
-function isValidWebhookUrl(raw: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    return false;
-  }
-
-  if (parsed.protocol !== "https:") return false;
-
-  const hostname = parsed.hostname;
-
-  // Block IPv6 literals entirely — real webhook URLs use DNS hostnames
-  if (hostname.startsWith("[")) return false;
-
-  // Block loopback range (127.0.0.0/8), bind-all, and localhost
-  if (hostname === "localhost") return false;
-  if (hostname.startsWith("127.")) return false;
-  if (hostname === "0.0.0.0") return false;
-
-  // Block private RFC 1918 ranges
-  if (hostname.startsWith("10.")) return false;
-  if (hostname.startsWith("192.168.")) return false;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return false;
-
-  // Block link-local and metadata
-  if (hostname.startsWith("169.254.")) return false;
-  if (hostname.endsWith(".local")) return false;
-
-  return true;
-}
 
 export const createWebhookInputSchema = z.object({
   url: z.string().url().refine(isValidWebhookUrl, {

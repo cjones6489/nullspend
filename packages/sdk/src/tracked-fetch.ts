@@ -273,6 +273,13 @@ type DenialPayload = {
   code: string;
   details: Record<string, unknown> | undefined;
   retryAfterSeconds: number | undefined;
+  /**
+   * Plan-upgrade URL surfaced by the proxy on `budget_exceeded` and
+   * `customer_budget_exceeded` denials. Comes from `error.upgrade_url`
+   * (top-level under `error`, not nested in `details`). Undefined when
+   * the proxy didn't include one.
+   */
+  upgradeUrl: string | undefined;
 };
 
 /**
@@ -314,10 +321,18 @@ async function parseDenialPayload(
   const details = rawDetails && typeof rawDetails === "object" && !Array.isArray(rawDetails)
     ? rawDetails as Record<string, unknown>
     : undefined;
+  // upgrade_url lives at error.upgrade_url (top-level under error, peer of
+  // code/message/details). Per Phase 0 finish architecture decision 6, this
+  // is the chosen location and the SDK reads from there only.
+  const rawUpgradeUrl = errObj.upgrade_url;
+  const upgradeUrl = typeof rawUpgradeUrl === "string" && rawUpgradeUrl.length > 0
+    ? rawUpgradeUrl
+    : undefined;
   const retryAfterRaw = parseInt(response.headers.get("Retry-After") ?? "", 10);
   return {
     code,
     details,
+    upgradeUrl,
     // RFC 7231 Retry-After is a non-negative integer; reject negatives defensively.
     retryAfterSeconds: Number.isFinite(retryAfterRaw) && retryAfterRaw >= 0 ? retryAfterRaw : undefined,
   };
@@ -349,7 +364,14 @@ function dispatchDenialCode(
     const spend = toFiniteNumber(details?.budget_spend_microdollars);
     const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
     safeDenied(onDenied, { type: "budget", remaining, entityType, entityId, limit, spend }, onCostError);
-    throw new BudgetExceededError({ remaining, entityType, entityId, limit, spend });
+    throw new BudgetExceededError({
+      remaining,
+      entityType,
+      entityId,
+      limit,
+      spend,
+      upgradeUrl: parsed.upgradeUrl,
+    });
   }
 
   if (code === "customer_budget_exceeded") {
@@ -363,7 +385,14 @@ function dispatchDenialCode(
     const spend = toFiniteNumber(details?.budget_spend_microdollars);
     const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
     safeDenied(onDenied, { type: "budget", remaining, entityType: "customer", entityId, limit, spend }, onCostError);
-    throw new BudgetExceededError({ remaining, entityType: "customer", entityId, limit, spend });
+    throw new BudgetExceededError({
+      remaining,
+      entityType: "customer",
+      entityId,
+      limit,
+      spend,
+      upgradeUrl: parsed.upgradeUrl,
+    });
   }
 
   if (code === "velocity_exceeded") {

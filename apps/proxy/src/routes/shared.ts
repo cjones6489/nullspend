@@ -1,7 +1,8 @@
 import { waitUntil } from "cloudflare:workers";
 import type { RequestContext } from "../lib/context.js";
 import { getWebhookEndpoints, getWebhookEndpointsWithSecrets } from "../lib/webhook-cache.js";
-import type { BudgetEntity } from "../lib/budget-do-lookup.js";
+import { lookupCustomerUpgradeUrl, type BudgetEntity } from "../lib/budget-do-lookup.js";
+import { resolveUpgradeUrl } from "../lib/upgrade-url.js";
 import {
   buildVelocityExceededPayload,
   buildVelocityRecoveredPayload,
@@ -137,8 +138,15 @@ interface BudgetCheckOutcome {
 /**
  * Handle all budget denial types. Returns a Response if denied, null if approved/skipped.
  * Dispatches the appropriate webhook in waitUntil for each denial type.
+ *
+ * Async because `budget_exceeded` and `customer_budget_exceeded` denials
+ * resolve an optional `upgrade_url` which may require a cold-path
+ * Postgres lookup for per-customer overrides. Hot path (200 success)
+ * never touches this code. On velocity/session/tag denials, no
+ * upgrade_url lookup happens — per decision 5 of the plan, only
+ * budget/customer-budget denials include upgrade_url.
  */
-export function handleBudgetDenials(
+export async function handleBudgetDenials(
   outcome: BudgetCheckOutcome,
   ctx: RequestContext,
   env: Env,
@@ -146,7 +154,7 @@ export function handleBudgetDenials(
   requestModel: string,
   estimate: number,
   budgetEntities: BudgetEntity[],
-): Response | null {
+): Promise<Response | null> {
   const logPrefix = `[${provider}-route]`;
 
   if (outcome.status === "denied") {
@@ -286,11 +294,21 @@ export function handleBudgetDenials(
         provider,
       }, ctx.auth.apiVersion),
     );
+    // Resolve upgrade_url: per-customer override (from customer_mappings)
+    // takes priority over org-level default. Cold-path Postgres query,
+    // fails open on error. Only fires on customer denial paths.
+    const customerId = outcome.deniedEntityId ?? ctx.customerId ?? null;
+    const customerUrl = customerId && ctx.auth.orgId
+      ? await lookupCustomerUpgradeUrl(ctx.connectionString, ctx.auth.orgId, customerId)
+      : null;
+    const upgradeUrl = resolveUpgradeUrl(ctx.auth.orgUpgradeUrl, customerUrl, customerId);
+
     return new Response(
       JSON.stringify({
         error: {
           code: "customer_budget_exceeded",
           message: "Request blocked: estimated cost exceeds customer budget limit.",
+          ...(upgradeUrl ? { upgrade_url: upgradeUrl } : {}),
           details: {
             customer_id: outcome.deniedEntityId ?? null,
             budget_limit_microdollars: outcome.maxBudget ?? 0,
@@ -327,11 +345,22 @@ export function handleBudgetDenials(
         provider,
       }),
     );
+    // Resolve upgrade_url for the generic budget_exceeded path. This
+    // only considers the org-level default — per-customer overrides are
+    // reserved for the customer_budget_exceeded branch above. No
+    // Postgres lookup needed; the org URL came in on the auth identity.
+    const genericUpgradeUrl = resolveUpgradeUrl(
+      ctx.auth.orgUpgradeUrl,
+      null,
+      ctx.customerId ?? null,
+    );
+
     return new Response(
       JSON.stringify({
         error: {
           code: "budget_exceeded",
           message: "Request blocked: estimated cost exceeds remaining budget.",
+          ...(genericUpgradeUrl ? { upgrade_url: genericUpgradeUrl } : {}),
           details: {
             entity_type: entityType,
             entity_id: entityId,

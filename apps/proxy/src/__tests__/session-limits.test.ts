@@ -430,7 +430,9 @@ describe("Session Limits", () => {
   // ── 4. MCP route: session denial response ────────────────────────
 
   describe("MCP route session denial", () => {
-    it("returns 429 with session_limit_exceeded reason in MCP format", async () => {
+    it("returns 429 with session_limit_exceeded code in error envelope", async () => {
+      // Post-2026-04-08 MCP migration: denial body uses { error: { code, message, details } }
+      // shape identical to OpenAI/Anthropic. The flat shape was hard-cut.
       mockDoBudgetCheck.mockResolvedValue(sessionDeniedCheckResult);
 
       const env = makeEnv();
@@ -447,13 +449,12 @@ describe("Session Limits", () => {
 
       expect(response.status).toBe(429);
 
-      const body = await response.json() as Record<string, unknown>;
-      expect(body.allowed).toBe(false);
-      expect(body.denied).toBe(true);
-      expect(body.reason).toBe("session_limit_exceeded");
-      expect(body.sessionId).toBe("sess-abc-123");
-      expect(body.sessionSpendMicrodollars).toBe(4_800_000);
-      expect(body.sessionLimitMicrodollars).toBe(5_000_000);
+      const body = await response.json() as { error: { code: string; details: Record<string, unknown> } };
+      expect(body.error.code).toBe("session_limit_exceeded");
+      expect(body.error.details.session_id).toBe("sess-abc-123");
+      expect(body.error.details.session_spend_microdollars).toBe(4_800_000);
+      expect(body.error.details.session_limit_microdollars).toBe(5_000_000);
+      expect(response.headers.get("X-NullSpend-Denied")).toBe("1");
     });
   });
 

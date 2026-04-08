@@ -13,10 +13,12 @@ const RETRY_DELAYS_MS = [1_000, 3_000];
  * Never throws — all errors are logged and swallowed.
  */
 export async function invalidateProxyCache(params: {
-  action: "remove" | "reset_spend" | "sync";
+  action: "remove" | "reset_spend" | "sync" | "auth_only";
   ownerId: string;
-  entityType: string;
-  entityId: string;
+  /** Optional for auth_only — required for all other actions. */
+  entityType?: string;
+  /** Optional for auth_only — required for all other actions. */
+  entityId?: string;
 }): Promise<void> {
   const url = process.env.PROXY_INTERNAL_URL;
   const secret = process.env.PROXY_INTERNAL_SECRET;

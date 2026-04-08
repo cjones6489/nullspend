@@ -34,6 +34,16 @@ export interface ApiKeyIdentity {
   defaultTags: Record<string, string>;
   allowedModels: string[] | null;
   allowedProviders: string[] | null;
+  /**
+   * Org-level upgrade URL from `organizations.metadata.upgradeUrl`.
+   * Null when unset. Surfaced in `budget_exceeded` and
+   * `customer_budget_exceeded` denial responses. Per-customer overrides
+   * live in `customer_mappings.upgrade_url` and are resolved at denial
+   * time (not auth time) — this field is the fallback for non-customer
+   * denials and the org-level default for customer denials without
+   * a per-customer override.
+   */
+  orgUpgradeUrl: string | null;
 }
 
 const CACHE_MAX_SIZE = 256;
@@ -108,7 +118,11 @@ async function lookupKeyInDb(
       COALESCE(
         (SELECT s.tier IN ('pro', 'enterprise') FROM subscriptions s WHERE s.org_id = k.org_id AND s.status IN ('active', 'past_due') LIMIT 1),
         false
-      ) AS request_logging_enabled
+      ) AS request_logging_enabled,
+      -- Org-level upgrade URL for budget_exceeded + customer_budget_exceeded
+      -- denial responses. Sub-ms UUID PK join; piggybacks on the existing
+      -- per-auth denormalized query so there's no extra round trip.
+      (SELECT o.metadata->>'upgradeUrl' FROM organizations o WHERE o.id = k.org_id) AS org_upgrade_url
     FROM api_keys k
     WHERE k.key_hash = ${keyHash} AND k.revoked_at IS NULL
   `;
@@ -131,6 +145,7 @@ async function lookupKeyInDb(
       : {},
     allowedModels: parseTextArray(row.allowed_models),
     allowedProviders: parseTextArray(row.allowed_providers),
+    orgUpgradeUrl: typeof row.org_upgrade_url === "string" ? row.org_upgrade_url : null,
   };
 }
 

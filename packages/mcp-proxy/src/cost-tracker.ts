@@ -162,6 +162,24 @@ interface BudgetCheckResponse {
   reservationId?: string;
   denied?: boolean;
   remaining?: number;
+  /** Denial code from the proxy envelope (budget_exceeded, velocity_exceeded, etc.) */
+  code?: string;
+  /** Upgrade URL from the proxy denial body when configured */
+  upgradeUrl?: string;
+}
+
+/**
+ * Shape of the proxy's denial response envelope (post-2026-04-08 migration).
+ * MCP denials now share the same shape as OpenAI/Anthropic denials:
+ *   { error: { code, message, upgrade_url?, details } }
+ */
+interface ProxyDenialEnvelope {
+  error: {
+    code: string;
+    message: string;
+    upgrade_url?: string;
+    details?: Record<string, unknown> | null;
+  };
 }
 
 const CIRCUIT_FAILURE_THRESHOLD = 5;
@@ -209,6 +227,27 @@ export class BudgetClient {
         body: JSON.stringify({ toolName, serverName, estimateMicrodollars }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
+
+      // 429 is a VALID denial response, not a failure. Parse the error
+      // envelope and return a denial shape without touching the circuit
+      // breaker — the backend is healthy, the user just ran out of budget.
+      if (resp.status === 429) {
+        this.consecutiveFailures = 0;
+        const envelope = (await resp.json().catch(() => null)) as ProxyDenialEnvelope | null;
+        const errDetails = envelope?.error?.details as Record<string, unknown> | undefined;
+        const limit = typeof errDetails?.budget_limit_microdollars === "number"
+          ? (errDetails.budget_limit_microdollars as number) : undefined;
+        const spend = typeof errDetails?.budget_spend_microdollars === "number"
+          ? (errDetails.budget_spend_microdollars as number) : undefined;
+        const remaining = limit != null && spend != null ? Math.max(0, limit - spend) : undefined;
+        return {
+          allowed: false,
+          denied: true,
+          code: envelope?.error?.code,
+          remaining,
+          upgradeUrl: envelope?.error?.upgrade_url,
+        };
+      }
 
       if (!resp.ok) {
         throw new Error(`Budget check returned ${resp.status}`);

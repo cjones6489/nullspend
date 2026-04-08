@@ -438,6 +438,14 @@ export const customerMappings = pgTable("customer_mappings", {
   tagValue: text("tag_value").notNull(),
   matchType: text("match_type").$type<MatchType>().notNull(),
   confidence: real("confidence"),
+  /**
+   * Per-customer override for the upgrade URL surfaced in
+   * `customer_budget_exceeded` denial responses. When null, falls back
+   * to the org-level `organizations.metadata.upgradeUrl`. Supports the
+   * `{customer_id}` placeholder which is substituted at denial time by
+   * the proxy's `resolveUpgradeUrl` helper.
+   */
+  upgradeUrl: text("upgrade_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("customer_mappings_org_stripe_tag_idx").on(table.orgId, table.stripeCustomerId, table.tagKey),

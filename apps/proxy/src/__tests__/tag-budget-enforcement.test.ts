@@ -341,7 +341,8 @@ describe("Tag Budget Enforcement", () => {
   // ── MCP route ──────────────────────────────────────────────────────
 
   describe("MCP route tag budget denial", () => {
-    it("returns 429 with MCP-format tag_budget_exceeded response", async () => {
+    it("returns 429 with tag_budget_exceeded code in error envelope", async () => {
+      // Post-2026-04-08 MCP migration: denial body uses { error: { code, message, details } }
       mockDoBudgetCheck.mockResolvedValue(tagDeniedCheckResult);
 
       const env = makeEnv();
@@ -350,12 +351,11 @@ describe("Tag Budget Enforcement", () => {
       const response = await handleMcpBudgetCheck(makeMcpRequest(mcpBody), env, ctx);
 
       expect(response.status).toBe(429);
-      const body = await response.json() as Record<string, unknown>;
-      expect(body.allowed).toBe(false);
-      expect(body.denied).toBe(true);
-      expect(body.reason).toBe("tag_budget_exceeded");
-      expect(body.tagKey).toBe("project");
-      expect(body.tagValue).toBe("openclaw");
+      const body = await response.json() as { error: { code: string; details: Record<string, unknown> } };
+      expect(body.error.code).toBe("tag_budget_exceeded");
+      expect(body.error.details.tag_key).toBe("project");
+      expect(body.error.details.tag_value).toBe("openclaw");
+      expect(response.headers.get("X-NullSpend-Denied")).toBe("1");
     });
   });
 

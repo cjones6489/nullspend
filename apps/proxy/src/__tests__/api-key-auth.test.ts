@@ -69,7 +69,7 @@ describe("authenticateApiKey", () => {
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
 
-    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
+    expect(result).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null, orgUpgradeUrl: null });
     expect(mockSql).toHaveBeenCalledTimes(1);
   });
 
@@ -77,7 +77,7 @@ describe("authenticateApiKey", () => {
     mockSql.mockResolvedValueOnce([validRow]);
 
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
+    expect(result1).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null, orgUpgradeUrl: null });
     expect(mockSql).toHaveBeenCalledTimes(1);
 
     // Second call — cache hit, no DB call
@@ -161,12 +161,12 @@ describe("authenticateApiKey", () => {
       { id: "key-0", user_id: "user-0", has_webhooks: false, has_budgets: false, org_id: null, api_version: "2026-04-01", default_tags: {}, request_logging_enabled: false },
     ]);
     const result = await authenticateApiKey("ns_live_sk_key_0", TEST_CONNECTION_STRING);
-    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
+    expect(result).toEqual({ userId: "user-0", keyId: "key-0", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null, orgUpgradeUrl: null });
     expect(mockSql).toHaveBeenCalledTimes(258);
 
     // key_2 should still be cached
     const result2 = await authenticateApiKey("ns_live_sk_key_2", TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
+    expect(result2).toEqual({ userId: "user-2", keyId: "key-2", hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null, orgUpgradeUrl: null });
     expect(mockSql).toHaveBeenCalledTimes(258); // No additional DB call
 
     vi.restoreAllMocks();
@@ -184,7 +184,7 @@ describe("authenticateApiKey", () => {
 
     // Second call — retries DB (not negative-cached), succeeds
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null });
+    expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null, orgUpgradeUrl: null });
     expect(mockSql).toHaveBeenCalledTimes(2); // Both calls hit DB
     vi.restoreAllMocks();
   });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { nsIdInput, nsIdOutput } from "@/lib/ids/prefixed-id";
+import { isSafeExternalUrl } from "@/lib/validations/url-safety";
 
 export const ORG_ROLES = ["owner", "admin", "member", "viewer"] as const;
 export type OrgRole = (typeof ORG_ROLES)[number];
@@ -83,3 +84,42 @@ export const invitationRecordSchema = z.object({
 export const acceptInviteSchema = z.object({
   token: z.string().min(1, "Invitation token is required."),
 });
+
+// ── Upgrade URL ────────────────────────────────────────────────────
+//
+// Stored at organizations.metadata.upgradeUrl (jsonb) for org-level
+// default and customer_mappings.upgrade_url for per-customer overrides.
+// Surfaced in budget_exceeded + customer_budget_exceeded denial bodies.
+//
+// `{customer_id}` placeholder support: substituted at denial time by
+// the proxy. The placeholder is a literal substring; we have to
+// tolerate it during URL validation. Strategy: temporarily substitute
+// the placeholder with a dummy value before parsing as a URL, then
+// validate the resulting URL with isSafeExternalUrl.
+
+function isValidUpgradeUrl(raw: string): boolean {
+  // Substitute the placeholder with a dummy value so `new URL()` parses cleanly.
+  // The dummy is URL-safe and won't change the hostname or scheme.
+  const substituted = raw.replace(/\{customer_id\}/g, "placeholder123");
+  return isSafeExternalUrl(substituted);
+}
+
+const upgradeUrlSchema = z
+  .string()
+  .trim()
+  .max(2048, "Upgrade URL must be 2048 characters or fewer.")
+  .refine(isValidUpgradeUrl, {
+    message: "Upgrade URL must be HTTPS and not point to private/reserved IP addresses. Use {customer_id} as a placeholder for the customer ID.",
+  });
+
+/**
+ * Schema for PATCH /api/orgs/[orgId]/upgrade-url and
+ * PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url.
+ *
+ * Pass `upgradeUrl: null` to clear the field. Pass a string to set it.
+ */
+export const setUpgradeUrlSchema = z.object({
+  upgradeUrl: upgradeUrlSchema.nullable(),
+});
+
+export type SetUpgradeUrlInput = z.infer<typeof setUpgradeUrlSchema>;

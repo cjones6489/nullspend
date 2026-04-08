@@ -155,3 +155,44 @@ export async function lookupBudgetsForDO(
 
   return result;
 }
+
+/**
+ * Look up the per-customer upgrade URL from `customer_mappings.upgrade_url`.
+ *
+ * Called ONLY from the denial branch of `handleBudgetDenials` when the
+ * denying entity is a customer. The hot path (happy 200) never touches
+ * this query — it's cold-path cost on an already-slow denial response.
+ *
+ * Returns null when:
+ *   - No row matches (customer not mapped, or mapping has null upgrade_url)
+ *   - The query fails for any reason (fail-open — the denial still ships,
+ *     just without the upgrade_url field)
+ *
+ * Uses the shared `getSql` pool so this reuses the existing per-request
+ * postgres.js instance.
+ */
+export async function lookupCustomerUpgradeUrl(
+  connectionString: string,
+  orgId: string,
+  customerId: string,
+): Promise<string | null> {
+  try {
+    const sql = getSql(connectionString);
+    const rows = await sql<{ upgrade_url: string | null }[]>`
+      SELECT upgrade_url
+      FROM customer_mappings
+      WHERE org_id = ${orgId}
+        AND tag_value = ${customerId}
+      LIMIT 1
+    `;
+    if (rows.length === 0) return null;
+    const url = rows[0].upgrade_url;
+    return typeof url === "string" && url.length > 0 ? url : null;
+  } catch (err) {
+    console.warn(
+      "[budget-do-lookup] customer upgrade_url lookup failed (fail-open):",
+      err instanceof Error ? err.message : "Unknown error",
+    );
+    return null;
+  }
+}

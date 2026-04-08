@@ -107,7 +107,7 @@ export async function handleAnthropicMessages(
     reservationId = outcome.reservationId;
     budgetEntities = outcome.budgetEntities;
 
-    const denialResponse = handleBudgetDenials(outcome, ctx, env, "anthropic", requestModel, estimate, budgetEntities);
+    const denialResponse = await handleBudgetDenials(outcome, ctx, env, "anthropic", requestModel, estimate, budgetEntities);
     if (denialResponse) {
       budgetAbort.abort();
       upstreamFetchPromise.catch((e) => { if (e?.name !== "AbortError") console.warn("[anthropic-route] Upstream fetch error after budget denial:", e); });

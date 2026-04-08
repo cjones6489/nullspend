@@ -13,6 +13,7 @@ export interface AuthResult {
   defaultTags: Record<string, string>;
   allowedModels: string[] | null;
   allowedProviders: string[] | null;
+  orgUpgradeUrl: string | null;
 }
 
 /**
@@ -40,5 +41,6 @@ export async function authenticateRequest(
     defaultTags: identity.defaultTags,
     allowedModels: identity.allowedModels,
     allowedProviders: identity.allowedProviders,
+    orgUpgradeUrl: identity.orgUpgradeUrl,
   };
 }

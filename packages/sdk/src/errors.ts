@@ -42,6 +42,14 @@ export class BudgetExceededError extends NullSpendError {
   public readonly entityId: string | undefined;
   public readonly limitMicrodollars: number | undefined;
   public readonly spendMicrodollars: number | undefined;
+  /**
+   * Plan-upgrade URL surfaced by the proxy when the denying org has
+   * configured one (org-level via dashboard Settings > General, or
+   * per-customer via customer_mappings.upgrade_url). Supports the
+   * `{customer_id}` placeholder which the proxy substitutes at denial
+   * time. Undefined when no upgrade_url is configured.
+   */
+  public readonly upgradeUrl: string | undefined;
 
   constructor(details: number | {
     remaining: number;
@@ -49,6 +57,7 @@ export class BudgetExceededError extends NullSpendError {
     entityId?: string;
     limit?: number;
     spend?: number;
+    upgradeUrl?: string;
   }) {
     const d = typeof details === "number" ? { remaining: details } : details;
     super(
@@ -60,6 +69,7 @@ export class BudgetExceededError extends NullSpendError {
     this.entityId = d.entityId;
     this.limitMicrodollars = d.limit;
     this.spendMicrodollars = d.spend;
+    this.upgradeUrl = d.upgradeUrl;
   }
 }
 
