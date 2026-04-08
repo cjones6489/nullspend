@@ -101,29 +101,15 @@
 **Priority:** P4
 **Depends on:** None
 
-### Customer attribution end-to-end smoke test (F12)
+### ~~Customer attribution end-to-end smoke test (F12)~~
 
-**What:** Add a customer attribution F-series test to `apps/proxy/smoke-sdk-functional.test.ts`. Exercises the full path: SDK `customer()` → `X-NullSpend-Customer` header → deployed proxy → `cost_events.customer_id` column → dashboard query via `listCostEvents({ customerId })`. Single-call sequential test, manual-runs-only via `pnpm test:smoke smoke-sdk-functional.test.ts`.
+**Completed:** 2026-04-08 on `feat/sdk-quick-close-followups` (commits `98ac6e6` + `b48b01d`). F12 added to `apps/proxy/smoke-sdk-functional.test.ts` — single test that creates a customer-scoped session, makes one real OpenAI request through the deployed proxy, polls cost_events for the row, then verifies the SDK `listCostEvents` response surfaces the `customerId` field. ~$0.005 per run, ~5s wall.
 
-**Why:** Customer attribution is a first-impression feature for new users — the question "did my customer attribution actually work?" should have a fast, readable test that mirrors what a user would do. Today it's tested under stress (`§5.3 customer session flows`, `§6.3 header injection`) and validated indirectly via F4, but the F-series doesn't have a dedicated check that closes the loop from SDK construction → proxy ingestion → dashboard read. Stress tests are aggressive and noisy; an F-series test is the slower, more readable equivalent that catches schema/serialization regressions on the read side.
+**Two real bugs forced by F12** (filed as separate commits):
+1. The dashboard read path (`list-cost-events.ts`, `serialize-cost-event.ts`, `[id]/route.ts`, `sessions/[sessionId]/route.ts`, `get-cost-events-by-action.ts`) never SELECTed `customer_id`. Customer attribution had been a write-only field since the feature shipped 2026-04-04 — the read path silently dropped it.
+2. The SDK `CostEventRecord` type didn't expose `customerId` at all. Without F12 these would have shipped silently.
 
-**Context:** ~30 lines of test code, ~$0.005 per run. Sketch:
-1. `beforeAll`: confirm smoke key is set up
-2. Create a `client.customer("smoke-test-customer-${runId}")`-scoped tracked fetch
-3. Make 1-2 real OpenAI requests through the deployed proxy with that customer scope
-4. Wait for the cost event to land in Postgres (sleep ~2s OR poll)
-5. Query `client.listCostEvents({ customerId: "smoke-test-customer-${runId}" })`
-6. Assert the events are returned with the correct `customerId` field
-7. Assert other identifying fields (`provider`, `model`, `requestId`) round-trip
-8. `afterAll`: delete the synthetic events via SQL (mirror F1's symmetric cleanup pattern)
-
-The proxy already supports the `customer` filter on `/api/cost-events` (added during the customer primitive PR). The `listCostEvents` SDK method already takes filter options — verify it does, or extend it.
-
-Bonus: this test also indirectly validates the `customer_id` filter on the dashboard read API (no other smoke test does).
-
-**Effort:** S (~30-45 min)
-**Priority:** P3 (first-impression feature, should ship before any external user tries the SDK)
-**Depends on:** None
+15/15 smoke tests passing live, including F12. Filter assumption note: F12 doesn't use a `customerId` query filter (which doesn't exist on the dashboard or SDK). Instead it fetches the most recent 100 events and finds the matching one by unique `customerId` baked with the run ID. A `customerId` filter would be a separate (P4) follow-up.
 
 ### F8 retry timing precision tightening (smoke-sdk-functional)
 
@@ -161,17 +147,9 @@ Bonus: this test also indirectly validates the `customer_id` filter on the dashb
 **Priority:** P3
 **Depends on:** None
 
-### Heavy stress intensity validation
+### ~~Heavy stress intensity validation~~
 
-**What:** Run `STRESS_INTENSITY=heavy pnpm test:stress stress-sdk-features.test.ts` once and verify all 43 tests still pass at 50 concurrent / 60 race / 100 batch events. Investigate any drift.
-
-**Why:** Plan §19 step 13 explicitly calls for heavy intensity validation before declaring the stress test "done." Light + medium are validated (8 consecutive clean runs). Heavy is the upper bound — if there's a race window that only opens at 50+ concurrent, this is where it shows up.
-
-**Context:** Cost ~$0.05 per heavy run if everything works first try. Manual run only. Requires `pnpm dev` running for direct-mode tests. Pre-flight: `pnpm jsonb:repair` should show 0 broken rows (we already cleaned them).
-
-**Effort:** S (5 min wall + verification time if anything fails)
-**Priority:** P3
-**Depends on:** None
+**Completed:** 2026-04-08 — `STRESS_INTENSITY=heavy pnpm test:stress stress-sdk-features.test.ts` ran clean: 42 passed + 1 skipped (the §7.7 `it.skip` covered by §6.9), 142.76s wall, ~$0.05. Pre-flight `jsonb:repair` showed 0 broken rows. Plan §19 step 13 acceptance criterion is now met across light + medium + heavy intensities. No race windows surfaced at 50 concurrent / 60 race / 100 batch events.
 
 ### Publish @nullspend/sdk 0.2.1 to npm
 
@@ -189,17 +167,9 @@ Internal proxy/dashboard code uses the workspace dependency and is already on th
 **Priority:** P3 (P0 if there are external consumers)
 **Depends on:** None
 
-### §6.8 fail-open session limit test burns OpenAI calls per run
+### ~~§6.8 fail-open session limit test burns OpenAI calls per run~~
 
-**What:** `apps/proxy/stress-sdk-features.test.ts:977-1045` — the §6.8 client-side session limit test is a known no-op (the comment in the test acknowledges it). It fires up to 15 real OpenAI requests per stress run trying to exercise the fail-open path, but the SDK's session counter never advances because it requires a successful policy fetch.
-
-**Why:** Each stress run wastes ~$0.005 on a test that asserts nothing. Over time at heavy intensity that adds up. Worse, the test masks a real coverage gap — client-side session limit enforcement is genuinely untested at the stress layer.
-
-**Context:** Two options: (a) delete the test, log the gap once in beforeAll, accept that session-limit enforcement has unit-test-only coverage; (b) rewrite against a mock upstream so no real OpenAI spend is incurred and the session counter can be advanced deterministically. (a) is faster, (b) is more complete. Filed as 15c-3.
-
-**Effort:** S (option a, 10 min) / M (option b, 1-2 hours)
-**Priority:** P3
-**Depends on:** None
+**Completed:** 2026-04-08 on `feat/sdk-quick-close-followups` (commit `cd7d530`). Took option (a) — deleted the §6.8 stress test entirely and replaced the describe block with an inline comment documenting why. Heavy stress validation post-deletion confirmed no regression: 42 + 1 skipped (was 43 + 1 skipped). Coverage of the fail-open path remains intact via unit tests in `packages/sdk/src/tracked-fetch.test.ts` (mocked clock + fetch, deterministic). Live-stack coverage of client-side session limit enforcement is now a P5 nice-to-have — see the inline comment in the test file for how to restore it (mock upstream, or coordinate policy endpoint to return permissive policy for stress test org).
 
 ### Cleanup: defensive jsonb_typeof guard in getDistinctTagKeys
 
