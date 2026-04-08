@@ -47,6 +47,7 @@ export async function GET(
         sessionId: costEvents.sessionId,
         source: costEvents.source,
         tags: costEvents.tags,
+        customerId: costEvents.customerId,
         keyName: apiKeys.name,
         costBreakdown: costEvents.costBreakdown,
       })

@@ -84,6 +84,7 @@ export async function listCostEvents(options: ListCostEventsOptions) {
       sessionId: costEvents.sessionId,
       source: costEvents.source,
       tags: costEvents.tags,
+      customerId: costEvents.customerId,
       keyName: apiKeys.name,
       costBreakdown: costEvents.costBreakdown,
     })

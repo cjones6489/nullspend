@@ -17,6 +17,7 @@ interface CostEventJoinRow {
   sessionId: string | null;
   source: "proxy" | "api" | "mcp";
   tags: Record<string, string>;
+  customerId: string | null;
   keyName: string | null;
   budgetStatus?: string | null;
   stopReason?: string | null;
@@ -42,6 +43,7 @@ export function serializeCostEvent(row: CostEventJoinRow): RawCostEventRecord {
     sessionId: row.sessionId,
     source: row.source,
     tags: row.tags,
+    customerId: row.customerId,
     keyName: row.keyName,
     budgetStatus: (row.budgetStatus as "skipped" | "approved" | "denied" | null) ?? null,
     stopReason: row.stopReason ?? null,

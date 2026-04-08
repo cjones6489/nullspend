@@ -358,6 +358,7 @@ export interface CostEventRecord {
   eventType: string;
   toolName: string | null;
   tags: Record<string, string> | null;
+  customerId: string | null;
   costBreakdown?: {
     input?: number;
     output?: number;
