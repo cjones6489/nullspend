@@ -56,7 +56,6 @@ import {
   NULLSPEND_SMOKE_USER_ID,
   OPENAI_API_KEY,
   DATABASE_URL,
-  invalidateAuthOnly,
   invalidateBudget,
   syncBudget,
   authHeaders,
@@ -1010,142 +1009,35 @@ describe("Section 6 — Budget remaining response headers", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────
-// § Section 7 — upgrade_url in denial bodies (F14)
+// § Section 7 — upgrade_url in denial bodies (REMOVED)
 //
-// Phase 0 finish, Item 2: validates that the proxy injects
-// error.upgrade_url into budget_exceeded denial bodies when the
-// org has configured one.
+// The old F14 test tried to verify org-level upgrade_url (stored at
+// organizations.metadata.upgradeUrl, cached on the auth identity with
+// a 120s TTL) by setting the URL, calling invalidateAuthOnly, then
+// making a request and asserting the denial body contained the URL.
 //
-// SINGLE COMBINED TEST INTENTIONALLY: the Cloudflare Workers auth
-// cache has a 120s TTL across multiple isolates. invalidateAuthOnly
-// only clears the cache in ONE isolate; other isolates serve stale
-// values until their own TTL expires. Subsequent fetches may hit
-// either the cleared OR a stale isolate. Testing the CHANGE or
-// CLEAR paths reliably would require either a 120s wait or a fresh
-// API key per assertion.
+// This test was inherently flaky due to Cloudflare Workers' multi-
+// isolate architecture: invalidateAuthCacheForOwner only clears the
+// cache in ONE isolate that receives the invalidation POST. Other
+// isolates continue serving stale identity values until their own
+// positive-TTL (120s ± 10s jitter) expires. Subsequent fetches may
+// hit either the cleared OR a stale isolate — pass rate was ~50%.
 //
-// Coverage strategy:
-//   - This test sets the URL ONCE and verifies both the raw HTTP
-//     denial body shape AND the SDK error class plumbing in a single
-//     run, against a single cache state.
-//   - The SDK parser's omission semantics (field absent when unset,
-//     not null) is unit-tested in
-//     packages/sdk/src/tracked-fetch.test.ts under
-//     "proxy 429 with budget_exceeded code throws BudgetExceededError"
-//     which asserts upgradeUrl is undefined when error.upgrade_url
-//     is missing from the body.
-//   - The proxy-side omission (conditional spread in shared.ts /
-//     mcp.ts) is exercised by every other smoke test in this file
-//     since none of the F1-F13 tests configure an org upgrade URL,
-//     yet none of them see an upgrade_url field on their (rare)
-//     denial responses.
+// Coverage strategy for the org-level path (no live smoke):
+//   1. SDK parser unit tests verify error.upgrade_url is extracted
+//      correctly from the envelope (packages/sdk/src/tracked-fetch.test.ts
+//      "surfaces upgradeUrl on the error")
+//   2. mcp-proxy unit tests verify the cost-tracker envelope parser
+//      (packages/mcp-proxy/src/cost-tracker.test.ts)
+//   3. Dashboard route tests verify the GET/PATCH endpoint shape
+//      (app/api/orgs/[orgId]/upgrade-url/route.test.ts)
+//   4. Proxy unit tests verify handleBudgetDenials injects upgrade_url
+//      via the builders and correctly emits budget_denied metric
+//
+// The CUSTOMER-level path IS reliably smoke-tested as F15 (Section 8)
+// below, because customer_settings.upgrade_url is looked up FRESH on
+// every denial (no auth cache coupling).
 // ─────────────────────────────────────────────────────────────────
-describe("Section 7 — upgrade_url in denial bodies", () => {
-  const userId = NULLSPEND_SMOKE_USER_ID!;
-  const TEST_UPGRADE_URL = "https://example.com/upgrade?org={customer_id}";
-
-  async function setOrgUpgradeUrl(url: string | null) {
-    if (url === null) {
-      await sql`UPDATE organizations SET metadata = COALESCE(metadata, '{}'::jsonb) - 'upgradeUrl' WHERE id = ${SMOKE_ORG_ID}`;
-    } else {
-      await sql`
-        UPDATE organizations
-           SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{upgradeUrl}', to_jsonb(${url}::text))
-         WHERE id = ${SMOKE_ORG_ID}
-      `;
-    }
-    // Invalidate the auth cache so the next request picks up the new
-    // value. NOTE: this only clears the cache in ONE Workers isolate;
-    // other isolates serve stale values until their own TTL expires.
-    // We rely on the proxy hitting the cleared isolate (best effort).
-    await invalidateAuthOnly(SMOKE_ORG_ID);
-  }
-
-  async function setupExhaustedBudget() {
-    await sql`
-      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
-      VALUES (${userId}, ${SMOKE_ORG_ID}, 'user', ${userId}, 1000000, 1000000, 'strict_block')
-      ON CONFLICT (org_id, entity_type, entity_id)
-      DO UPDATE SET max_budget_microdollars = 1000000,
-                    spend_microdollars = 1000000,
-                    updated_at = NOW()
-    `;
-    await syncBudget(SMOKE_ORG_ID, "user", userId);
-  }
-
-  async function teardownBudget() {
-    await invalidateBudget(SMOKE_ORG_ID, "user", userId);
-    await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${userId} AND org_id = ${SMOKE_ORG_ID}`;
-  }
-
-  it("F14 — proxy injects upgrade_url into denial body + SDK surfaces it on BudgetExceededError", async () => {
-    if (!BASE) throw new Error("F14 requires PROXY_URL in .env.smoke");
-
-    // Set org URL ONCE and run both raw + SDK assertions against the
-    // same cache state. See section header for why this is one test.
-    await setOrgUpgradeUrl(TEST_UPGRADE_URL);
-    await setupExhaustedBudget();
-
-    const proxyClient = new NullSpend({
-      baseUrl: DASHBOARD_URL,
-      apiKey: NULLSPEND_API_KEY!,
-      proxyUrl: BASE,
-      costReporting: { batchSize: 1, flushIntervalMs: 100 },
-    });
-
-    try {
-      // ── Step 1: raw HTTP — verify proxy denial body shape ──
-      const rawRes = await fetch(`${BASE}/v1/chat/completions`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: smallRequest(),
-      });
-      expect(rawRes.status).toBe(429);
-      const rawBody = await rawRes.json() as { error: { code: string; upgrade_url?: string } };
-      expect(rawBody.error.code).toBe("budget_exceeded");
-      // Org URL has {customer_id} placeholder but no customer in scope —
-      // placeholder remains literal (debugging signal per resolveUpgradeUrl).
-      expect(rawBody.error.upgrade_url).toBe(TEST_UPGRADE_URL);
-      // X-NullSpend-Denied header gates SDK denial parsing
-      expect(rawRes.headers.get("X-NullSpend-Denied")).toBe("1");
-
-      // ── Step 2: SDK trackedFetch — verify error class plumbing ──
-      // enforcement: true required for the SDK to intercept 429 denials
-      // and throw typed errors. Without it the raw 429 response is passed
-      // through (per tracked-fetch.ts:106 — proxy mode skips
-      // dispatchDenialCode unless enforcement is enabled).
-      const trackedFetch = proxyClient.createTrackedFetch("openai", { enforcement: true });
-      let caught: BudgetExceededError | null = null;
-      try {
-        await trackedFetch(`${BASE}/v1/chat/completions`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-nullspend-key": NULLSPEND_API_KEY!,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: "test" }],
-            max_tokens: 3,
-          }),
-        });
-      } catch (err) {
-        if (err instanceof BudgetExceededError) {
-          caught = err;
-        } else {
-          throw err;
-        }
-      }
-
-      expect(caught, "BudgetExceededError should have been thrown").not.toBeNull();
-      expect(caught!.upgradeUrl).toBe(TEST_UPGRADE_URL);
-    } finally {
-      await proxyClient.shutdown();
-      await teardownBudget();
-      await setOrgUpgradeUrl(null);
-    }
-  }, 30_000);
-});
 
 // ─────────────────────────────────────────────────────────────────
 // § Section 8 — customer_budget_exceeded with per-customer override (F15)
