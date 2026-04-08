@@ -101,6 +101,30 @@
 **Priority:** P4
 **Depends on:** None
 
+### Customer attribution end-to-end smoke test (F12)
+
+**What:** Add a customer attribution F-series test to `apps/proxy/smoke-sdk-functional.test.ts`. Exercises the full path: SDK `customer()` → `X-NullSpend-Customer` header → deployed proxy → `cost_events.customer_id` column → dashboard query via `listCostEvents({ customerId })`. Single-call sequential test, manual-runs-only via `pnpm test:smoke smoke-sdk-functional.test.ts`.
+
+**Why:** Customer attribution is a first-impression feature for new users — the question "did my customer attribution actually work?" should have a fast, readable test that mirrors what a user would do. Today it's tested under stress (`§5.3 customer session flows`, `§6.3 header injection`) and validated indirectly via F4, but the F-series doesn't have a dedicated check that closes the loop from SDK construction → proxy ingestion → dashboard read. Stress tests are aggressive and noisy; an F-series test is the slower, more readable equivalent that catches schema/serialization regressions on the read side.
+
+**Context:** ~30 lines of test code, ~$0.005 per run. Sketch:
+1. `beforeAll`: confirm smoke key is set up
+2. Create a `client.customer("smoke-test-customer-${runId}")`-scoped tracked fetch
+3. Make 1-2 real OpenAI requests through the deployed proxy with that customer scope
+4. Wait for the cost event to land in Postgres (sleep ~2s OR poll)
+5. Query `client.listCostEvents({ customerId: "smoke-test-customer-${runId}" })`
+6. Assert the events are returned with the correct `customerId` field
+7. Assert other identifying fields (`provider`, `model`, `requestId`) round-trip
+8. `afterAll`: delete the synthetic events via SQL (mirror F1's symmetric cleanup pattern)
+
+The proxy already supports the `customer` filter on `/api/cost-events` (added during the customer primitive PR). The `listCostEvents` SDK method already takes filter options — verify it does, or extend it.
+
+Bonus: this test also indirectly validates the `customer_id` filter on the dashboard read API (no other smoke test does).
+
+**Effort:** S (~30-45 min)
+**Priority:** P3 (first-impression feature, should ship before any external user tries the SDK)
+**Depends on:** None
+
 ### F8 retry timing precision tightening (smoke-sdk-functional)
 
 **What:** F8-A in `apps/proxy/smoke-sdk-functional.test.ts` asserts retry gaps are `>= 40ms` (50ms base × 0.8 jitter floor). Could measure `retryBaseDelayMs` and `maxRetryTimeMs` more precisely with explicit timing windows instead of the generous floor.
