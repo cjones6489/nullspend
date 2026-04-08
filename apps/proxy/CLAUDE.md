@@ -82,6 +82,29 @@ git-ignored.
 the live DB. Run `pnpm stress:cleanup` to purge anything matching the
 `stress-sdk-%` prefix.
 
+### `smoke-sdk-functional.test.ts`
+
+Functional E2E suite covering the SDK paths the stress test intentionally
+skipped (HITL action lifecycle, read APIs, retry/timeout/apiVersion config,
+HITL error class fields). Single-call tests, sequential execution — NOT a
+stress test. Lives under the smoke config (`vitest.smoke.config.ts`),
+runs via `pnpm test:smoke smoke-sdk-functional.test.ts`. Manual runs only,
+never CI. See `docs/internal/test-plans/sdk-testing-gaps.md` "Functional
+E2E suite" (F1–F11) for the canonical scope.
+
+**Prerequisites:**
+- **Rebuild the SDK** (same lesson as stress test): `pnpm --filter @nullspend/sdk build`.
+- `pnpm dev` running OR `NULLSPEND_DASHBOARD_URL` pointing at a deployed Vercel dashboard.
+- `.env.smoke` populated with `NULLSPEND_API_KEY`, `NULLSPEND_SMOKE_KEY_ID`,
+  `NULLSPEND_SMOKE_USER_ID`, `DATABASE_URL`, `INTERNAL_SECRET`, `NULLSPEND_DASHBOARD_URL`.
+
+**Approval mechanism:** Direct SQL `UPDATE actions` — the dashboard
+`/api/actions/[id]/approve` route is session-cookie auth (admin role) and
+the SDK API key cannot call it. The test mirrors what `lib/actions/resolve-action.ts`
+does at the SQL level. Test actions are tagged `agent_id LIKE 'sdk-functional-test-%'`
+and cleaned up symmetrically in `beforeAll` (orphan rows from prior crashed
+runs) and `afterAll`.
+
 ## Architecture
 
 **Entry & Routing**

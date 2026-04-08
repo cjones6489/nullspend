@@ -85,16 +85,56 @@
 **Priority:** P4
 **Depends on:** None
 
-### SDK Functional E2E test suite
+### ~~SDK Functional E2E test suite~~
 
-**What:** Create `apps/proxy/smoke-sdk-functional.test.ts` covering the SDK paths the stress test intentionally skipped (HITL actions, getCostSummary, listCostEvents pagination, custom fetch injection, retry config, requestTimeoutMs firing, apiVersion override, TimeoutError/RejectedError fields).
+**Completed:** 2026-04-07 on `feat/sdk-functional-tests` — `apps/proxy/smoke-sdk-functional.test.ts` ships F1–F11 (11 tests, 14 entries with sub-tests) plus the dual-auth fix for `app/api/cost-events/summary/route.ts` that was blocking F5. Manual-runs-only via `pnpm proxy:smoke smoke-sdk-functional.test.ts`. Full plan + eng review at `~/.claude/plans/wondrous-hugging-goblet.md`.
 
-**Why:** The stress test focuses on race conditions and load behavior. HITL actions are blocking single-call flows that don't have race surfaces; read APIs (getCostSummary, paginated listCostEvents) are pure reads; retry config behavior is single-call timing. None of these belong in a stress suite, but they're real SDK features that need E2E coverage against the live deployed proxy + dashboard. Today they're only covered by unit tests with mocked fetch, which can't catch contract drift.
+### Add public fields to `TimeoutError` (SDK)
 
-**Context:** ~11 tests, ~400 lines. Full scope mapped in `docs/internal/test-plans/sdk-testing-gaps.md` under "Functional E2E suite". Should be added in a separate PR (`feat/sdk-functional-tests`). Like the stress suite, this is manual-runs-only — never CI — because it hits live infra.
+**What:** `packages/sdk/src/errors.ts:13-20` — `TimeoutError` currently exposes no public fields. Add `public readonly actionId: string` and `public readonly timeoutMs: number` so callers can introspect without parsing the message string.
 
-**Effort:** M (~2-3 hours)
-**Priority:** P2
+**Why:** Filed during the eng review of `feat/sdk-functional-tests`. F2-B and F11 are forced to assert only `instanceof` + `err.message.includes(...)` because there are no fields to check. Other error classes (`RejectedError`, `BudgetExceededError`, etc.) all expose their relevant fields — `TimeoutError` is the outlier.
+
+**Context:** Backwards compatible (additive). Update unit tests in `packages/sdk/src/client.test.ts` to assert the new fields. Update F2-B and F11 in `apps/proxy/smoke-sdk-functional.test.ts` once the SDK ships the fields. Mirror the `RejectedError` pattern (constructor takes the args, sets the public readonly fields).
+
+**Effort:** S (~15 min)
+**Priority:** P4
+**Depends on:** None
+
+### Align `ListCostEventsOptions.cursor` SDK type with server schema
+
+**What:** `packages/sdk/src/types.ts:376-379` — `ListCostEventsOptions.cursor` is typed as `string`, but the server-side schema (`lib/validations/cost-events.ts:46-52`) expects `cursor` to be `JSON.stringify({createdAt, id})`. The response returns `cursor` as a `{createdAt, id}` object. Callers who try to round-trip the cursor get a type error or runtime mismatch.
+
+**Why:** Filed during the eng review of `feat/sdk-functional-tests`. F6 has an inline workaround that does `JSON.stringify(page1.cursor) as unknown as string` — ugly and easy to miss. Two ways to fix: (a) widen the SDK type to `string | { createdAt: string; id: string }` and stringify internally; (b) change the server to accept either base64 or raw JSON. Option (a) is the smaller diff.
+
+**Context:** Touches `packages/sdk/src/types.ts`, `packages/sdk/src/client.ts` (`listCostEvents()` URLSearchParams construction), and the F6 inline workaround in `apps/proxy/smoke-sdk-functional.test.ts`.
+
+**Effort:** S (~30 min)
+**Priority:** P4
+**Depends on:** None
+
+### F8 retry timing precision tightening (smoke-sdk-functional)
+
+**What:** F8-A in `apps/proxy/smoke-sdk-functional.test.ts` asserts retry gaps are `>= 40ms` (50ms base × 0.8 jitter floor). Could measure `retryBaseDelayMs` and `maxRetryTimeMs` more precisely with explicit timing windows instead of the generous floor.
+
+**Why:** Filed during the eng review of `feat/sdk-functional-tests`. The current bound catches "retries didn't wait at all" regressions but wouldn't catch "retries waited too long" regressions. Not blocking — current coverage is good enough for the canonical doc scope.
+
+**Context:** Only worth doing if regressions emerge. Optional polish.
+
+**Effort:** S (~30 min)
+**Priority:** P5
+**Depends on:** None
+
+### F5/F6 pre-seed cost events for stability (smoke-sdk-functional)
+
+**What:** F5 (`getCostSummary`) and F6 (`listCostEvents`) currently assert response shape only and soft-skip pagination if the smoke org has zero events. If smoke runs become flaky due to empty windows, add a `beforeAll` `client.reportCost()` of a small synthetic event (and add it to cleanup).
+
+**Why:** Filed during the eng review of `feat/sdk-functional-tests`. Current production has events for the smoke key from prior smoke runs, so it's a non-issue today. Adds noise to production data so was rejected for the initial PR.
+
+**Context:** Only if the soft-skip starts firing in real runs.
+
+**Effort:** S (~15 min)
+**Priority:** P5
 **Depends on:** None
 
 ### Pre-existing flaky test: permission-enforcement timeout
