@@ -357,12 +357,22 @@ describe("waitForDecision", () => {
     );
     const client = createClient(fetchFn);
 
-    await expect(
-      client.waitForDecision("act-1", {
+    let caught: unknown;
+    try {
+      await client.waitForDecision("act-1", {
         pollIntervalMs: 10,
         timeoutMs: 50,
-      }),
-    ).rejects.toThrow(TimeoutError);
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(TimeoutError);
+    const err = caught as TimeoutError;
+    expect(err.actionId).toBe("act-1");
+    expect(err.timeoutMs).toBe(50);
+    expect(err.message).toContain("act-1");
+    expect(err.message).toContain("50");
   });
 
   it("returns on terminal statuses like rejected", async () => {
@@ -1800,6 +1810,76 @@ describe("reportCostBatch", () => {
 
     expect(result.inserted).toBe(1);
     expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// listCostEvents — cursor type handling
+// ---------------------------------------------------------------------------
+
+describe("listCostEvents cursor", () => {
+  const makeListResponse = jsonResponseFactory({
+    data: [],
+    cursor: { createdAt: "2026-04-08T00:00:00.000Z", id: "evt_abc123" },
+  });
+
+  it("accepts a string cursor and forwards it as-is", async () => {
+    const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(makeListResponse()));
+    const client = createClient(fetchFn);
+
+    await client.listCostEvents({ limit: 5, cursor: "raw-string-cursor" });
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const url = String(fetchFn.mock.calls[0][0]);
+    expect(url).toContain("cursor=raw-string-cursor");
+    expect(url).toContain("limit=5");
+  });
+
+  it("accepts a {createdAt, id} object cursor and stringifies it", async () => {
+    const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(makeListResponse()));
+    const client = createClient(fetchFn);
+
+    await client.listCostEvents({
+      limit: 5,
+      cursor: { createdAt: "2026-04-08T00:00:00.000Z", id: "evt_abc123" },
+    });
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const url = String(fetchFn.mock.calls[0][0]);
+    const parsed = new URL(url);
+    const cursor = parsed.searchParams.get("cursor");
+    expect(cursor).not.toBeNull();
+    expect(JSON.parse(cursor!)).toEqual({
+      createdAt: "2026-04-08T00:00:00.000Z",
+      id: "evt_abc123",
+    });
+  });
+
+  it("supports round-tripping the response cursor directly", async () => {
+    const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(makeListResponse()));
+    const client = createClient(fetchFn);
+
+    const page1 = await client.listCostEvents({ limit: 5 });
+    expect(page1.cursor).not.toBeNull();
+
+    // The whole point: pass the response cursor straight back without stringifying.
+    await client.listCostEvents({ limit: 5, cursor: page1.cursor! });
+
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    const url = String(fetchFn.mock.calls[1][0]);
+    const parsed = new URL(url);
+    const cursor = parsed.searchParams.get("cursor");
+    expect(JSON.parse(cursor!)).toEqual(page1.cursor);
+  });
+
+  it("omits cursor param when not provided", async () => {
+    const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(makeListResponse()));
+    const client = createClient(fetchFn);
+
+    await client.listCostEvents({ limit: 5 });
+
+    const url = String(fetchFn.mock.calls[0][0]);
+    expect(url).not.toContain("cursor=");
   });
 });
 

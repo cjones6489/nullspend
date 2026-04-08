@@ -11,11 +11,16 @@ export class NullSpendError extends Error {
 }
 
 export class TimeoutError extends NullSpendError {
+  public readonly actionId: string;
+  public readonly timeoutMs: number;
+
   constructor(actionId: string, timeoutMs: number) {
     super(
       `Timed out waiting for decision on action ${actionId} after ${timeoutMs}ms`,
     );
     this.name = "TimeoutError";
+    this.actionId = actionId;
+    this.timeoutMs = timeoutMs;
   }
 }
 
