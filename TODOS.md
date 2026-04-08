@@ -73,41 +73,29 @@
 > (18 numbered follow-ups) and `docs/internal/test-plans/sdk-testing-gaps.md` (coverage map).
 > This section captures the must-pick-up items in the canonical TODO format.
 
-### Add `X-NullSpend-Denied` response header to proxy 429 denials
+### ~~Add `X-NullSpend-Denied` response header to proxy 429 denials~~
 
-**What:** `apps/proxy/src/routes/shared.ts` — add `X-NullSpend-Denied: 1` to the response headers of all five denial code paths (`velocity_exceeded`, `session_limit_exceeded`, `tag_budget_exceeded`, `customer_budget_exceeded`, `budget_exceeded`). Then update `packages/sdk/src/tracked-fetch.ts` `parseDenialPayload` to gate interception on `response.headers.has("x-nullspend-denied")` instead of probing `error.code`.
-
-**Why:** Today the SDK distinguishes NullSpend 429s from upstream provider 429s by parsing the response body and checking `error.code` against a known list. This works because OpenAI uses `error.type` (not `error.code`) and Anthropic uses `error.type` only — neither emits `budget_exceeded` etc. But the contract is implicit and brittle: if a provider ever shipped an `error.code: "rate_limit_exceeded"` body that happened to collide with one of our codes, we'd throw spurious typed errors. A header-based gate eliminates the collision risk permanently and makes the contract explicit.
-
-**Context:** Filed during the eng review of the §15c-1 fix as a "follow-up worth filing, not blocking." Affects `apps/proxy/src/routes/shared.ts` (5 Response constructors) and `packages/sdk/src/tracked-fetch.ts` (one extra check at the top of `parseDenialPayload`). Test changes: add a "missing X-NullSpend-Denied header → fall through" case to the unit suite. Backward compat: not needed (the SDK can check the header AND fall back to code-probing for old proxies, or just hard-cut after a brief deploy window).
-
-**Effort:** S (~30-45 min)
-**Priority:** P4
-**Depends on:** None
+**Completed:** 2026-04-08 on `feat/sdk-followups-from-f1-f11` (commit `8ca3c9a`). Proxy now stamps `X-NullSpend-Denied: 1` on all 9 denial Response constructors (5 in `apps/proxy/src/routes/shared.ts`, 4 in `apps/proxy/src/routes/mcp.ts`). SDK `parseDenialPayload` gates on the header — upstream provider 429s never carry it so they fall through with zero body parsing. Bonus: `dispatchDenialCode` unknown-code path now surfaces to `onCostError` as a real drift signal (was previously silent because of the collision-avoidance constraint that no longer applies). New unit test: valid NullSpend body but missing header → fall through. Hard-cut, no backward compat. **Order-of-ops for shipping: deploy proxy first, then publish SDK 0.2.1.**
 
 ### ~~SDK Functional E2E test suite~~
 
 **Completed:** 2026-04-07 on `feat/sdk-functional-tests` — `apps/proxy/smoke-sdk-functional.test.ts` ships F1–F11 (11 tests, 14 entries with sub-tests) plus the dual-auth fix for `app/api/cost-events/summary/route.ts` that was blocking F5. Manual-runs-only via `pnpm proxy:smoke smoke-sdk-functional.test.ts`. Full plan + eng review at `~/.claude/plans/wondrous-hugging-goblet.md`.
 
-### Add public fields to `TimeoutError` (SDK)
+### ~~Add public fields to `TimeoutError` (SDK)~~
 
-**What:** `packages/sdk/src/errors.ts:13-20` — `TimeoutError` currently exposes no public fields. Add `public readonly actionId: string` and `public readonly timeoutMs: number` so callers can introspect without parsing the message string.
+**Completed:** 2026-04-08 on `feat/sdk-followups-from-f1-f11` (commit `b5043e4`). `TimeoutError` now exposes `public readonly actionId: string` and `public readonly timeoutMs: number`, mirroring the `RejectedError` pattern. F2-B and F11 in `smoke-sdk-functional.test.ts` updated to assert the new fields directly. Existing unit test `packages/sdk/src/client.test.ts` "throws TimeoutError when deadline passes" rewritten to capture and field-assert. 14/14 live smoke tests pass.
 
-**Why:** Filed during the eng review of `feat/sdk-functional-tests`. F2-B and F11 are forced to assert only `instanceof` + `err.message.includes(...)` because there are no fields to check. Other error classes (`RejectedError`, `BudgetExceededError`, etc.) all expose their relevant fields — `TimeoutError` is the outlier.
+### ~~Align `ListCostEventsOptions.cursor` SDK type with server schema~~
 
-**Context:** Backwards compatible (additive). Update unit tests in `packages/sdk/src/client.test.ts` to assert the new fields. Update F2-B and F11 in `apps/proxy/smoke-sdk-functional.test.ts` once the SDK ships the fields. Mirror the `RejectedError` pattern (constructor takes the args, sets the public readonly fields).
+**Completed:** 2026-04-08 on `feat/sdk-followups-from-f1-f11` (commit `5c6c55d`). SDK type widened to `string | { createdAt: string; id: string }`. `client.ts listCostEvents()` stringifies internally if it's an object. F6 inline `JSON.stringify(page1.cursor) as unknown as string` workaround removed — pass the response cursor straight back. 4 new unit tests cover string cursor pass-through, object cursor stringification, response cursor round-trip, and absent cursor. **Note:** Python SDK has the same bug — see follow-up below.
 
-**Effort:** S (~15 min)
-**Priority:** P4
-**Depends on:** None
+### Align `ListCostEventsOptions.cursor` Python SDK type with server schema
 
-### Align `ListCostEventsOptions.cursor` SDK type with server schema
+**What:** `packages/sdk-python/src/nullspend/types.py:143-145` — Python SDK's `ListCostEventsOptions.cursor` is typed as `str | None` but the response returns it as `dict[str, str] | None`. The Python docs at `content/docs/sdks/python.md:256` show users having to do `json.dumps(result.cursor)` themselves — same bug as the TS SDK had.
 
-**What:** `packages/sdk/src/types.ts:376-379` — `ListCostEventsOptions.cursor` is typed as `string`, but the server-side schema (`lib/validations/cost-events.ts:46-52`) expects `cursor` to be `JSON.stringify({createdAt, id})`. The response returns `cursor` as a `{createdAt, id}` object. Callers who try to round-trip the cursor get a type error or runtime mismatch.
+**Why:** Symmetry with the TS SDK fix. Worth doing as a separate PR because it touches Python test suite + types.py + client.py + docs.
 
-**Why:** Filed during the eng review of `feat/sdk-functional-tests`. F6 has an inline workaround that does `JSON.stringify(page1.cursor) as unknown as string` — ugly and easy to miss. Two ways to fix: (a) widen the SDK type to `string | { createdAt: string; id: string }` and stringify internally; (b) change the server to accept either base64 or raw JSON. Option (a) is the smaller diff.
-
-**Context:** Touches `packages/sdk/src/types.ts`, `packages/sdk/src/client.ts` (`listCostEvents()` URLSearchParams construction), and the F6 inline workaround in `apps/proxy/smoke-sdk-functional.test.ts`.
+**Context:** Mirror the TS approach: widen the dataclass field type to `str | dict[str, str] | None` and json.dumps internally in `list_cost_events()`. Update `test_client.py` and `content/docs/sdks/python.md`.
 
 **Effort:** S (~30 min)
 **Priority:** P4
