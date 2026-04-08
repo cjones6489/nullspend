@@ -35,7 +35,6 @@ import { NullSpend } from "@nullspend/sdk";
 import {
   BudgetExceededError,
   MandateViolationError,
-  SessionLimitExceededError,
   NullSpendError,
 } from "@nullspend/sdk";
 import type {
@@ -1106,86 +1105,25 @@ describe(`SDK stress test — production validation [${INTENSITY}]`, () => {
       }, 30_000);
     });
 
-    // ── §6.8 client-side session limit ──
-    // The SDK's session counter only fires AFTER policy mandate + budget
-    // checks pass. The org-scoped policy endpoint always returns SOME
-    // restrictive budget (could be from another test, or the smoke-manual-test
-    // ceiling), so we cannot guarantee that the budget check passes.
+    // ── §6.8 REMOVED ──
+    // The client-side session limit fail-open test was deleted on 2026-04-08
+    // because it was a known no-op AND wasted ~$0.005 of OpenAI calls per
+    // stress run. The SDK's session counter only advances on successful
+    // tracked responses, but the test forced policy fetch to throw — which
+    // means the counter never advanced and the fail-open check never tripped.
+    // It made up to 15 real requests trying to exercise a path that was
+    // structurally unreachable.
     //
-    // Per the SDK code, the session limit IS enforced via the fall-open path
-    // when the policy fetch THROWS (catch block at tracked-fetch.ts:154-172).
-    // We exercise that path here by pointing the SDK at an unreachable
-    // baseUrl, which forces policyCache.getPolicy() to throw and the SDK
-    // falls back to manualSessionLimit-only enforcement.
-    describe("6.8 enforcement: client-side session limit (fail-open path)", () => {
-      it("manualSessionLimit denies via fail-open fallback when policy fetch errors", async (ctx) => {
-        if (!phase0Passed) ctx.skip();
-        let deniedCount = 0;
-        // baseUrl that yields a connection refused error → policy fetch throws.
-        const failOpenNs = new NullSpend({
-          baseUrl: "http://127.0.0.1:1",
-          apiKey: STRESS_KEY_RAW,
-          costReporting: { batchSize: 1, flushIntervalMs: 200 },
-          requestTimeoutMs: 1500,
-          maxRetries: 0,
-        });
-        try {
-          const tracked = failOpenNs.createTrackedFetch("openai", {
-            enforcement: true,
-            sessionId: `${PREFIX}-p1-cs-session`,
-            sessionLimitMicrodollars: 20,
-            customer: `${PREFIX}-p1-generous-01`,
-            onDenied: (r) => { if (r.type === "session_limit") deniedCount++; },
-          });
-
-          // The fall-open path triggers session check BEFORE the network call
-          // when manualSessionLimit is set, but only AFTER the first call has
-          // populated sessionSpend. Since the SDK never makes a real call here
-          // (we want the test to be cheap), simulate spend by calling the
-          // tracked fetch with a no-op pass-through URL: since policy fetch
-          // throws first, the session estimate check runs against the closure
-          // counter starting at 0. Each call adds estimate (~3-5 µ¢). Trip
-          // after 4-7 calls.
-          let sessionErr: SessionLimitExceededError | undefined;
-          for (let i = 0; i < 15 && !sessionErr; i++) {
-            try {
-              // Use api.openai.com so isProxied returns false → tracked path.
-              await tracked("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
-                body: smallRequest({ messages: [{ role: "user", content: `p1.8.${i}` }] }),
-              });
-            } catch (err) {
-              if (err instanceof SessionLimitExceededError) sessionErr = err;
-              // Otherwise it's an OpenAI error we ignore — the session counter
-              // increments on cost-event tracking, which only happens on success.
-            }
-          }
-          // The fall-open path's session check fires when the cumulative
-          // sessionSpend + estimate > limit. Since the SDK only increments
-          // sessionSpend on SUCCESSFUL tracked responses, and the fall-open
-          // path runs ONCE per call (estimate-only check), we need at least
-          // one successful response to advance the counter. Without policy
-          // fetch succeeding, the counter never advances past 0, so the
-          // fall-open check never trips.
-          //
-          // This is a known limitation: client-side session-limit enforcement
-          // requires the policy fetch to succeed AND the budget check to pass.
-          // We log the gap and assert what we can (the test ran without
-          // crashing).
-          if (!sessionErr) {
-            logFinding(
-              "phase1.6.8",
-              "Client-side session limit enforcement requires policy fetch to succeed AND budget check to pass. Cannot be tested in isolation when org has restrictive budgets — most-restrictive-org-wide scoping (§15b-2) makes the test environment-dependent.",
-              "warn",
-            );
-          }
-          expect(deniedCount).toBeGreaterThanOrEqual(0); // soft assertion
-        } finally {
-          try { await failOpenNs.shutdown(); } catch { /* ignore */ }
-        }
-      }, 60_000);
-    });
+    // Coverage: client-side session limit fail-open is tested ONLY by unit
+    // tests in packages/sdk/src/tracked-fetch.test.ts (mocked clock, mocked
+    // fetch, deterministic). There is no live-stack coverage today.
+    //
+    // To restore live-stack coverage someone would need to either (a) rewrite
+    // against a mock upstream so no real spend is incurred and the counter
+    // can be advanced deterministically, or (b) coordinate with the policy
+    // endpoint to return a permissive policy specifically for the stress
+    // test org. Tracked under TODOS.md "§6.8 fail-open session limit test
+    // burns OpenAI calls per run" → option (a) is the recommended fix.
 
     // ── §6.9 proxy 429 interception (verifies fix from §15c-1) ──
     // Previously a KNOWN GAP: the SDK's `isProxied()` bailout returned BEFORE
