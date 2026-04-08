@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSessionContext } from "@/lib/auth/session";
+import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
 import {
   getCostBreakdownTotals,
   getDailySpend,
@@ -14,13 +14,8 @@ import {
 } from "@/lib/cost-events/aggregate-cost-events";
 import { GET } from "./route";
 
-vi.mock("@/lib/auth/session", () => ({
-  resolveSessionContext: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
-}));
-
-vi.mock("@/lib/auth/org-authorization", () => ({
-  assertOrgRole: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
-  assertOrgMember: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" }),
+vi.mock("@/lib/auth/dual-auth", () => ({
+  assertApiKeyOrSession: vi.fn().mockResolvedValue({ userId: "user-1", orgId: "org-test-1" }),
 }));
 
 vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
@@ -35,7 +30,7 @@ vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
   getTotals: vi.fn(),
 }));
 
-const mockedResolveSessionContext = vi.mocked(resolveSessionContext);
+const mockedAssertApiKeyOrSession = vi.mocked(assertApiKeyOrSession);
 const mockedGetCostBreakdownTotals = vi.mocked(getCostBreakdownTotals);
 const mockedGetDailySpend = vi.mocked(getDailySpend);
 const mockedGetModelBreakdown = vi.mocked(getModelBreakdown);
@@ -107,7 +102,7 @@ const mockCostBreakdown = {
 };
 
 function setupMocks() {
-  mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: "org-mock-1", role: "owner" });
+  mockedAssertApiKeyOrSession.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID });
   mockedGetDailySpend.mockResolvedValue(mockDailyData);
   mockedGetModelBreakdown.mockResolvedValue(mockModelData);
   mockedGetProviderBreakdown.mockResolvedValue(mockProviderData);
@@ -199,12 +194,28 @@ describe("GET /api/cost-events/summary", () => {
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
-    mockedResolveSessionContext.mockRejectedValue(new AuthenticationRequiredError());
+    mockedAssertApiKeyOrSession.mockRejectedValue(new AuthenticationRequiredError());
 
     const req = new Request("http://localhost/api/cost-events/summary");
     const res = await GET(req);
 
     expect(res.status).toBe(401);
+  });
+
+  it("accepts API key auth (SDK getCostSummary path)", async () => {
+    setupMocks();
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: "agent-key-user", orgId: "org-api-1" });
+
+    const req = new Request("http://localhost/api/cost-events/summary?period=7d", {
+      headers: { "x-nullspend-key": "ns_live_sk_xxx" },
+    });
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(mockedAssertApiKeyOrSession).toHaveBeenCalledWith(req, "viewer");
+    // Aggregations should run against the API-key-derived org, not the session org
+    expect(mockedGetDailySpend).toHaveBeenCalledWith("org-api-1", 7, undefined);
+    expect(mockedGetTotals).toHaveBeenCalledWith("org-api-1", 7, undefined);
   });
 
   it("calls all nine aggregation functions in parallel", async () => {
@@ -225,7 +236,7 @@ describe("GET /api/cost-events/summary", () => {
   });
 
   it("returns 200 with empty arrays when no data exists", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: "org-mock-1", role: "owner" });
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID });
     mockedGetDailySpend.mockResolvedValue([]);
     mockedGetModelBreakdown.mockResolvedValue([]);
     mockedGetProviderBreakdown.mockResolvedValue([]);
@@ -254,7 +265,7 @@ describe("GET /api/cost-events/summary", () => {
   });
 
   it("returns 500 when an aggregation function throws", async () => {
-    mockedResolveSessionContext.mockResolvedValue({ userId: MOCK_USER_ID, orgId: "org-mock-1", role: "owner" });
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: MOCK_USER_ID, orgId: MOCK_ORG_ID });
     mockedGetDailySpend.mockRejectedValue(new Error("DB connection lost"));
     mockedGetModelBreakdown.mockResolvedValue([]);
     mockedGetProviderBreakdown.mockResolvedValue([]);
@@ -278,7 +289,7 @@ describe("GET /api/cost-events/summary", () => {
 
   it("passes the authenticated user ID to all aggregation functions", async () => {
     const customUserId = "custom-user-xyz";
-    mockedResolveSessionContext.mockResolvedValue({ userId: customUserId, orgId: "org-custom-1", role: "owner" });
+    mockedAssertApiKeyOrSession.mockResolvedValue({ userId: customUserId, orgId: "org-custom-1" });
     mockedGetDailySpend.mockResolvedValue([]);
     mockedGetModelBreakdown.mockResolvedValue([]);
     mockedGetProviderBreakdown.mockResolvedValue([]);

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { CURRENT_VERSION } from "@/lib/api-version";
-import { assertOrgRole } from "@/lib/auth/org-authorization";
-import { resolveSessionContext } from "@/lib/auth/session";
+import { assertApiKeyOrSession } from "@/lib/auth/dual-auth";
 import {
   getCostBreakdownTotals,
   getDailySpend,
@@ -22,8 +21,10 @@ import {
 
 export async function GET(request: Request) {
   try {
-    const { userId, orgId } = await resolveSessionContext();
-    await assertOrgRole(userId, orgId, "viewer");
+    // Dual auth: API key (for SDK getCostSummary) or session (for dashboard UI).
+    const auth = await assertApiKeyOrSession(request, "viewer");
+    if (auth instanceof Response) return auth;
+    const { orgId } = auth;
     const url = new URL(request.url);
     const { period, excludeEstimated: excludeEstimatedRaw } = costSummaryQuerySchema.parse({
       period: url.searchParams.get("period") ?? undefined,
