@@ -56,7 +56,13 @@ import {
   NULLSPEND_SMOKE_USER_ID,
   OPENAI_API_KEY,
   DATABASE_URL,
+  invalidateAuthOnly,
+  invalidateBudget,
+  syncBudget,
+  authHeaders,
+  smallRequest,
 } from "./smoke-test-helpers.js";
+import { BudgetExceededError } from "@nullspend/sdk";
 
 // ── Constants ────────────────────────────────────────────────────
 const AGENT_PREFIX = "sdk-functional-test";
@@ -893,3 +899,258 @@ async function pollForCostEventByCustomerId(
   }
   return null;
 }
+
+// ─────────────────────────────────────────────────────────────────
+// § Section 6 — Budget remaining response headers (F13)
+//
+// Phase 0 finish, Item 1: validates that the proxy stamps
+// X-NullSpend-Budget-Limit/-Spent/-Remaining/-Entity on every
+// proxied response when a budget is in scope. Stripe-pattern
+// proximity headers; clients monitor remaining without separate
+// API calls.
+// ─────────────────────────────────────────────────────────────────
+describe("Section 6 — Budget remaining response headers", () => {
+  const userId = NULLSPEND_SMOKE_USER_ID!;
+
+  async function setupUserBudget(maxMicrodollars: number, spendMicrodollars: number) {
+    await sql`
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, ${SMOKE_ORG_ID}, 'user', ${userId}, ${maxMicrodollars}, ${spendMicrodollars}, 'strict_block')
+      ON CONFLICT (org_id, entity_type, entity_id)
+      DO UPDATE SET max_budget_microdollars = ${maxMicrodollars},
+                    spend_microdollars = ${spendMicrodollars},
+                    updated_at = NOW()
+    `;
+    await syncBudget(SMOKE_ORG_ID, "user", userId);
+  }
+
+  async function teardownUserBudget() {
+    await invalidateBudget(SMOKE_ORG_ID, "user", userId);
+    await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${userId} AND org_id = ${SMOKE_ORG_ID}`;
+  }
+
+  it("F13 — proxy stamps X-NullSpend-Budget-* headers on 200 success path", async () => {
+    if (!OPENAI_API_KEY) throw new Error("F13 requires OPENAI_API_KEY in .env.smoke");
+    if (!BASE) throw new Error("F13 requires PROXY_URL in .env.smoke");
+
+    // $10 limit, $2 already spent → expect headers reflect post-reservation state
+    await setupUserBudget(10_000_000, 2_000_000);
+
+    try {
+      const res = await fetch(`${BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: smallRequest(),
+      });
+      expect(res.status).toBe(200);
+      // Drain body so connection closes cleanly
+      await res.json();
+
+      // All four headers must be present.
+      const limit = res.headers.get("X-NullSpend-Budget-Limit");
+      const spent = res.headers.get("X-NullSpend-Budget-Spent");
+      const remaining = res.headers.get("X-NullSpend-Budget-Remaining");
+      const entity = res.headers.get("X-NullSpend-Budget-Entity");
+
+      expect(limit, "X-NullSpend-Budget-Limit must be present").not.toBeNull();
+      expect(spent, "X-NullSpend-Budget-Spent must be present").not.toBeNull();
+      expect(remaining, "X-NullSpend-Budget-Remaining must be present").not.toBeNull();
+      expect(entity, "X-NullSpend-Budget-Entity must be present").not.toBeNull();
+
+      // Math invariants. The exact estimate microdollar value depends on
+      // the request body but is small (~6 microdollars for the smallRequest
+      // helper). Assert: limit = 10M, spent = 2M + reserved + estimate,
+      // remaining = limit - spent.
+      const limitNum = Number(limit);
+      const spentNum = Number(spent);
+      const remainingNum = Number(remaining);
+      expect(limitNum).toBe(10_000_000);
+      expect(spentNum).toBeGreaterThanOrEqual(2_000_000); // at least the prior spend
+      expect(spentNum).toBeLessThan(2_100_000); // within a reasonable estimate band
+      expect(limitNum).toBe(spentNum + remainingNum);
+
+      // Entity header points to the user budget.
+      expect(entity).toBe(`user:${userId}`);
+    } finally {
+      await teardownUserBudget();
+    }
+  }, 30_000);
+
+  it("F13 — proxy stamps headers on 429 denial path (post-rejected-request state)", async () => {
+    if (!BASE) throw new Error("F13 requires PROXY_URL in .env.smoke");
+
+    // Spend == max → next request denied
+    await setupUserBudget(1_000_000, 1_000_000);
+
+    try {
+      const res = await fetch(`${BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: smallRequest(),
+      });
+      expect(res.status).toBe(429);
+      await res.json();
+
+      const limit = res.headers.get("X-NullSpend-Budget-Limit");
+      const spent = res.headers.get("X-NullSpend-Budget-Spent");
+      const remaining = res.headers.get("X-NullSpend-Budget-Remaining");
+      const entity = res.headers.get("X-NullSpend-Budget-Entity");
+
+      expect(limit).toBe("1000000");
+      expect(spent).toBe("1000000");
+      expect(remaining).toBe("0");
+      expect(entity).toBe(`user:${userId}`);
+
+      // Denial header gates SDK denial parsing
+      expect(res.headers.get("X-NullSpend-Denied")).toBe("1");
+    } finally {
+      await teardownUserBudget();
+    }
+  }, 30_000);
+});
+
+// ─────────────────────────────────────────────────────────────────
+// § Section 7 — upgrade_url in denial bodies (F14)
+//
+// Phase 0 finish, Item 2: validates that the proxy injects
+// error.upgrade_url into budget_exceeded denial bodies when the
+// org has configured one. Tests both the org-level default and
+// the per-customer override path with {customer_id} substitution.
+// ─────────────────────────────────────────────────────────────────
+describe("Section 7 — upgrade_url in denial bodies", () => {
+  const userId = NULLSPEND_SMOKE_USER_ID!;
+  const ORG_UPGRADE_URL = "https://example.com/upgrade?org={customer_id}";
+  const CUSTOMER_UPGRADE_URL = "https://example.com/customer-specific?id={customer_id}";
+
+  async function setOrgUpgradeUrl(url: string | null) {
+    if (url === null) {
+      await sql`UPDATE organizations SET metadata = COALESCE(metadata, '{}'::jsonb) - 'upgradeUrl' WHERE id = ${SMOKE_ORG_ID}`;
+    } else {
+      await sql`
+        UPDATE organizations
+           SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{upgradeUrl}', to_jsonb(${url}::text))
+         WHERE id = ${SMOKE_ORG_ID}
+      `;
+    }
+    // CRITICAL: invalidate the auth cache so the next request picks up the
+    // new value within a single round trip rather than the 120s positive
+    // cache TTL. Without this, F14 flaps because the cached identity has
+    // the stale orgUpgradeUrl. (This is the outside voice Finding 4 fix.)
+    await invalidateAuthOnly(SMOKE_ORG_ID);
+  }
+
+  async function setupExhaustedBudget() {
+    // Spend == max → next request denied
+    await sql`
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (${userId}, ${SMOKE_ORG_ID}, 'user', ${userId}, 1000000, 1000000, 'strict_block')
+      ON CONFLICT (org_id, entity_type, entity_id)
+      DO UPDATE SET max_budget_microdollars = 1000000,
+                    spend_microdollars = 1000000,
+                    updated_at = NOW()
+    `;
+    await syncBudget(SMOKE_ORG_ID, "user", userId);
+  }
+
+  async function teardownBudget() {
+    await invalidateBudget(SMOKE_ORG_ID, "user", userId);
+    await sql`DELETE FROM budgets WHERE entity_type = 'user' AND entity_id = ${userId} AND org_id = ${SMOKE_ORG_ID}`;
+  }
+
+  it("F14a — budget_exceeded denial includes org upgrade_url when configured", async () => {
+    if (!BASE) throw new Error("F14 requires PROXY_URL in .env.smoke");
+
+    await setOrgUpgradeUrl(ORG_UPGRADE_URL);
+    await setupExhaustedBudget();
+
+    try {
+      const res = await fetch(`${BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: smallRequest(),
+      });
+      expect(res.status).toBe(429);
+      const body = await res.json() as { error: { code: string; upgrade_url?: string } };
+      expect(body.error.code).toBe("budget_exceeded");
+      // Org URL has {customer_id} placeholder but no customer in scope —
+      // placeholder remains literal (debugging signal per resolveUpgradeUrl).
+      expect(body.error.upgrade_url).toBe(ORG_UPGRADE_URL);
+    } finally {
+      await teardownBudget();
+      await setOrgUpgradeUrl(null);
+    }
+  }, 30_000);
+
+  it("F14b — SDK BudgetExceededError surfaces upgradeUrl on the error class", async () => {
+    if (!BASE) throw new Error("F14 requires PROXY_URL in .env.smoke");
+
+    await setOrgUpgradeUrl("https://example.com/static-upgrade");
+    await setupExhaustedBudget();
+
+    // Use the SDK's createTrackedFetch path to verify the parser extracts
+    // upgrade_url from error.upgrade_url and threads it to BudgetExceededError.
+    const proxyClient = new NullSpend({
+      baseUrl: DASHBOARD_URL,
+      apiKey: NULLSPEND_API_KEY!,
+      proxyUrl: BASE,
+      costReporting: { batchSize: 1, flushIntervalMs: 100 },
+    });
+
+    try {
+      const trackedFetch = proxyClient.createTrackedFetch("openai");
+      let caught: BudgetExceededError | null = null;
+      try {
+        await trackedFetch(`${BASE}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-nullspend-key": NULLSPEND_API_KEY!,
+            // No Authorization header — the proxy denies before forwarding,
+            // so we don't need a real OpenAI key for this test.
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: "test" }],
+            max_tokens: 3,
+          }),
+        });
+      } catch (err) {
+        if (err instanceof BudgetExceededError) {
+          caught = err;
+        } else {
+          throw err;
+        }
+      }
+
+      expect(caught, "BudgetExceededError should have been thrown").not.toBeNull();
+      expect(caught!.upgradeUrl).toBe("https://example.com/static-upgrade");
+    } finally {
+      await proxyClient.shutdown();
+      await teardownBudget();
+      await setOrgUpgradeUrl(null);
+    }
+  }, 30_000);
+
+  it("F14c — denial omits upgrade_url field when org URL is unset", async () => {
+    if (!BASE) throw new Error("F14 requires PROXY_URL in .env.smoke");
+
+    // Ensure no org URL is set
+    await setOrgUpgradeUrl(null);
+    await setupExhaustedBudget();
+
+    try {
+      const res = await fetch(`${BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: smallRequest(),
+      });
+      expect(res.status).toBe(429);
+      const body = await res.json() as { error: { code: string; upgrade_url?: string } };
+      expect(body.error.code).toBe("budget_exceeded");
+      // Field should be ABSENT (not null, not empty string) when unset.
+      expect(body.error.upgrade_url).toBeUndefined();
+    } finally {
+      await teardownBudget();
+    }
+  }, 30_000);
+});

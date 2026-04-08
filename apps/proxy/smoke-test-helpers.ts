@@ -180,3 +180,29 @@ export async function countCostEventsSince(
   `;
   return rows[0].count as number;
 }
+
+/**
+ * Call the proxy's auth_only invalidation. Used by metadata-only edits
+ * (like organizations.metadata.upgradeUrl) where there's no budget entity
+ * to sync but the auth cache must be cleared so the next request picks
+ * up the new value within a single round trip.
+ *
+ * Requires INTERNAL_SECRET in .env.smoke.
+ */
+export async function invalidateAuthOnly(ownerId: string): Promise<void> {
+  if (!INTERNAL_SECRET) {
+    throw new Error("INTERNAL_SECRET required in .env.smoke for auth invalidation");
+  }
+  const res = await fetch(`${BASE}/internal/budget/invalidate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${INTERNAL_SECRET}`,
+    },
+    body: JSON.stringify({ action: "auth_only", ownerId }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Auth invalidation failed (${res.status}): ${body}`);
+  }
+}

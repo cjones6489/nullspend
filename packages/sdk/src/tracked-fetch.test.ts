@@ -1914,6 +1914,79 @@ describe("buildTrackedFetch", () => {
           expect(budgetErr.entityId).toBe("key-1");
           expect(budgetErr.limitMicrodollars).toBe(5_000_000);
           expect(budgetErr.spendMicrodollars).toBe(4_900_000);
+          // No upgrade_url in this denial body → undefined on the error
+          expect(budgetErr.upgradeUrl).toBeUndefined();
+        }
+      });
+
+      it("proxy 429 with budget_exceeded + upgrade_url surfaces upgradeUrl on the error", async () => {
+        // Phase 0 finish, Item 2: parser reads error.upgrade_url at top level
+        // (peer of code/message/details, NOT inside details).
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "budget_exceeded",
+            message: "Budget exceeded",
+            upgrade_url: "https://acme.com/upgrade",
+            details: {
+              entity_type: "api_key",
+              entity_id: "key-1",
+              budget_limit_microdollars: 5_000_000,
+              budget_spend_microdollars: 4_900_000,
+            },
+          },
+        }, 429, DENIED_HEADERS));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          expect(budgetErr.upgradeUrl).toBe("https://acme.com/upgrade");
+        }
+      });
+
+      it("proxy 429 with customer_budget_exceeded + upgrade_url surfaces upgradeUrl", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, customer: "acme-corp" },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "customer_budget_exceeded",
+            message: "Request blocked: estimated cost exceeds customer budget limit.",
+            upgrade_url: "https://acme.com/upgrade?customer=acme-corp",
+            details: {
+              customer_id: "acme-corp",
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 999_500,
+            },
+          },
+        }, 429, DENIED_HEADERS));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          expect(budgetErr.upgradeUrl).toBe("https://acme.com/upgrade?customer=acme-corp");
         }
       });
 
