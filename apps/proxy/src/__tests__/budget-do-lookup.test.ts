@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockSql } = vi.hoisted(() => {
+const { mockSql, mockEmitMetric } = vi.hoisted(() => {
   const mockSql = vi.fn().mockResolvedValue([]);
-  return { mockSql };
+  const mockEmitMetric = vi.fn();
+  return { mockSql, mockEmitMetric };
 });
 
 vi.mock("../lib/db.js", () => ({
   getSql: () => mockSql,
 }));
 
-import { lookupBudgetsForDO } from "../lib/budget-do-lookup.js";
+vi.mock("../lib/metrics.js", () => ({
+  emitMetric: mockEmitMetric,
+}));
+
+import { lookupBudgetsForDO, lookupCustomerUpgradeUrl } from "../lib/budget-do-lookup.js";
 
 function makeBudgetRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -230,5 +235,92 @@ describe("lookupBudgetsForDO", () => {
 
     expect(result).toHaveLength(2);
     expect(result.map(r => r.entityType)).toEqual(["tag", "customer"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// lookupCustomerUpgradeUrl — added by Phase 0 edge-case audit
+//
+// Cold-path Postgres query for per-customer upgrade URL. Must fail
+// open on any error (returning null) so denial responses still ship,
+// just without the upgrade_url field. Systematic failures should
+// surface via the customer_upgrade_url_lookup_failed metric.
+// ─────────────────────────────────────────────────────────────────
+describe("lookupCustomerUpgradeUrl", () => {
+  const CONN = "postgresql://test";
+  const ORG_ID = "org-uuid-123";
+  const CUSTOMER_ID = "acme-corp";
+
+  beforeEach(() => {
+    mockSql.mockReset();
+    mockEmitMetric.mockReset();
+  });
+
+  it("returns the URL when a row exists with a non-empty upgrade_url", async () => {
+    mockSql.mockResolvedValueOnce([{ upgrade_url: "https://acme.com/upgrade?id={customer_id}" }]);
+
+    const result = await lookupCustomerUpgradeUrl(CONN, ORG_ID, CUSTOMER_ID);
+
+    expect(result).toBe("https://acme.com/upgrade?id={customer_id}");
+    expect(mockEmitMetric).not.toHaveBeenCalled();
+  });
+
+  it("returns null when no row matches", async () => {
+    mockSql.mockResolvedValueOnce([]);
+
+    const result = await lookupCustomerUpgradeUrl(CONN, ORG_ID, CUSTOMER_ID);
+
+    expect(result).toBeNull();
+    expect(mockEmitMetric).not.toHaveBeenCalled();
+  });
+
+  it("returns null when row exists but upgrade_url column is null", async () => {
+    mockSql.mockResolvedValueOnce([{ upgrade_url: null }]);
+
+    const result = await lookupCustomerUpgradeUrl(CONN, ORG_ID, CUSTOMER_ID);
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null for an empty-string upgrade_url (defensive)", async () => {
+    mockSql.mockResolvedValueOnce([{ upgrade_url: "" }]);
+
+    const result = await lookupCustomerUpgradeUrl(CONN, ORG_ID, CUSTOMER_ID);
+
+    expect(result).toBeNull();
+  });
+
+  it("fails open to null on DB throw (network error) and emits metric", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockSql.mockRejectedValueOnce(new Error("connection refused"));
+
+    const result = await lookupCustomerUpgradeUrl(CONN, ORG_ID, CUSTOMER_ID);
+
+    expect(result).toBeNull();
+    expect(mockEmitMetric).toHaveBeenCalledWith(
+      "customer_upgrade_url_lookup_failed",
+      expect.objectContaining({ orgId: ORG_ID, error: "connection refused" }),
+    );
+  });
+
+  it("fails open to null on non-Error rejection and emits metric with 'unknown'", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockSql.mockRejectedValueOnce("string rejection");
+
+    const result = await lookupCustomerUpgradeUrl(CONN, ORG_ID, CUSTOMER_ID);
+
+    expect(result).toBeNull();
+    expect(mockEmitMetric).toHaveBeenCalledWith(
+      "customer_upgrade_url_lookup_failed",
+      expect.objectContaining({ orgId: ORG_ID, error: "unknown" }),
+    );
+  });
+
+  it("returns null for a non-string upgrade_url (defensive type check)", async () => {
+    mockSql.mockResolvedValueOnce([{ upgrade_url: 42 }]);
+
+    const result = await lookupCustomerUpgradeUrl(CONN, ORG_ID, CUSTOMER_ID);
+
+    expect(result).toBeNull();
   });
 });

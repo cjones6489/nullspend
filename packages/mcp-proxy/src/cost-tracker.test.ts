@@ -397,7 +397,7 @@ describe("BudgetClient", () => {
             estimated_cost_microdollars: 100_000,
           },
         },
-      }), { status: 429 }),
+      }), { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();
@@ -422,7 +422,7 @@ describe("BudgetClient", () => {
             budget_spend_microdollars: 1_000_000,
           },
         },
-      }), { status: 429 }),
+      }), { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();
@@ -446,7 +446,7 @@ describe("BudgetClient", () => {
             budget_spend_microdollars: 500_000,
           },
         },
-      }), { status: 429 }),
+      }), { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();
@@ -468,7 +468,7 @@ describe("BudgetClient", () => {
             budget_spend_microdollars: 1_000,
           },
         },
-      }), { status: 429 }),
+      }), { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();
@@ -476,11 +476,11 @@ describe("BudgetClient", () => {
     expect(result.upgradeUrl).toBeUndefined();
   });
 
-  it("429 with malformed body still returns a denial (fail-safe parser)", async () => {
-    // Body is not JSON — parser should fall back to safe defaults without
-    // throwing / tripping the circuit breaker.
+  it("429 WITH X-NullSpend-Denied + malformed body returns a denial (defensive parser)", async () => {
+    // Header gates the denial parser. Body is malformed — parser falls back
+    // to safe defaults WITHOUT throwing / tripping the circuit breaker.
     globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response("not json", { status: 429 }),
+      new Response("not json", { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();
@@ -493,13 +493,45 @@ describe("BudgetClient", () => {
     expect(result.upgradeUrl).toBeUndefined();
   });
 
+  it("E2: 429 WITHOUT X-NullSpend-Denied header is NOT treated as a budget denial", async () => {
+    // Rate-limit 429 from Cloudflare IP limiter or upstream gateway never
+    // carries X-NullSpend-Denied. Pre-fix, the parser mis-classified these
+    // as budget denials. Post-fix: falls through to the non-ok / throw
+    // path and hits the fail-open circuit-breaker fallback.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("Rate limited", { status: 429 }),
+    );
+
+    const client = makeClient();
+    const result = await client.check("tool", "server", 100);
+
+    // Fail-open — rate limit shouldn't block the user
+    expect(result.allowed).toBe(true);
+    expect(result.denied).toBeUndefined();
+    expect(result.code).toBeUndefined();
+  });
+
+  it("E2: 429 from Cloudflare with CF-Ray header (no denial header) falls through", async () => {
+    // Real-world: Cloudflare responses carry CF-Ray but not X-NullSpend-Denied.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "rate limited" }), {
+        status: 429,
+        headers: { "CF-Ray": "abc123", "Content-Type": "application/json" },
+      }),
+    );
+
+    const client = makeClient();
+    const result = await client.check("tool", "server", 100);
+    expect(result.allowed).toBe(true); // fail-open
+  });
+
   it("429 does NOT trip the circuit breaker (valid denial ≠ failure)", async () => {
     // Five consecutive 429s should NOT open the circuit breaker — denials
     // are normal, only actual failures (network errors, 5xx) count.
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({
         error: { code: "budget_exceeded", message: "denied" },
-      }), { status: 429 }),
+      }), { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();
@@ -525,7 +557,7 @@ describe("BudgetClient", () => {
             currentMicrodollars: 12_500_000,
           },
         },
-      }), { status: 429 }),
+      }), { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();
@@ -604,7 +636,7 @@ describe("BudgetClient", () => {
           message: "denied",
           details: { budget_limit_microdollars: 0, budget_spend_microdollars: 0 },
         },
-      }), { status: 429 }),
+      }), { status: 429, headers: { "X-NullSpend-Denied": "1" } }),
     );
 
     const client = makeClient();

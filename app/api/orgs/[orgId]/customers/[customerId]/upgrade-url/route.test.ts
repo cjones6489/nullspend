@@ -5,6 +5,7 @@ import { ForbiddenError } from "@/lib/auth/errors";
 import { GET, PATCH } from "./route";
 
 const ORG_UUID_RAW = "00000000-0000-4000-a000-000000000001";
+const ORG_ID = `ns_org_${ORG_UUID_RAW}`;
 const CUSTOMER_ID = "acme-corp";
 
 vi.mock("@/lib/auth/session", () => ({
@@ -47,9 +48,9 @@ vi.mock("@/lib/db/client", () => ({
   })),
 }));
 
-const mockInvalidateProxyCache = vi.fn().mockResolvedValue(undefined);
-vi.mock("@/lib/proxy-invalidate", () => ({
-  invalidateProxyCache: (...args: unknown[]) => mockInvalidateProxyCache(...args),
+const mockLogAuditEvent = vi.fn();
+vi.mock("@/lib/audit/log", () => ({
+  logAuditEvent: (...args: unknown[]) => mockLogAuditEvent(...args),
 }));
 
 vi.mock("@/lib/utils/http", async (importOriginal) => {
@@ -79,7 +80,7 @@ describe("GET /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     mockSelectLimit.mockResolvedValue([{ upgradeUrl: "https://acme.com/customer-upgrade" }]);
 
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`);
-    const res = await GET(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await GET(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -91,7 +92,7 @@ describe("GET /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     mockSelectLimit.mockResolvedValue([]);
 
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`);
-    const res = await GET(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await GET(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -102,7 +103,7 @@ describe("GET /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     mockSelectLimit.mockResolvedValue([{ upgradeUrl: null }]);
 
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`);
-    const res = await GET(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await GET(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -113,24 +114,57 @@ describe("GET /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     mockAssertOrgMember.mockRejectedValueOnce(new ForbiddenError("Not a member"));
 
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`);
-    const res = await GET(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await GET(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(403);
   });
 
-  it("rejects invalid orgId param (non-UUID)", async () => {
-    const req = new Request(`http://localhost/api/orgs/not-a-uuid/customers/${CUSTOMER_ID}/upgrade-url`);
-    const res = await GET(req, makeContext("not-a-uuid", CUSTOMER_ID));
+  it("rejects raw UUID (must be prefixed form ns_org_*)", async () => {
+    // E1 regression guard: pre-fix this accepted raw UUID. Now must be prefixed.
+    const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`);
+    const res = await GET(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects malformed prefixed orgId", async () => {
+    const req = new Request(`http://localhost/api/orgs/ns_org_not-a-uuid/customers/${CUSTOMER_ID}/upgrade-url`);
+    const res = await GET(req, makeContext("ns_org_not-a-uuid", CUSTOMER_ID));
 
     expect(res.status).toBe(400);
   });
 
   it("rejects customerId over 256 chars", async () => {
     const longCustomerId = "x".repeat(300);
-    const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${longCustomerId}/upgrade-url`);
-    const res = await GET(req, makeContext(ORG_UUID_RAW, longCustomerId));
+    const req = new Request(`http://localhost/api/orgs/${ORG_ID}/customers/${longCustomerId}/upgrade-url`);
+    const res = await GET(req, makeContext(ORG_ID, longCustomerId));
 
     expect(res.status).toBe(400);
+  });
+
+  it("rejects customerId with characters outside SDK charset", async () => {
+    // E7: dashboard validator must match SDK regex — otherwise URLs get orphaned
+    const invalidIds = ["acme corp", "acme@host", "acme/prod", "acme#tag", "acme?x=1"];
+    for (const bad of invalidIds) {
+      const res = await GET(
+        new Request(`http://localhost/api/orgs/${ORG_ID}/customers/${encodeURIComponent(bad)}/upgrade-url`),
+        makeContext(ORG_ID, bad),
+      );
+      expect(res.status, `expected 400 for customerId="${bad}"`).toBe(400);
+    }
+  });
+
+  it("accepts customerId with SDK-approved characters", async () => {
+    // Mirrors packages/sdk/src/customer-id.ts regex: alphanumerics + . _ : -
+    mockSelectLimit.mockResolvedValue([{ upgradeUrl: null }]);
+    const validIds = ["acme", "acme-corp", "acme.prod", "acme_test", "acme:v1", "a1b2c3"];
+    for (const good of validIds) {
+      const res = await GET(
+        new Request(`http://localhost/api/orgs/${ORG_ID}/customers/${good}/upgrade-url`),
+        makeContext(ORG_ID, good),
+      );
+      expect(res.status, `expected 200 for customerId="${good}"`).toBe(200);
+    }
   });
 });
 
@@ -145,10 +179,10 @@ describe("PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
   it("upserts a valid URL for a customer that has no existing row", async () => {
     vi.mocked(readJsonBody).mockResolvedValue({ upgradeUrl: "https://acme.com/c/billing" });
 
-    const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`, {
+    const req = new Request(`http://localhost/api/orgs/${ORG_ID}/customers/${CUSTOMER_ID}/upgrade-url`, {
       method: "PATCH",
     });
-    const res = await PATCH(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await PATCH(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     // No 404 here — the old route returned 404 if no customer_mappings row existed.
     // The new route upserts via customer_settings, so first write always succeeds.
@@ -157,7 +191,19 @@ describe("PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     expect(body.data.customerId).toBe(CUSTOMER_ID);
     expect(body.data.upgradeUrl).toBe("https://acme.com/c/billing");
     expect(mockOnConflictDoUpdate).toHaveBeenCalled();
-    expect(mockInvalidateProxyCache).toHaveBeenCalledWith({ action: "auth_only", ownerId: ORG_UUID_RAW });
+    // E4 regression guard: per-customer PATCH should NOT invalidate the auth
+    // cache (per-customer URL is uncached — the lookup is fresh per denial).
+    // Audit log entry IS written for the write.
+    expect(mockLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: ORG_UUID_RAW,
+        actorId: "user-1",
+        action: "customer_upgrade_url.updated",
+        resourceType: "customer_settings",
+        resourceId: CUSTOMER_ID,
+        metadata: { upgradeUrl: "https://acme.com/c/billing" },
+      }),
+    );
   });
 
   it("clears the URL when null is passed", async () => {
@@ -166,7 +212,7 @@ describe("PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`, {
       method: "PATCH",
     });
-    const res = await PATCH(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await PATCH(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -180,7 +226,7 @@ describe("PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`, {
       method: "PATCH",
     });
-    const res = await PATCH(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await PATCH(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -193,7 +239,7 @@ describe("PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`, {
       method: "PATCH",
     });
-    const res = await PATCH(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await PATCH(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(400);
     expect(mockOnConflictDoUpdate).not.toHaveBeenCalled();
@@ -206,7 +252,7 @@ describe("PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`, {
       method: "PATCH",
     });
-    const res = await PATCH(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await PATCH(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(403);
     expect(mockOnConflictDoUpdate).not.toHaveBeenCalled();
@@ -219,20 +265,38 @@ describe("PATCH /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
     const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`, {
       method: "PATCH",
     });
-    const res = await PATCH(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await PATCH(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(401);
   });
 
-  it("invalidation failure does not block success", async () => {
-    mockInvalidateProxyCache.mockRejectedValueOnce(new Error("proxy down"));
-    vi.mocked(readJsonBody).mockResolvedValue({ upgradeUrl: "https://acme.com/c" });
+  it("clear (null) writes an audit log entry with null upgradeUrl", async () => {
+    vi.mocked(readJsonBody).mockResolvedValue({ upgradeUrl: null });
 
-    const req = new Request(`http://localhost/api/orgs/${ORG_UUID_RAW}/customers/${CUSTOMER_ID}/upgrade-url`, {
+    const req = new Request(`http://localhost/api/orgs/${ORG_ID}/customers/${CUSTOMER_ID}/upgrade-url`, {
       method: "PATCH",
     });
-    const res = await PATCH(req, makeContext(ORG_UUID_RAW, CUSTOMER_ID));
+    const res = await PATCH(req, makeContext(ORG_ID, CUSTOMER_ID));
 
     expect(res.status).toBe(200);
+    expect(mockLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "customer_upgrade_url.updated",
+        metadata: { upgradeUrl: null },
+      }),
+    );
+  });
+
+  it("rejects PATCH with customerId outside SDK charset", async () => {
+    vi.mocked(readJsonBody).mockResolvedValue({ upgradeUrl: "https://acme.com/c" });
+
+    const req = new Request(`http://localhost/api/orgs/${ORG_ID}/customers/bad%20id/upgrade-url`, {
+      method: "PATCH",
+    });
+    const res = await PATCH(req, makeContext(ORG_ID, "bad id"));
+
+    expect(res.status).toBe(400);
+    expect(mockOnConflictDoUpdate).not.toHaveBeenCalled();
+    expect(mockLogAuditEvent).not.toHaveBeenCalled();
   });
 });

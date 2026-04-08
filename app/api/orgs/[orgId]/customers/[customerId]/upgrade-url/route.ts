@@ -1,20 +1,40 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import { resolveSessionContext } from "@/lib/auth/session";
-import { assertOrgRole } from "@/lib/auth/org-authorization";
+import { assertOrgMember, assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
 import { customerSettings } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { setUpgradeUrlSchema } from "@/lib/validations/orgs";
-import { invalidateProxyCache } from "@/lib/proxy-invalidate";
-import { z } from "zod";
+import { nsIdInput } from "@/lib/ids/prefixed-id";
+import { logAuditEvent } from "@/lib/audit/log";
+
+// invalidateProxyCache is intentionally NOT imported — per-customer URL
+// is looked up fresh on every denial (see E4 audit finding).
 
 type RouteContext = { params: Promise<{ orgId: string; customerId: string }> };
 
+// Customer ID regex mirrors packages/sdk/src/customer-id.ts so the dashboard
+// rejects inputs that the SDK would refuse to send. Prevents data-orphaning
+// where a dashboard-configured URL is never reachable because the SDK will
+// never transmit that customer_id in the X-NullSpend-Customer header.
+// (Edge-case audit E7.)
+const CUSTOMER_ID_REGEX = /^[a-zA-Z0-9._:-]+$/;
+
 const customerUpgradeUrlParamsSchema = z.object({
-  orgId: z.string().uuid(),
-  customerId: z.string().min(1).max(256),
+  // Accepts the prefixed external ID format (ns_org_<uuid>) that the
+  // dashboard uses for all other org endpoints. (Edge-case audit E1.)
+  orgId: nsIdInput("org"),
+  customerId: z
+    .string()
+    .min(1)
+    .max(256)
+    .regex(
+      CUSTOMER_ID_REGEX,
+      "customerId must match the SDK format: alphanumerics plus . _ : -",
+    ),
 });
 
 /**
@@ -31,7 +51,6 @@ export async function GET(_request: Request, context: RouteContext) {
     const { orgId, customerId } = customerUpgradeUrlParamsSchema.parse(params);
 
     // Read-only: any member can see the config (owner check is only on writes)
-    const { assertOrgMember } = await import("@/lib/auth/org-authorization");
     await assertOrgMember(userId, orgId);
 
     const db = getDb();
@@ -95,14 +114,22 @@ export async function PATCH(request: Request, context: RouteContext) {
         },
       });
 
-    // Fire-and-forget cache invalidation. Per-customer URL resolution
-    // is NOT cached on auth identity — the proxy queries customer_settings
-    // fresh on each denial — so this call is a no-op for per-customer
-    // changes, but kept for symmetry with org-level edits and to surface
-    // any other downstream cache that might exist later.
-    invalidateProxyCache({ action: "auth_only", ownerId: orgId }).catch((err) =>
-      console.error("[customers/upgrade-url] Proxy cache invalidation failed:", err),
-    );
+    // NO proxy cache invalidation needed here: per-customer upgrade URLs
+    // are queried fresh on every denial via `lookupCustomerUpgradeUrl`
+    // (cold-path Postgres, no auth cache coupling). Invalidating the
+    // org's auth cache for a per-customer change would thrash every
+    // cached API key with zero benefit. (Edge-case audit E4.)
+
+    // Audit log: URL changes are security-sensitive (agents may auto-
+    // follow the URL on denial). Track every write with actor + before/after.
+    logAuditEvent({
+      orgId,
+      actorId: userId,
+      action: "customer_upgrade_url.updated",
+      resourceType: "customer_settings",
+      resourceId: customerId,
+      metadata: { upgradeUrl },
+    });
 
     return NextResponse.json({ data: { customerId, upgradeUrl } });
   } catch (error) {

@@ -157,21 +157,26 @@ export async function handleBudgetDenials(
 ): Promise<Response | null> {
   const logPrefix = `[${provider}-route]`;
 
-  if (outcome.status === "denied") {
-    const reason = outcome.velocityDenied ? "velocity_exceeded"
-      : outcome.sessionLimitDenied ? "session_limit_exceeded"
-      : outcome.tagBudgetDenied ? "tag_budget_exceeded"
-      : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
-      : "budget_exceeded";
-    // Track whether an upgrade_url is configured for this org — only
-    // meaningful on codes that carry the field (budget_exceeded +
-    // customer_budget_exceeded). Observability for adoption tracking.
-    const upgradeUrlEligible = reason === "budget_exceeded" || reason === "customer_budget_exceeded";
+  // Metric emission is deferred to the per-branch return points below so
+  // the `upgradeUrlEmitted` tag reflects the actual response state (post
+  // resolution + customer_settings lookup), not just the auth identity.
+  // See E5 in the edge-case audit. The reason is computed here once so
+  // all branches share a single source of truth.
+  const reason = outcome.status === "denied"
+    ? (outcome.velocityDenied ? "velocity_exceeded"
+       : outcome.sessionLimitDenied ? "session_limit_exceeded"
+       : outcome.tagBudgetDenied ? "tag_budget_exceeded"
+       : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
+       : "budget_exceeded")
+    : null;
+
+  function emitDenialMetric(upgradeUrlEmitted: boolean, upgradeUrlSource: "per_customer" | "org" | "none"): void {
     emitMetric("budget_denied", {
-      reason,
+      reason: reason ?? "unknown",
       provider,
       entityType: outcome.deniedEntityType ?? "unknown",
-      upgradeUrlConfigured: upgradeUrlEligible && ctx.auth.orgUpgradeUrl != null,
+      upgradeUrlEmitted,
+      upgradeUrlSource,
     });
   }
 
@@ -182,6 +187,7 @@ export async function handleBudgetDenials(
 
   // Velocity denial
   if (outcome.status === "denied" && outcome.velocityDenied) {
+    emitDenialMetric(false, "none"); // upgrade_url never included on velocity
     dispatchDenialWebhook(ctx, env, logPrefix, () =>
       buildVelocityExceededPayload({
         budgetEntityType: outcome.deniedEntityType ?? "unknown",
@@ -217,6 +223,7 @@ export async function handleBudgetDenials(
 
   // Session limit denial
   if (outcome.status === "denied" && outcome.sessionLimitDenied) {
+    emitDenialMetric(false, "none");
     dispatchDenialWebhook(ctx, env, logPrefix, () =>
       buildSessionLimitExceededPayload({
         budgetEntityType: outcome.deniedEntityType ?? "unknown",
@@ -254,6 +261,7 @@ export async function handleBudgetDenials(
 
   // Tag budget denial
   if (outcome.status === "denied" && outcome.tagBudgetDenied) {
+    emitDenialMetric(false, "none"); // tag budgets don't carry upgrade_url
     dispatchDenialWebhook(ctx, env, logPrefix, () =>
       buildTagBudgetExceededPayload({
         tagKey: outcome.tagKey ?? "unknown",
@@ -303,7 +311,7 @@ export async function handleBudgetDenials(
         provider,
       }, ctx.auth.apiVersion),
     );
-    // Resolve upgrade_url: per-customer override (from customer_mappings)
+    // Resolve upgrade_url: per-customer override (from customer_settings)
     // takes priority over org-level default. Cold-path Postgres query,
     // fails open on error. Only fires on customer denial paths.
     const customerId = outcome.deniedEntityId ?? ctx.customerId ?? null;
@@ -311,6 +319,12 @@ export async function handleBudgetDenials(
       ? await lookupCustomerUpgradeUrl(ctx.connectionString, ctx.auth.orgId, customerId)
       : null;
     const upgradeUrl = resolveUpgradeUrl(ctx.auth.orgUpgradeUrl, customerUrl, customerId);
+    // E5: emit the metric AFTER resolution so the source tag is accurate.
+    // Per-customer override wins over org-level when both are set.
+    const source: "per_customer" | "org" | "none" =
+      customerUrl != null ? "per_customer"
+      : (upgradeUrl != null ? "org" : "none");
+    emitDenialMetric(upgradeUrl != null, source);
 
     return new Response(
       JSON.stringify({
@@ -362,6 +376,10 @@ export async function handleBudgetDenials(
       ctx.auth.orgUpgradeUrl,
       null,
       ctx.customerId ?? null,
+    );
+    emitDenialMetric(
+      genericUpgradeUrl != null,
+      genericUpgradeUrl != null ? "org" : "none",
     );
 
     return new Response(

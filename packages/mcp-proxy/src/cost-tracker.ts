@@ -228,10 +228,19 @@ export class BudgetClient {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
-      // 429 is a VALID denial response, not a failure. Parse the error
-      // envelope and return a denial shape without touching the circuit
-      // breaker — the backend is healthy, the user just ran out of budget.
-      if (resp.status === 429) {
+      // 429 + X-NullSpend-Denied header is a VALID budget denial — parse
+      // the error envelope and return a denial shape without touching the
+      // circuit breaker. The backend is healthy; the user just ran out of
+      // budget.
+      //
+      // Gate on the X-NullSpend-Denied header (mirrors the SDK's
+      // parseDenialPayload strategy) to distinguish NullSpend denials from
+      // other 429s: upstream gateway rate limits, Cloudflare IP rate
+      // limits, or `env.IP_RATE_LIMITER` burns never carry this header.
+      // Without the gate, those 429s would be mis-classified as budget
+      // denials, blocking tool calls with misleading "Remaining: 0
+      // microdollars" messages and preventing fail-open fallback. (E2)
+      if (resp.status === 429 && resp.headers.get("X-NullSpend-Denied") === "1") {
         this.consecutiveFailures = 0;
         const envelope = (await resp.json().catch(() => null)) as ProxyDenialEnvelope | null;
         const errDetails = envelope?.error?.details as Record<string, unknown> | undefined;
@@ -250,6 +259,8 @@ export class BudgetClient {
       }
 
       if (!resp.ok) {
+        // Includes ungated 429s (rate limit / gateway). Falls through to
+        // the catch + circuit breaker path, which fails open on the user.
         throw new Error(`Budget check returned ${resp.status}`);
       }
 

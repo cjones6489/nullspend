@@ -470,7 +470,13 @@ export const customerSettings = pgTable("customer_settings", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
-  uniqueIndex("customer_settings_org_customer_idx").on(table.orgId, table.customerId),
+  // Name matches the auto-generated constraint index from the
+  // UNIQUE (org_id, customer_id) table constraint declared in
+  // drizzle/0056_customer_settings_table.sql. Audit E3 removed the
+  // duplicate standalone index; this declaration is structurally a
+  // no-op against the live DB because the constraint already enforces
+  // uniqueness + creates an equivalent index.
+  uniqueIndex("customer_settings_org_id_customer_id_key").on(table.orgId, table.customerId),
 ]);
 
 export type CustomerSettingsRow = typeof customerSettings.$inferSelect;

@@ -68,22 +68,27 @@ export async function handleMcpBudgetCheck(
     const budgetEntities = outcome.budgetEntities;
     const budgetHeaders = buildBudgetHeaders(budgetEntities, 0);
 
-    if (outcome.status === "denied") {
-      const reason = outcome.velocityDenied ? "velocity_exceeded"
-        : outcome.sessionLimitDenied ? "session_limit_exceeded"
-        : outcome.tagBudgetDenied ? "tag_budget_exceeded"
-        : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
-        : "budget_exceeded";
-      const upgradeUrlEligible = reason === "budget_exceeded" || reason === "customer_budget_exceeded";
+    // Metric emission deferred to the per-branch returns below so the
+    // upgradeUrlEmitted tag reflects the actual response. See E5.
+    const reason = outcome.status === "denied"
+      ? (outcome.velocityDenied ? "velocity_exceeded"
+         : outcome.sessionLimitDenied ? "session_limit_exceeded"
+         : outcome.tagBudgetDenied ? "tag_budget_exceeded"
+         : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
+         : "budget_exceeded")
+      : null;
+    function emitDenialMetric(upgradeUrlEmitted: boolean, upgradeUrlSource: "per_customer" | "org" | "none"): void {
       emitMetric("budget_denied", {
-        reason,
+        reason: reason ?? "unknown",
         provider: "mcp",
         entityType: outcome.deniedEntityType ?? "unknown",
-        upgradeUrlConfigured: upgradeUrlEligible && ctx.auth.orgUpgradeUrl != null,
+        upgradeUrlEmitted,
+        upgradeUrlSource,
       });
     }
 
     if (outcome.status === "denied" && outcome.velocityDenied) {
+      emitDenialMetric(false, "none");
       dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
         buildVelocityExceededPayload({
           budgetEntityType: outcome.deniedEntityType ?? "unknown",
@@ -121,6 +126,7 @@ export async function handleMcpBudgetCheck(
 
     // Session limit denial
     if (outcome.status === "denied" && outcome.sessionLimitDenied) {
+      emitDenialMetric(false, "none");
       dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
         buildSessionLimitExceededPayload({
           budgetEntityType: outcome.deniedEntityType ?? "unknown",
@@ -160,6 +166,7 @@ export async function handleMcpBudgetCheck(
 
     // Tag budget denial
     if (outcome.status === "denied" && outcome.tagBudgetDenied) {
+      emitDenialMetric(false, "none");
       dispatchDenialWebhook(ctx, env, "[mcp-route]", () =>
         buildTagBudgetExceededPayload({
           tagKey: outcome.tagKey ?? "unknown",
@@ -221,6 +228,10 @@ export async function handleMcpBudgetCheck(
         ? await lookupCustomerUpgradeUrl(ctx.connectionString, ctx.auth.orgId, customerId)
         : null;
       const upgradeUrl = resolveUpgradeUrl(ctx.auth.orgUpgradeUrl, customerUrl, customerId);
+      const source: "per_customer" | "org" | "none" =
+        customerUrl != null ? "per_customer"
+        : (upgradeUrl != null ? "org" : "none");
+      emitDenialMetric(upgradeUrl != null, source);
 
       return new Response(
         JSON.stringify({
@@ -273,6 +284,10 @@ export async function handleMcpBudgetCheck(
         ctx.auth.orgUpgradeUrl,
         null,
         ctx.customerId ?? null,
+      );
+      emitDenialMetric(
+        genericUpgradeUrl != null,
+        genericUpgradeUrl != null ? "org" : "none",
       );
 
       return new Response(
