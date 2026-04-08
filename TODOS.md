@@ -97,18 +97,6 @@
 **Priority:** P2
 **Depends on:** None
 
-### Vercel preview deployment failures (recurring)
-
-**What:** Every PR shows the Vercel preview deployment as `fail` status. This has been happening on PR #5, PR #6, and every recent main commit visible in CI history.
-
-**Why:** Vercel previews are how reviewers visually inspect dashboard changes before merge. With them broken, design QA is harder and we're flying blind on Next.js build regressions until something hits production. The team has been merging despite the failure, which normalizes ignoring CI signal.
-
-**Context:** Run `npx vercel inspect <deployment-id> --logs` against any recent failing deployment to see the error. Common causes: env var missing, build OOM, Node version mismatch, package install failure. Could also be a stale Vercel project config that needs reconnecting after the recent monorepo refactors. Relevant deployment IDs in the recent CI: `dpl_8NWnhVMm5QQXvTVa2EREbkWWbyRd` (PR #6), `dpl_Gi7MaqSb2Y3iBZxSMdtd5yQ8hX95` (PR #5).
-
-**Effort:** S (~30-60 min once you see the error logs)
-**Priority:** P2
-**Depends on:** None
-
 ### Pre-existing flaky test: permission-enforcement timeout
 
 **What:** `app/api/__tests__/permission-enforcement.test.ts > Permission enforcement — viewer cannot write > POST /api/budgets → 403 (requires member)` times out at 5000ms when run as part of `pnpm test`. Passes in isolation in 4.4s.
