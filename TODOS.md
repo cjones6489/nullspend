@@ -14,9 +14,11 @@
 
 **Context:** Leverage existing webhook infrastructure (dispatch, signing, threshold detection). Requires a new entity type for per-customer thresholds (e.g., "alert when any API key exceeds $50/day"). Could be polling-based (check on each cost event) or batch (periodic aggregation check). The webhook payload builders (`buildThresholdCrossingPayload`) and dispatch pipeline already exist. Main work is the threshold entity model and the trigger mechanism.
 
+Customer attribution is fully shipped as of Phase 0 finish 2026-04-08 — this work is unblocked and is the only P2 in TODOS. Natural next pickup after Phase 0.
+
 **Effort:** M
 **Priority:** P2
-**Depends on:** Attribution feature shipped. Webhook infrastructure (already exists).
+**Depends on:** Attribution feature shipped ✅ (2026-04-08). Webhook infrastructure ✅ (already exists).
 
 ## Design
 
@@ -65,6 +67,53 @@
 ### ~~Margin-driven Slack alerts~~
 
 **Completed:** 2026-04-05 (lib/margins/margin-slack-message.ts — rich Block Kit messages with View Margins + Set Budget Cap deep links, HTTPS validation, per-crossing error isolation)
+
+## Phase 2 / Revenue Infrastructure
+
+### Embedded metered billing pass-through (Stripe Billing Meter API)
+
+**What:** NullSpend calculates per-customer AI costs, applies a configurable margin, and creates Stripe usage records on the customer's own Stripe subscription. The SaaS can charge their end-users for AI usage without building their own metering pipeline — NullSpend becomes the metering layer. Fiat-native equivalent of what Locus does with USDC wallets, minus the crypto.
+
+**Why:** Three things at once:
+1. **Revenue model evolution.** Today NullSpend charges flat subscription tiers. Metered pass-through adds a percentage-of-customer-billing revenue stream that scales with customer value delivered.
+2. **Customer lock-in.** Once a SaaS is using NullSpend to BILL their customers (not just track), switching cost is significant — it replaces their whole usage→invoice pipeline.
+3. **Strategic positioning.** Closes the loop between the Stripe revenue sync (Phase 0) and the cost tracking: NullSpend is the ONLY tool that sees both the cost AND the revenue for each customer.
+
+**Context:** Builds directly on Phase 0's customer attribution + margin table. The margin table already computes per-customer revenue from Stripe invoices; this inverts the flow — instead of READING Stripe invoices, we WRITE Stripe usage records. Key design decisions:
+  - Map `customer_mappings.tag_value` → Stripe customer → subscription item (reuse existing mapping infra)
+  - Margin config per-customer or per-org: "charge 2x cost" / "cost + $0.05/request" / custom function
+  - Aggregation period: match Stripe billing cycle (monthly, typically)
+  - Reconciliation: periodic cron aggregates unreported cost_events, creates UsageRecord via Stripe Billing Meter API, marks events as reported
+  - Failure handling: partial Stripe writes must be recoverable (idempotency keys, retry queue)
+  - Dashboard: new billing page showing pending amounts, reported amounts, failed writes, margin per customer
+  - Opt-in feature: off by default, org enables per customer mapping
+
+**Open design questions to resolve BEFORE implementation:**
+  1. Stripe Billing Meter vs legacy UsageRecord API? (Stripe is pushing Meter API; check if it's GA)
+  2. Push model (sync on each cost event) or pull model (cron aggregates + pushes batch)? Pull is probably right — aligns with Stripe's batching expectations
+  3. Margin schema: store as JSONB (flexible) or dedicated columns (typed)?
+  4. Idempotency key format: `{org_id}-{customer_id}-{period_start}` — deterministic retry support
+  5. What happens when a customer_mapping is deleted but unreported cost_events exist? (Orphan handling)
+  6. Reconciliation failure → alerting path (reuse Slack margin-alert infra?)
+
+**Not in scope initially:**
+  - Net settlement between multi-party usage (that's 6.S Agent Commerce Settlement, separate item)
+  - Mid-period margin changes (treat margin as snapshot-at-write-time)
+  - Non-Stripe payment providers (Paddle, Chargebee) — defer until customer asks
+
+**Effort:** L (2 weeks minimum per the roadmap — realistic 3 weeks with dashboard + design doc + eng review)
+
+**Priority:** P3 (strategic, not urgent). Moved up to P2 once Phase 1 launch is done or if a customer explicitly asks.
+
+**Depends on:**
+  - ✅ Customer attribution (Phase 0 finish, 2026-04-08)
+  - ✅ Stripe revenue sync (Phase 0 finish, 2026-04-04)
+  - ✅ Margin table + customer_mappings (Phase 0 finish)
+  - Design doc written + eng review BEFORE implementation (roadmap spec is only ~8 lines)
+  - Decision on sync vs batch push model
+  - Stripe Billing Meter API research (GA status, pricing, rate limits)
+
+**Reference:** Full roadmap context at `docs/internal/nullspend-technical-feature-roadmap.md` §6.1 "Metered Billing Pass-Through" (line 607). Scheduled as Month 5-6 on the formal roadmap.
 
 ## SDK / Stress Test
 
