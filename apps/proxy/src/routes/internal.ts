@@ -88,7 +88,11 @@ export async function handleBudgetInvalidation(
 
   const body = parseBody(raw);
   if (!body) {
-    return errorResponse("bad_request", "Missing or invalid fields: action (remove|reset_spend), ownerId, entityType, entityId", 400);
+    return errorResponse(
+      "bad_request",
+      "Missing or invalid fields: action (remove|reset_spend|sync|auth_only), ownerId. entityType+entityId required for non-auth_only actions.",
+      400,
+    );
   }
 
   // Execute

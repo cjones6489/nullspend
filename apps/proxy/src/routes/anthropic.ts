@@ -115,7 +115,10 @@ export async function handleAnthropicMessages(
     }
 
     dispatchVelocityRecoveryWebhooks(outcome, ctx, env, "anthropic");
-  } catch {
+  } catch (err) {
+    // Budget check or denial response construction failed. Log so
+    // production issues don't disappear into a silent 503.
+    console.error("[anthropic-route] Budget check or denial handling failed:", err);
     budgetAbort.abort();
     upstreamFetchPromise.catch((e) => { if (e?.name !== "AbortError") console.warn("[anthropic-route] Upstream fetch error after budget error:", e); });
     const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);

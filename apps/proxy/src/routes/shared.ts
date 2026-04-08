@@ -163,7 +163,16 @@ export async function handleBudgetDenials(
       : outcome.tagBudgetDenied ? "tag_budget_exceeded"
       : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
       : "budget_exceeded";
-    emitMetric("budget_denied", { reason, provider, entityType: outcome.deniedEntityType ?? "unknown" });
+    // Track whether an upgrade_url is configured for this org — only
+    // meaningful on codes that carry the field (budget_exceeded +
+    // customer_budget_exceeded). Observability for adoption tracking.
+    const upgradeUrlEligible = reason === "budget_exceeded" || reason === "customer_budget_exceeded";
+    emitMetric("budget_denied", {
+      reason,
+      provider,
+      entityType: outcome.deniedEntityType ?? "unknown",
+      upgradeUrlConfigured: upgradeUrlEligible && ctx.auth.orgUpgradeUrl != null,
+    });
   }
 
   // On denial the request did NOT reserve its estimate against the DO,

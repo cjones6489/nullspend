@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { useSession } from "@/lib/queries/session";
 import { useOrgs } from "@/lib/queries/orgs";
-import { apiPatch } from "@/lib/api/client";
+import { apiGet, apiPatch } from "@/lib/api/client";
 import { toExternalId } from "@/lib/ids/prefixed-id";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,21 +41,30 @@ export function UpgradeUrlSection() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Fetch the current upgrade URL from the dedicated GET endpoint.
+  // Fetch the current upgrade URL via the shared API client (handles
+  // auth / 401 / error shaping consistently with the rest of the dashboard).
   useEffect(() => {
     if (!session?.orgId) return;
+    let cancelled = false;
     const orgExternalId = toExternalId("org", session.orgId);
-    fetch(`/api/orgs/${orgExternalId}/upgrade-url`)
-      .then((r) => r.json())
-      .then((json: UpgradeUrlResponse) => {
+    apiGet<UpgradeUrlResponse>(`/api/orgs/${orgExternalId}/upgrade-url`)
+      .then((json) => {
+        if (cancelled) return;
         const url = json?.data?.upgradeUrl ?? null;
         setUpgradeUrl(url ?? "");
         setInitialUrl(url);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("[upgrade-url-section] failed to fetch current URL:", err);
         setInitialUrl(null);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [session?.orgId]);
 
   async function handleSave() {
@@ -123,7 +132,7 @@ export function UpgradeUrlSection() {
             className="h-9 border-border/50 bg-background font-mono text-[13px]"
           />
           <p className="text-[11px] text-muted-foreground">
-            HTTPS only. Use <code className="rounded bg-secondary px-1 py-0.5 text-[10px]">{`{customer_id}`}</code> as a placeholder for the customer ID — the proxy substitutes it at denial time. Per-customer overrides can be set on the customer detail page.
+            HTTPS only. Use <code className="rounded bg-secondary px-1 py-0.5 text-[10px]">{`{customer_id}`}</code> as a placeholder for the customer ID — the proxy substitutes it at denial time. Per-customer overrides can be set via the <code className="rounded bg-secondary px-1 py-0.5 text-[10px]">PATCH /api/orgs/&#123;orgId&#125;/customers/&#123;customerId&#125;/upgrade-url</code> endpoint (dashboard UI coming soon).
           </p>
         </div>
         {isOwner && (

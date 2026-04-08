@@ -1146,3 +1146,111 @@ describe("Section 7 — upgrade_url in denial bodies", () => {
     }
   }, 30_000);
 });
+
+// ─────────────────────────────────────────────────────────────────
+// § Section 8 — customer_budget_exceeded with per-customer override (F15)
+//
+// Phase 0 audit follow-up (Issue 4): exercises the customer denial
+// branch that F14 did not hit. This test:
+//   1. Inserts a customer_settings row with a {customer_id} placeholder URL
+//   2. Creates a customer budget with spend == max
+//   3. Makes a request via customer() session
+//   4. Asserts the proxy returns customer_budget_exceeded with the
+//      per-customer URL + substituted customer_id
+//
+// Unlike F14's org-level test, this does NOT hit the auth cache
+// staleness issue because customer_settings.upgrade_url is looked up
+// FRESH on every denial via lookupCustomerUpgradeUrl (cold-path
+// Postgres query, no caching). That means each F15 run uses its own
+// unique customer ID and cannot collide with previous runs.
+// ─────────────────────────────────────────────────────────────────
+describe("Section 8 — customer_budget_exceeded + per-customer upgrade URL", () => {
+  async function setCustomerUpgradeUrl(customerId: string, url: string | null): Promise<void> {
+    await sql`
+      INSERT INTO customer_settings (org_id, customer_id, upgrade_url, updated_at)
+      VALUES (${SMOKE_ORG_ID}, ${customerId}, ${url}, NOW())
+      ON CONFLICT (org_id, customer_id) DO UPDATE
+        SET upgrade_url = ${url}, updated_at = NOW()
+    `;
+  }
+
+  async function createCustomerBudget(customerId: string, maxMicrodollars: number, spendMicrodollars: number): Promise<void> {
+    await sql`
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, policy)
+      VALUES (
+        ${NULLSPEND_SMOKE_USER_ID!},
+        ${SMOKE_ORG_ID},
+        'customer',
+        ${customerId},
+        ${maxMicrodollars},
+        ${spendMicrodollars},
+        'strict_block'
+      )
+      ON CONFLICT (org_id, entity_type, entity_id)
+      DO UPDATE SET max_budget_microdollars = ${maxMicrodollars},
+                    spend_microdollars = ${spendMicrodollars},
+                    updated_at = NOW()
+    `;
+    await syncBudget(SMOKE_ORG_ID, "customer", customerId);
+  }
+
+  async function teardownCustomerFixtures(customerId: string): Promise<void> {
+    try { await invalidateBudget(SMOKE_ORG_ID, "customer", customerId); } catch { /* best-effort */ }
+    await sql`DELETE FROM budgets WHERE entity_type = 'customer' AND entity_id = ${customerId} AND org_id = ${SMOKE_ORG_ID}`;
+    await sql`DELETE FROM customer_settings WHERE customer_id = ${customerId} AND org_id = ${SMOKE_ORG_ID}`;
+  }
+
+  it("F15 — customer_budget_exceeded includes per-customer upgrade_url with {customer_id} substituted", async () => {
+    if (!BASE) throw new Error("F15 requires PROXY_URL in .env.smoke");
+
+    // Unique customer ID per run — avoids cross-test cache collisions.
+    const customerId = `f15-cust-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const urlTemplate = "https://example.com/customer-upgrade?id={customer_id}";
+    const expectedSubstituted = `https://example.com/customer-upgrade?id=${encodeURIComponent(customerId)}`;
+
+    await setCustomerUpgradeUrl(customerId, urlTemplate);
+    await createCustomerBudget(customerId, 1_000_000, 1_000_000);
+
+    const proxyClient = new NullSpend({
+      baseUrl: DASHBOARD_URL,
+      apiKey: NULLSPEND_API_KEY!,
+      proxyUrl: BASE,
+      costReporting: { batchSize: 1, flushIntervalMs: 100 },
+    });
+
+    try {
+      const session = proxyClient.customer(customerId, { enforcement: true });
+
+      let caught: BudgetExceededError | null = null;
+      try {
+        await session.openai(`${BASE}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-nullspend-key": NULLSPEND_API_KEY!,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: "test" }],
+            max_tokens: 3,
+          }),
+        });
+      } catch (err) {
+        if (err instanceof BudgetExceededError) {
+          caught = err;
+        } else {
+          throw err;
+        }
+      }
+
+      expect(caught, "BudgetExceededError should have been thrown").not.toBeNull();
+      expect(caught!.entityType).toBe("customer");
+      expect(caught!.entityId).toBe(customerId);
+      // Per-customer URL took priority AND {customer_id} was substituted
+      expect(caught!.upgradeUrl).toBe(expectedSubstituted);
+    } finally {
+      await proxyClient.shutdown();
+      await teardownCustomerFixtures(customerId);
+    }
+  }, 30_000);
+});

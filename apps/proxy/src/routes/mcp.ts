@@ -74,7 +74,13 @@ export async function handleMcpBudgetCheck(
         : outcome.tagBudgetDenied ? "tag_budget_exceeded"
         : outcome.deniedEntityType === "customer" ? "customer_budget_exceeded"
         : "budget_exceeded";
-      emitMetric("budget_denied", { reason, provider: "mcp", entityType: outcome.deniedEntityType ?? "unknown" });
+      const upgradeUrlEligible = reason === "budget_exceeded" || reason === "customer_budget_exceeded";
+      emitMetric("budget_denied", {
+        reason,
+        provider: "mcp",
+        entityType: outcome.deniedEntityType ?? "unknown",
+        upgradeUrlConfigured: upgradeUrlEligible && ctx.auth.orgUpgradeUrl != null,
+      });
     }
 
     if (outcome.status === "denied" && outcome.velocityDenied) {
@@ -317,7 +323,10 @@ export async function handleMcpBudgetCheck(
         ...approvedBudgetHeaders,
       },
     });
-  } catch {
+  } catch (err) {
+    // Budget check or denial handling failed. Log for diagnostics so
+    // production issues don't disappear into a silent 503.
+    console.error("[mcp-route] Budget check or denial handling failed:", err);
     const budgetUnavailResp = errorResponse("budget_unavailable", "Budget service unavailable", 503);
     budgetUnavailResp.headers.set("X-NullSpend-Trace-Id", ctx.traceId);
     if (ctx.sessionId) budgetUnavailResp.headers.set("X-NullSpend-Session", ctx.sessionId);
