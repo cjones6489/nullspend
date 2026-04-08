@@ -3,7 +3,7 @@
 **Date:** 2026-03-26
 **Status:** Strategy — blocked on Stripe partnership/waitlist access
 **Prerequisite:** Accepted as "AI platform" partner by Stripe
-**Raw API research:** `docs/internal/research/stripe-shared-payment-tokens-research.md`
+**Raw API research:** `nullspend-knowledge` repo → `research/stripe-shared-payment-tokens-research.md`
 
 ---
 

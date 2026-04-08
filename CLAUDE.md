@@ -40,43 +40,19 @@ pnpm cost-engine:build # Build @nullspend/cost-engine (required before next buil
 
 IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both when changes span root and proxy.
 
-## Non-Obvious Conventions
+## Conventions and domain rules
 
-- `proxy.ts` is Next.js 16's replacement for `middleware.ts` — runs on Node.js runtime
-- Proxy worker uses `.js` extensions in relative imports (ESM requirement)
-- User IDs are stored as `text` (not `uuid`) to match Supabase `auth.uid()::text`
-- Schema source of truth: `packages/db/src/schema.ts`
-- RLS is enabled on all tables but Drizzle bypasses it (direct connection) — RLS protects PostgREST only
-- `anon` role has zero privileges on application tables
-- API keys: SHA-256 hashed before storage, timing-safe comparison on lookup
-- Auth: session-based (`resolveSessionContext`) for dashboard, API key (`authenticateApiKey`) for agents
-- Data isolation: all dashboard queries scope by `orgId` (from `resolveSessionContext` or `authenticateApiKey`). `userId` is only used for Stripe subscriptions, budget entity ownership verification, and audit logging.
-- Dual-auth routes use `assertApiKeyOrSession` which returns `{ userId, orgId }` — orgId is guaranteed non-null (null orgId returns 403)
-- Error responses: `{ error: { code: "machine_code", message: "Human readable text.", details: null } }` — consistent across dashboard and proxy
-- HTTP status semantics: 401 = identity unknown, 403 = identity known but unauthorized
-- Stripe API version pinned in `lib/stripe/client.ts` (`STRIPE_API_VERSION`) — single source of truth
-- Two Stripe integrations: own billing (`lib/stripe/`, `STRIPE_SECRET_KEY`) and customer revenue sync (`lib/margins/`, per-org encrypted keys via `STRIPE_ENCRYPTION_KEY`)
-- Customer attribution: `X-NullSpend-Customer` header (preferred) or `tags["customer"]` fallback. Dedicated `customer_id` column on cost events with B-tree index. Header takes precedence over tag. Auto-injected into tags for tag-budget compat.
-- Customers page (`/app/customers`) replaces Margins page. `/app/margins` redirects. Detail at `/app/margins/[customer]` unchanged.
-- Margin health tiers: healthy (>=50%), moderate (20-49%), at_risk (0-19%), critical (<0%)
-- Revenue sync uses DELETE+re-INSERT replace strategy per customer per period (idempotent)
-- Margin threshold crossings dispatch both webhooks and Slack alerts independently (per-crossing error isolation)
+Path-scoped rules live in `.claude/rules/` and load on-demand when matching files are touched. Edit those rather than adding to CLAUDE.md.
+
+- `code-conventions.md` — general API/data layer (auth, error format, schema, identity)
+- `stripe-margins.md` — Stripe integrations, customer attribution, margin tracking
+- `slack.md` — Slack bot token + webhook fallback config
+- `database.md` — Supabase MCP usage, RLS scope, migration command
+- `security.md` — timing-safe comparisons, webhook URL validation, body size limits
 
 ## Dependencies
 
 - Root `package.json` has `pnpm.overrides` pinning `drizzle-orm@^0.45.1` across all workspace packages to prevent version mismatch issues
-
-## Slack Integration
-
-- `SLACK_BOT_TOKEN` (xoxb-...) — Slack Web API bot token for budget negotiation threaded replies. Optional; falls back to incoming webhook if absent.
-- `SLACK_CHANNEL_ID` — Channel ID for budget negotiation messages. Required alongside `SLACK_BOT_TOKEN`.
-- Existing webhook URL (via `slackConfigs` table) is used for all non-budget actions and as fallback.
-
-## Supabase
-
-- Project ref: set in .env.local (not committed)
-- Use `apply_migration` (not `execute_sql`) for DDL via MCP
-- RLS policies scope to `auth.uid()::text` for `authenticated` role
 
 ## Testing
 
@@ -92,6 +68,20 @@ Always read DESIGN.md before making any visual or UI decisions.
 All font choices, colors, spacing, and aesthetic direction are defined there.
 Do not deviate without explicit user approval.
 In QA mode, flag any code that doesn't match DESIGN.md.
+
+## Strategy, Vision, and Roadmap
+
+The canonical, maintained docs for NullSpend strategy live in `docs/internal/`.
+Always read these directly when the user asks about strategy, vision, roadmap,
+priorities, competition, or distribution. Do not reason from training data or
+assume you know the current state — these docs evolve.
+
+- `docs/internal/nullspend-vision.md` — vision, thesis, three-surface model
+  (Proxy/SDK/MCP), spending envelopes, $1B framing
+- `docs/internal/nullspend-technical-feature-roadmap.md` — current 6-month
+  roadmap, monthly priorities, strategic moves
+- `docs/internal/nullspend-domination-playbook.md` — go-to-market, framework
+  integrations, content strategy, OSS plan
 
 ## Compact instructions
 
