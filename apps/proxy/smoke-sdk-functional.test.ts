@@ -1020,7 +1020,6 @@ describe("Section 6 — Budget remaining response headers", () => {
 describe("Section 7 — upgrade_url in denial bodies", () => {
   const userId = NULLSPEND_SMOKE_USER_ID!;
   const ORG_UPGRADE_URL = "https://example.com/upgrade?org={customer_id}";
-  const CUSTOMER_UPGRADE_URL = "https://example.com/customer-specific?id={customer_id}";
 
   async function setOrgUpgradeUrl(url: string | null) {
     if (url === null) {

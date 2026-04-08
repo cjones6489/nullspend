@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { resolveSessionContext } from "@/lib/auth/session";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
