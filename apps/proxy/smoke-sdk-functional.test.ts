@@ -50,14 +50,17 @@ import {
   TimeoutError,
 } from "@nullspend/sdk";
 import {
+  BASE,
   NULLSPEND_API_KEY,
   NULLSPEND_SMOKE_KEY_ID,
   NULLSPEND_SMOKE_USER_ID,
+  OPENAI_API_KEY,
   DATABASE_URL,
 } from "./smoke-test-helpers.js";
 
 // ── Constants ────────────────────────────────────────────────────
 const AGENT_PREFIX = "sdk-functional-test";
+const CUSTOMER_PREFIX = "sdk-functional-customer";
 const TEST_POLL_INTERVAL_MS = 500;   // faster than SDK default 2000ms; well under any rate limit
 const APPROVE_DELAY_MS = 1_000;       // delay before SQL approve fires (after createAction resolves)
 const TIMEOUT_FAST_MS = 1_500;        // F2-B and F11 timeout window
@@ -145,6 +148,23 @@ async function cleanupTestActions(): Promise<void> {
   `;
 }
 
+/**
+ * Cleanup synthetic cost events created by F12 customer attribution test.
+ * Matches by customer_id prefix to find rows from this test even across
+ * crashed runs. Symmetric: called in beforeAll AND afterAll.
+ */
+async function cleanupTestCostEvents(): Promise<void> {
+  await sql`
+    DELETE FROM cost_events
+     WHERE customer_id LIKE ${CUSTOMER_PREFIX + "-%"}
+       AND org_id = ${SMOKE_ORG_ID}
+  `;
+}
+
+function makeCustomerId(testName: string): string {
+  return `${CUSTOMER_PREFIX}-${testName}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 beforeAll(async () => {
   // ── Env validation ──
   if (!NULLSPEND_API_KEY) throw new Error("NULLSPEND_API_KEY required in .env.smoke");
@@ -186,6 +206,7 @@ beforeAll(async () => {
 
   // ── Symmetric cleanup: orphan rows from prior crashed runs ──
   await cleanupTestActions();
+  await cleanupTestCostEvents();
 
   // ── Shared live client (used by F1-F6) ──
   liveClient = new NullSpend({
@@ -199,7 +220,12 @@ afterAll(async () => {
     try {
       await cleanupTestActions();
     } catch (err) {
-      console.error("[smoke-sdk-functional] afterAll cleanup failed:", err);
+      console.error("[smoke-sdk-functional] afterAll cleanupTestActions failed:", err);
+    }
+    try {
+      await cleanupTestCostEvents();
+    } catch (err) {
+      console.error("[smoke-sdk-functional] afterAll cleanupTestCostEvents failed:", err);
     }
     await sql.end();
   }
@@ -758,3 +784,112 @@ describe("Section 4 — HITL error class fields", () => {
     expect(rejectedErr.message).toContain("rejected");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────
+// § Section 5 — Customer attribution end-to-end (F12)
+//
+// The only F-series test that hits the live proxy + OpenAI. Closes
+// the gap that F1-F11 leaves open: validates the full path from
+// SDK customer() → X-NullSpend-Customer header → deployed proxy →
+// cost_events.customer_id column → SDK listCostEvents response.
+//
+// Prerequisites in addition to F1-F11:
+//   - PROXY_URL (deployed proxy, e.g. https://nullspend.cjones6489.workers.dev)
+//   - OPENAI_API_KEY (real spend, ~$0.005 per run)
+// ─────────────────────────────────────────────────────────────────
+describe("Section 5 — Customer attribution end-to-end", () => {
+  it("F12 — customer() → proxy → cost_events.customer_id → listCostEvents round-trip", async () => {
+    if (!OPENAI_API_KEY) {
+      throw new Error("F12 requires OPENAI_API_KEY in .env.smoke");
+    }
+    if (!BASE) {
+      throw new Error("F12 requires PROXY_URL in .env.smoke");
+    }
+
+    const customerId = makeCustomerId("f12");
+
+    // Customer-scoped client. Needs proxyUrl so the SDK detects the proxy
+    // path and skips client-side cost tracking. Needs costReporting because
+    // createTrackedFetch (which customer() delegates to) requires it even
+    // though the proxy mode never uses it.
+    const customerClient = new NullSpend({
+      baseUrl: DASHBOARD_URL,
+      apiKey: NULLSPEND_API_KEY!,
+      proxyUrl: BASE,
+      costReporting: { batchSize: 1, flushIntervalMs: 100 },
+    });
+
+    try {
+      const session = customerClient.customer(customerId);
+
+      // Make a real OpenAI request through the proxy with customer scope.
+      // Tiny payload to keep cost minimal.
+      const res = await session.openai(`${BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "x-nullspend-key": NULLSPEND_API_KEY!,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: "Say ok" }],
+          max_tokens: 3,
+        }),
+      });
+      expect(res.status).toBe(200);
+
+      // Wait for the cost event to land via the queue → Hyperdrive → Postgres
+      // path. Poll customer_id directly since we don't know the request_id.
+      const dbRow = await pollForCostEventByCustomerId(customerId, 20_000);
+      expect(dbRow).not.toBeNull();
+      expect(dbRow!.customer_id).toBe(customerId);
+      expect(dbRow!.provider).toBe("openai");
+      expect(dbRow!.model).toBe("gpt-4o-mini");
+
+      // Now verify the SDK read path: listCostEvents must surface the
+      // customerId field on the response record. Fetch the most recent
+      // page and find the matching event by customerId (unique per run).
+      // ID comparison would need prefix handling: DB stores raw UUID,
+      // SDK response wraps it as `ns_evt_<uuid>` via nsIdOutput.
+      const page = await liveClient.listCostEvents({ limit: 100 });
+      const found = page.data.find((e) => e.customerId === customerId);
+      expect(found, "F12: cost event written to DB but missing from listCostEvents page").not.toBeUndefined();
+      expect(found!.customerId).toBe(customerId);
+      expect(found!.provider).toBe("openai");
+      expect(found!.model).toBe("gpt-4o-mini");
+      // Sanity check: SDK ID is the prefixed external form
+      expect(found!.id).toBe(`ns_evt_${dbRow!.id}`);
+    } finally {
+      // Drain any in-flight cost reports the customerClient queued (none in
+      // proxy mode, but flush+shutdown is the documented teardown pattern).
+      await customerClient.shutdown();
+    }
+  }, 60_000);
+});
+
+/**
+ * Poll cost_events for a row matching the given customer_id. Used by F12
+ * because the proxy writes async via Cloudflare Queue → Hyperdrive, so the
+ * row may not be visible immediately.
+ */
+async function pollForCostEventByCustomerId(
+  customerId: string,
+  timeoutMs: number,
+): Promise<{ id: string; customer_id: string; provider: string; model: string } | null> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const rows = await sql`
+      SELECT id, customer_id, provider, model
+        FROM cost_events
+       WHERE customer_id = ${customerId}
+         AND org_id = ${SMOKE_ORG_ID}
+       LIMIT 1
+    `;
+    if (rows.length > 0) {
+      return rows[0] as { id: string; customer_id: string; provider: string; model: string };
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return null;
+}
