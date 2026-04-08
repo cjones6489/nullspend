@@ -96,6 +96,7 @@ export async function handleMcpBudgetCheck(
           "NullSpend-Version": ctx.resolvedApiVersion,
           "Retry-After": String(outcome.retryAfterSeconds ?? 60),
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
           ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });
@@ -127,6 +128,7 @@ export async function handleMcpBudgetCheck(
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
           ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });
@@ -160,6 +162,7 @@ export async function handleMcpBudgetCheck(
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
           ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });
@@ -181,6 +184,7 @@ export async function handleMcpBudgetCheck(
         headers: {
           "NullSpend-Version": ctx.resolvedApiVersion,
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
           ...(ctx.sessionId ? { "X-NullSpend-Session": ctx.sessionId } : {}),
         },
       });

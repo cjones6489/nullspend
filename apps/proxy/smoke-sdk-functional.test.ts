@@ -467,27 +467,22 @@ describe("Section 1 — HITL action lifecycle (live dashboard)", () => {
     });
 
     // No approve scheduled — wait should time out.
-    await expect(
-      liveClient.waitForDecision(created.id, {
-        pollIntervalMs: TEST_POLL_INTERVAL_MS,
-        timeoutMs: TIMEOUT_FAST_MS,
-      }),
-    ).rejects.toThrow(TimeoutError);
-
-    // Field assertion limited: TimeoutError currently has NO public fields
-    // (verified at packages/sdk/src/errors.ts:13-20). Only instanceof + message
-    // substring are testable. Filed as follow-up: add actionId/timeoutMs
-    // public fields.
+    let caught: unknown;
     try {
       await liveClient.waitForDecision(created.id, {
         pollIntervalMs: TEST_POLL_INTERVAL_MS,
         timeoutMs: TIMEOUT_FAST_MS,
       });
     } catch (err) {
-      expect(err).toBeInstanceOf(TimeoutError);
-      expect((err as Error).message).toContain(created.id);
-      expect((err as Error).message).toContain(String(TIMEOUT_FAST_MS));
+      caught = err;
     }
+
+    expect(caught).toBeInstanceOf(TimeoutError);
+    const timeoutErr = caught as TimeoutError;
+    expect(timeoutErr.actionId).toBe(created.id);
+    expect(timeoutErr.timeoutMs).toBe(TIMEOUT_FAST_MS);
+    expect(timeoutErr.message).toContain(created.id);
+    expect(timeoutErr.message).toContain(String(TIMEOUT_FAST_MS));
   }, 30_000);
 
   it("F3a — proposeAndWait happy path: approve → execute → markResult(executed)", async () => {
@@ -715,14 +710,10 @@ describe("Section 2 — Read APIs (live dashboard)", () => {
       return;
     }
 
-    // Cursor type mismatch workaround: server expects cursor as a JSON-stringified
-    // object (lib/validations/cost-events.ts:48 — z.string().transform(JSON.parse)),
-    // but the SDK type says `cursor?: string` and the response returns it as
-    // `{ createdAt, id }`. Stringify before passing back. Filed as follow-up:
-    // align SDK cursor type with server schema.
+    // SDK accepts the response cursor object directly and stringifies internally.
     const page2 = await liveClient.listCostEvents({
       limit: 5,
-      cursor: JSON.stringify(page1.cursor) as unknown as string,
+      cursor: page1.cursor,
     });
 
     expect(page2).toHaveProperty("data");
@@ -751,10 +742,10 @@ describe("Section 4 — HITL error class fields", () => {
     expect(timeoutErr).toBeInstanceOf(NullSpendError);
     expect(timeoutErr).toBeInstanceOf(Error);
     expect(timeoutErr.name).toBe("TimeoutError");
+    expect(timeoutErr.actionId).toBe("act_test_x");
+    expect(timeoutErr.timeoutMs).toBe(1_500);
     expect(timeoutErr.message).toContain("act_test_x");
     expect(timeoutErr.message).toContain("1500");
-    // Note: TimeoutError has NO public actionId/timeoutMs fields today —
-    // verified at packages/sdk/src/errors.ts:13-20. Filed as follow-up.
 
     const rejectedErr = new RejectedError("act_test_y", "rejected");
     expect(rejectedErr).toBeInstanceOf(RejectedError);

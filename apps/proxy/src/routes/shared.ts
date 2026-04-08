@@ -114,6 +114,7 @@ export function handleBudgetDenials(
           "Content-Type": "application/json",
           "Retry-After": String(outcome.retryAfterSeconds ?? 60),
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
         },
       },
     );
@@ -149,6 +150,7 @@ export function handleBudgetDenials(
         headers: {
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
         },
       },
     );
@@ -186,6 +188,7 @@ export function handleBudgetDenials(
         headers: {
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
         },
       },
     );
@@ -220,6 +223,7 @@ export function handleBudgetDenials(
         headers: {
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
         },
       },
     );
@@ -261,6 +265,7 @@ export function handleBudgetDenials(
         headers: {
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
+          "X-NullSpend-Denied": "1",
         },
       },
     );

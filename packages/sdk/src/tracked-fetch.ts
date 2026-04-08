@@ -276,28 +276,31 @@ type DenialPayload = {
 };
 
 /**
- * Parse a 429 response body for a NullSpend denial. Returns null if the body
- * isn't a valid NullSpend denial (parse failure, missing/null `error`, or
- * non-string `code`). Caller treats null as "fall through, return raw response".
+ * Parse a 429 response body for a NullSpend denial. Returns null if the
+ * response isn't a NullSpend denial — caller treats null as "fall through,
+ * return raw response".
  *
- * The proxy passes through upstream provider 429s (OpenAI/Anthropic rate limits)
- * with their own body shapes. OpenAI bodies have `error.code: "rate_limit_exceeded"`
- * (non-NullSpend code) and Anthropic bodies have no `error.code` field at all.
- * Both must fall through SILENTLY — surfacing them to onCostError would fire on
- * every upstream rate limit, polluting user logs.
- *
- * A future drift signal for actual proxy contract violations should be gated on
- * an explicit `X-NullSpend-Denied` response header (filed as a follow-up TODO).
+ * Identification is gated on the `X-NullSpend-Denied: 1` response header. The
+ * proxy stamps this header on every denial Response (5 paths in shared.ts,
+ * 4 in mcp.ts). Upstream provider 429s (OpenAI rate_limit_exceeded, Anthropic
+ * rate limit) never carry this header so they fall through SILENTLY without
+ * any body parsing. This is a stronger contract than the previous code-probing
+ * approach: collisions are structurally impossible, not just empirically
+ * unlikely.
  */
 async function parseDenialPayload(
   response: Response,
 ): Promise<DenialPayload | null> {
+  // Header gate — only NullSpend denials carry this. Upstream provider 429s
+  // never have it, so they fall through with zero body parsing.
+  if (response.headers.get("X-NullSpend-Denied") !== "1") return null;
+
   let json: Record<string, unknown>;
   try {
     const cloned = response.clone();
     json = await cloned.json() as Record<string, unknown>;
   } catch {
-    return null; // Not JSON — pass through (e.g., text body, malformed body)
+    return null; // Header was present but body is malformed — fall through
   }
   // Runtime-narrow errObj before treating it as a record. JSON parsing can
   // produce error: null, error: 0, error: false, error: "string", error: [], etc.
@@ -305,7 +308,7 @@ async function parseDenialPayload(
   if (!rawErrObj || typeof rawErrObj !== "object" || Array.isArray(rawErrObj)) return null;
   const errObj = rawErrObj as Record<string, unknown>;
   const code = errObj.code;
-  if (typeof code !== "string") return null; // Non-string code — pass through (Anthropic shape)
+  if (typeof code !== "string") return null; // Non-string code — defensive
   // Same runtime narrowing for details: must be a plain object, not null/array/primitive.
   const rawDetails = errObj.details;
   const details = rawDetails && typeof rawDetails === "object" && !Array.isArray(rawDetails)
@@ -322,14 +325,14 @@ async function parseDenialPayload(
 
 /**
  * Dispatch a parsed NullSpend denial: fire onDenied via safeDenied, then throw
- * the matching typed error. Only handles the 5 known codes; unknown codes fall
- * through silently (caller returns raw response).
+ * the matching typed error. Handles 5 known codes; unknown codes are surfaced
+ * to onCostError as a drift signal (caller returns raw response, no throw).
  *
- * Silent fall-through is intentional: the proxy passes through upstream
- * provider 429s (OpenAI's `error.code: "rate_limit_exceeded"`, etc.) with
- * preserved code fields. Surfacing unknown codes to onCostError would fire on
- * every upstream rate limit. A future drift signal for actual proxy contract
- * violations should be gated on an `X-NullSpend-Denied` response header.
+ * Drift signaling is now safe because parseDenialPayload gates on the
+ * X-NullSpend-Denied response header. Upstream provider 429s never carry that
+ * header so they fall through before reaching this function. Anything that
+ * reaches here is, by contract, a NullSpend denial — so an unknown code can
+ * only mean the proxy shipped a code the SDK hasn't been updated to handle.
  */
 function dispatchDenialCode(
   parsed: DenialPayload,
@@ -402,7 +405,15 @@ function dispatchDenialCode(
     throw new TagBudgetExceededError({ tagKey, tagValue, remaining, limit, spend });
   }
 
-  // Unknown code — fall through silently. See header docstring for why.
+  // Unknown code — by header-gate contract this is a drift signal (proxy
+  // shipped a code the SDK doesn't support yet). Surface to onCostError so
+  // operators see it; do NOT fire onDenied (we have nothing meaningful to
+  // dispatch) and do NOT throw (caller's existing 429 handling should run).
+  onCostError(new Error(
+    `[nullspend] Proxy returned unknown denial code: ${code}. ` +
+    `This is a drift signal — the proxy may be ahead of the SDK. ` +
+    `Update @nullspend/sdk to the latest version.`,
+  ));
 }
 
 function warnSessionDenied(

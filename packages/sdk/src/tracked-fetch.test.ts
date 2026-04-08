@@ -37,13 +37,25 @@ function makeAnthropicBody(model = "claude-sonnet-4-20250514", stream = false): 
   return JSON.stringify({ model, stream, messages: [{ role: "user", content: "Hi" }] });
 }
 
-function mockFetchJsonResponse(body: unknown, status = 200): Response {
+function mockFetchJsonResponse(
+  body: unknown,
+  status = 200,
+  extraHeaders?: Record<string, string>,
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     statusText: status === 200 ? "OK" : `Status ${status}`,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...extraHeaders },
   });
 }
+
+/**
+ * Header that gates SDK 429 interception. The proxy stamps this on every
+ * NullSpend denial Response (5 paths in shared.ts, 4 in mcp.ts). Tests that
+ * exercise the typed-error path must set this; tests that exercise upstream
+ * fall-through must NOT set it.
+ */
+const DENIED_HEADERS = { "X-NullSpend-Denied": "1" };
 
 function mockFetchStreamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder();
@@ -1889,7 +1901,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 4_900_000,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         try {
           await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
@@ -1928,7 +1940,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 999_500,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         try {
           await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
@@ -1965,7 +1977,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 999_500,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         try {
           await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
@@ -1995,7 +2007,7 @@ describe("buildTrackedFetch", () => {
         // Missing details object entirely
         mockFetch.mockResolvedValue(mockFetchJsonResponse({
           error: { code: "customer_budget_exceeded" },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         try {
           await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
@@ -2032,7 +2044,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 1_000_000,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         await expect(
           trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() }),
@@ -2071,7 +2083,7 @@ describe("buildTrackedFetch", () => {
               estimated_cost_microdollars: 500_000,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         try {
           await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
@@ -2121,6 +2133,7 @@ describe("buildTrackedFetch", () => {
             headers: {
               "Content-Type": "application/json",
               "Retry-After": "30",
+              ...DENIED_HEADERS,
             },
           },
         ));
@@ -2167,6 +2180,7 @@ describe("buildTrackedFetch", () => {
             headers: {
               "Content-Type": "application/json",
               "Retry-After": "15",
+              ...DENIED_HEADERS,
             },
           },
         ));
@@ -2208,6 +2222,7 @@ describe("buildTrackedFetch", () => {
             headers: {
               "Content-Type": "application/json",
               "Retry-After": "60",
+              ...DENIED_HEADERS,
             },
           },
         ));
@@ -2247,7 +2262,7 @@ describe("buildTrackedFetch", () => {
               session_limit_microdollars: 1_000_000,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         try {
           await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
@@ -2287,7 +2302,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 4_800_000,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         try {
           await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
@@ -2328,7 +2343,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 1_200_000,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
 
@@ -2433,7 +2448,7 @@ describe("buildTrackedFetch", () => {
             code: "budget_exceeded",
             details: { entity_type: "api_key", budget_limit_microdollars: 100, budget_spend_microdollars: 100 },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -2577,7 +2592,7 @@ describe("buildTrackedFetch", () => {
               details: { limitMicrodollars: 1000, windowSeconds: 60, currentMicrodollars: 1000 },
             },
           }),
-          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "0" } },
+          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "0", ...DENIED_HEADERS } },
         ));
 
         const trackedFetch = buildTrackedFetch(
@@ -2597,12 +2612,14 @@ describe("buildTrackedFetch", () => {
         }
       });
 
-      it("proxied 429 with unknown denial code passes through silently", async () => {
-        // Unknown code → fall through to raw response WITHOUT firing onCostError.
-        // The drift signal was reverted (audit Bug 1) because OpenAI's upstream
-        // 429 has `error.code: "rate_limit_exceeded"` which is structurally
-        // identical to a "code we don't handle yet". Re-enable when the proxy
-        // adds an X-NullSpend-Denied header (TODOS follow-up).
+      it("proxied 429 with X-NullSpend-Denied + unknown code surfaces drift signal via onCostError", async () => {
+        // With the X-NullSpend-Denied header gate in place, an unknown denial
+        // code is no longer ambiguous — it can ONLY be a real proxy/SDK contract
+        // drift (e.g., proxy added a new code the SDK hasn't shipped support for
+        // yet). Surface it via onCostError as a drift signal, but still return
+        // the raw response so the caller's existing 429 handling runs.
+        // Critical: do NOT fire onDenied or throw — we don't know what type
+        // of denial it is, so we have nothing meaningful to dispatch.
         const onCostError = vi.fn();
         const onDenied = vi.fn();
         mockFetch.mockResolvedValue(mockFetchJsonResponse({
@@ -2610,7 +2627,7 @@ describe("buildTrackedFetch", () => {
             code: "future_denial_code_we_dont_handle",
             details: { foo: "bar" },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -2626,6 +2643,46 @@ describe("buildTrackedFetch", () => {
         });
 
         expect(response.status).toBe(429); // raw response, not thrown
+        expect(onDenied).not.toHaveBeenCalled(); // can't classify, don't dispatch
+        expect(onCostError).toHaveBeenCalledTimes(1);
+        const errArg = onCostError.mock.calls[0][0] as Error;
+        expect(errArg).toBeInstanceOf(Error);
+        expect(errArg.message).toContain("future_denial_code_we_dont_handle");
+      });
+
+      it("proxied 429 with valid NullSpend code body but MISSING X-NullSpend-Denied header falls through silently", async () => {
+        // The header is the gate. Without it, even a perfectly-shaped
+        // NullSpend denial body must be treated as an upstream rate limit
+        // and fall through to raw response. This locks the contract:
+        // body shape alone is NEVER sufficient.
+        const onCostError = vi.fn();
+        const onDenied = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "budget_exceeded",
+            details: {
+              entity_type: "api_key",
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 1_000_000,
+            },
+          },
+        }, 429)); // ← no DENIED_HEADERS
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Raw 429 returned, no exception, no callbacks fired
+        expect(response.status).toBe(429);
         expect(onCostError).not.toHaveBeenCalled();
         expect(onDenied).not.toHaveBeenCalled();
       });
@@ -2739,7 +2796,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 1_000_000,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         // No proxyUrl configured — detection happens via header only
         const trackedFetch = buildTrackedFetch(
@@ -2991,7 +3048,7 @@ describe("buildTrackedFetch", () => {
         // rejects negatives defensively (audit Bug 2 fix).
         mockFetch.mockResolvedValue(new Response(
           JSON.stringify({ error: { code: "velocity_exceeded", details: { limitMicrodollars: 1000 } } }),
-          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "-5" } },
+          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "-5", ...DENIED_HEADERS } },
         ));
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -3012,7 +3069,7 @@ describe("buildTrackedFetch", () => {
       it("velocity_exceeded with non-numeric Retry-After: \"abc\" produces undefined retryAfterSeconds", async () => {
         mockFetch.mockResolvedValue(new Response(
           JSON.stringify({ error: { code: "velocity_exceeded", details: { limitMicrodollars: 1000 } } }),
-          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "abc" } },
+          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "abc", ...DENIED_HEADERS } },
         ));
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -3065,7 +3122,7 @@ describe("buildTrackedFetch", () => {
               budget_spend_microdollars: 999_500,
             },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -3090,7 +3147,7 @@ describe("buildTrackedFetch", () => {
       it("customer_budget_exceeded with details: null narrows safely (no NaN, no crash)", async () => {
         mockFetch.mockResolvedValue(mockFetchJsonResponse({
           error: { code: "customer_budget_exceeded", details: null },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -3125,7 +3182,7 @@ describe("buildTrackedFetch", () => {
             code: "budget_exceeded",
             details: { entity_type: "api_key", budget_limit_microdollars: 100, budget_spend_microdollars: 100 },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -3159,7 +3216,7 @@ describe("buildTrackedFetch", () => {
             code: "budget_exceeded",
             details: { entity_type: "api_key", budget_limit_microdollars: 100, budget_spend_microdollars: 100 },
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         const trackedFetch = buildTrackedFetch(
           "openai",
@@ -3206,7 +3263,7 @@ describe("buildTrackedFetch", () => {
             message: "Rate limit exceeded",
             type: "rate_limit_error",
           },
-        }, 429));
+        }, 429, DENIED_HEADERS));
 
         const response = await trackedFetch(OPENAI_URL, {
           method: "POST",
