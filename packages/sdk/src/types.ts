@@ -52,10 +52,20 @@ export interface NullSpendConfig {
   apiKey: string;
   /**
    * Proxy base URL used to detect when a tracked fetch request is going through
-   * the NullSpend proxy. When the request URL starts with this value, the SDK
-   * skips client-side cost tracking and lets the proxy handle accounting.
-   * Optional — header-based detection (`x-nullspend-key`) still works as a fallback.
-   * Example: "https://nullspend.cjones6489.workers.dev"
+   * the NullSpend proxy. Detection is by URL ORIGIN match (scheme + host + port).
+   * When the request URL's origin matches, the SDK skips client-side cost tracking
+   * and lets the proxy handle accounting.
+   *
+   * **IMPORTANT — strict port comparison**: if your proxy listens on a non-default
+   * port (e.g. `https://proxy.example.com:8443`), you MUST include that port in
+   * `proxyUrl`. Mismatched ports cause the SDK to take the direct path and
+   * double-count cost events. This strictness is intentional — port-normalization
+   * would silently mask real misconfigurations.
+   *
+   * Optional — header-based detection (`x-nullspend-key` set on the request) still
+   * works as a fallback when `proxyUrl` is unset.
+   *
+   * Example: `"https://nullspend.cjones6489.workers.dev"`
    */
   proxyUrl?: string;
   /** Override the API version sent via NullSpend-Version header. Defaults to the SDK's built-in version. */

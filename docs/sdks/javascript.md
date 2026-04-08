@@ -36,6 +36,7 @@ The `NullSpend` constructor accepts a `NullSpendConfig` object:
 |---|---|---|---|
 | `baseUrl` | `string` | **required** | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
 | `apiKey` | `string` | **required** | API key (`ns_live_sk_...`) |
+| `proxyUrl` | `string` | — | NullSpend proxy URL. When set, `createTrackedFetch` skips client-side cost tracking for requests whose URL origin matches (strict on scheme, host, AND **port** — include the port if your proxy uses a non-default one). Optional — header-based detection (`x-nullspend-key`) is the always-on fallback. See [Proxy 429 interception](#proxy-429-interception). |
 | `apiVersion` | `string` | `"2026-04-01"` | API version sent via `NullSpend-Version` header |
 | `fetch` | `typeof fetch` | `globalThis.fetch` | Custom fetch implementation |
 | `requestTimeoutMs` | `number` | `30000` | Per-request timeout in ms. Set to `0` to disable |
@@ -485,11 +486,15 @@ try {
 
 ### `BudgetExceededError`
 
-Thrown by `createTrackedFetch` when enforcement is enabled and the estimated cost exceeds remaining budget.
+Thrown by `createTrackedFetch` when (a) enforcement is enabled and the estimated cost exceeds the remaining budget, OR (b) the request goes through the proxy and the proxy returns a 429 with code `budget_exceeded` or `customer_budget_exceeded`. For `customer_budget_exceeded`, `entityType === "customer"` and `entityId` is the customer ID (falling back to the SDK-side customer when the proxy doesn't echo it).
 
 | Property | Type | Description |
 |---|---|---|
-| `remainingMicrodollars` | `number` | Budget remaining when denial occurred |
+| `remainingMicrodollars` | `number` | Budget remaining when denial occurred (`max(0, limit - spend)`) |
+| `entityType` | `string \| undefined` | Budget entity type (`"user"`, `"api_key"`, `"org"`, `"customer"`) |
+| `entityId` | `string \| undefined` | The specific entity ID that hit its budget |
+| `limitMicrodollars` | `number \| undefined` | Configured budget limit |
+| `spendMicrodollars` | `number \| undefined` | Spend at denial time |
 
 ### `MandateViolationError`
 
@@ -503,18 +508,45 @@ Thrown when the requested model or provider is not allowed by key policy.
 
 ### `SessionLimitExceededError`
 
-Thrown when session spend plus estimated cost exceeds the session limit.
+Thrown when session spend plus estimated cost exceeds the session limit (client-side enforcement) OR when the proxy returns a 429 with code `session_limit_exceeded`.
 
 | Property | Type | Description |
 |---|---|---|
 | `sessionSpendMicrodollars` | `number` | Accumulated session spend at denial time |
 | `sessionLimitMicrodollars` | `number` | Configured session limit |
 
+### `VelocityExceededError`
+
+Thrown when the proxy returns a 429 with code `velocity_exceeded` — the request was blocked because the spend rate exceeds the configured velocity limit. Has no client-side equivalent (velocity is enforced by the proxy only).
+
+| Property | Type | Description |
+|---|---|---|
+| `retryAfterSeconds` | `number \| undefined` | Cooldown from the `Retry-After` HTTP header. Non-negative integer per RFC 7231 |
+| `limitMicrodollars` | `number \| undefined` | Configured velocity limit |
+| `windowSeconds` | `number \| undefined` | Velocity window length |
+| `currentMicrodollars` | `number \| undefined` | Current spend in the window at denial time |
+
+### `TagBudgetExceededError`
+
+Thrown when the proxy returns a 429 with code `tag_budget_exceeded` — the request was blocked because a tag-scoped budget (e.g. per-team, per-environment) is exhausted.
+
+| Property | Type | Description |
+|---|---|---|
+| `tagKey` | `string \| undefined` | The tag key (e.g. `"team"`, `"env"`) |
+| `tagValue` | `string \| undefined` | The tag value (e.g. `"backend"`, `"prod"`) |
+| `remainingMicrodollars` | `number \| undefined` | Budget remaining (`max(0, limit - spend)`) |
+| `limitMicrodollars` | `number \| undefined` | Configured tag budget limit |
+| `spendMicrodollars` | `number \| undefined` | Tag spend at denial time |
+
+### Catching all enforcement errors
+
 ```typescript
 import {
   BudgetExceededError,
   MandateViolationError,
   SessionLimitExceededError,
+  VelocityExceededError,
+  TagBudgetExceededError,
 } from "@nullspend/sdk";
 
 try {
@@ -523,12 +555,36 @@ try {
   if (err instanceof SessionLimitExceededError) {
     console.log(`Session spent $${err.sessionSpendMicrodollars / 1_000_000} of $${err.sessionLimitMicrodollars / 1_000_000} limit`);
   } else if (err instanceof BudgetExceededError) {
-    console.log(`Budget exhausted: $${err.remainingMicrodollars / 1_000_000} remaining`);
+    if (err.entityType === "customer") {
+      console.log(`Customer ${err.entityId} budget exhausted: $${err.remainingMicrodollars / 1_000_000} remaining`);
+    } else {
+      console.log(`${err.entityType} budget exhausted: $${err.remainingMicrodollars / 1_000_000} remaining`);
+    }
   } else if (err instanceof MandateViolationError) {
     console.log(`${err.mandate} blocks "${err.requested}". Allowed: ${err.allowed.join(", ")}`);
+  } else if (err instanceof VelocityExceededError) {
+    console.log(`Velocity limit hit. Retry after ${err.retryAfterSeconds}s`);
+  } else if (err instanceof TagBudgetExceededError) {
+    console.log(`Tag budget ${err.tagKey}=${err.tagValue} exhausted`);
   }
 }
 ```
+
+### Proxy 429 interception
+
+When the SDK detects that a request is going through the NullSpend proxy (URL origin match against `proxyUrl`, OR `x-nullspend-key` header set), it skips client-side cost tracking (the proxy handles accounting server-side) and skips client-side enforcement (the proxy handles policy server-side). But it still inspects the proxy's 429 responses and converts the five NullSpend denial codes into typed errors:
+
+| Proxy code | Thrown error |
+|---|---|
+| `budget_exceeded` | `BudgetExceededError` |
+| `customer_budget_exceeded` | `BudgetExceededError` (with `entityType === "customer"`) |
+| `velocity_exceeded` | `VelocityExceededError` |
+| `session_limit_exceeded` | `SessionLimitExceededError` |
+| `tag_budget_exceeded` | `TagBudgetExceededError` |
+
+All five fire the `onDenied` callback before throwing. Interception only runs when `enforcement: true` is set on the tracked fetch options — without it, the proxy 429 passes through as a raw `Response`.
+
+**Upstream provider 429s pass through silently.** When the proxy forwards an upstream OpenAI/Anthropic rate limit (HTTP 429 with the provider's own body shape — `error.code: "rate_limit_exceeded"` for OpenAI, no `error.code` for Anthropic), the SDK does NOT throw and does NOT fire `onDenied`. Callers should handle these the same way they would handle a direct provider rate limit (check `response.status === 429` and read the body).
 
 ## Types
 

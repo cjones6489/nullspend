@@ -120,12 +120,19 @@ When using the proxy, the SDK also intercepts proxy-side 429 denials and throws 
 
 | Error | Proxy code | When |
 |---|---|---|
-| `BudgetExceededError` | `budget_exceeded` | Key/user budget exhausted |
+| `BudgetExceededError` | `budget_exceeded` | Key/user/org budget exhausted |
+| `BudgetExceededError` (entityType: `"customer"`) | `customer_budget_exceeded` | Customer-scoped budget exhausted |
 | `VelocityExceededError` | `velocity_exceeded` | Spend rate exceeds velocity limit |
 | `SessionLimitExceededError` | `session_limit_exceeded` | Session spend cap reached |
 | `TagBudgetExceededError` | `tag_budget_exceeded` | Tag-level budget exhausted |
 
-All denial types fire the `onDenied` callback before throwing. See the [full SDK docs](https://nullspend.com/docs/sdks/javascript) for `TrackedFetchOptions` reference.
+All denial types fire the `onDenied` callback before throwing. Proxy 429s with non-NullSpend codes (e.g. an upstream OpenAI rate limit forwarded through the proxy) pass through as raw `Response` objects.
+
+**Proxy detection** — the SDK takes the proxied path (skipping client-side cost tracking to avoid double-counting against the proxy's own write) when EITHER:
+1. `proxyUrl` is set on the `NullSpend` constructor AND the request URL's origin matches it (strict on scheme + host + **port** — include the port if your proxy uses a non-default one), OR
+2. The request carries an `x-nullspend-key` header (set on either `init.headers` or the underlying `Request` object's headers).
+
+See the [full SDK docs](https://nullspend.com/docs/sdks/javascript) for `TrackedFetchOptions` reference.
 
 ## Error handling
 

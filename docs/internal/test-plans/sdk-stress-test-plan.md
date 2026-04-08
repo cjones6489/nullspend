@@ -435,14 +435,17 @@ Precondition: set up a test API key with allowedModels = ["gpt-4o-mini"] (skip i
 
 ### 6.9 Enforcement: proxy 429 interception
 
-These test the SDK's ability to convert proxy denial responses into typed errors. Use direct fetch against the proxy (not SDK tracked fetch) to trigger the 429, then feed the response back through the SDK's interception logic... actually, the interception is inside the SDK's tracked fetch, so we need to use tracked fetch pointed at the proxy.
+Tests the SDK's ability to convert proxy denial responses into typed errors. Tracked fetch is pointed at the deployed proxy with both URL match AND `x-nullspend-key` header set, so both proxy detection paths fire. The proxied branch runs `parseDenialPayload` + `dispatchDenialCode` after the fetch and converts the 429 into a typed error before returning.
 
-- **9.1** Point tracked fetch at proxy with `x-nullspend-key`, target an exhausted customer budget → proxy returns 429 `customer_budget_exceeded`. Verify: tracked fetch receives 429, but since the URL isn't "proxy.nullspend.com" AND enforcement is true, it runs the interception code path. Expected: throws BudgetExceededError with correct remaining/limit/spend from details.
-- **9.2** Target a velocity-limited customer → 429 `velocity_exceeded` → throws VelocityExceededError with retryAfterSeconds from Retry-After header
-- **9.3** Target a session-limited customer → 429 `session_limit_exceeded` → throws SessionLimitExceededError
-- **9.4** Target a tag-budget entity → 429 `tag_budget_exceeded` → throws TagBudgetExceededError
+Implemented as a single end-to-end test (`6.9 proxy 429 interception > proxy 429 customer_budget_exceeded throws BudgetExceededError + fires onDenied`):
 
-Note: **depends on whether isProxied() correctly detects our deployed proxy URL**. See §3.1. The test may need to use the header-based detection path.
+- Lifts the user budget so the proxy denies on the customer entity (not the user)
+- Creates `tracked = p1Ns.createTrackedFetch("openai", { enforcement: true, customer, onDenied })`
+- Awaits the call against `${BASE}/v1/chat/completions` and expects `rejects.toBeInstanceOf(BudgetExceededError)`
+- Asserts `onDeniedFired === true` (the safeDenied → throw sequence)
+- Restores the exhausted user budget in `finally` for §6.7b symmetry
+
+Originally a "KNOWN GAP" test that documented the bug at §15c-1. Now verifies the fix from the same item end-to-end against real Cloudflare-Workers + real proxy denial body shape. The detailed unit-test coverage of all 5 denial codes and edge cases lives in `packages/sdk/src/tracked-fetch.test.ts` (23 tests across "via proxyUrl", "via x-nullspend-key header", and "direct mode (defensive)" sub-blocks).
 
 ---
 
@@ -1471,7 +1474,7 @@ The adversarial review pass on the shipped stress test surfaced 27 findings.
 
 | # | File | Severity | Summary |
 |---|---|---|---|
-| 15c-1 | tracked-fetch.ts | bug | Proxy 429 interception is dead code in proxy bailout mode (already logged as a finding inside the test). Real SDK fix worth a separate PR — see §15b-1 for context. |
+| 15c-1 | tracked-fetch.ts | ✅ FIXED in PR (post-stress) | Proxy 429 interception was dead code in the proxy bailout path: `isProxied()` returned `globalThis.fetch` immediately, skipping the entire interception block at lines 192-277. Customers using `enforcement: true` with `proxyUrl` got raw 429s instead of typed errors (`BudgetExceededError`, `VelocityExceededError`, `SessionLimitExceededError`, `TagBudgetExceededError`). Fixed by extracting the inline interception into two helpers (`parseDenialPayload` + `dispatchDenialCode`) and restructuring the proxied branch to call them after the fetch but before returning. The fix preserves the no-double-count guarantee (proxied path still skips client-side cost tracking). Also added: malformed JSON / unknown denial codes now surface to `onCostError` as a drift signal (Finding 2 from eng review). Test surface grew from 15 to 23 in the proxy 429 interception describe block (13 rewritten to use proxyUrl + 8 new + 2 retained as direct-mode defensive). §6.9 stress test flipped from documenting the gap to verifying the fix end-to-end against the deployed proxy. |
 | 15c-2 | proxy/cost-logger.ts:58, :133 | ✅ FIXED in this PR | `JSON.stringify(event.tags)` double-encoded tags + cost_breakdown + tool_calls_requested into JSONB string columns instead of objects. Silently broke `lib/cost-events/aggregate-cost-events.ts`, `lib/cost-events/list-cost-events.ts`, and `lib/margins/auto-match.ts` for all proxy/mcp-written rows since commit 3012a56 (Mar 23 2026). Fixed by switching to `sql.json(value)` for all 3 affected columns in both single and batch insert paths. Existing 64 broken rows must be repaired via `pnpm jsonb:repair` immediately after deploying the proxy fix. **Deploy procedure: deploy proxy → run repair script (with `CLEANUP_CONFIRM=yes`) → verify with `SELECT jsonb_typeof(tags), COUNT(*) FROM cost_events GROUP BY 1;`.** Brief window between deploy and repair: dashboard tag-based features silently miss the 64 historical rows (they're old test data, not user-facing). |
 | 15c-3 | stress-sdk-features.test.ts:977-1045 | quality | §6.8 fail-open session limit test is a known no-op that burns ~15 real OpenAI requests per run. Either delete + log gap once in beforeAll, or rewrite against a mock upstream. |
 | 15c-4 | stress-sdk-features.test.ts:1132-1136 | quality | OpenAI/Anthropic streaming tests' `reader.read()` loop doesn't release the reader on error path. Wrap in try/finally with `reader.cancel()`. |
@@ -1487,7 +1490,7 @@ The adversarial review pass on the shipped stress test surfaced 27 findings.
 | 15c-14 | scripts/cleanup-stress-sdk.ts | quality | Cleanup script doesn't differentiate between "abandoned crash data" and "another run currently in flight". Add a recency filter (only delete rows older than 1 hour) to prevent stomping on a parallel run. |
 | 15c-15 | stress-sdk-features.test.ts:648-693 | quality | §0.3 direct-provider test does not invalidate policy cache before exercising. If a previous run cached a restrictive budget on the dashboard side, the SDK could deny client-side and the test would fail with a cryptic error from inside `session.openai()`. |
 | 15c-16 | stress-sdk-features.test.ts | quality | `waitForQueueDrain` equates "DB count stable for ~6s" with "Cloudflare Queue drained". Queue retries can arrive after longer gaps. Tighten the quiet window or drive cleanup off exact request IDs / queue metrics. (codex adversarial review, MEDIUM) |
-| 15c-17 | stress-sdk-features.test.ts §6.9 KNOWN GAP | design | The §6.9 KNOWN GAP test passes on a known SDK bug (proxy 429 interception is dead code in proxy bailout mode). Codex argues the test should FAIL until the SDK is fixed. Current design choice: document the gap and ship; the SDK fix is filed as 15c-1. Reconsider if the gap regresses. (codex P1, design choice) |
+| 15c-17 | stress-sdk-features.test.ts §6.9 | ✅ FIXED in PR (post-stress) | Originally a design choice — the §6.9 KNOWN GAP test passed on a known SDK bug (proxy 429 interception dead code) and codex argued it should FAIL until fixed. Resolved by fixing 15c-1 directly: §6.9 was rewritten to assert `BudgetExceededError` is thrown + `onDeniedFired === true`, and the "KNOWN GAP" framing was removed from both the describe block and the leading comment. The test now verifies the fix end-to-end against the deployed proxy (light intensity, ~30s, <$0.01). |
 | 15c-18 | packages/sdk/src/cost-reporter.ts shutdown() | ✅ FIXED in this PR | `shutdown()` short-circuited when `this.flushing` was set, leaving any events queued during the in-flight flush UNFLUSHED. Stress test §5.10 demonstrated this empirically (dropped 15 of 20 events at batchSize=5). Fixed by adding a drain loop — shutdown() now awaits in-flight flush, checks for new queue entries, runs another flush() if needed, repeats up to MAX_DRAIN_ITERATIONS=16. Verified by SDK unit test in cost-reporter.test.ts and §5.10 stress test. |
 
 ### Codex review summary
@@ -1495,6 +1498,7 @@ The adversarial review pass on the shipped stress test surfaced 27 findings.
 Two adversarial passes (Claude subagent + codex CLI) plus the structured codex review found 36 distinct issues total:
 - Auto-fixed before ship: **18** (Claude pass: 12; codex adversarial: 4 of 5; codex structured: 2 of 3)
 - Filed in this section as 15c-1 through 15c-17: **17** (P2 quality + 1 design choice)
+- Fixed post-stress in follow-up PR: **2** (15c-1 SDK proxy 429 interception + 15c-17 §6.9 test flip — landed together as a single PR that closes the original bug and the design-choice debt)
 
 Where Claude and codex disagreed: codex caught 5 things Claude missed (stressAuthHeaders override, tag backfill SQL on JSON-string column, waitForBudgetLive accepting any 429, cleanup substring, §9.1 weak verification, §8.3 fixed sleeps). Cross-model adversarial review delivered measurable additional coverage as predicted in §15a-1's outside-voice rationale.
 

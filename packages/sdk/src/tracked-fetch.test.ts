@@ -1857,556 +1857,1390 @@ describe("buildTrackedFetch", () => {
   // -------------------------------------------------------------------------
 
   describe("proxy 429 interception", () => {
-    it("proxy 429 with budget_exceeded code throws BudgetExceededError", async () => {
-      const policyCache = createMockPolicyCache();
+    const PROXY_URL = "https://proxy.example.com";
+    const PROXY_REQUEST_URL = "https://proxy.example.com/v1/chat/completions";
 
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
+    // -----------------------------------------------------------------------
+    // Sub-describe: via proxyUrl (the proxied path — exercises the actual fix
+    // from §15c-1, where the SDK now intercepts proxy 429 denials in the
+    // proxied path instead of bailing out before interception ran)
+    // -----------------------------------------------------------------------
 
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "budget_exceeded",
-          message: "Budget exceeded",
-          details: {
-            entity_type: "api_key",
-            entity_id: "key-1",
-            budget_limit_microdollars: 5_000_000,
-            budget_spend_microdollars: 4_900_000,
-          },
-        },
-      }, 429));
+    describe("via proxyUrl (proxied path — the actual fix)", () => {
+      it("proxy 429 with budget_exceeded code throws BudgetExceededError", async () => {
+        const policyCache = createMockPolicyCache();
 
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(BudgetExceededError);
-        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
-        expect(budgetErr.remainingMicrodollars).toBe(100_000);
-        expect(budgetErr.entityType).toBe("api_key");
-        expect(budgetErr.entityId).toBe("key-1");
-        expect(budgetErr.limitMicrodollars).toBe(5_000_000);
-        expect(budgetErr.spendMicrodollars).toBe(4_900_000);
-      }
-    });
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
 
-    it("proxy 429 with customer_budget_exceeded code throws BudgetExceededError", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true, customer: "acme-corp" },
-        queueCost,
-        policyCache,
-      );
-
-      // Proxy emits this code (not budget_exceeded) for customer-entity denials.
-      // Details schema: { customer_id, budget_limit_microdollars, budget_spend_microdollars }
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "customer_budget_exceeded",
-          message: "Request blocked: estimated cost exceeds customer budget limit.",
-          details: {
-            customer_id: "acme-corp",
-            budget_limit_microdollars: 1_000_000,
-            budget_spend_microdollars: 999_500,
-          },
-        },
-      }, 429));
-
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(BudgetExceededError);
-        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
-        expect(budgetErr.entityType).toBe("customer");
-        expect(budgetErr.entityId).toBe("acme-corp");
-        expect(budgetErr.limitMicrodollars).toBe(1_000_000);
-        expect(budgetErr.spendMicrodollars).toBe(999_500);
-        expect(budgetErr.remainingMicrodollars).toBe(500);
-      }
-    });
-
-    it("customer_budget_exceeded with null customer_id falls back to SDK-side customer", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true, customer: "acme-corp" },
-        queueCost,
-        policyCache,
-      );
-
-      // Proxy's shared.ts:212 can emit customer_id as null, not just string
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "customer_budget_exceeded",
-          details: {
-            customer_id: null, // proxy null case
-            budget_limit_microdollars: 1_000_000,
-            budget_spend_microdollars: 999_500,
-          },
-        },
-      }, 429));
-
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(BudgetExceededError);
-        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
-        expect(budgetErr.entityType).toBe("customer");
-        // Should fall back to the SDK-side customer, not remain null
-        expect(budgetErr.entityId).toBe("acme-corp");
-        expect(budgetErr.limitMicrodollars).toBe(1_000_000);
-        expect(budgetErr.spendMicrodollars).toBe(999_500);
-      }
-    });
-
-    it("customer_budget_exceeded with missing details produces undefined fields, not NaN", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true, customer: "acme-corp" },
-        queueCost,
-        policyCache,
-      );
-
-      // Missing details object entirely
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: { code: "customer_budget_exceeded" },
-      }, 429));
-
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(BudgetExceededError);
-        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
-        expect(budgetErr.entityId).toBe("acme-corp"); // fallback
-        expect(budgetErr.limitMicrodollars).toBeUndefined();
-        expect(budgetErr.spendMicrodollars).toBeUndefined();
-        expect(budgetErr.remainingMicrodollars).toBe(0); // max(0, 0-0)
-        expect(Number.isNaN(budgetErr.remainingMicrodollars)).toBe(false);
-      }
-    });
-
-    it("customer_budget_exceeded fires onDenied with type=budget and entityType=customer", async () => {
-      const policyCache = createMockPolicyCache();
-      const onDenied = vi.fn();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true, onDenied, customer: "acme-corp" },
-        queueCost,
-        policyCache,
-      );
-
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "customer_budget_exceeded",
-          details: {
-            customer_id: "acme-corp",
-            budget_limit_microdollars: 1_000_000,
-            budget_spend_microdollars: 1_000_000,
-          },
-        },
-      }, 429));
-
-      await expect(
-        trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() }),
-      ).rejects.toThrow(BudgetExceededError);
-
-      expect(onDenied).toHaveBeenCalledTimes(1);
-      const reason = onDenied.mock.calls[0][0] as DenialReason;
-      expect(reason.type).toBe("budget");
-      if (reason.type === "budget") {
-        expect(reason.entityType).toBe("customer");
-        expect(reason.entityId).toBe("acme-corp");
-        expect(reason.remaining).toBe(0);
-      }
-    });
-
-    it("proxy 429 BudgetExceededError has computed remaining from limit - spend", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
-
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "budget_exceeded",
-          message: "Request blocked",
-          details: {
-            entity_type: "api_key",
-            entity_id: "key-1",
-            budget_limit_microdollars: 5_000_000,
-            budget_spend_microdollars: 4_800_000,
-            estimated_cost_microdollars: 500_000,
-          },
-        },
-      }, 429));
-
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(BudgetExceededError);
-        const budgetErr = err as InstanceType<typeof BudgetExceededError>;
-        // remaining = limit - spend = 5_000_000 - 4_800_000 = 200_000, NOT 0
-        expect(budgetErr.remainingMicrodollars).toBe(200_000);
-        expect(budgetErr.entityType).toBe("api_key");
-        expect(budgetErr.entityId).toBe("key-1");
-        expect(budgetErr.limitMicrodollars).toBe(5_000_000);
-        expect(budgetErr.spendMicrodollars).toBe(4_800_000);
-      }
-    });
-
-    it("upstream provider 429 passes through without throwing", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
-
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          message: "Rate limit exceeded",
-          type: "rate_limit_error",
-        },
-      }, 429));
-
-      const response = await trackedFetch(OPENAI_URL, {
-        method: "POST",
-        body: makeOpenAIBody(),
-      });
-
-      // Upstream 429 without code: "budget_exceeded" should pass through
-      expect(response.status).toBe(429);
-    });
-
-    it("proxy 429 with non-JSON body passes through", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
-
-      mockFetch.mockResolvedValue(new Response("Too Many Requests", {
-        status: 429,
-        statusText: "Too Many Requests",
-        headers: { "content-type": "text/plain" },
-      }));
-
-      const response = await trackedFetch(OPENAI_URL, {
-        method: "POST",
-        body: makeOpenAIBody(),
-      });
-
-      // Non-JSON 429 should pass through
-      expect(response.status).toBe(429);
-    });
-
-    // Velocity — uses actual proxy response shape:
-    // details: { limitMicrodollars, windowSeconds, currentMicrodollars }
-    // Retry-After: HTTP header (not in JSON body)
-
-    it("proxy 429 with velocity_exceeded reads Retry-After header and details", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
-
-      // Actual proxy response shape from shared.ts:101-117
-      mockFetch.mockResolvedValue(new Response(
-        JSON.stringify({
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
           error: {
-            code: "velocity_exceeded",
-            message: "Request blocked: spending rate exceeds velocity limit. Retry after cooldown.",
+            code: "budget_exceeded",
+            message: "Budget exceeded",
             details: {
-              limitMicrodollars: 500_000,
-              windowSeconds: 60,
-              currentMicrodollars: 750_000,
+              entity_type: "api_key",
+              entity_id: "key-1",
+              budget_limit_microdollars: 5_000_000,
+              budget_spend_microdollars: 4_900_000,
             },
           },
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": "30",
-          },
-        },
-      ));
+        }, 429));
 
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(VelocityExceededError);
-        const velErr = err as InstanceType<typeof VelocityExceededError>;
-        expect(velErr.retryAfterSeconds).toBe(30);
-        expect(velErr.limitMicrodollars).toBe(500_000);
-        expect(velErr.windowSeconds).toBe(60);
-        expect(velErr.currentMicrodollars).toBe(750_000);
-      }
-    });
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          expect(budgetErr.remainingMicrodollars).toBe(100_000);
+          expect(budgetErr.entityType).toBe("api_key");
+          expect(budgetErr.entityId).toBe("key-1");
+          expect(budgetErr.limitMicrodollars).toBe(5_000_000);
+          expect(budgetErr.spendMicrodollars).toBe(4_900_000);
+        }
+      });
 
-    it("proxy 429 velocity_exceeded fires onDenied with full velocity context", async () => {
-      const policyCache = createMockPolicyCache();
-      const denied: DenialReason[] = [];
+      it("proxy 429 with customer_budget_exceeded code throws BudgetExceededError", async () => {
+        const policyCache = createMockPolicyCache();
 
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true, onDenied: (r) => denied.push(r) },
-        queueCost,
-        policyCache,
-      );
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, customer: "acme-corp" },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
 
-      mockFetch.mockResolvedValue(new Response(
-        JSON.stringify({
+        // Proxy emits this code (not budget_exceeded) for customer-entity denials.
+        // Details schema: { customer_id, budget_limit_microdollars, budget_spend_microdollars }
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
           error: {
-            code: "velocity_exceeded",
-            message: "Spending too fast",
+            code: "customer_budget_exceeded",
+            message: "Request blocked: estimated cost exceeds customer budget limit.",
             details: {
-              limitMicrodollars: 200_000,
-              windowSeconds: 120,
-              currentMicrodollars: 300_000,
+              customer_id: "acme-corp",
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 999_500,
             },
           },
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": "15",
-          },
-        },
-      ));
+        }, 429));
 
-      await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
-
-      expect(denied).toHaveLength(1);
-      expect(denied[0]).toEqual({
-        type: "velocity",
-        retryAfterSeconds: 15,
-        limit: 200_000,
-        window: 120,
-        current: 300_000,
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          expect(budgetErr.entityType).toBe("customer");
+          expect(budgetErr.entityId).toBe("acme-corp");
+          expect(budgetErr.limitMicrodollars).toBe(1_000_000);
+          expect(budgetErr.spendMicrodollars).toBe(999_500);
+          expect(budgetErr.remainingMicrodollars).toBe(500);
+        }
       });
-    });
 
-    it("proxy 429 velocity_exceeded with null details still reads Retry-After", async () => {
-      const policyCache = createMockPolicyCache();
+      it("customer_budget_exceeded with null customer_id falls back to SDK-side customer", async () => {
+        const policyCache = createMockPolicyCache();
 
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, customer: "acme-corp" },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
 
-      // Proxy sends details: null when velocityDetails is undefined
-      mockFetch.mockResolvedValue(new Response(
-        JSON.stringify({
+        // Proxy's shared.ts:212 can emit customer_id as null, not just string
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
           error: {
-            code: "velocity_exceeded",
-            message: "Velocity limit exceeded",
-            details: null,
+            code: "customer_budget_exceeded",
+            details: {
+              customer_id: null, // proxy null case
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 999_500,
+            },
           },
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": "60",
-          },
-        },
-      ));
+        }, 429));
 
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(VelocityExceededError);
-        const velErr = err as InstanceType<typeof VelocityExceededError>;
-        expect(velErr.retryAfterSeconds).toBe(60);
-        expect(velErr.limitMicrodollars).toBeUndefined();
-        expect(velErr.windowSeconds).toBeUndefined();
-        expect(velErr.currentMicrodollars).toBeUndefined();
-      }
-    });
-
-    it("proxy 429 with session_limit_exceeded throws SessionLimitExceededError", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
-
-      // Actual proxy response shape from shared.ts:133-152
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "session_limit_exceeded",
-          message: "Request blocked: session spend exceeds session limit. Start a new session.",
-          details: {
-            session_id: "task-042",
-            session_spend_microdollars: 950_000,
-            session_limit_microdollars: 1_000_000,
-          },
-        },
-      }, 429));
-
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(SessionLimitExceededError);
-        const sessErr = err as InstanceType<typeof SessionLimitExceededError>;
-        expect(sessErr.sessionSpendMicrodollars).toBe(950_000);
-        expect(sessErr.sessionLimitMicrodollars).toBe(1_000_000);
-      }
-    });
-
-    // Tag budget — uses actual proxy response shape:
-    // details: { tag_key, tag_value, budget_limit_microdollars, budget_spend_microdollars }
-    // remaining is computed (limit - spend), NOT sent by proxy
-
-    it("proxy 429 with tag_budget_exceeded computes remaining from limit - spend", async () => {
-      const policyCache = createMockPolicyCache();
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
-
-      // Actual proxy response shape from shared.ts:169-189
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "tag_budget_exceeded",
-          message: "Request blocked: estimated cost exceeds tag budget limit.",
-          details: {
-            tag_key: "env",
-            tag_value: "prod",
-            budget_limit_microdollars: 5_000_000,
-            budget_spend_microdollars: 4_800_000,
-          },
-        },
-      }, 429));
-
-      try {
-        await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() });
-        expect.unreachable("should have thrown");
-      } catch (err) {
-        expect(err).toBeInstanceOf(TagBudgetExceededError);
-        const tagErr = err as InstanceType<typeof TagBudgetExceededError>;
-        expect(tagErr.tagKey).toBe("env");
-        expect(tagErr.tagValue).toBe("prod");
-        expect(tagErr.limitMicrodollars).toBe(5_000_000);
-        expect(tagErr.spendMicrodollars).toBe(4_800_000);
-        // remaining = limit - spend = 5M - 4.8M = 200K
-        expect(tagErr.remainingMicrodollars).toBe(200_000);
-      }
-    });
-
-    it("proxy 429 tag_budget_exceeded fires onDenied with computed remaining and spend", async () => {
-      const policyCache = createMockPolicyCache();
-      const denied: DenialReason[] = [];
-
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true, onDenied: (r) => denied.push(r) },
-        queueCost,
-        policyCache,
-      );
-
-      // Fully exhausted tag budget
-      mockFetch.mockResolvedValue(mockFetchJsonResponse({
-        error: {
-          code: "tag_budget_exceeded",
-          message: "Tag budget exceeded",
-          details: {
-            tag_key: "customer",
-            tag_value: "acme",
-            budget_limit_microdollars: 1_000_000,
-            budget_spend_microdollars: 1_200_000,
-          },
-        },
-      }, 429));
-
-      await trackedFetch(OPENAI_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
-
-      expect(denied).toHaveLength(1);
-      expect(denied[0]).toEqual({
-        type: "tag_budget",
-        tagKey: "customer",
-        tagValue: "acme",
-        remaining: 0, // clamped: max(0, 1M - 1.2M) = 0
-        limit: 1_000_000,
-        spend: 1_200_000,
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          expect(budgetErr.entityType).toBe("customer");
+          // Should fall back to the SDK-side customer, not remain null
+          expect(budgetErr.entityId).toBe("acme-corp");
+          expect(budgetErr.limitMicrodollars).toBe(1_000_000);
+          expect(budgetErr.spendMicrodollars).toBe(999_500);
+        }
       });
-    });
 
-    it("proxy 429 with rate_limited code passes through (not a NullSpend denial)", async () => {
-      const policyCache = createMockPolicyCache();
+      it("customer_budget_exceeded with missing details produces undefined fields, not NaN", async () => {
+        const policyCache = createMockPolicyCache();
 
-      const trackedFetch = buildTrackedFetch(
-        "openai",
-        { enforcement: true },
-        queueCost,
-        policyCache,
-      );
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, customer: "acme-corp" },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
 
-      // Proxy IP/key rate limit — different from budget denials
-      mockFetch.mockResolvedValue(new Response(
-        JSON.stringify({
+        // Missing details object entirely
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: { code: "customer_budget_exceeded" },
+        }, 429));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          expect(budgetErr.entityId).toBe("acme-corp"); // fallback
+          expect(budgetErr.limitMicrodollars).toBeUndefined();
+          expect(budgetErr.spendMicrodollars).toBeUndefined();
+          expect(budgetErr.remainingMicrodollars).toBe(0); // max(0, 0-0)
+          expect(Number.isNaN(budgetErr.remainingMicrodollars)).toBe(false);
+        }
+      });
+
+      it("customer_budget_exceeded fires onDenied with type=budget and entityType=customer", async () => {
+        const policyCache = createMockPolicyCache();
+        const onDenied = vi.fn();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onDenied, customer: "acme-corp" },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
           error: {
-            code: "rate_limited",
-            message: "Too many requests",
-            details: null,
+            code: "customer_budget_exceeded",
+            details: {
+              customer_id: "acme-corp",
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 1_000_000,
+            },
           },
-        }),
-        {
-          status: 429,
-          headers: {
-            "Content-Type": "application/json",
-            "Retry-After": "60",
-          },
-        },
-      ));
+        }, 429));
 
-      const response = await trackedFetch(OPENAI_URL, {
-        method: "POST",
-        body: makeOpenAIBody(),
+        await expect(
+          trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() }),
+        ).rejects.toThrow(BudgetExceededError);
+
+        expect(onDenied).toHaveBeenCalledTimes(1);
+        const reason = onDenied.mock.calls[0][0] as DenialReason;
+        expect(reason.type).toBe("budget");
+        if (reason.type === "budget") {
+          expect(reason.entityType).toBe("customer");
+          expect(reason.entityId).toBe("acme-corp");
+          expect(reason.remaining).toBe(0);
+        }
       });
 
-      // rate_limited is not a budget/velocity/session/tag denial — passes through
-      expect(response.status).toBe(429);
+      it("proxy 429 BudgetExceededError has computed remaining from limit - spend", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "budget_exceeded",
+            message: "Request blocked",
+            details: {
+              entity_type: "api_key",
+              entity_id: "key-1",
+              budget_limit_microdollars: 5_000_000,
+              budget_spend_microdollars: 4_800_000,
+              estimated_cost_microdollars: 500_000,
+            },
+          },
+        }, 429));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          // remaining = limit - spend = 5_000_000 - 4_800_000 = 200_000, NOT 0
+          expect(budgetErr.remainingMicrodollars).toBe(200_000);
+          expect(budgetErr.entityType).toBe("api_key");
+          expect(budgetErr.entityId).toBe("key-1");
+          expect(budgetErr.limitMicrodollars).toBe(5_000_000);
+          expect(budgetErr.spendMicrodollars).toBe(4_800_000);
+        }
+      });
+
+      // Velocity — uses actual proxy response shape:
+      // details: { limitMicrodollars, windowSeconds, currentMicrodollars }
+      // Retry-After: HTTP header (not in JSON body)
+
+      it("proxy 429 with velocity_exceeded reads Retry-After header and details", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        // Actual proxy response shape from shared.ts:101-117
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({
+            error: {
+              code: "velocity_exceeded",
+              message: "Request blocked: spending rate exceeds velocity limit. Retry after cooldown.",
+              details: {
+                limitMicrodollars: 500_000,
+                windowSeconds: 60,
+                currentMicrodollars: 750_000,
+              },
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "30",
+            },
+          },
+        ));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(VelocityExceededError);
+          const velErr = err as InstanceType<typeof VelocityExceededError>;
+          expect(velErr.retryAfterSeconds).toBe(30);
+          expect(velErr.limitMicrodollars).toBe(500_000);
+          expect(velErr.windowSeconds).toBe(60);
+          expect(velErr.currentMicrodollars).toBe(750_000);
+        }
+      });
+
+      it("proxy 429 velocity_exceeded fires onDenied with full velocity context", async () => {
+        const policyCache = createMockPolicyCache();
+        const denied: DenialReason[] = [];
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onDenied: (r) => denied.push(r) },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({
+            error: {
+              code: "velocity_exceeded",
+              message: "Spending too fast",
+              details: {
+                limitMicrodollars: 200_000,
+                windowSeconds: 120,
+                currentMicrodollars: 300_000,
+              },
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "15",
+            },
+          },
+        ));
+
+        await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
+
+        expect(denied).toHaveLength(1);
+        expect(denied[0]).toEqual({
+          type: "velocity",
+          retryAfterSeconds: 15,
+          limit: 200_000,
+          window: 120,
+          current: 300_000,
+        });
+      });
+
+      it("proxy 429 velocity_exceeded with null details still reads Retry-After", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        // Proxy sends details: null when velocityDetails is undefined
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({
+            error: {
+              code: "velocity_exceeded",
+              message: "Velocity limit exceeded",
+              details: null,
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "60",
+            },
+          },
+        ));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(VelocityExceededError);
+          const velErr = err as InstanceType<typeof VelocityExceededError>;
+          expect(velErr.retryAfterSeconds).toBe(60);
+          expect(velErr.limitMicrodollars).toBeUndefined();
+          expect(velErr.windowSeconds).toBeUndefined();
+          expect(velErr.currentMicrodollars).toBeUndefined();
+        }
+      });
+
+      it("proxy 429 with session_limit_exceeded throws SessionLimitExceededError", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        // Actual proxy response shape from shared.ts:133-152
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "session_limit_exceeded",
+            message: "Request blocked: session spend exceeds session limit. Start a new session.",
+            details: {
+              session_id: "task-042",
+              session_spend_microdollars: 950_000,
+              session_limit_microdollars: 1_000_000,
+            },
+          },
+        }, 429));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(SessionLimitExceededError);
+          const sessErr = err as InstanceType<typeof SessionLimitExceededError>;
+          expect(sessErr.sessionSpendMicrodollars).toBe(950_000);
+          expect(sessErr.sessionLimitMicrodollars).toBe(1_000_000);
+        }
+      });
+
+      // Tag budget — uses actual proxy response shape:
+      // details: { tag_key, tag_value, budget_limit_microdollars, budget_spend_microdollars }
+      // remaining is computed (limit - spend), NOT sent by proxy
+
+      it("proxy 429 with tag_budget_exceeded computes remaining from limit - spend", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        // Actual proxy response shape from shared.ts:169-189
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "tag_budget_exceeded",
+            message: "Request blocked: estimated cost exceeds tag budget limit.",
+            details: {
+              tag_key: "env",
+              tag_value: "prod",
+              budget_limit_microdollars: 5_000_000,
+              budget_spend_microdollars: 4_800_000,
+            },
+          },
+        }, 429));
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(TagBudgetExceededError);
+          const tagErr = err as InstanceType<typeof TagBudgetExceededError>;
+          expect(tagErr.tagKey).toBe("env");
+          expect(tagErr.tagValue).toBe("prod");
+          expect(tagErr.limitMicrodollars).toBe(5_000_000);
+          expect(tagErr.spendMicrodollars).toBe(4_800_000);
+          // remaining = limit - spend = 5M - 4.8M = 200K
+          expect(tagErr.remainingMicrodollars).toBe(200_000);
+        }
+      });
+
+      it("proxy 429 tag_budget_exceeded fires onDenied with computed remaining and spend", async () => {
+        const policyCache = createMockPolicyCache();
+        const denied: DenialReason[] = [];
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onDenied: (r) => denied.push(r) },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        // Fully exhausted tag budget
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "tag_budget_exceeded",
+            message: "Tag budget exceeded",
+            details: {
+              tag_key: "customer",
+              tag_value: "acme",
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 1_200_000,
+            },
+          },
+        }, 429));
+
+        await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() }).catch(() => {});
+
+        expect(denied).toHaveLength(1);
+        expect(denied[0]).toEqual({
+          type: "tag_budget",
+          tagKey: "customer",
+          tagValue: "acme",
+          remaining: 0, // clamped: max(0, 1M - 1.2M) = 0
+          limit: 1_000_000,
+          spend: 1_200_000,
+        });
+      });
+
+      it("proxy 429 with rate_limited code passes through silently (not a NullSpend denial)", async () => {
+        const policyCache = createMockPolicyCache();
+        const onCostError = vi.fn();
+        const onDenied = vi.fn();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          policyCache,
+          PROXY_URL,
+        );
+
+        // Proxy IP/key rate limit — different from budget denials
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({
+            error: {
+              code: "rate_limited",
+              message: "Too many requests",
+              details: null,
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "60",
+            },
+          },
+        ));
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // rate_limited is not a NullSpend denial — passes through silently.
+        // Critical: must NOT fire onCostError (would pollute logs with every
+        // upstream rate limit). The drift signal would be reintroduced once
+        // the proxy adds an X-NullSpend-Denied header.
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+        expect(onDenied).not.toHaveBeenCalled();
+      });
+
+      // -----------------------------------------------------------------------
+      // New tests added with §15c-1 fix:
+      //   - Test 1: proxied 200 → no cost tracking (no double-count guarantee)
+      //   - Test 2: proxied 429 + enforcement: false → raw response (gate lock)
+      //   - Test 3: customer header injection ordering under proxied path
+      //   - Test 4: malformed JSON body → onCostError + raw response (Finding 2)
+      //   - Test 5: error: null → silent fall-through (upstream 429 routed via proxy)
+      //   - Test 6: Retry-After: 0 → retryAfterSeconds === 0 (Number.isFinite lock)
+      //   - Test 7: unknown denial code → onCostError + raw response (drift signal)
+      // -----------------------------------------------------------------------
+
+      it("proxied 200 response does NOT track cost client-side (no double-count)", async () => {
+        // Regression for the no-double-count guarantee. Without this, a future
+        // refactor could move cost tracking inside the proxied branch and
+        // double-count silently in the cost_event table.
+        mockFetch.mockResolvedValue(openaiJsonResponse());
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        expect(response.status).toBe(200);
+        expect(queueCost).not.toHaveBeenCalled();
+      });
+
+      it("proxied 429 with enforcement disabled returns raw response (no interception)", async () => {
+        // Locks the enforcement gate. Without this, a future refactor could
+        // flip the conditional and the test suite wouldn't catch it. Asserts
+        // ALL three observable side effects of interception are absent: no
+        // throw (response is returned), no onDenied fire, no cost track.
+        const onDenied = vi.fn();
+        const onCostError = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "budget_exceeded",
+            details: { entity_type: "api_key", budget_limit_microdollars: 100, budget_spend_microdollars: 100 },
+          },
+        }, 429));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: false, onDenied, onCostError }, // ← gate is OFF
+          queueCost,
+          null,
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Raw 429 returned, no exception thrown, no callbacks fired
+        expect(response.status).toBe(429);
+        expect(queueCost).not.toHaveBeenCalled();
+        expect(onDenied).not.toHaveBeenCalled();
+        expect(onCostError).not.toHaveBeenCalled();
+      });
+
+      it("proxied path injects X-NullSpend-Customer header before fetch (string URL + init)", async () => {
+        // Regression for the customer header injection at tracked-fetch.ts:84-92.
+        // Cheap insurance against a future refactor that moves the injection
+        // below the isProxied check. Exercises the addHeader(init) branch
+        // (line 90) — input is a string, init has no Request semantics.
+        mockFetch.mockResolvedValue(openaiJsonResponse());
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { customer: "acme-corp" },
+          queueCost,
+          null,
+          PROXY_URL,
+        );
+
+        await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Inspect the captured init from mockFetch
+        const capturedInit = mockFetch.mock.calls[0][1] as RequestInit | undefined;
+        const headers = new Headers(capturedInit?.headers as HeadersInit);
+        expect(headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+      });
+
+      it("proxied path injects X-NullSpend-Customer header when input is a Request without init.headers (WHATWG branch)", async () => {
+        // Regression for the OTHER customer-injection branch at
+        // tracked-fetch.ts:85-88 — when input is a Request and the caller
+        // didn't provide init.headers, we MUST clone the Request and inject
+        // into its headers (not synthesize an init.headers, because that
+        // would replace the entire Request headers per WHATWG fetch spec).
+        // The previous test only exercised the addHeader(init) branch.
+        mockFetch.mockResolvedValue(openaiJsonResponse());
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { customer: "acme-corp" },
+          queueCost,
+          null,
+          PROXY_URL,
+        );
+
+        const request = new Request(PROXY_REQUEST_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": "Bearer sk-test" },
+          body: makeOpenAIBody(),
+        });
+
+        await trackedFetch(request);
+
+        // mockFetch should receive a Request (the cloned one) with the
+        // customer header injected AND the original Authorization preserved.
+        const capturedInput = mockFetch.mock.calls[0][0];
+        expect(capturedInput).toBeInstanceOf(Request);
+        const capturedRequest = capturedInput as Request;
+        expect(capturedRequest.headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+        expect(capturedRequest.headers.get("Authorization")).toBe("Bearer sk-test");
+        expect(capturedRequest.headers.get("Content-Type")).toBe("application/json");
+      });
+
+      it("proxied 429 with malformed JSON body passes through silently", async () => {
+        // Parse failure → fall through to raw response WITHOUT firing onCostError.
+        // Surfacing parse failures was reverted (audit Bug 1) — would fire on
+        // every upstream provider 429 with a non-JSON or truncated body.
+        const onCostError = vi.fn();
+        const onDenied = vi.fn();
+        mockFetch.mockResolvedValue(new Response("not valid json{", {
+          status: 429,
+          headers: { "Content-Type": "application/json" },
+        }));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        expect(response.status).toBe(429); // raw response
+        expect(onCostError).not.toHaveBeenCalled();
+        expect(onDenied).not.toHaveBeenCalled();
+      });
+
+      it("proxied 429 with error: null falls through silently (upstream 429 routed via proxy)", async () => {
+        // null error is the "upstream provider 429 routed through proxy" case
+        // and should NOT fire onCostError (silent fall-through).
+        const onCostError = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({ error: null }, 429));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled(); // null error is silent
+      });
+
+      it("velocity_exceeded with Retry-After: 0 sets retryAfterSeconds to 0 (not undefined)", async () => {
+        // Locks the Number.isFinite change vs the original `|| undefined` pattern.
+        // The old code treated 0 as falsy and returned undefined; the new helper
+        // distinguishes 0 from undefined.
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({
+            error: {
+              code: "velocity_exceeded",
+              details: { limitMicrodollars: 1000, windowSeconds: 60, currentMicrodollars: 1000 },
+            },
+          }),
+          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "0" } },
+        ));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(VelocityExceededError);
+          expect((err as InstanceType<typeof VelocityExceededError>).retryAfterSeconds).toBe(0);
+        }
+      });
+
+      it("proxied 429 with unknown denial code passes through silently", async () => {
+        // Unknown code → fall through to raw response WITHOUT firing onCostError.
+        // The drift signal was reverted (audit Bug 1) because OpenAI's upstream
+        // 429 has `error.code: "rate_limit_exceeded"` which is structurally
+        // identical to a "code we don't handle yet". Re-enable when the proxy
+        // adds an X-NullSpend-Denied header (TODOS follow-up).
+        const onCostError = vi.fn();
+        const onDenied = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "future_denial_code_we_dont_handle",
+            details: { foo: "bar" },
+          },
+        }, 429));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        expect(response.status).toBe(429); // raw response, not thrown
+        expect(onCostError).not.toHaveBeenCalled();
+        expect(onDenied).not.toHaveBeenCalled();
+      });
+
+      // -----------------------------------------------------------------------
+      // Regression tests for audit Bug 1: upstream provider 429s routed through
+      // the proxy must pass through SILENTLY. The proxy preserves OpenAI's
+      // `error.code` and Anthropic's body shape (no `error.code`), so both
+      // hit the parse → unknown-or-no-code paths in the helper. Without these
+      // tests in place, future "drift signal" additions could regress and
+      // pollute production logs with every upstream rate limit.
+      // -----------------------------------------------------------------------
+
+      it("OpenAI-shape upstream rate limit (error.code = rate_limit_exceeded) passes through silently", async () => {
+        // Real OpenAI 429 body shape after passing through the proxy's
+        // sanitizeUpstreamError (which preserves error.code if string).
+        const onCostError = vi.fn();
+        const onDenied = vi.fn();
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({
+            error: {
+              type: "tokens",
+              message: "Rate limit reached for gpt-4o in organization org-xxx",
+              code: "rate_limit_exceeded",
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "60",
+            },
+          },
+        ));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Caller gets the raw 429 to handle as they would for any rate limit.
+        // Critical: zero noise — no onCostError, no onDenied, no exception.
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+        expect(onDenied).not.toHaveBeenCalled();
+      });
+
+      it("Anthropic-shape upstream rate limit (error.type only, no error.code) passes through silently", async () => {
+        // Real Anthropic 429 body shape after passing through the proxy's
+        // sanitizeUpstreamError. Anthropic uses error.type, never error.code.
+        const onCostError = vi.fn();
+        const onDenied = vi.fn();
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({
+            error: {
+              type: "rate_limit_error",
+              message: "Number of request tokens has exceeded your per-minute rate limit",
+            },
+          }),
+          {
+            status: 429,
+            headers: {
+              "Content-Type": "application/json",
+              "Retry-After": "30",
+            },
+          },
+        ));
+
+        const trackedFetch = buildTrackedFetch(
+          "anthropic",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Caller gets the raw 429. Critical: zero noise.
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+        expect(onDenied).not.toHaveBeenCalled();
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Sub-describe: via x-nullspend-key header (proxied path — header-based
+    // detection). Proves that interception fires for both proxy detection
+    // mechanisms (URL match and header match), not just one.
+    // -----------------------------------------------------------------------
+
+    describe("via x-nullspend-key header (proxied path — header-based detection)", () => {
+      it("header-based proxy detection (x-nullspend-key) triggers 429 interception", async () => {
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "customer_budget_exceeded",
+            details: {
+              customer_id: "acme-corp",
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 1_000_000,
+            },
+          },
+        }, 429));
+
+        // No proxyUrl configured — detection happens via header only
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, customer: "acme-corp" },
+          queueCost,
+          createMockPolicyCache(),
+          // proxyUrl: undefined
+        );
+
+        await expect(
+          trackedFetch(OPENAI_URL, {
+            method: "POST",
+            body: makeOpenAIBody(),
+            headers: { "x-nullspend-key": "ns_live_sk_test" }, // ← header-based detection
+          }),
+        ).rejects.toBeInstanceOf(BudgetExceededError);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Sub-describe: edge cases from the post-implementation audit. These
+    // cover Risks 1, 2, 4, 5, 6, 8 from the edge-case audit + remaining test
+    // gaps (falsy error fields, non-string code variants, streaming proxied
+    // responses, Retry-After parsing edges, response.bodyUsed guarantees,
+    // numeric customer_id fallback, defensive callback handling).
+    // -----------------------------------------------------------------------
+
+    describe("edge cases (audit follow-ups)", () => {
+      // ── Risk 1: Request with x-nullspend-key in Request.headers ──
+      it("Request with x-nullspend-key in Request.headers (no init, no proxyUrl) is detected as proxied", async () => {
+        // Risk 1: previously the SDK looked only at init.headers for x-nullspend-key.
+        // If the user constructed a Request with the header in its own headers
+        // and called trackedFetch(request) without init, isProxied returned
+        // false → SDK took the direct path → ran cost tracking → silent
+        // double-count against the proxy's own write.
+        mockFetch.mockResolvedValue(openaiJsonResponse());
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          {},
+          queueCost,
+          null,
+          // no proxyUrl
+        );
+
+        const request = new Request(OPENAI_URL, {
+          method: "POST",
+          headers: { "x-nullspend-key": "ns_live_sk_test", "Content-Type": "application/json" },
+          body: makeOpenAIBody(),
+        });
+
+        await trackedFetch(request);
+
+        // Critical: queueCost not called → SDK correctly took the proxied path
+        // (which skips cost tracking) instead of the direct path.
+        expect(queueCost).not.toHaveBeenCalled();
+      });
+
+      it("Request with x-nullspend-key + customer header injection wraps but still detects as proxied", async () => {
+        // The customer header injection wraps the input in a new Request with
+        // the X-NullSpend-Customer header added. isProxied is then called with
+        // the WRAPPED input. Verify both behaviors fire correctly together.
+        mockFetch.mockResolvedValue(openaiJsonResponse());
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { customer: "acme-corp" },
+          queueCost,
+          null,
+        );
+
+        const request = new Request(OPENAI_URL, {
+          method: "POST",
+          headers: { "x-nullspend-key": "ns_live_sk_test", "Content-Type": "application/json" },
+          body: makeOpenAIBody(),
+        });
+
+        await trackedFetch(request);
+
+        // Captured by mockFetch should be the WRAPPED Request with both headers.
+        const capturedInput = mockFetch.mock.calls[0][0] as Request;
+        expect(capturedInput.headers.get("x-nullspend-key")).toBe("ns_live_sk_test");
+        expect(capturedInput.headers.get("X-NullSpend-Customer")).toBe("acme-corp");
+        // Proxied path → no cost tracking
+        expect(queueCost).not.toHaveBeenCalled();
+      });
+
+      // ── Risk 2: port mismatch in proxyUrl ──
+      it("does NOT match a different port even when host matches (origin includes port)", async () => {
+        // Risk 2: origin comparison is strict on port. proxyUrl without explicit
+        // port doesn't match a request URL with an explicit port. This test
+        // LOCKS the current strict behavior — port-normalization would mask
+        // real misconfigurations. The remediation is documentation (see types.ts
+        // proxyUrl JSDoc), not code change.
+        mockFetch.mockResolvedValue(openaiJsonResponse());
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          {},
+          queueCost,
+          null,
+          "https://proxy.example.com", // ← no explicit port
+        );
+
+        await trackedFetch("https://proxy.example.com:8443/v1/chat/completions", {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Origins differ → SDK takes direct path → cost tracking runs.
+        // This is the expected (and documented) failure mode for misconfigured
+        // proxyUrl. Users with custom-port proxies must include the port.
+        expect(queueCost).toHaveBeenCalledTimes(1);
+      });
+
+      // ── Falsy error field variants (Risk 8 narrowing) ──
+      it("proxied 429 with error: 0 (falsy non-null) passes through silently", async () => {
+        const onCostError = vi.fn();
+        const onDenied = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({ error: 0 }, 429));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        const response = await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+        expect(onDenied).not.toHaveBeenCalled();
+      });
+
+      it("proxied 429 with error: false passes through silently", async () => {
+        const onCostError = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({ error: false }, 429));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        const response = await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+      });
+
+      it("proxied 429 with error: \"\" (empty string) passes through silently", async () => {
+        const onCostError = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({ error: "" }, 429));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        const response = await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+      });
+
+      it("proxied 429 with error: [] (array) passes through silently (Risk 8 runtime narrowing)", async () => {
+        // The original cast `errObj as Record<string, unknown>` would have
+        // accepted an array; the runtime narrowing rejects it.
+        const onCostError = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({ error: [] }, 429));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        const response = await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+      });
+
+      // ── Non-string error.code variants ──
+      it("proxied 429 with error.code: 0 (numeric) passes through silently", async () => {
+        const onCostError = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({ error: { code: 0 } }, 429));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        const response = await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+      });
+
+      it("proxied 429 with error.code: false passes through silently", async () => {
+        const onCostError = vi.fn();
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({ error: { code: false } }, 429));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        const response = await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+        expect(response.status).toBe(429);
+        expect(onCostError).not.toHaveBeenCalled();
+      });
+
+      // ── Streaming 200 in proxied path ──
+      it("streaming 200 response in proxied path passes through untouched (no cost tracking)", async () => {
+        // The proxied branch returns the response untouched for any non-429.
+        // Streaming responses should NOT be parsed by the SDK.
+        const sseBody = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n";
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(sseBody));
+            controller.close();
+          },
+        });
+        mockFetch.mockResolvedValue(new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        const response = await trackedFetch(PROXY_REQUEST_URL, {
+          method: "POST",
+          body: JSON.stringify({ model: "gpt-4o-mini", stream: true, messages: [] }),
+        });
+
+        expect(response.status).toBe(200);
+        // Body should still be readable (proxied path doesn't consume it)
+        expect(response.bodyUsed).toBe(false);
+        // No cost tracking — proxy handles it
+        expect(queueCost).not.toHaveBeenCalled();
+      });
+
+      // ── Retry-After parsing edge cases ──
+      it("velocity_exceeded with negative Retry-After: -5 produces undefined retryAfterSeconds", async () => {
+        // RFC 7231: Retry-After is a non-negative integer. The new helper
+        // rejects negatives defensively (audit Bug 2 fix).
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({ error: { code: "velocity_exceeded", details: { limitMicrodollars: 1000 } } }),
+          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "-5" } },
+        ));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(VelocityExceededError);
+          expect((err as InstanceType<typeof VelocityExceededError>).retryAfterSeconds).toBeUndefined();
+        }
+      });
+
+      it("velocity_exceeded with non-numeric Retry-After: \"abc\" produces undefined retryAfterSeconds", async () => {
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({ error: { code: "velocity_exceeded", details: { limitMicrodollars: 1000 } } }),
+          { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "abc" } },
+        ));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(VelocityExceededError);
+          expect((err as InstanceType<typeof VelocityExceededError>).retryAfterSeconds).toBeUndefined();
+        }
+      });
+
+      // ── response.bodyUsed guarantee on proxied 429 fall-through ──
+      it("proxied 429 with non-NullSpend body returns response with bodyUsed === false", async () => {
+        // The clone-and-parse pattern in parseDenialPayload must NOT consume
+        // the original response body. Callers expect to be able to read it.
+        mockFetch.mockResolvedValue(new Response(
+          JSON.stringify({ error: { type: "rate_limit_error", message: "..." } }),
+          { status: 429, headers: { "Content-Type": "application/json" } },
+        ));
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+        const response = await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+        expect(response.status).toBe(429);
+        expect(response.bodyUsed).toBe(false);
+        // User can still read the body
+        const body = await response.json() as { error?: { type?: string } };
+        expect(body.error?.type).toBe("rate_limit_error");
+      });
+
+      // ── Numeric customer_id falls back to closure ──
+      it("customer_budget_exceeded with numeric customer_id (42) falls back to SDK-side customer", async () => {
+        // typeof 42 === "number", not "string", so the fallback fires.
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "customer_budget_exceeded",
+            details: {
+              customer_id: 42, // ← numeric, not string
+              budget_limit_microdollars: 1_000_000,
+              budget_spend_microdollars: 999_500,
+            },
+          },
+        }, 429));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, customer: "acme-corp" },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          // Should fall back to the SDK-side customer, not coerce 42 to "42"
+          expect(budgetErr.entityId).toBe("acme-corp");
+        }
+      });
+
+      // ── customer_budget_exceeded with details: null (Risk 8 narrowing) ──
+      it("customer_budget_exceeded with details: null narrows safely (no NaN, no crash)", async () => {
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: { code: "customer_budget_exceeded", details: null },
+        }, 429));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, customer: "acme-corp" },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        try {
+          await trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() });
+          expect.unreachable("should have thrown");
+        } catch (err) {
+          expect(err).toBeInstanceOf(BudgetExceededError);
+          const budgetErr = err as InstanceType<typeof BudgetExceededError>;
+          expect(budgetErr.entityId).toBe("acme-corp"); // closure fallback
+          expect(budgetErr.limitMicrodollars).toBeUndefined();
+          expect(budgetErr.spendMicrodollars).toBeUndefined();
+          expect(budgetErr.remainingMicrodollars).toBe(0); // max(0, 0-0)
+          expect(Number.isNaN(budgetErr.remainingMicrodollars)).toBe(false);
+        }
+      });
+
+      // ── Risk 4: safeDenied swallows onCostError throws ──
+      it("buggy onCostError that throws does NOT prevent typed error from being thrown", async () => {
+        // Risk 4: if user's onDenied throws AND their onCostError throws too,
+        // safeDenied must swallow both so the typed error still propagates.
+        const onCostError = vi.fn(() => { throw new Error("logger broken"); });
+        const onDenied = vi.fn(() => { throw new Error("denied handler broken"); });
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "budget_exceeded",
+            details: { entity_type: "api_key", budget_limit_microdollars: 100, budget_spend_microdollars: 100 },
+          },
+        }, 429));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        await expect(
+          trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() }),
+        ).rejects.toBeInstanceOf(BudgetExceededError);
+
+        // Both callbacks were invoked even though both throw
+        expect(onDenied).toHaveBeenCalledTimes(1);
+        expect(onCostError).toHaveBeenCalledTimes(1);
+      });
+
+      // ── Risk 5: async onDenied that rejects doesn't surface as unhandled rejection ──
+      it("async onDenied that rejects is caught by safeDenied (no unhandled rejection)", async () => {
+        // Risk 5: TS allows async onDenied even though the type is `void`.
+        // safeDenied attaches a no-op catch so the rejection becomes a
+        // routed onCostError call instead of an unhandled promise rejection.
+        const onCostError = vi.fn();
+        const onDenied = vi.fn(async () => {
+          await Promise.resolve(); // ensure async boundary
+          throw new Error("async denied handler failed");
+        });
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "budget_exceeded",
+            details: { entity_type: "api_key", budget_limit_microdollars: 100, budget_spend_microdollars: 100 },
+          },
+        }, 429));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true, onCostError, onDenied },
+          queueCost,
+          createMockPolicyCache(),
+          PROXY_URL,
+        );
+
+        await expect(
+          trackedFetch(PROXY_REQUEST_URL, { method: "POST", body: makeOpenAIBody() }),
+        ).rejects.toBeInstanceOf(BudgetExceededError);
+
+        // Wait a microtask for the async onDenied to settle so the catch fires.
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        // The async rejection should be routed to onCostError, not unhandled.
+        expect(onCostError).toHaveBeenCalledTimes(1);
+        expect(onCostError.mock.calls[0][0].message).toBe("async denied handler failed");
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Sub-describe: direct mode (defensive). The helper runs in both proxied
+    // and direct modes; these tests lock the helper's contract for the
+    // (currently functionally unused) direct-mode call site. Don't delete —
+    // they serve as a regression guard if anyone ever puts a proxy in front
+    // of a direct path.
+    // -----------------------------------------------------------------------
+
+    describe("direct mode (defensive)", () => {
+      it("upstream provider 429 passes through without throwing", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+        );
+
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            message: "Rate limit exceeded",
+            type: "rate_limit_error",
+          },
+        }, 429));
+
+        const response = await trackedFetch(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Upstream 429 without code: "budget_exceeded" should pass through
+        expect(response.status).toBe(429);
+      });
+
+      it("proxy 429 with non-JSON body passes through", async () => {
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+        );
+
+        mockFetch.mockResolvedValue(new Response("Too Many Requests", {
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: { "content-type": "text/plain" },
+        }));
+
+        const response = await trackedFetch(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Non-JSON 429 should pass through
+        expect(response.status).toBe(429);
+      });
     });
   });
 });

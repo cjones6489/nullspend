@@ -1187,18 +1187,19 @@ describe(`SDK stress test — production validation [${INTENSITY}]`, () => {
       }, 60_000);
     });
 
-    // ── §6.9 proxy 429 interception (post-fix §15b-1) ──
-    // KNOWN GAP: the SDK's `isProxied()` bailout returns BEFORE the 429
-    // interception code can run. In real proxy usage (where the request URL
-    // matches proxyUrl OR x-nullspend-key is in init.headers), the SDK calls
-    // globalThis.fetch and returns the raw Response — interception is dead
-    // code in proxy mode. The unit tests in tracked-fetch.test.ts pass because
-    // they use a mocked fetch and a non-proxy URL.
+    // ── §6.9 proxy 429 interception (verifies fix from §15c-1) ──
+    // Previously a KNOWN GAP: the SDK's `isProxied()` bailout returned BEFORE
+    // the 429 interception code could run, making the typed-error API surface
+    // dead code in proxy mode. Fixed in §15c-1 — the proxied path now calls
+    // parseDenialPayload + dispatchDenialCode after the fetch but before
+    // returning, so callers get typed errors (BudgetExceededError, etc.)
+    // for proxy denials with enforcement: true.
     //
-    // We log this as a finding and run a single observability test that
-    // demonstrates the gap empirically.
-    describe("6.9 proxy 429 interception (KNOWN GAP)", () => {
-      it("documents that proxy 429 is NOT intercepted when going through proxy bailout", async (ctx) => {
+    // This test verifies the fix end-to-end against the live deployed proxy:
+    // a customer-budget denial through the SDK's tracked fetch should throw
+    // BudgetExceededError and fire onDenied — NOT return a raw 429.
+    describe("6.9 proxy 429 interception", () => {
+      it("proxy 429 customer_budget_exceeded throws BudgetExceededError + fires onDenied", async (ctx) => {
         if (!phase0Passed) ctx.skip();
         // Lift the user budget so the proxy denies on the customer entity
         // (not the user budget, which would emit generic budget_exceeded).
@@ -1216,23 +1217,22 @@ describe(`SDK stress test — production validation [${INTENSITY}]`, () => {
             customer: `${PREFIX}-p1-tight-01`,
             onDenied: () => { onDeniedFired = true; },
           });
-          // Even with enforcement: true, the SDK takes the bailout path because
-          // proxyUrl matches and x-nullspend-key is in headers. Returns raw Response.
-          const res = await tracked(`${BASE}/v1/chat/completions`, {
-            method: "POST",
-            headers: stressAuthHeaders({ "X-NullSpend-Customer": `${PREFIX}-p1-tight-01` }),
-            body: smallRequest({ messages: [{ role: "user", content: "p1.9.gap" }] }),
-          });
-          // Proxy denies with 429:customer_budget_exceeded
-          expect(res.status).toBe(429);
-          const body = await res.json() as { error?: { code?: string } };
-          expect(body.error?.code).toBe("customer_budget_exceeded");
-          // SDK did NOT throw and did NOT fire onDenied — interception is bypassed
-          expect(onDeniedFired).toBe(false);
+          // proxyUrl matches AND x-nullspend-key is in headers — both proxy
+          // detection paths fire. The fixed proxied branch runs interception
+          // after the fetch and converts the 429 into a typed BudgetExceededError.
+          await expect(
+            tracked(`${BASE}/v1/chat/completions`, {
+              method: "POST",
+              headers: stressAuthHeaders({ "X-NullSpend-Customer": `${PREFIX}-p1-tight-01` }),
+              body: smallRequest({ messages: [{ role: "user", content: "p1.9.fix" }] }),
+            }),
+          ).rejects.toBeInstanceOf(BudgetExceededError);
+          // onDenied fired before the throw (safeDenied → throw sequence)
+          expect(onDeniedFired).toBe(true);
           logFinding(
             "phase1.6.9",
-            "PROXY 429 INTERCEPTION DEAD CODE: SDK bailout (isProxied) returns raw Response before 429 interception runs. SDK throws nothing for proxy-denied requests in proxy mode. Caller must check res.status manually.",
-            "bug",
+            "Proxy 429 interception works in proxied mode (verifies fix from §15c-1). SDK now throws typed BudgetExceededError for customer-budget denials and fires onDenied callback.",
+            "info",
           );
         } finally {
           // Restore exhausted state for §6.7b symmetry.
@@ -1245,10 +1245,13 @@ describe(`SDK stress test — production validation [${INTENSITY}]`, () => {
         }
       }, 60_000);
 
-      // Note: the actual interception code is exercised by unit tests in
-      // packages/sdk/src/tracked-fetch.test.ts (proxy 429 interception suite).
-      // Those use a mocked fetch to bypass isProxied. We do not duplicate them
-      // here — the gap above is the load-bearing finding.
+      // Note: the helper functions (parseDenialPayload, dispatchDenialCode)
+      // are exercised in detail by unit tests in
+      // packages/sdk/src/tracked-fetch.test.ts (the "proxy 429 interception"
+      // describe with 23 tests across "via proxyUrl", "via x-nullspend-key
+      // header", and "direct mode (defensive)" sub-blocks). This stress test
+      // is the live-stack verification — proves the fix actually fires
+      // against a real Cloudflare-Workers proxy with a real denial body shape.
     });
 
     // ── §6.10 Streaming response tracking ──
@@ -1646,10 +1649,10 @@ describe(`SDK stress test — production validation [${INTENSITY}]`, () => {
     }, 30_000);
 
     // ── §7.7 Policy cache staleness (no 60s wait per §15a-13) ──
-    it.skip("7.7 policy cache staleness — superseded by §6.9 KNOWN GAP test", async () => {
-      // Replaced by the §6.9 KNOWN GAP coverage. The full staleness path
-      // (mutate budget mid-loop → expect 429 interception) cannot work in
-      // proxy bailout mode and is documented as a finding.
+    it.skip("7.7 policy cache staleness — covered by §6.9 (interception now works)", async () => {
+      // The full staleness path (mutate budget mid-loop → expect 429 interception)
+      // is now covered by §6.9 above, which exercises proxy 429 interception
+      // end-to-end after the §15c-1 fix landed.
     });
   });
 

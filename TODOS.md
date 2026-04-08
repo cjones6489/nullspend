@@ -73,16 +73,16 @@
 > (18 numbered follow-ups) and `docs/internal/test-plans/sdk-testing-gaps.md` (coverage map).
 > This section captures the must-pick-up items in the canonical TODO format.
 
-### SDK proxy 429 interception is dead code in proxy bailout mode
+### Add `X-NullSpend-Denied` response header to proxy 429 denials
 
-**What:** `tracked-fetch.ts:95` — when a request goes through the proxy (URL matches `proxyUrl` OR `x-nullspend-key` is in headers), the SDK calls `globalThis.fetch` and returns the raw `Response` BEFORE the 429 interception code at line 192 can run. The interception code is dead in real proxy usage. The SDK unit tests for it pass because they use a mocked fetch and a non-proxy URL.
+**What:** `apps/proxy/src/routes/shared.ts` — add `X-NullSpend-Denied: 1` to the response headers of all five denial code paths (`velocity_exceeded`, `session_limit_exceeded`, `tag_budget_exceeded`, `customer_budget_exceeded`, `budget_exceeded`). Then update `packages/sdk/src/tracked-fetch.ts` `parseDenialPayload` to gate interception on `response.headers.has("x-nullspend-denied")` instead of probing `error.code`.
 
-**Why:** The whole point of the 429 interception is to convert proxy denial responses (`customer_budget_exceeded`, `velocity_exceeded`, `session_limit_exceeded`, `tag_budget_exceeded`) into typed `BudgetExceededError` / `VelocityExceededError` etc. so callers get rich error objects instead of having to parse 429 response bodies. Today, callers using the proxy get the raw 429 and have to parse it themselves. That's a real product gap — every customer using `enforcement: true` with `proxyUrl` set is missing a feature the SDK advertises.
+**Why:** Today the SDK distinguishes NullSpend 429s from upstream provider 429s by parsing the response body and checking `error.code` against a known list. This works because OpenAI uses `error.type` (not `error.code`) and Anthropic uses `error.type` only — neither emits `budget_exceeded` etc. But the contract is implicit and brittle: if a provider ever shipped an `error.code: "rate_limit_exceeded"` body that happened to collide with one of our codes, we'd throw spurious typed errors. A header-based gate eliminates the collision risk permanently and makes the contract explicit.
 
-**Context:** Stress test §6.9 documents this empirically — the test asserts `onDeniedFired === false` and parses the 429 body manually. The fix is structural, not mechanical: you need to either (a) move the interception BEFORE the `isProxied` bailout, or (b) add a "proxy mode but still intercept" code path that runs the request through `globalThis.fetch`, inspects the response, and converts to a typed error if it's a NullSpend denial. Either approach needs to preserve the no-double-count guarantee that's why the bailout exists. Plus updates to `packages/sdk/src/tracked-fetch.test.ts` for the new flow. Filed as 15c-1 in the stress test plan.
+**Context:** Filed during the eng review of the §15c-1 fix as a "follow-up worth filing, not blocking." Affects `apps/proxy/src/routes/shared.ts` (5 Response constructors) and `packages/sdk/src/tracked-fetch.ts` (one extra check at the top of `parseDenialPayload`). Test changes: add a "missing X-NullSpend-Denied header → fall through" case to the unit suite. Backward compat: not needed (the SDK can check the header AND fall back to code-probing for old proxies, or just hard-cut after a brief deploy window).
 
-**Effort:** M (~2-4 hours, requires careful design to not break the bailout's purpose)
-**Priority:** P1
+**Effort:** S (~30-45 min)
+**Priority:** P4
 **Depends on:** None
 
 ### SDK Functional E2E test suite
@@ -135,11 +135,15 @@
 
 ### Publish @nullspend/sdk 0.2.1 to npm
 
-**What:** Bump the SDK version, run `pnpm publish` from `packages/sdk`. The current `0.2.0` has the customer primitive fixes but NOT the shutdown race fix from PR #6.
+**What:** Bump the SDK version, run `pnpm publish` from `packages/sdk`. The current `0.2.0` has the customer primitive fixes but NOT (a) the shutdown race fix from PR #6 NOR (b) the proxy 429 interception fix from §15c-1 (TODOS.md "Completed" section, 2026-04-07).
 
-**Why:** If anyone outside the workspace consumes `@nullspend/sdk` from npm, they're missing the shutdown race fix (silent data loss when racing flush + shutdown). Internal proxy/dashboard code uses the workspace dependency and is already on the fixed version.
+**Why:** If anyone outside the workspace consumes `@nullspend/sdk` from npm, they're missing two real fixes:
+1. **Shutdown race fix** — silent data loss when racing flush + shutdown
+2. **Proxy 429 interception fix** — typed errors (`BudgetExceededError`, etc.) now thrown for proxy denials with `enforcement: true`. Previously the proxied path bailed out before interception could run, returning raw 429s. **Behavior change**: any caller catching 429 manually will now see typed errors thrown unexpectedly. Must be called out in the release notes.
 
-**Context:** Check `packages/sdk/package.json` for current version. The shutdown race fix is in commit d97268e on main. Verify with `pnpm test` from `packages/sdk` (381 tests should pass, including the new regression test). Then bump version, build, publish. May want to also coordinate with any external consumers about the breaking-change-shaped behavior fix (events that were silently lost are now flushed, so cost_event row counts may go up).
+Internal proxy/dashboard code uses the workspace dependency and is already on the fixed version.
+
+**Context:** Check `packages/sdk/package.json` for current version. Both fixes are on main. Verify with `pnpm test` from `packages/sdk` (389 tests should pass — was 381 before the 429 interception fix). Then bump version, build, publish. The release notes should explicitly document the typed-error behavior change so any external user catching 429 manually has a heads up.
 
 **Effort:** S (~15 min)
 **Priority:** P3 (P0 if there are external consumers)
@@ -206,3 +210,16 @@
 **Depends on:** None
 
 ## Completed
+
+### SDK proxy 429 interception is dead code in proxy bailout mode (P1) — DONE 2026-04-07
+
+**Problem:** `tracked-fetch.ts:95` bailed out via `globalThis.fetch(input, init)` before the 429 interception block at line 192 could run. In real proxy usage (the only mode that ever produces NullSpend denial codes), the typed-error API surface (`BudgetExceededError`, `VelocityExceededError`, `SessionLimitExceededError`, `TagBudgetExceededError`) was dead code. Customers using `enforcement: true` with `proxyUrl` got raw 429s. Stress test §6.9 documented this empirically.
+
+**Fix:** Restructured the proxied branch into `fetch → if (429 && enforcement) intercept → return raw response`. Extracted the inline interception block (~85 lines) into two helpers: `parseDenialPayload` (returns null on parse failure or no-error-field; surfaces JSON parse failure + non-string code to `onCostError` as a drift signal) and `dispatchDenialCode` (calls `safeDenied` then throws the typed error; surfaces unknown codes to `onCostError`). The direct path was refactored to call the same helpers. The no-double-count guarantee is structurally preserved — the proxied branch never reaches the cost-tracking code.
+
+**Test changes:** `packages/sdk/src/tracked-fetch.test.ts` — restructured the existing 15-test "proxy 429 interception" describe block into 3 sub-describes ("via proxyUrl" with 13 rewritten + 7 new tests, "via x-nullspend-key header" with 1 new test, "direct mode (defensive)" with 2 retained tests). Net: 23 tests, +8. The 8 new tests cover: proxied 200 → no cost tracking (no-double-count regression), `enforcement: false` gate, customer header injection ordering, malformed JSON body → `onCostError` + raw response, `error: null` → silent fall-through, `Retry-After: 0` → `retryAfterSeconds === 0` (locks the `Number.isFinite` change), unknown denial code → `onCostError` (drift signal), header-based proxy detection (`x-nullspend-key`) + 429 → typed error. `apps/proxy/stress-sdk-features.test.ts` §6.9 was flipped from documenting the gap to verifying the fix end-to-end.
+
+**Verified:** SDK unit tests 389/389 passing (was 381, +8 net). Typecheck clean. Proxy unit tests 1341/1341. Dashboard tests 1815/1815. Live §6.9 against deployed proxy: PASS (Phase 0 transport matrix + §6.9 = 6/6 passed, ~46s, <$0.01).
+
+**Filed in:** §15c-1 (and §15c-17 design choice resolved by the same fix). Both marked ✅ FIXED in `docs/internal/test-plans/sdk-stress-test-plan.md`.
+

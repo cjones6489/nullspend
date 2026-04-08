@@ -30,9 +30,14 @@ import { getModelPricing } from "@nullspend/cost-engine";
  * Build a tracked fetch function that intercepts LLM API calls and
  * automatically reports cost events.
  *
- * @param proxyUrl Optional proxy base URL. When set, requests whose URL starts
- *   with this value are detected as proxied and pass through without client-side
- *   tracking. Header-based detection (`x-nullspend-key`) is the always-on fallback.
+ * @param proxyUrl Optional proxy base URL. Detection is by URL ORIGIN match
+ *   (scheme + host + port — strict). When the request URL's origin matches, the
+ *   SDK skips client-side cost tracking and lets the proxy handle accounting.
+ *   If your proxy listens on a non-default port, include the port in this URL
+ *   or the SDK will take the direct path and double-count. Header-based detection
+ *   (`x-nullspend-key`) is the always-on fallback when `proxyUrl` is unset, AND
+ *   it also covers the case where the user passes a `Request` object with
+ *   `x-nullspend-key` in its own headers.
  */
 export function buildTrackedFetch(
   provider: TrackedProvider,
@@ -91,9 +96,18 @@ export function buildTrackedFetch(
       }
     }
 
-    // Proxy detection guard: skip tracking if going through the proxy
-    if (isProxied(url, init, proxyUrl)) {
-      return globalThis.fetch(input, init);
+    // Proxy path: skip client-side cost tracking + enforcement + stream injection,
+    // but still intercept NullSpend denial codes so callers get typed errors.
+    // The proxy handles cost tracking and enforcement server-side; running them
+    // client-side would double-count. The 429 interception was previously
+    // bypassed by an early return — that was the bug fixed in §15c-1.
+    if (isProxied(url, init, proxyUrl, input)) {
+      const response = await globalThis.fetch(input, init);
+      if (response.status === 429 && enforcement) {
+        const parsed = await parseDenialPayload(response);
+        if (parsed) dispatchDenialCode(parsed, customer, onDenied, onCostError);
+      }
+      return response; // raw response, no cost tracking — preserves no-double-count
     }
 
     // Non-tracked routes pass through
@@ -191,89 +205,8 @@ export function buildTrackedFetch(
 
     // Proxy 429 interception: detect NullSpend denial codes from proxy
     if (response.status === 429 && enforcement) {
-      // Read Retry-After header before parsing body (used by velocity_exceeded)
-      const retryAfterHeader = parseInt(response.headers.get("Retry-After") ?? "", 10) || undefined;
-
-      try {
-        const cloned = response.clone();
-        const json = await cloned.json() as Record<string, unknown>;
-        const errObj = json.error as Record<string, unknown> | undefined;
-        if (errObj) {
-          const code = errObj.code as string | undefined;
-          const details = errObj.details as Record<string, unknown> | undefined;
-
-          if (code === "budget_exceeded") {
-            const entityType = details?.entity_type as string | undefined;
-            const entityId = details?.entity_id as string | undefined;
-            const limit = details?.budget_limit_microdollars as number | undefined;
-            const spend = details?.budget_spend_microdollars as number | undefined;
-            const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
-            safeDenied(onDenied, { type: "budget", remaining, entityType, entityId, limit, spend }, onCostError);
-            throw new BudgetExceededError({ remaining, entityType, entityId, limit, spend });
-          }
-
-          if (code === "customer_budget_exceeded") {
-            // Proxy emits a distinct code for customer-entity denials.
-            // Details shape: { customer_id, budget_limit_microdollars, budget_spend_microdollars }
-            // customer_id can be null per shared.ts:212; coerce to undefined.
-            // Fall back to the SDK-side customer when the proxy didn't echo it.
-            const rawCustomerId = details?.customer_id;
-            const entityId = (typeof rawCustomerId === "string" ? rawCustomerId : undefined) ?? customer ?? undefined;
-            const limit = toFiniteNumber(details?.budget_limit_microdollars);
-            const spend = toFiniteNumber(details?.budget_spend_microdollars);
-            const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
-            safeDenied(onDenied, { type: "budget", remaining, entityType: "customer", entityId, limit, spend }, onCostError);
-            throw new BudgetExceededError({ remaining, entityType: "customer", entityId, limit, spend });
-          }
-
-          if (code === "velocity_exceeded") {
-            // Proxy sends details: { limitMicrodollars, windowSeconds, currentMicrodollars }
-            // Retry-after is in the Retry-After HTTP header, not in the JSON body
-            const velLimit = details?.limitMicrodollars as number | undefined;
-            const velWindow = details?.windowSeconds as number | undefined;
-            const velCurrent = details?.currentMicrodollars as number | undefined;
-            safeDenied(onDenied, {
-              type: "velocity",
-              retryAfterSeconds: retryAfterHeader,
-              limit: velLimit,
-              window: velWindow,
-              current: velCurrent,
-            }, onCostError);
-            throw new VelocityExceededError({
-              retryAfterSeconds: retryAfterHeader,
-              limit: velLimit,
-              window: velWindow,
-              current: velCurrent,
-            });
-          }
-
-          if (code === "session_limit_exceeded") {
-            const sessionSpend = details?.session_spend_microdollars as number | undefined;
-            const sessionLimit = details?.session_limit_microdollars as number | undefined;
-            safeDenied(onDenied, { type: "session_limit", sessionSpend: sessionSpend ?? 0, sessionLimit: sessionLimit ?? 0 }, onCostError);
-            throw new SessionLimitExceededError(sessionSpend ?? 0, sessionLimit ?? 0);
-          }
-
-          if (code === "tag_budget_exceeded") {
-            // Proxy sends budget_spend_microdollars, not remaining — compute remaining
-            const tagKey = details?.tag_key as string | undefined;
-            const tagValue = details?.tag_value as string | undefined;
-            const limit = details?.budget_limit_microdollars as number | undefined;
-            const spend = details?.budget_spend_microdollars as number | undefined;
-            const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
-            safeDenied(onDenied, { type: "tag_budget", tagKey, tagValue, remaining, limit, spend }, onCostError);
-            throw new TagBudgetExceededError({ tagKey, tagValue, remaining, limit, spend });
-          }
-        }
-      } catch (err) {
-        if (
-          err instanceof BudgetExceededError ||
-          err instanceof VelocityExceededError ||
-          err instanceof SessionLimitExceededError ||
-          err instanceof TagBudgetExceededError
-        ) throw err;
-        // Not a NullSpend 429 (upstream provider 429 or parse failure) — fall through
-      }
+      const parsed = await parseDenialPayload(response);
+      if (parsed) dispatchDenialCode(parsed, customer, onDenied, onCostError);
     }
 
     // Don't track errors
@@ -306,11 +239,170 @@ function safeDenied(
   reason: import("./types.js").DenialReason,
   onCostError: (error: Error) => void,
 ): void {
+  let result: unknown;
   try {
-    onDenied?.(reason);
+    result = onDenied?.(reason);
   } catch (cbErr) {
-    onCostError(cbErr instanceof Error ? cbErr : new Error(String(cbErr)));
+    // User's onDenied threw synchronously. Surface to onCostError, but
+    // ALSO swallow if onCostError throws — a buggy onCostError must not
+    // escape and prevent the typed error from being thrown by the caller
+    // (audit Risk 4).
+    try {
+      onCostError(cbErr instanceof Error ? cbErr : new Error(String(cbErr)));
+    } catch {
+      // Both callbacks are buggy; nothing more we can do.
+    }
   }
+  // The DenialReason callback type is `(reason) => void`, but TypeScript
+  // accepts `async (reason) => { ... }` as a valid `void`-returning function.
+  // If the user wrote an async onDenied, attach a no-op catch so an async
+  // rejection doesn't surface as an UnhandledPromiseRejectionWarning (or
+  // crash on `--unhandled-rejections=strict`). Audit Risk 5.
+  if (result && typeof (result as { catch?: unknown }).catch === "function") {
+    (result as Promise<unknown>).catch((asyncErr) => {
+      try {
+        onCostError(asyncErr instanceof Error ? asyncErr : new Error(String(asyncErr)));
+      } catch {
+        // Same defensive swallow.
+      }
+    });
+  }
+}
+
+type DenialPayload = {
+  code: string;
+  details: Record<string, unknown> | undefined;
+  retryAfterSeconds: number | undefined;
+};
+
+/**
+ * Parse a 429 response body for a NullSpend denial. Returns null if the body
+ * isn't a valid NullSpend denial (parse failure, missing/null `error`, or
+ * non-string `code`). Caller treats null as "fall through, return raw response".
+ *
+ * The proxy passes through upstream provider 429s (OpenAI/Anthropic rate limits)
+ * with their own body shapes. OpenAI bodies have `error.code: "rate_limit_exceeded"`
+ * (non-NullSpend code) and Anthropic bodies have no `error.code` field at all.
+ * Both must fall through SILENTLY — surfacing them to onCostError would fire on
+ * every upstream rate limit, polluting user logs.
+ *
+ * A future drift signal for actual proxy contract violations should be gated on
+ * an explicit `X-NullSpend-Denied` response header (filed as a follow-up TODO).
+ */
+async function parseDenialPayload(
+  response: Response,
+): Promise<DenialPayload | null> {
+  let json: Record<string, unknown>;
+  try {
+    const cloned = response.clone();
+    json = await cloned.json() as Record<string, unknown>;
+  } catch {
+    return null; // Not JSON — pass through (e.g., text body, malformed body)
+  }
+  // Runtime-narrow errObj before treating it as a record. JSON parsing can
+  // produce error: null, error: 0, error: false, error: "string", error: [], etc.
+  const rawErrObj = json.error;
+  if (!rawErrObj || typeof rawErrObj !== "object" || Array.isArray(rawErrObj)) return null;
+  const errObj = rawErrObj as Record<string, unknown>;
+  const code = errObj.code;
+  if (typeof code !== "string") return null; // Non-string code — pass through (Anthropic shape)
+  // Same runtime narrowing for details: must be a plain object, not null/array/primitive.
+  const rawDetails = errObj.details;
+  const details = rawDetails && typeof rawDetails === "object" && !Array.isArray(rawDetails)
+    ? rawDetails as Record<string, unknown>
+    : undefined;
+  const retryAfterRaw = parseInt(response.headers.get("Retry-After") ?? "", 10);
+  return {
+    code,
+    details,
+    // RFC 7231 Retry-After is a non-negative integer; reject negatives defensively.
+    retryAfterSeconds: Number.isFinite(retryAfterRaw) && retryAfterRaw >= 0 ? retryAfterRaw : undefined,
+  };
+}
+
+/**
+ * Dispatch a parsed NullSpend denial: fire onDenied via safeDenied, then throw
+ * the matching typed error. Only handles the 5 known codes; unknown codes fall
+ * through silently (caller returns raw response).
+ *
+ * Silent fall-through is intentional: the proxy passes through upstream
+ * provider 429s (OpenAI's `error.code: "rate_limit_exceeded"`, etc.) with
+ * preserved code fields. Surfacing unknown codes to onCostError would fire on
+ * every upstream rate limit. A future drift signal for actual proxy contract
+ * violations should be gated on an `X-NullSpend-Denied` response header.
+ */
+function dispatchDenialCode(
+  parsed: DenialPayload,
+  customer: string | undefined,
+  onDenied: ((reason: import("./types.js").DenialReason) => void) | undefined,
+  onCostError: (error: Error) => void,
+): void {
+  const { code, details, retryAfterSeconds } = parsed;
+
+  if (code === "budget_exceeded") {
+    const entityType = details?.entity_type as string | undefined;
+    const entityId = details?.entity_id as string | undefined;
+    const limit = toFiniteNumber(details?.budget_limit_microdollars);
+    const spend = toFiniteNumber(details?.budget_spend_microdollars);
+    const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
+    safeDenied(onDenied, { type: "budget", remaining, entityType, entityId, limit, spend }, onCostError);
+    throw new BudgetExceededError({ remaining, entityType, entityId, limit, spend });
+  }
+
+  if (code === "customer_budget_exceeded") {
+    // Proxy emits a distinct code for customer-entity denials.
+    // Details shape: { customer_id, budget_limit_microdollars, budget_spend_microdollars }
+    // customer_id can be null per shared.ts:212; coerce to undefined.
+    // Fall back to the SDK-side customer when the proxy didn't echo it.
+    const rawCustomerId = details?.customer_id;
+    const entityId = (typeof rawCustomerId === "string" ? rawCustomerId : undefined) ?? customer ?? undefined;
+    const limit = toFiniteNumber(details?.budget_limit_microdollars);
+    const spend = toFiniteNumber(details?.budget_spend_microdollars);
+    const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
+    safeDenied(onDenied, { type: "budget", remaining, entityType: "customer", entityId, limit, spend }, onCostError);
+    throw new BudgetExceededError({ remaining, entityType: "customer", entityId, limit, spend });
+  }
+
+  if (code === "velocity_exceeded") {
+    // Proxy sends details: { limitMicrodollars, windowSeconds, currentMicrodollars }
+    // Retry-after is in the Retry-After HTTP header, not in the JSON body
+    const velLimit = toFiniteNumber(details?.limitMicrodollars);
+    const velWindow = toFiniteNumber(details?.windowSeconds);
+    const velCurrent = toFiniteNumber(details?.currentMicrodollars);
+    safeDenied(onDenied, {
+      type: "velocity",
+      retryAfterSeconds,
+      limit: velLimit,
+      window: velWindow,
+      current: velCurrent,
+    }, onCostError);
+    throw new VelocityExceededError({
+      retryAfterSeconds,
+      limit: velLimit,
+      window: velWindow,
+      current: velCurrent,
+    });
+  }
+
+  if (code === "session_limit_exceeded") {
+    const sessionSpend = toFiniteNumber(details?.session_spend_microdollars);
+    const sessionLimit = toFiniteNumber(details?.session_limit_microdollars);
+    safeDenied(onDenied, { type: "session_limit", sessionSpend: sessionSpend ?? 0, sessionLimit: sessionLimit ?? 0 }, onCostError);
+    throw new SessionLimitExceededError(sessionSpend ?? 0, sessionLimit ?? 0);
+  }
+
+  if (code === "tag_budget_exceeded") {
+    // Proxy sends budget_spend_microdollars, not remaining — compute remaining
+    const tagKey = details?.tag_key as string | undefined;
+    const tagValue = details?.tag_value as string | undefined;
+    const limit = toFiniteNumber(details?.budget_limit_microdollars);
+    const spend = toFiniteNumber(details?.budget_spend_microdollars);
+    const remaining = Math.max(0, (limit ?? 0) - (spend ?? 0));
+    safeDenied(onDenied, { type: "tag_budget", tagKey, tagValue, remaining, limit, spend }, onCostError);
+    throw new TagBudgetExceededError({ tagKey, tagValue, remaining, limit, spend });
+  }
+
+  // Unknown code — fall through silently. See header docstring for why.
 }
 
 function warnSessionDenied(
@@ -332,11 +424,23 @@ function resolveUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
-function isProxied(url: string, init?: RequestInit, proxyUrl?: string): boolean {
+function isProxied(
+  url: string,
+  init: RequestInit | undefined,
+  proxyUrl: string | undefined,
+  input: RequestInfo | URL,
+): boolean {
   // Configurable proxyUrl match via URL origin (not substring — substring
   // matching allows "https://host.evil.com" to spoof "https://host").
   // The client constructor validates proxyUrl with `new URL()`, so we only
   // need to handle parse failures on the request URL side defensively.
+  //
+  // IMPORTANT: origin comparison is strict on PORT. If your proxy listens
+  // on a non-default port (e.g. https://proxy.example.com:8443) you MUST
+  // include that port in the proxyUrl you pass to the SDK constructor.
+  // Mismatched ports cause the SDK to take the direct path and double-count
+  // cost events. This is intentional — port-normalization would mask real
+  // misconfigurations.
   if (proxyUrl) {
     try {
       const requestOrigin = new URL(url).origin;
@@ -351,14 +455,21 @@ function isProxied(url: string, init?: RequestInit, proxyUrl?: string): boolean 
   if (init?.headers) {
     const headers = init.headers;
     if (headers instanceof Headers) {
-      return headers.has("x-nullspend-key");
+      if (headers.has("x-nullspend-key")) return true;
+    } else if (Array.isArray(headers)) {
+      if (headers.some(([k]) => k.toLowerCase() === "x-nullspend-key")) return true;
+    } else if (typeof headers === "object") {
+      if ("x-nullspend-key" in headers) return true;
     }
-    if (Array.isArray(headers)) {
-      return headers.some(([k]) => k.toLowerCase() === "x-nullspend-key");
-    }
-    if (typeof headers === "object") {
-      return "x-nullspend-key" in headers;
-    }
+  }
+  // Edge case: caller passed a Request with x-nullspend-key in its headers
+  // and no init (or init without headers). Per WHATWG fetch, init.headers
+  // REPLACES the Request's headers entirely when set, so we only fall back
+  // to inspecting the Request's own headers when the caller didn't override.
+  // Without this, the SDK would silently take the direct path and
+  // double-count cost (audit Risk 1).
+  if (input instanceof Request && !init?.headers && input.headers.has("x-nullspend-key")) {
+    return true;
   }
   return false;
 }

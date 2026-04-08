@@ -48,9 +48,17 @@ verification). See `docs/internal/test-plans/sdk-stress-test-plan.md`
 §15/§15a/§15b for the design corrections this file implements.
 
 **Prerequisites:**
+- **Rebuild the SDK if you've changed any `packages/sdk/src/` file**:
+  `pnpm --filter @nullspend/sdk build`. The stress test imports
+  `@nullspend/sdk` which resolves to `packages/sdk/dist/`, NOT to source.
+  Stale `dist/` will silently exercise the OLD SDK code and produce
+  confusing test failures (e.g. a "fix verified by unit tests" failing
+  the live test for no apparent reason). Lesson learned the hard way
+  during the §15c-1 fix.
 - `pnpm dev` running in another terminal (the SDK direct-mode tests
   hit `http://127.0.0.1:3000/api/cost-events`). Tests auto-skip the
-  direct-mode subset if the dashboard is unreachable at startup.
+  direct-mode subset if the dashboard is unreachable at startup. Not
+  required for proxy-only stress tests like `§6.9`.
 - `.env.smoke` populated with `PROXY_URL`, `NULLSPEND_API_KEY`,
   `NULLSPEND_SMOKE_KEY_ID`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
   `INTERNAL_SECRET`, `DATABASE_URL`, and `NULLSPEND_DASHBOARD_URL`.
