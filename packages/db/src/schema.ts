@@ -438,14 +438,6 @@ export const customerMappings = pgTable("customer_mappings", {
   tagValue: text("tag_value").notNull(),
   matchType: text("match_type").$type<MatchType>().notNull(),
   confidence: real("confidence"),
-  /**
-   * Per-customer override for the upgrade URL surfaced in
-   * `customer_budget_exceeded` denial responses. When null, falls back
-   * to the org-level `organizations.metadata.upgradeUrl`. Supports the
-   * `{customer_id}` placeholder which is substituted at denial time by
-   * the proxy's `resolveUpgradeUrl` helper.
-   */
-  upgradeUrl: text("upgrade_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("customer_mappings_org_stripe_tag_idx").on(table.orgId, table.stripeCustomerId, table.tagKey),
@@ -454,3 +446,32 @@ export const customerMappings = pgTable("customer_mappings", {
 
 export type CustomerMappingRow = typeof customerMappings.$inferSelect;
 export type NewCustomerMappingRow = typeof customerMappings.$inferInsert;
+
+/**
+ * Per-customer settings that are independent of Stripe revenue sync.
+ * Decoupled from customer_mappings (which is Stripe-specific) so orgs
+ * using per-customer budgets WITHOUT Stripe integration can still
+ * configure customer-level overrides.
+ *
+ * Currently holds the optional per-customer upgrade URL surfaced in
+ * customer_budget_exceeded denial responses. Fall-back chain:
+ *   customer_settings.upgrade_url (this table)
+ *     → organizations.metadata.upgradeUrl (org-level default)
+ *     → omitted from response
+ *
+ * Keyed on (org_id, customer_id) where customer_id is the tag_value
+ * a client sends via the X-NullSpend-Customer header.
+ */
+export const customerSettings = pgTable("customer_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  customerId: text("customer_id").notNull(),
+  upgradeUrl: text("upgrade_url"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("customer_settings_org_customer_idx").on(table.orgId, table.customerId),
+]);
+
+export type CustomerSettingsRow = typeof customerSettings.$inferSelect;
+export type NewCustomerSettingsRow = typeof customerSettings.$inferInsert;

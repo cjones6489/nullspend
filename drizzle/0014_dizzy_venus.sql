@@ -1,0 +1,17 @@
+-- Drizzle snapshot sync marker (Phase 0 audit follow-up, Issue 5).
+--
+-- This file exists so drizzle/meta/_journal.json + 0014_snapshot.json
+-- stay consistent with the current packages/db/src/schema.ts state.
+-- It is INTENTIONALLY EMPTY because the actual DDL (create
+-- customer_settings + drop customer_mappings.upgrade_url) lives in:
+--
+--   drizzle/0055_customer_mappings_upgrade_url.sql   (historical, shipped)
+--   drizzle/0056_customer_settings_table.sql          (this fix)
+--
+-- which are applied via Supabase MCP apply_migration (the project's
+-- canonical migration runner — see CLAUDE.md). The drizzle-kit path
+-- isn't used for applying migrations in this repo; it's only used for
+-- `pnpm db:generate` to detect drift between schema.ts and the snapshot.
+--
+-- Running `drizzle-kit migrate` on a fresh DB would apply this file
+-- (no-op) rather than re-creating the table that already exists.

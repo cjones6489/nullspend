@@ -1,4 +1,5 @@
 import { getSql } from "./db.js";
+import { emitMetric } from "./metrics.js";
 
 export interface BudgetEntity {
   entityKey: string;
@@ -157,16 +158,21 @@ export async function lookupBudgetsForDO(
 }
 
 /**
- * Look up the per-customer upgrade URL from `customer_mappings.upgrade_url`.
+ * Look up the per-customer upgrade URL from `customer_settings.upgrade_url`.
  *
  * Called ONLY from the denial branch of `handleBudgetDenials` when the
  * denying entity is a customer. The hot path (happy 200) never touches
  * this query — it's cold-path cost on an already-slow denial response.
  *
+ * `customer_settings` is decoupled from `customer_mappings` (which is
+ * Stripe-revenue-sync-specific) so orgs using per-customer budgets
+ * WITHOUT Stripe integration can still configure per-customer overrides.
+ *
  * Returns null when:
- *   - No row matches (customer not mapped, or mapping has null upgrade_url)
+ *   - No row matches (customer has no settings row, or row has null upgrade_url)
  *   - The query fails for any reason (fail-open — the denial still ships,
- *     just without the upgrade_url field)
+ *     just without the upgrade_url field). Emits `customer_upgrade_url_lookup_failed`
+ *     metric on failure so systematic issues show up in dashboards.
  *
  * Uses the shared `getSql` pool so this reuses the existing per-request
  * postgres.js instance.
@@ -180,9 +186,9 @@ export async function lookupCustomerUpgradeUrl(
     const sql = getSql(connectionString);
     const rows = await sql<{ upgrade_url: string | null }[]>`
       SELECT upgrade_url
-      FROM customer_mappings
+      FROM customer_settings
       WHERE org_id = ${orgId}
-        AND tag_value = ${customerId}
+        AND customer_id = ${customerId}
       LIMIT 1
     `;
     if (rows.length === 0) return null;
@@ -193,6 +199,10 @@ export async function lookupCustomerUpgradeUrl(
       "[budget-do-lookup] customer upgrade_url lookup failed (fail-open):",
       err instanceof Error ? err.message : "Unknown error",
     );
+    emitMetric("customer_upgrade_url_lookup_failed", {
+      orgId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
     return null;
   }
 }
