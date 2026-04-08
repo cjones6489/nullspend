@@ -88,28 +88,39 @@ export const acceptInviteSchema = z.object({
 // ── Upgrade URL ────────────────────────────────────────────────────
 //
 // Stored at organizations.metadata.upgradeUrl (jsonb) for org-level
-// default and customer_mappings.upgrade_url for per-customer overrides.
+// default and customer_settings.upgrade_url for per-customer overrides.
 // Surfaced in budget_exceeded + customer_budget_exceeded denial bodies.
 //
 // `{customer_id}` placeholder support: substituted at denial time by
 // the proxy. The placeholder is a literal substring; we have to
 // tolerate it during URL validation. Strategy: temporarily substitute
-// the placeholder with a dummy value before parsing as a URL, then
-// validate the resulting URL with isSafeExternalUrl.
+// the placeholder with a PESSIMISTIC max-length dummy before parsing
+// so we catch "looks valid at write time but explodes at runtime with
+// a long customer_id" at write time. (T5 edge-case audit.)
+
+// Maximum customer_id length enforced by both the SDK
+// (packages/sdk/src/customer-id.ts MAX_CUSTOMER_ID_LENGTH) and the
+// proxy (apps/proxy/src/lib/customer.ts). Kept in sync by convention.
+const MAX_CUSTOMER_ID_LENGTH = 256;
+const UPGRADE_URL_MAX_LENGTH = 2048;
 
 function isValidUpgradeUrl(raw: string): boolean {
-  // Substitute the placeholder with a dummy value so `new URL()` parses cleanly.
-  // The dummy is URL-safe and won't change the hostname or scheme.
-  const substituted = raw.replace(/\{customer_id\}/g, "placeholder123");
+  // Pessimistic substitution: replace every {customer_id} with a MAX_CUSTOMER_ID_LENGTH-
+  // long dummy to catch URLs that overflow 2048 chars at runtime when a
+  // long customer_id expands multiple placeholders. Belt-and-braces vs
+  // the length check above, which only sees the raw template.
+  const dummy = "x".repeat(MAX_CUSTOMER_ID_LENGTH);
+  const substituted = raw.replace(/\{customer_id\}/g, dummy);
+  if (substituted.length > UPGRADE_URL_MAX_LENGTH) return false;
   return isSafeExternalUrl(substituted);
 }
 
 const upgradeUrlSchema = z
   .string()
   .trim()
-  .max(2048, "Upgrade URL must be 2048 characters or fewer.")
+  .max(UPGRADE_URL_MAX_LENGTH, "Upgrade URL must be 2048 characters or fewer.")
   .refine(isValidUpgradeUrl, {
-    message: "Upgrade URL must be HTTPS and not point to private/reserved IP addresses. Use {customer_id} as a placeholder for the customer ID.",
+    message: "Upgrade URL must be HTTPS, not point to private/reserved IPs, and must stay under 2048 characters AFTER {customer_id} substitution. Use {customer_id} as a placeholder for the customer ID.",
   });
 
 /**

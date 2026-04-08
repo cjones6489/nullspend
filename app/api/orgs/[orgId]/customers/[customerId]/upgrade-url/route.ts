@@ -27,8 +27,13 @@ const customerUpgradeUrlParamsSchema = z.object({
   // Accepts the prefixed external ID format (ns_org_<uuid>) that the
   // dashboard uses for all other org endpoints. (Edge-case audit E1.)
   orgId: nsIdInput("org"),
+  // .trim() mirrors the SDK's validateCustomerId which normalizes
+  // whitespace before regex check. Eliminates the asymmetry where the
+  // dashboard would reject " acme " while the SDK would accept it
+  // (trimming to "acme"). See T8 in the edge-case audit.
   customerId: z
     .string()
+    .trim()
     .min(1)
     .max(256)
     .regex(

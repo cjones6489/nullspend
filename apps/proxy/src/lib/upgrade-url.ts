@@ -2,7 +2,7 @@
  * Resolve the upgrade URL for a denial response.
  *
  * Priority order (for customer denials):
- *   1. customer-level URL (customer_mappings.upgrade_url)
+ *   1. customer-level URL (customer_settings.upgrade_url)
  *   2. org-level URL (organizations.metadata.upgradeUrl)
  *   3. null (no upgrade_url field in the response)
  *
@@ -20,8 +20,8 @@
  * placeholder is left untouched — the caller gets a URL that a dev
  * viewing the raw response can fix, rather than a silently-null field.
  *
- * @param orgUrl        org.metadata.upgradeUrl, or null
- * @param customerUrl   customer_mappings.upgrade_url, or null
+ * @param orgUrl        organizations.metadata.upgradeUrl, or null
+ * @param customerUrl   customer_settings.upgrade_url, or null
  * @param customerId    current request's customer ID, or null/undefined
  * @returns             resolved URL string, or null if neither URL is set
  */

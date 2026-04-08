@@ -166,6 +166,46 @@ async function cleanupTestCostEvents(): Promise<void> {
   `;
 }
 
+/**
+ * Cleanup customer_settings + customer budget rows created by F15
+ * per-customer upgrade URL test. Matches by customer_id prefix
+ * `f15-cust-%`. Runs in beforeAll to reclaim orphan rows from prior
+ * crashed runs AND in afterAll for normal cleanup.
+ *
+ * Also invalidates the proxy's DO state for any matching customer
+ * budgets so the cleanup is complete across layers.
+ *
+ * (T4 edge-case audit.)
+ */
+async function cleanupTestCustomerSettings(): Promise<void> {
+  // Find any orphan customer budgets so we can invalidate the DO.
+  const orphanBudgets = await sql<{ entity_id: string }[]>`
+    SELECT entity_id FROM budgets
+     WHERE entity_type = 'customer'
+       AND entity_id LIKE 'f15-cust-%'
+       AND org_id = ${SMOKE_ORG_ID}
+  `;
+  for (const row of orphanBudgets) {
+    try {
+      await invalidateBudget(SMOKE_ORG_ID, "customer", row.entity_id);
+    } catch {
+      // Best-effort: DO may be unreachable or row already cleared.
+    }
+  }
+
+  await sql`
+    DELETE FROM budgets
+     WHERE entity_type = 'customer'
+       AND entity_id LIKE 'f15-cust-%'
+       AND org_id = ${SMOKE_ORG_ID}
+  `;
+  await sql`
+    DELETE FROM customer_settings
+     WHERE customer_id LIKE 'f15-cust-%'
+       AND org_id = ${SMOKE_ORG_ID}
+  `;
+}
+
 function makeCustomerId(testName: string): string {
   return `${CUSTOMER_PREFIX}-${testName}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -212,6 +252,7 @@ beforeAll(async () => {
   // ── Symmetric cleanup: orphan rows from prior crashed runs ──
   await cleanupTestActions();
   await cleanupTestCostEvents();
+  await cleanupTestCustomerSettings();
 
   // ── Shared live client (used by F1-F6) ──
   liveClient = new NullSpend({
@@ -231,6 +272,11 @@ afterAll(async () => {
       await cleanupTestCostEvents();
     } catch (err) {
       console.error("[smoke-sdk-functional] afterAll cleanupTestCostEvents failed:", err);
+    }
+    try {
+      await cleanupTestCustomerSettings();
+    } catch (err) {
+      console.error("[smoke-sdk-functional] afterAll cleanupTestCustomerSettings failed:", err);
     }
     await sql.end();
   }

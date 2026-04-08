@@ -8,6 +8,7 @@ import { organizations } from "@nullspend/db";
 import { handleRouteError, readJsonBody, readRouteParams } from "@/lib/utils/http";
 import { orgIdParamsSchema, setUpgradeUrlSchema } from "@/lib/validations/orgs";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
+import { logAuditEvent } from "@/lib/audit/log";
 
 type RouteContext = { params: Promise<{ orgId: string }> };
 
@@ -101,6 +102,18 @@ export async function PATCH(request: Request, context: RouteContext) {
     invalidateProxyCache({ action: "auth_only", ownerId: orgId }).catch((err) =>
       console.error("[orgs/upgrade-url] Proxy cache invalidation failed:", err),
     );
+
+    // Audit log: URL changes are security-sensitive (agents may auto-follow
+    // the URL on denial). Track every write with actor + new value. Mirrors
+    // the per-customer upgrade-url endpoint. (Audit T1.)
+    logAuditEvent({
+      orgId,
+      actorId: userId,
+      action: "org_upgrade_url.updated",
+      resourceType: "organization",
+      resourceId: orgId,
+      metadata: { upgradeUrl },
+    });
 
     return NextResponse.json({ data: { upgradeUrl } });
   } catch (error) {

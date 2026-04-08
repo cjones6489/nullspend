@@ -166,6 +166,29 @@ describe("GET /api/orgs/[orgId]/customers/[customerId]/upgrade-url", () => {
       expect(res.status, `expected 200 for customerId="${good}"`).toBe(200);
     }
   });
+
+  it("T8: trims whitespace on customerId (mirrors SDK's validateCustomerId)", async () => {
+    // Dashboard schema .trim() normalizes leading/trailing whitespace so a
+    // URL segment like "/customers/ acme /upgrade-url" passes validation
+    // the same way the SDK would handle it at the client boundary.
+    mockSelectLimit.mockResolvedValue([{ upgradeUrl: null }]);
+    const res = await GET(
+      new Request(`http://localhost/api/orgs/${ORG_ID}/customers/${encodeURIComponent(" acme ")}/upgrade-url`),
+      makeContext(ORG_ID, " acme "),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Trimmed value is returned to the caller
+    expect(body.data.customerId).toBe("acme");
+  });
+
+  it("T8: whitespace-only customerId is rejected (empty after trim)", async () => {
+    const res = await GET(
+      new Request(`http://localhost/api/orgs/${ORG_ID}/customers/${encodeURIComponent("   ")}/upgrade-url`),
+      makeContext(ORG_ID, "   "),
+    );
+    expect(res.status).toBe(400);
+  });
 });
 
 /* ------------------------------------------------------------------ */

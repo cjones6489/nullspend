@@ -1,0 +1,25 @@
+-- Drizzle snapshot sync marker (Phase 0 audit, T2 follow-up).
+--
+-- This file exists so drizzle/meta/_journal.json + 0015_snapshot.json
+-- stay consistent with the current packages/db/src/schema.ts state
+-- after the E3 index rename (customer_settings_org_customer_idx →
+-- customer_settings_org_id_customer_id_key).
+--
+-- The generated SQL would have been:
+--   DROP INDEX customer_settings_org_customer_idx;
+--   CREATE UNIQUE INDEX customer_settings_org_id_customer_id_key ON ...
+--
+-- But:
+--   1. The old index was already dropped by
+--      drizzle/0057_drop_redundant_customer_settings_index.sql
+--   2. An index with the NEW name already exists in the live DB,
+--      auto-created by the UNIQUE (org_id, customer_id) constraint
+--      declared in drizzle/0056_customer_settings_table.sql
+--
+-- So a CREATE UNIQUE INDEX would conflict with the existing constraint's
+-- auto-index. This file is INTENTIONALLY EMPTY — the actual DDL lives in
+-- 0056 + 0057, and the snapshot file (0015_snapshot.json) now matches
+-- schema.ts so the next `pnpm db:generate` won't produce a ghost migration.
+--
+-- Canonical migration runner for this repo is Supabase MCP apply_migration,
+-- not drizzle-kit migrate (see CLAUDE.md "Supabase" section).

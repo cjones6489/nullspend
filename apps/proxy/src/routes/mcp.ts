@@ -224,6 +224,17 @@ export async function handleMcpBudgetCheck(
       // Resolve upgrade_url: per-customer override takes priority over
       // org-level. Cold-path DB query, fails open to null.
       const customerId = outcome.deniedEntityId ?? ctx.customerId ?? null;
+      // T7: defensive — log + metric if somehow we enter this branch with
+      // no customer_id. Never expected today but observable if it ever fires.
+      if (customerId === null) {
+        console.warn(
+          `[mcp-route] customer_budget_exceeded with null customer_id (denied_entity=${outcome.deniedEntityId} ctx_customer=${ctx.customerId})`,
+        );
+        emitMetric("customer_denial_missing_id", {
+          provider: "mcp",
+          orgId: ctx.auth.orgId ?? "unknown",
+        });
+      }
       const customerUrl = customerId && ctx.auth.orgId
         ? await lookupCustomerUpgradeUrl(ctx.connectionString, ctx.auth.orgId, customerId)
         : null;

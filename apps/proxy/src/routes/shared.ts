@@ -315,6 +315,20 @@ export async function handleBudgetDenials(
     // takes priority over org-level default. Cold-path Postgres query,
     // fails open on error. Only fires on customer denial paths.
     const customerId = outcome.deniedEntityId ?? ctx.customerId ?? null;
+    // T7: defensive — the customer branch enter on deniedEntityType === "customer"
+    // means the DO told us this is a customer denial. If deniedEntityId is
+    // somehow missing, fall back to ctx.customerId. If BOTH are null we still
+    // emit the denial (with customer_id: null in the body) but log a warning
+    // + metric so the pathway is observable.
+    if (customerId === null) {
+      console.warn(
+        `${logPrefix} customer_budget_exceeded denial with null customer_id (denied_entity=${outcome.deniedEntityId} ctx_customer=${ctx.customerId})`,
+      );
+      emitMetric("customer_denial_missing_id", {
+        provider,
+        orgId: ctx.auth.orgId ?? "unknown",
+      });
+    }
     const customerUrl = customerId && ctx.auth.orgId
       ? await lookupCustomerUpgradeUrl(ctx.connectionString, ctx.auth.orgId, customerId)
       : null;
