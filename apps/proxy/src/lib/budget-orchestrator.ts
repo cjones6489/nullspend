@@ -170,14 +170,19 @@ async function checkBudgetDO(
     );
   }
 
-  // Build budgetEntities from DO response
+  // Build budgetEntities from DO response.
+  // `reserved` is now the live value from CheckedEntity — exposes concurrent
+  // in-flight reservations so downstream header computation reports accurate
+  // remaining even under parallel load. Prior to 2026-04-08 this was hardcoded
+  // to 0 because no caller needed it; the budget response headers feature
+  // requires it.
   const budgetEntities: BudgetEntity[] = (checkResult.checkedEntities ?? []).map((e) => ({
     entityKey: `{budget}:${e.entityType}:${e.entityId}`,
     entityType: e.entityType,
     entityId: e.entityId,
     maxBudget: e.maxBudget,
     spend: e.spend,
-    reserved: 0,
+    reserved: e.reserved,
     policy: e.policy,
     thresholdPercentages: e.thresholdPercentages ?? [50, 80, 90, 95],
   }));

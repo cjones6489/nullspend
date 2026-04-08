@@ -136,6 +136,7 @@ const checkedEntity = {
   entityId: "key-uuid-123",
   maxBudget: 50_000_000,
   spend: 10_000_000,
+  reserved: 0,
   policy: "strict_block",
 };
 

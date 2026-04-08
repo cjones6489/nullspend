@@ -234,7 +234,10 @@ const checkedEntity = {
   entityId: "key-1",
   maxBudget: 50_000_000,
   spend: 10_000_000,
+  reserved: 0,
   policy: "strict_block",
+  thresholdPercentages: [50, 80, 90, 95],
+  sessionLimit: null,
 };
 
 const velocityDeniedCheckResult: CheckResult = {
@@ -954,7 +957,7 @@ describe("CheckResult interface — velocity fields", () => {
         currentMicrodollars: 1_200_000,
       },
       checkedEntities: [
-        { entityType: "api_key", entityId: "key-1", maxBudget: 50_000_000, spend: 10_000_000, policy: "strict_block" },
+        { entityType: "api_key", entityId: "key-1", maxBudget: 50_000_000, spend: 10_000_000, reserved: 0, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
       ],
     };
 

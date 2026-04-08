@@ -73,6 +73,7 @@ const checkedEntity = {
   entityId: "user-1",
   maxBudget: 100_000_000,
   spend: 20_000_000,
+  reserved: 0,
   policy: "strict_block",
 };
 
@@ -247,8 +248,8 @@ describe("checkBudget — DO-first mode", () => {
 
   it("checkedEntities populated correctly in budgetEntities on approved", async () => {
     const entities = [
-      { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 20_000_000, policy: "strict_block" },
-      { entityType: "api_key", entityId: "key-1", maxBudget: 50_000_000, spend: 5_000_000, policy: "strict_block" },
+      { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 20_000_000, reserved: 0, policy: "strict_block" },
+      { entityType: "api_key", entityId: "key-1", maxBudget: 50_000_000, spend: 5_000_000, reserved: 0, policy: "strict_block" },
     ];
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved",
@@ -263,6 +264,28 @@ describe("checkBudget — DO-first mode", () => {
     expect(result.budgetEntities[0].entityKey).toBe("{budget}:user:user-1");
     expect(result.budgetEntities[1].entityKey).toBe("{budget}:api_key:key-1");
     expect(result.budgetEntities[1].maxBudget).toBe(50_000_000);
+  });
+
+  it("budgetEntities carry live reserved from checkedEntities (not hardcoded 0)", async () => {
+    // Regression guard: prior to 2026-04-08 the orchestrator hardcoded reserved:0
+    // on the approved path, which made concurrent-request "remaining" calculations
+    // inaccurate. The budget response headers feature depends on this being live.
+    const entities = [
+      { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 20_000_000, reserved: 7_500_000, policy: "strict_block" },
+      { entityType: "org", entityId: "org-1", maxBudget: 500_000_000, spend: 100_000_000, reserved: 25_000_000, policy: "strict_block" },
+    ];
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "approved",
+      hasBudgets: true,
+      reservationId: "rsv-reserved",
+      checkedEntities: entities,
+    });
+
+    const result = await checkBudget(makeEnv(), makeCtx(), 1_000_000);
+
+    expect(result.budgetEntities).toHaveLength(2);
+    expect(result.budgetEntities[0].reserved).toBe(7_500_000);
+    expect(result.budgetEntities[1].reserved).toBe(25_000_000);
   });
 });
 

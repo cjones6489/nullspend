@@ -23,6 +23,14 @@ export interface CheckedEntity {
   entityId: string;
   maxBudget: number;
   spend: number;
+  /**
+   * Live reserved amount from the DO's budgets table — sum of all in-flight
+   * reservations against this entity at check time. Used by the proxy routes
+   * to compute accurate `X-NullSpend-Budget-Remaining` headers under
+   * concurrent load (without this, two parallel requests would each see
+   * the other's reservation as zero).
+   */
+  reserved: number;
   policy: string;
   thresholdPercentages: number[];
   sessionLimit: number | null;
@@ -330,6 +338,7 @@ export class UserBudgetDO extends DurableObject {
           entityId: row.entity_id,
           maxBudget: row.max_budget,
           spend: row.spend,
+          reserved: row.reserved,
           policy: row.policy,
           thresholdPercentages: parseThresholds(row.threshold_percentages),
           sessionLimit: row.session_limit ?? null,

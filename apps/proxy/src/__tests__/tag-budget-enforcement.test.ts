@@ -227,8 +227,8 @@ const tagDeniedCheckResult: CheckResult = {
   maxBudget: 50_000_000,
   spend: 49_500_000,
   checkedEntities: [
-    { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 10_000_000, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
-    { entityType: "tag", entityId: "project=openclaw", maxBudget: 50_000_000, spend: 49_500_000, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+    { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 10_000_000, reserved: 0, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+    { entityType: "tag", entityId: "project=openclaw", maxBudget: 50_000_000, spend: 49_500_000, reserved: 0, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
   ],
 };
 
@@ -237,7 +237,7 @@ const approvedCheckResult: CheckResult = {
   hasBudgets: true,
   reservationId: "rsv-test-123",
   checkedEntities: [
-    { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 10_000_000, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+    { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 10_000_000, reserved: 0, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
   ],
 };
 
@@ -246,8 +246,8 @@ const approvedWithTagCheckResult: CheckResult = {
   hasBudgets: true,
   reservationId: "rsv-tag-456",
   checkedEntities: [
-    { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 10_000_000, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
-    { entityType: "tag", entityId: "project=openclaw", maxBudget: 50_000_000, spend: 5_000_000, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+    { entityType: "user", entityId: "user-1", maxBudget: 100_000_000, spend: 10_000_000, reserved: 0, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
+    { entityType: "tag", entityId: "project=openclaw", maxBudget: 50_000_000, spend: 5_000_000, reserved: 0, policy: "strict_block", thresholdPercentages: [50, 80, 90, 95], sessionLimit: null },
   ],
 };
 

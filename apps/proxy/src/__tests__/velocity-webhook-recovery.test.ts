@@ -190,7 +190,10 @@ const checkedEntity = {
   entityId: "key-1",
   maxBudget: 50_000_000,
   spend: 10_000_000,
+  reserved: 0,
   policy: "strict_block",
+  thresholdPercentages: [50, 80, 90, 95],
+  sessionLimit: null,
 };
 
 const recoveredCheckResult: CheckResult = {
