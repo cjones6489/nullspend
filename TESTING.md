@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~3,940+ tests across ~230 files organized into four tiers.
+NullSpend has ~3,955+ tests across ~231 files organized into four tiers.
 
 ## Quick Reference
 
@@ -197,7 +197,7 @@ The 29 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ## Proxy Smoke Tests (`apps/proxy/smoke*.test.ts`)
 
-29 files. Require a deployed worker and API keys. Organized by provider and concern:
+30 files. Require a deployed worker and API keys. Organized by provider and concern:
 
 | Pattern | Files |
 |---|---|
@@ -208,8 +208,9 @@ The 29 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 | `smoke-trace.test.ts` | W3C traceparent propagation E2E |
 | `smoke-metrics.test.ts` | AE metrics endpoint + latency headers E2E |
 | `smoke-body-capture.test.ts` | Streaming + non-streaming body capture, R2 storage, internal retrieval endpoint E2E |
+| `smoke-sdk-functional.test.ts` | SDK functional E2E: HITL action lifecycle (createAction → approve → markResult, waitForDecision, proposeAndWait, requestBudgetIncrease + policy cache invalidation), read APIs (getCostSummary all 3 periods, listCostEvents pagination), config behavior (custom fetch, retry/onRetry, requestTimeoutMs, apiVersion override), error class fields (TimeoutError, RejectedError). 14 test entries (F1–F11). Manual-runs-only — never CI. Approval mechanism: direct SQL UPDATE on `actions` table (the dashboard `/approve` route is session-only auth). Symmetric cleanup in beforeAll + afterAll handles orphan rows. See `apps/proxy/CLAUDE.md` and `docs/internal/test-plans/sdk-testing-gaps.md` "Functional E2E suite". |
 
-Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace, session-limits, metrics, body-capture.
+Subtypes: core, edge-cases, cost-e2e, security, resilience, load, pricing-accuracy, known-issues, streaming, cloudflare, trace, session-limits, metrics, body-capture, sdk-functional.
 
 ---
 
