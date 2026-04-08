@@ -381,9 +381,23 @@ describe("BudgetClient", () => {
     });
   });
 
-  it("returns denied response when budget is exceeded", async () => {
+  it("returns denied response when proxy emits 429 with budget_exceeded envelope", async () => {
+    // Post-2026-04-08 migration: proxy emits 429 + { error: { code, message, details } }
+    // envelope shape. Status 429, NOT 200.
     globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ allowed: false, denied: true, remaining: 5 })),
+      new Response(JSON.stringify({
+        error: {
+          code: "budget_exceeded",
+          message: "Request blocked: estimated cost exceeds remaining budget.",
+          details: {
+            entity_type: "user",
+            entity_id: "user-1",
+            budget_limit_microdollars: 1_000_000,
+            budget_spend_microdollars: 999_995,
+            estimated_cost_microdollars: 100_000,
+          },
+        },
+      }), { status: 429 }),
     );
 
     const client = makeClient();
@@ -391,7 +405,135 @@ describe("BudgetClient", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.denied).toBe(true);
+    expect(result.code).toBe("budget_exceeded");
+    // remaining = max(0, limit - spend) = 1M - 999.995k = 5 microdollars
     expect(result.remaining).toBe(5);
+  });
+
+  it("surfaces upgrade_url from envelope on budget_exceeded denial", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        error: {
+          code: "budget_exceeded",
+          message: "Budget exceeded",
+          upgrade_url: "https://acme.com/billing?customer=c1",
+          details: {
+            budget_limit_microdollars: 1_000_000,
+            budget_spend_microdollars: 1_000_000,
+          },
+        },
+      }), { status: 429 }),
+    );
+
+    const client = makeClient();
+    const result = await client.check("tool", "server", 100_000);
+
+    expect(result.allowed).toBe(false);
+    expect(result.code).toBe("budget_exceeded");
+    expect(result.upgradeUrl).toBe("https://acme.com/billing?customer=c1");
+  });
+
+  it("surfaces upgrade_url on customer_budget_exceeded denial", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        error: {
+          code: "customer_budget_exceeded",
+          message: "Customer budget exceeded",
+          upgrade_url: "https://acme.com/upgrade?customer=acme-corp",
+          details: {
+            customer_id: "acme-corp",
+            budget_limit_microdollars: 500_000,
+            budget_spend_microdollars: 500_000,
+          },
+        },
+      }), { status: 429 }),
+    );
+
+    const client = makeClient();
+    const result = await client.check("expensive", "server", 100_000);
+
+    expect(result.code).toBe("customer_budget_exceeded");
+    expect(result.upgradeUrl).toBe("https://acme.com/upgrade?customer=acme-corp");
+    expect(result.remaining).toBe(0);
+  });
+
+  it("429 envelope without upgrade_url returns undefined upgradeUrl", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        error: {
+          code: "budget_exceeded",
+          message: "Budget exceeded",
+          details: {
+            budget_limit_microdollars: 1_000,
+            budget_spend_microdollars: 1_000,
+          },
+        },
+      }), { status: 429 }),
+    );
+
+    const client = makeClient();
+    const result = await client.check("tool", "server", 100);
+    expect(result.upgradeUrl).toBeUndefined();
+  });
+
+  it("429 with malformed body still returns a denial (fail-safe parser)", async () => {
+    // Body is not JSON — parser should fall back to safe defaults without
+    // throwing / tripping the circuit breaker.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response("not json", { status: 429 }),
+    );
+
+    const client = makeClient();
+    const result = await client.check("tool", "server", 100);
+    expect(result.allowed).toBe(false);
+    expect(result.denied).toBe(true);
+    // Parser couldn't extract code/remaining/upgradeUrl — all undefined
+    expect(result.code).toBeUndefined();
+    expect(result.remaining).toBeUndefined();
+    expect(result.upgradeUrl).toBeUndefined();
+  });
+
+  it("429 does NOT trip the circuit breaker (valid denial ≠ failure)", async () => {
+    // Five consecutive 429s should NOT open the circuit breaker — denials
+    // are normal, only actual failures (network errors, 5xx) count.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        error: { code: "budget_exceeded", message: "denied" },
+      }), { status: 429 }),
+    );
+
+    const client = makeClient();
+    for (let i = 0; i < 6; i++) {
+      await client.check("tool", "server", 100_000);
+    }
+
+    // Still hitting fetch — circuit not open
+    expect(globalThis.fetch).toHaveBeenCalledTimes(6);
+  });
+
+  it("velocity_exceeded 429 returns code but no limit/spend math", async () => {
+    // Velocity details use camelCase + don't have budget_limit_microdollars,
+    // so `remaining` should be undefined (no false zero).
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        error: {
+          code: "velocity_exceeded",
+          message: "Velocity limit",
+          details: {
+            limitMicrodollars: 10_000_000,
+            windowSeconds: 60,
+            currentMicrodollars: 12_500_000,
+          },
+        },
+      }), { status: 429 }),
+    );
+
+    const client = makeClient();
+    const result = await client.check("tool", "server", 100);
+    expect(result.allowed).toBe(false);
+    expect(result.code).toBe("velocity_exceeded");
+    expect(result.remaining).toBeUndefined();
+    expect(result.upgradeUrl).toBeUndefined();
   });
 
   it("fails open on fetch error", async () => {
@@ -454,16 +596,23 @@ describe("BudgetClient", () => {
   });
 
   it("does not cache denied responses for fail-open fallback", async () => {
-    // First call: budget denied (successful HTTP response)
+    // First call: 429 envelope denial (post-migration shape)
     globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ allowed: false, denied: true, remaining: 0 })),
+      new Response(JSON.stringify({
+        error: {
+          code: "budget_exceeded",
+          message: "denied",
+          details: { budget_limit_microdollars: 0, budget_spend_microdollars: 0 },
+        },
+      }), { status: 429 }),
     );
 
     const client = makeClient();
     const denied = await client.check("tool", "server", 100_000);
     expect(denied.allowed).toBe(false);
 
-    // Now 5 failures to trip circuit breaker
+    // Now 5 failures to trip circuit breaker. 429 doesn't count as a
+    // failure (post-migration) so we need real network errors here.
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("fail"));
     for (let i = 0; i < 5; i++) {
       await client.check("tool", "server", 10_000);
