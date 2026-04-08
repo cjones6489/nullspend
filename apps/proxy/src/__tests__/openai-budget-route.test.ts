@@ -56,6 +56,7 @@ const DO_CHECKED_ENTITY = {
   entityId: "test-key-id",
   maxBudget: 10_000_000,
   spend: 1_000_000,
+  reserved: 0,
   policy: "hard",
 };
 
@@ -181,6 +182,14 @@ describe("OpenAI budget enforcement", () => {
       budget_spend_microdollars: expect.any(Number),
       estimated_cost_microdollars: expect.any(Number),
     }));
+
+    // X-NullSpend-Budget-* headers stamped on 429 denial (reservedForThisRequest=0 — request was rejected)
+    // DO_CHECKED_ENTITY: maxBudget=10M, spend=1M, reserved=0
+    // Expected: limit=10M, spent=1M, remaining=9M (budget headers reflect PRE-denied-request state)
+    expect(res.headers.get("X-NullSpend-Budget-Limit")).toBe("10000000");
+    expect(res.headers.get("X-NullSpend-Budget-Spent")).toBe("1000000");
+    expect(res.headers.get("X-NullSpend-Budget-Remaining")).toBe("9000000");
+    expect(res.headers.get("X-NullSpend-Budget-Entity")).toBe("api_key:test-key-id");
   });
 
   it("successful non-streaming request reconciles with actual cost", async () => {
@@ -208,6 +217,14 @@ describe("OpenAI budget enforcement", () => {
     const res = await handleChatCompletions(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
+
+    // X-NullSpend-Budget-* headers stamped on 200 success path (post-reservation snapshot)
+    // limit = 10M, spend = 1M, reserved = 0, estimate = 500k
+    // spent = 1M + 0 + 500k = 1.5M, remaining = 10M - 1.5M = 8.5M
+    expect(res.headers.get("X-NullSpend-Budget-Limit")).toBe("10000000");
+    expect(res.headers.get("X-NullSpend-Budget-Spent")).toBe("1500000");
+    expect(res.headers.get("X-NullSpend-Budget-Remaining")).toBe("8500000");
+    expect(res.headers.get("X-NullSpend-Budget-Entity")).toBe("api_key:test-key-id");
 
     await vi.waitFor(() => {
       expect(mockDoBudgetReconcile).toHaveBeenCalled();

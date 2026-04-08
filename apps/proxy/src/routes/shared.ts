@@ -22,6 +22,78 @@ export type Provider = "openai" | "anthropic" | "mcp";
 
 export type Attribution = { userId: string | null; apiKeyId: string | null; actionId: string | null };
 
+/**
+ * Build X-NullSpend-Budget-* response headers from the budget entities
+ * checked during this request.
+ *
+ * Stripe-pattern "budget proximity" signal — lets clients monitor how close
+ * they are to the wall without issuing separate API calls. Values are in
+ * microdollars (matching internal storage + the *_microdollars fields
+ * already present in denial response bodies).
+ *
+ * Returns an empty record when there are no budget entities. The absence
+ * of headers signals "no budget enforcement" — NOT "unlimited." Clients
+ * should treat missing headers as "the proxy has nothing to say about
+ * budgets for this request."
+ *
+ * For multi-entity requests (e.g. user + org + customer + tag), picks the
+ * single entity with the lowest remaining — the one that will bite first
+ * on the next request. Adds X-NullSpend-Budget-Entity so clients know
+ * which entity the triplet refers to. Ties broken deterministically by
+ * (entityType, entityId) ASCII order.
+ *
+ * Snapshot semantics (documented limitation): values reflect the state
+ * at the time the budget check ran. On streaming responses, headers are
+ * flushed before the upstream completes, so `remaining` is the
+ * post-reservation-pre-reconcile view — NOT guaranteed live after the
+ * stream finishes. These headers are a proximity signal, not an
+ * enforcement mechanism.
+ *
+ * @param budgetEntities entities checked during this request
+ * @param reservedForThisRequest amount the request reserved against the
+ *   DO — pass `estimate` on approved responses (the reservation landed),
+ *   pass `0` on denied responses (no reservation landed).
+ */
+export function buildBudgetHeaders(
+  budgetEntities: Pick<BudgetEntity, "entityType" | "entityId" | "maxBudget" | "spend" | "reserved">[],
+  reservedForThisRequest: number,
+): Record<string, string> {
+  if (budgetEntities.length === 0) return {};
+
+  // Pick the tightest entity — lowest remaining is the one that will bite
+  // first. Tie-break deterministically so two clients hitting the same
+  // state always see the same entity identifier.
+  let tightest = budgetEntities[0];
+  let tightestRemaining = Math.max(
+    0,
+    tightest.maxBudget - tightest.spend - tightest.reserved - reservedForThisRequest,
+  );
+
+  for (let i = 1; i < budgetEntities.length; i++) {
+    const e = budgetEntities[i];
+    const r = Math.max(0, e.maxBudget - e.spend - e.reserved - reservedForThisRequest);
+    if (r < tightestRemaining) {
+      tightest = e;
+      tightestRemaining = r;
+    } else if (r === tightestRemaining) {
+      if (
+        e.entityType < tightest.entityType ||
+        (e.entityType === tightest.entityType && e.entityId < tightest.entityId)
+      ) {
+        tightest = e;
+      }
+    }
+  }
+
+  const spent = tightest.spend + tightest.reserved + reservedForThisRequest;
+  return {
+    "X-NullSpend-Budget-Limit": String(tightest.maxBudget),
+    "X-NullSpend-Budget-Spent": String(spent),
+    "X-NullSpend-Budget-Remaining": String(tightestRemaining),
+    "X-NullSpend-Budget-Entity": `${tightest.entityType}:${tightest.entityId}`,
+  };
+}
+
 export interface EnrichmentFields {
   upstreamDurationMs: number;
   sessionId: string | null;
@@ -86,6 +158,11 @@ export function handleBudgetDenials(
     emitMetric("budget_denied", { reason, provider, entityType: outcome.deniedEntityType ?? "unknown" });
   }
 
+  // On denial the request did NOT reserve its estimate against the DO,
+  // so pass 0 for reservedForThisRequest — headers reflect the state
+  // right before this (rejected) request.
+  const budgetHeaders = buildBudgetHeaders(budgetEntities, 0);
+
   // Velocity denial
   if (outcome.status === "denied" && outcome.velocityDenied) {
     dispatchDenialWebhook(ctx, env, logPrefix, () =>
@@ -115,6 +192,7 @@ export function handleBudgetDenials(
           "Retry-After": String(outcome.retryAfterSeconds ?? 60),
           "X-NullSpend-Trace-Id": ctx.traceId,
           "X-NullSpend-Denied": "1",
+          ...budgetHeaders,
         },
       },
     );
@@ -151,6 +229,7 @@ export function handleBudgetDenials(
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
           "X-NullSpend-Denied": "1",
+          ...budgetHeaders,
         },
       },
     );
@@ -189,6 +268,7 @@ export function handleBudgetDenials(
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
           "X-NullSpend-Denied": "1",
+          ...budgetHeaders,
         },
       },
     );
@@ -224,6 +304,7 @@ export function handleBudgetDenials(
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
           "X-NullSpend-Denied": "1",
+          ...budgetHeaders,
         },
       },
     );
@@ -266,6 +347,7 @@ export function handleBudgetDenials(
           "Content-Type": "application/json",
           "X-NullSpend-Trace-Id": ctx.traceId,
           "X-NullSpend-Denied": "1",
+          ...budgetHeaders,
         },
       },
     );

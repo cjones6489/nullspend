@@ -191,6 +191,13 @@ describe("Anthropic budget enforcement", () => {
       budget_spend_microdollars: 9_900_000,
       estimated_cost_microdollars: 500_000,
     });
+
+    // X-NullSpend-Budget-* headers on 429 denial (reservedForThisRequest=0).
+    // BUDGET_ENTITY: maxBudget=10M, spend=1M, reserved=0 → spent=1M, remaining=9M
+    expect(res.headers.get("X-NullSpend-Budget-Limit")).toBe("10000000");
+    expect(res.headers.get("X-NullSpend-Budget-Spent")).toBe("1000000");
+    expect(res.headers.get("X-NullSpend-Budget-Remaining")).toBe("9000000");
+    expect(res.headers.get("X-NullSpend-Budget-Entity")).toBe("api_key:test-key-id");
   });
 
   it("successful non-streaming request reconciles with actual cost", async () => {
@@ -218,6 +225,13 @@ describe("Anthropic budget enforcement", () => {
     const res = await handleAnthropicMessages(makeRequest(body), makeEnv(), makeCtx(body));
 
     expect(res.status).toBe(200);
+
+    // X-NullSpend-Budget-* headers stamped on 200 success (reservedForThisRequest=estimate=500k)
+    // limit=10M, spend=1M, reserved=0, estimate=500k → spent=1.5M, remaining=8.5M
+    expect(res.headers.get("X-NullSpend-Budget-Limit")).toBe("10000000");
+    expect(res.headers.get("X-NullSpend-Budget-Spent")).toBe("1500000");
+    expect(res.headers.get("X-NullSpend-Budget-Remaining")).toBe("8500000");
+    expect(res.headers.get("X-NullSpend-Budget-Entity")).toBe("api_key:test-key-id");
 
     // waitUntil fires reconciliation asynchronously; verify it was called
     await vi.waitFor(() => {

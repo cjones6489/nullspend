@@ -16,7 +16,7 @@ import { isAllowedUpstream } from "../lib/upstream-allowlist.js";
 import { stripNsPrefix } from "../lib/validation.js";
 import { emitMetric } from "../lib/metrics.js";
 import { writeLatencyDataPoint } from "../lib/write-metric.js";
-import { handleBudgetDenials, dispatchVelocityRecoveryWebhooks, dispatchCostEventWebhooks, type Attribution, type EnrichmentFields } from "./shared.js";
+import { handleBudgetDenials, dispatchVelocityRecoveryWebhooks, dispatchCostEventWebhooks, buildBudgetHeaders, type Attribution, type EnrichmentFields } from "./shared.js";
 import { storeRequestBody, storeResponseBody, storeStreamingResponseBody, createStreamBodyAccumulator } from "../lib/body-storage.js";
 
 export async function handleChatCompletions(
@@ -200,6 +200,15 @@ export async function handleChatCompletions(
     const clientHeaders = buildClientHeaders(upstreamResponse, ctx.resolvedApiVersion);
     clientHeaders.set("X-NullSpend-Trace-Id", ctx.traceId);
     if (ctx.sessionId) clientHeaders.set("X-NullSpend-Session", ctx.sessionId);
+
+    // Budget proximity headers — stamped at response-construction time
+    // from the post-reservation snapshot. On streaming these are flushed
+    // before the stream completes (see buildBudgetHeaders docstring).
+    // The request's estimate IS reserved on the DO at this point, so
+    // pass it as the reserved-for-this-request contribution.
+    for (const [k, v] of Object.entries(buildBudgetHeaders(budgetEntities, estimate))) {
+      clientHeaders.set(k, v);
+    }
 
     if (isStreaming) {
       if (ctx.stepTiming) ctx.stepTiming.ttfbMs = upstreamDurationMs;
