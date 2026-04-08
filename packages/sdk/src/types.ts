@@ -375,7 +375,13 @@ export interface ListCostEventsResponse {
 
 export interface ListCostEventsOptions {
   limit?: number;
-  cursor?: string;
+  /**
+   * Pagination cursor. Accepts either a raw JSON-stringified cursor or the
+   * `{ createdAt, id }` object returned by `ListCostEventsResponse.cursor`.
+   * Pass the response cursor directly to fetch the next page — the SDK
+   * stringifies it for the server.
+   */
+  cursor?: string | { createdAt: string; id: string };
 }
 
 // ---------------------------------------------------------------------------

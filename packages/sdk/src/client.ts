@@ -312,7 +312,11 @@ export class NullSpend {
   async listCostEvents(options?: ListCostEventsOptions): Promise<ListCostEventsResponse> {
     const params = new URLSearchParams();
     if (options?.limit) params.set("limit", String(options.limit));
-    if (options?.cursor) params.set("cursor", options.cursor);
+    if (options?.cursor !== undefined) {
+      const cursor =
+        typeof options.cursor === "string" ? options.cursor : JSON.stringify(options.cursor);
+      params.set("cursor", cursor);
+    }
     const qs = params.toString();
     return this.request<ListCostEventsResponse>("GET", `/api/cost-events${qs ? `?${qs}` : ""}`);
   }
