@@ -35,6 +35,7 @@ pnpm typecheck        # TypeScript check
 pnpm lint             # ESLint
 pnpm db:generate      # Generate Drizzle migration
 pnpm db:build         # Build @nullspend/db (required before next build)
+pnpm cost-engine:build # Build @nullspend/cost-engine (required before next build — exports point to dist/)
 ```
 
 IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both when changes span root and proxy.

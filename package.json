@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
-    "build": "pnpm db:build && next build",
+    "build": "pnpm db:build && pnpm cost-engine:build && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
