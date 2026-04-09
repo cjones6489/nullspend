@@ -115,7 +115,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const nonce = crypto.randomUUID();
+  // Base64-encode the nonce to match the CSP3 spec (nonce-source = "'nonce-" base64-value "'")
+  // and to match the official Next.js CSP example exactly.
+  const nonce = btoa(crypto.randomUUID());
   const isDev = process.env.NODE_ENV === "development";
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -141,18 +143,31 @@ export async function proxy(request: NextRequest) {
     "frame-ancestors 'none'",
     "upgrade-insecure-requests",
   ];
+  const cspHeaderName = isDev
+    ? "Content-Security-Policy-Report-Only"
+    : "Content-Security-Policy";
+  const cspHeaderValue = cspDirectives.join("; ");
 
-  // Inject nonce and request ID into request headers for downstream handlers
+  // Inject nonce, request ID, AND the CSP header into the request headers
+  // for downstream handlers. Setting the CSP header on the REQUEST (not just
+  // the response) is required by Next.js 16's nonce auto-propagation — it
+  // reads the CSP from the request headers to identify the nonce and stamp
+  // it onto framework scripts, page bundles, inline styles, and <Script>
+  // components during rendering.
+  // Source: https://nextjs.org/docs/app/guides/content-security-policy
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("x-request-id", requestId);
+  requestHeaders.set(cspHeaderName, cspHeaderValue);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("x-request-id", requestId);
 
   // Prevent CDN/browser caching of ALL responses from this middleware.
   // Every response carries a per-request CSP nonce both in the header
-  // (set below) and injected into <script nonce="..."> tags in the HTML.
+  // (set below) and injected into <script nonce="..."> tags in the HTML
+  // by Next.js's auto-propagation (which requires the root layout to be
+  // dynamically rendered — see app/layout.tsx).
   // If Vercel/the CDN caches the HTML body, subsequent requests get a
   // fresh CSP nonce in the header but a STALE nonce baked into the HTML,
   // and the browser blocks every script (React fails to hydrate).
@@ -161,10 +176,7 @@ export async function proxy(request: NextRequest) {
   response.headers.append("Vary", "Cookie");
 
   // Enforce CSP in production, report-only in development
-  response.headers.set(
-    isDev ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy",
-    cspDirectives.join("; ")
-  );
+  response.headers.set(cspHeaderName, cspHeaderValue);
 
   try {
     const supabase = createProxySupabaseClient(request, response);

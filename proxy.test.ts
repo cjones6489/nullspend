@@ -62,7 +62,7 @@ describe("proxy()", () => {
       expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
     });
 
-    it("includes a nonce in script-src and style-src", async () => {
+    it("includes a base64-encoded nonce in script-src and style-src", async () => {
       const response = await proxy(makeRequest() as any);
       const csp = response.headers.get("Content-Security-Policy")!;
 
@@ -71,8 +71,14 @@ describe("proxy()", () => {
       expect(nonceMatch).toBeTruthy();
       const nonce = nonceMatch![1];
 
-      // UUID format
-      expect(nonce).toMatch(
+      // Base64-encoded format (matches Next.js 16's CSP guide + CSP3 spec
+      // "nonce-source = 'nonce-' base64-value"). The proxy base64-encodes
+      // crypto.randomUUID() so the nonce looks like "OWRhOWE5MzItMT...".
+      expect(nonce).toMatch(/^[A-Za-z0-9+/]+=*$/);
+
+      // Decoding should yield a valid UUID
+      const decoded = Buffer.from(nonce, "base64").toString("utf-8");
+      expect(decoded).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
       );
 
@@ -208,9 +214,104 @@ describe("proxy()", () => {
       const csp = response.headers.get("Content-Security-Policy")!;
       const nonce = csp.match(/'nonce-([^']+)'/)![1];
 
-      // The response should have been created with the modified request headers
-      // We verify the nonce is a valid UUID (propagation is tested via the CSP containing it)
-      expect(nonce).toMatch(
+      // The response should have been created with the modified request headers.
+      // We verify the nonce is valid base64 (propagation is tested via the CSP containing it).
+      expect(nonce).toMatch(/^[A-Za-z0-9+/]+=*$/);
+    });
+  });
+
+  describe("P0-A2 regression: CSP nonce propagation to request headers", () => {
+    // Regression: P0-A2 — Next.js nonce auto-propagation was broken
+    // Found by /qa on 2026-04-08
+    // Report: .gstack/qa-reports/qa-report-nullspend-dev-2026-04-08.md
+    //
+    // BUG: proxy.ts set the CSP header only on the response, not on the
+    // request. Next.js 16's auto-propagation reads the CSP from the REQUEST
+    // headers to identify the nonce to stamp onto framework scripts, inline
+    // styles, and <Script> components. Without CSP in the request headers,
+    // Next.js didn't know a nonce was in effect, so it rendered every page
+    // without nonce attributes. Combined with static prerendering (fixed
+    // in app/layout.tsx by adding a headers() call), the result was zero
+    // <script nonce="..."> tags in the HTML body and 35+ CSP violations
+    // per page load.
+    //
+    // FIX: set Content-Security-Policy in requestHeaders alongside x-nonce.
+    //
+    // This matches the official Next.js CSP example:
+    // https://nextjs.org/docs/app/guides/content-security-policy
+
+    it("sets Content-Security-Policy header in request headers (for nonce auto-propagation)", async () => {
+      let capturedRequestHeaders: Headers | undefined;
+
+      // NextResponse.next is mocked at test-import time. Spy on it to
+      // capture the request.headers passed into the init.
+      const { NextResponse } = await import("next/server");
+      const nextSpy = vi
+        .spyOn(NextResponse, "next")
+        .mockImplementation((init?: any) => {
+          capturedRequestHeaders = init?.request?.headers as Headers | undefined;
+          return new NextResponse(null, { status: 200 }) as any;
+        });
+
+      try {
+        await proxy(makeRequest() as any);
+      } finally {
+        nextSpy.mockRestore();
+      }
+
+      expect(capturedRequestHeaders).toBeTruthy();
+      const requestCsp = capturedRequestHeaders!.get("Content-Security-Policy");
+      expect(requestCsp).toBeTruthy();
+      expect(requestCsp).toContain("script-src");
+      expect(requestCsp).toContain("'nonce-");
+      expect(requestCsp).toContain("'strict-dynamic'");
+    });
+
+    it("request-header CSP nonce matches response-header CSP nonce", async () => {
+      let capturedRequestHeaders: Headers | undefined;
+
+      const { NextResponse } = await import("next/server");
+      const nextSpy = vi
+        .spyOn(NextResponse, "next")
+        .mockImplementation((init?: any) => {
+          capturedRequestHeaders = init?.request?.headers as Headers | undefined;
+          const res = new NextResponse(null, { status: 200 }) as any;
+          return res;
+        });
+
+      let response: Response;
+      try {
+        response = (await proxy(makeRequest() as any)) as unknown as Response;
+      } finally {
+        nextSpy.mockRestore();
+      }
+
+      // Because we mock NextResponse.next, the proxy's response header
+      // setters act on our returned stub. Both request and response CSP
+      // headers are built from the same cspHeaderValue variable, so they
+      // must match.
+      const requestCsp = capturedRequestHeaders!.get("Content-Security-Policy");
+      const responseCsp = response.headers.get("Content-Security-Policy");
+      expect(requestCsp).toBe(responseCsp);
+
+      // And the nonce should be present in both
+      const requestNonce = requestCsp!.match(/'nonce-([^']+)'/)?.[1];
+      const responseNonce = responseCsp!.match(/'nonce-([^']+)'/)?.[1];
+      expect(requestNonce).toBeTruthy();
+      expect(requestNonce).toBe(responseNonce);
+    });
+
+    it("uses base64-encoded nonce per CSP3 spec", async () => {
+      const response = await proxy(makeRequest() as any);
+      const csp = response.headers.get("Content-Security-Policy")!;
+      const nonce = csp.match(/'nonce-([^']+)'/)![1];
+
+      // Base64 charset: A-Z, a-z, 0-9, +, /, = padding
+      expect(nonce).toMatch(/^[A-Za-z0-9+/]+=*$/);
+
+      // Round-trip decode should produce a UUID
+      const decoded = Buffer.from(nonce, "base64").toString("utf-8");
+      expect(decoded).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
       );
     });
