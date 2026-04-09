@@ -373,12 +373,23 @@ export async function getDistinctTagKeys(orgId: string) {
   // object-typed and this filter is a no-op. The filter exists as a
   // safety net during the brief deploy → repair window so jsonb_object_keys
   // doesn't raise on legacy string-encoded rows.
+  //
+  // IMPORTANT: pass cutoff as ISO string with explicit ::timestamptz cast,
+  // not as a raw JS Date. In fetch_types:false mode (required for Supabase
+  // Shared Pooler compat, see lib/db/client.ts), postgres.js cannot fetch
+  // pg_type OIDs to infer parameter types from raw sql templates, so Date
+  // objects trigger ERR_INVALID_ARG_TYPE at the wire protocol layer. Other
+  // functions in this file avoid this by using drizzle's query builder
+  // (gte(costEvents.createdAt, cutoffDate)) which knows the column's type
+  // from the schema — only this raw sql call needs the explicit cast.
+  // Found by /qa on 2026-04-08 (P1-19).
+  const cutoffIso = cutoff.toISOString();
   const rows = await db.execute<{ key: string }>(
     sql`SELECT DISTINCT key FROM (
       SELECT jsonb_object_keys(${costEvents.tags}) AS key
       FROM ${costEvents}
       WHERE ${costEvents.orgId} = ${orgId}
-        AND ${costEvents.createdAt} >= ${cutoff}
+        AND ${costEvents.createdAt} >= ${cutoffIso}::timestamptz
         AND jsonb_typeof(${costEvents.tags}) = 'object'
     ) sub
     WHERE key NOT LIKE '_ns_%'
