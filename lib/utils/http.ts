@@ -176,56 +176,8 @@ export function handleRouteError(error: unknown) {
 
   getLogger("http").error({ err: error }, "Unhandled route error");
   captureExceptionWithContext(error);
-
-  // Temporary P0-E diagnostic: expose error detail in response when the
-  // internal debug secret header is present. Gated on INTERNAL_SECRET so
-  // it cannot be triggered from public traffic. REMOVE AFTER P0-E TRIAGE.
-  const debugDetail = extractErrorForDebug(error);
-
   return NextResponse.json(
-    errorJson("internal_error", "Internal server error.", debugDetail),
+    errorJson("internal_error", "Internal server error."),
     { status: 500 },
   );
-}
-
-/**
- * TEMPORARY: P0-E diagnostic that surfaces the underlying error shape
- * directly in the 500 response body. Called unconditionally by
- * handleRouteError — leaks stack + pg error codes to any caller that
- * triggers a 500. ACCEPTABLE FOR LAUNCH-NIGHT TRIAGE ONLY.
- *
- * REMOVE THIS once P0-E is root-caused and fixed. Tracked in task #17.
- */
-function extractErrorForDebug(err: unknown): Record<string, unknown> {
-  if (!(err instanceof Error)) {
-    return { debug: { raw: String(err) } };
-  }
-  const e = err as Error & {
-    code?: string;
-    severity?: string;
-    detail?: string;
-    hint?: string;
-    routine?: string;
-    address?: string;
-    port?: number;
-    syscall?: string;
-    errno?: number;
-    cause?: unknown;
-  };
-  const info: Record<string, unknown> = {
-    name: e.name,
-    message: e.message?.substring(0, 500),
-    stack: e.stack?.substring(0, 1500),
-  };
-  if (e.code) info.code = e.code;
-  if (e.severity) info.severity = e.severity;
-  if (e.detail) info.detail = e.detail;
-  if (e.hint) info.hint = e.hint;
-  if (e.routine) info.routine = e.routine;
-  if (e.address) info.address = e.address;
-  if (e.port) info.port = e.port;
-  if (e.syscall) info.syscall = e.syscall;
-  if (e.errno) info.errno = e.errno;
-  if (e.cause) info.cause = extractErrorForDebug(e.cause);
-  return { debug: info };
 }
