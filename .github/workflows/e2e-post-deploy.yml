@@ -166,13 +166,42 @@ jobs:
           CI: "true"
         run: pnpm e2e:run tests/e2e/infra/
 
-      - name: Run e2e dashboard tests (legacy scripts/e2e-smoke.ts — ports in Slice 4)
-        env:
-          NULLSPEND_BASE_URL: ${{ steps.url.outputs.url }}
-          NULLSPEND_API_KEY: ${{ secrets.E2E_API_KEY }}
-          NULLSPEND_DEV_ACTOR: ${{ secrets.E2E_DEV_ACTOR }}
-          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
-        run: pnpm tsx scripts/e2e-smoke.ts --no-cleanup
+      # Legacy scripts/e2e-smoke.ts is DISABLED in CI until Slice 4 ports it.
+      #
+      # Why disabled: The script's reachability check at line 1154 does
+      # `GET /api/actions?limit=1` with an x-nullspend-key header — but
+      # that route uses session auth (resolveSessionContext), not API key
+      # auth. It only succeeds when the server has NULLSPEND_DEV_MODE=true
+      # set, triggering the dev-actor fallback in lib/auth/session.ts.
+      # Production servers don't have dev mode enabled (that would be a
+      # global auth bypass), so the script fails immediately.
+      #
+      # Historically this wasn't noticed because the workflow condition
+      # was `environment == 'Preview'` and never matched — it ran zero
+      # times in CI for the repo's entire history (359 skipped runs).
+      # Slice 1a fixed the condition; Slice 1c fixed the missing sdk build;
+      # and now we've surfaced the actual logic gap.
+      #
+      # Slice 4 replaces this script with tests/e2e/dashboard/*.e2e.test.ts
+      # files that use the bootstrap org's API key against POST routes
+      # (which DO use authenticateApiKey) and use direct DB ops via
+      # DATABASE_URL for state assertions. Those tests work against prod.
+      #
+      # Until then, Slice 1 infra tests are the sole post-deploy gate.
+      # They cover every launch-night P0 class (CSP, health, DNS/SSL,
+      # proxy reachability, routes-sweep crash detection).
+      #
+      # To run the legacy script LOCALLY for dev validation:
+      #   pnpm dev                    # dev server with NULLSPEND_DEV_MODE=true
+      #   pnpm e2e                    # hits http://127.0.0.1:3000
+      #
+      # - name: Run e2e dashboard tests (legacy scripts/e2e-smoke.ts)
+      #   env:
+      #     NULLSPEND_BASE_URL: ${{ steps.url.outputs.url }}
+      #     NULLSPEND_API_KEY: ${{ secrets.E2E_API_KEY }}
+      #     NULLSPEND_DEV_ACTOR: ${{ secrets.E2E_DEV_ACTOR }}
+      #     DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+      #   run: pnpm tsx scripts/e2e-smoke.ts --no-cleanup
 
       - name: Upload test results
         if: always()
