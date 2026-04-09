@@ -23,6 +23,19 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      // /pricing is rendered as an anchor on the root marketing page (/#pricing).
+      // This redirect handles direct URL hits, old shared links, and search
+      // engine results from before the anchor-based pricing section existed.
+      // Found by /qa pass 2026-04-08 (ISSUE-006).
+      {
+        source: "/pricing",
+        destination: "/#pricing",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {
