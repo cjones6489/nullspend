@@ -119,6 +119,17 @@ jobs:
       # Read untrusted webhook inputs into env vars FIRST, never interpolate
       # `${{ github.event.* }}` directly into bash. See GitHub Actions
       # hardening guide: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
+      #
+      # URL resolution rules:
+      #   - workflow_dispatch: use the URL the user passed
+      #   - deployment_status Preview: use the per-deployment URL from
+      #     the event payload (Vercel's Preview URLs are public)
+      #   - deployment_status Production: use the STABLE public domain
+      #     (www.nullspend.dev), NOT the per-deployment URL. Vercel's
+      #     per-deployment URLs for Production are behind Deployment
+      #     Protection by default and return 401 to public HTTP clients,
+      #     so our `curl /api/health` wait loop times out.
+      #     (See: .github/workflows/e2e-post-deploy.yml Slice 1h commit.)
       - name: Resolve target URL
         id: url
         env:
@@ -126,10 +137,19 @@ jobs:
           DISPATCH_URL: ${{ github.event.inputs.preview_url }}
           DEPLOYMENT_URL: ${{ github.event.deployment_status.target_url }}
           ENVIRONMENT: ${{ github.event.deployment_status.environment }}
+          PRODUCTION_URL: ${{ vars.NULLSPEND_PRODUCTION_URL || 'https://www.nullspend.dev' }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             URL="$DISPATCH_URL"
             ENV_LABEL="manual"
+          elif [ "$ENVIRONMENT" = "Production" ]; then
+            # Override the per-deployment URL with the stable prod domain.
+            # Vercel does atomic swaps, so by the time deployment_status
+            # fires with state=success, the stable URL is already serving
+            # the new deployment.
+            URL="$PRODUCTION_URL"
+            ENV_LABEL="Production"
+            echo "Production deploy detected — using stable URL instead of per-deployment URL"
           else
             URL="$DEPLOYMENT_URL"
             ENV_LABEL="$ENVIRONMENT"
