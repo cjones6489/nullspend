@@ -124,4 +124,58 @@ describe("assertNotProtected", () => {
       expect((err as Error).name).toBe("ProtectedOrgError");
     }
   });
+
+  // --- Input normalization (EC-4 regression) ---
+
+  it("throws on UPPERCASE variant of a protected UUID", () => {
+    // Supabase returns lowercase UUIDs via drizzle, but other sources
+    // (JWT claims, env vars, external APIs) may return uppercase. The
+    // safety check must catch all case variants.
+    expect(() =>
+      assertNotProtected(FOUNDER_PERSONAL.toUpperCase(), "unit test"),
+    ).toThrow(ProtectedOrgError);
+  });
+
+  it("throws on mixed-case variant of a protected UUID", () => {
+    // "052F5cc2-261f-450D-83a1-ce191950373d" — deliberate mangled case
+    const mixed = FOUNDER_PERSONAL
+      .split("")
+      .map((c, i) => (i % 2 === 0 ? c.toUpperCase() : c))
+      .join("");
+    expect(() => assertNotProtected(mixed, "unit test")).toThrow(
+      ProtectedOrgError,
+    );
+  });
+
+  it("throws on whitespace-padded protected UUID", () => {
+    expect(() =>
+      assertNotProtected(`  ${FOUNDER_PERSONAL}  `, "unit test"),
+    ).toThrow(ProtectedOrgError);
+  });
+
+  it("throws on tab-padded protected UUID", () => {
+    expect(() =>
+      assertNotProtected(`\t${FOUNDER_PERSONAL}\t`, "unit test"),
+    ).toThrow(ProtectedOrgError);
+  });
+
+  it("throws on newline-padded protected UUID", () => {
+    // Common case: env var value with trailing newline from a shell pipe
+    expect(() =>
+      assertNotProtected(`${FOUNDER_PERSONAL}\n`, "unit test"),
+    ).toThrow(ProtectedOrgError);
+  });
+
+  it("preserves the ORIGINAL (non-normalized) input in the error for debugging", () => {
+    // Operators investigating a safety violation need to see the EXACT
+    // string the caller passed, not a normalized version — so they can
+    // trace how the mangled input got generated.
+    const padded = `  ${FOUNDER_PERSONAL.toUpperCase()}  `;
+    try {
+      assertNotProtected(padded, "unit test");
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect((err as ProtectedOrgError).orgId).toBe(padded);
+    }
+  });
 });

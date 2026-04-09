@@ -142,9 +142,23 @@ describe("CSP nonce freshness (P0-1 / P0-A2 regression)", () => {
 
     it("body <script nonce=\"...\"> values match the CSP header nonce (P0-1/A2 core assertion)", async () => {
       const snap = await fetchHtmlSnapshot(`${baseUrl}${route}`);
-      // Only enforce body-header consistency on 2xx responses with actual HTML.
-      // 3xx redirects have no body nonces to check.
-      if (snap.status < 200 || snap.status >= 300) return;
+
+      // EC-2 regression: the earlier version of this test silently
+      // returned on any non-2xx status, which masked a class of
+      // regression where `/login` unexpectedly started redirecting
+      // (e.g., middleware hijacking, auth enforcement change, Vercel
+      // routing bug). A silent skip = a false green.
+      //
+      // HTML_ROUTES are routes that MUST render HTML. If any of them
+      // redirects, that's the finding — fail loudly.
+      expect(
+        snap.status,
+        `${route} unexpectedly returned status ${snap.status}. HTML_ROUTES ` +
+          `are expected to render HTML (2xx), not redirect. If this route ` +
+          `legitimately redirects now, remove it from HTML_ROUTES and add ` +
+          `the new destination instead.`,
+      ).toBeGreaterThanOrEqual(200);
+      expect(snap.status).toBeLessThan(300);
 
       expect(snap.headerNonce).toBeTruthy();
 

@@ -76,12 +76,41 @@ export class ProtectedOrgError extends Error {
 }
 
 /**
+ * Normalize an org ID string for protection-set comparison.
+ *
+ * Drizzle's postgres.js client returns UUIDs in their canonical form
+ * (lowercase hex, standard hyphen positions), but the safety check is
+ * designed to be the LAST line of defense — a caller that passes an
+ * uppercase or whitespace-padded ID should still be caught.
+ *
+ * This normalization is deliberately conservative:
+ *   1. trim() — remove leading/trailing whitespace (handles env var
+ *      values that got a trailing newline from a shell pipe)
+ *   2. toLowerCase() — handle mixed-case UUIDs (e.g., from JWT claims
+ *      or third-party APIs that return uppercase)
+ *
+ * If the normalized value ever matches a PROTECTED_ORG_IDS entry,
+ * `assertNotProtected` throws — even if the raw input was uppercase
+ * or padded.
+ */
+function normalizeOrgId(orgId: string): string {
+  return orgId.trim().toLowerCase();
+}
+
+/**
  * Throws a `ProtectedOrgError` if the given org ID is in the protected
  * set. Use at the top of any function that performs destructive
- * operations on an org ID received from a query result or env var.
+ * operations on an org ID received from a query result, env var, JWT
+ * claim, or external API.
+ *
+ * Inputs are normalized (trim + lowercase) before comparison, so
+ * `"052F5CC2-..."`, `" 052f5cc2-... "`, and `"052f5cc2-..."` all
+ * match the same protected entry. Original (raw) input is preserved
+ * in the thrown error's `orgId` field for debugging.
  */
 export function assertNotProtected(orgId: string, context: string): void {
-  if (PROTECTED_ORG_IDS.has(orgId)) {
+  const normalized = normalizeOrgId(orgId);
+  if (PROTECTED_ORG_IDS.has(normalized)) {
     throw new ProtectedOrgError(orgId, context);
   }
 }
