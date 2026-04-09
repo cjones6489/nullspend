@@ -58,7 +58,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "fumadocs-core": "^16.7.4",
     "fumadocs-mdx": "^14.2.11",
     "fumadocs-ui": "^16.7.4",
@@ -84,7 +84,7 @@
       "workerd"
     ],
     "overrides": {
-      "drizzle-orm": "^0.45.1",
+      "drizzle-orm": "^0.45.2",
       "recharts": "2.15.4"
     }
   },
