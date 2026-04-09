@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ApiError } from "@/lib/api/client";
 import { useApiKeys } from "@/lib/queries/api-keys";
 import { useSession } from "@/lib/queries/session";
 import {
@@ -694,6 +695,17 @@ function BudgetDialog({
   const [sessionLimitEnabled, setSessionLimitEnabled] = useState(!!editBudget?.sessionLimitDollars);
   const [sessionLimitDollars, setSessionLimitDollars] = useState(editBudget?.sessionLimitDollars ?? "");
 
+  // Inline submit error — used for tier-limit errors (409 limit_exceeded /
+  // 400 spend_cap_exceeded) and generic submission failures. The toast
+  // system may be blocked by the CSP on style-src for inline styles
+  // (sonner uses inline styles), so we show the error inside the form
+  // itself as a belt-and-suspenders approach. Tier-limit errors also get
+  // a visible "Upgrade plan" button below the message.
+  const [submitError, setSubmitError] = useState<{
+    message: string;
+    code?: string;
+  } | null>(null);
+
   function resetForm() {
     setEntityType("user");
     setSelectedKeyId("");
@@ -714,6 +726,10 @@ function BudgetDialog({
   }
 
   function handleSubmit() {
+    // Clear any prior submit error on every attempt so the form doesn't
+    // look permanently stuck after a fix-and-retry.
+    setSubmitError(null);
+
     const dollars = parseFloat(limitDollars);
     if (isNaN(dollars) || dollars <= 0) {
       toast.error("Enter a valid budget amount");
@@ -818,8 +834,22 @@ function BudgetDialog({
           if (!isEdit) resetForm();
           onOpenChange(false);
         },
-        onError: (err) =>
-          toast.error(err.message || `Failed to ${isEdit ? "update" : "create"} budget`),
+        onError: (err) => {
+          // Extract server error code for tier-limit-aware rendering.
+          // ApiError from lib/api/client.ts carries .code/.message/.status.
+          const code = err instanceof ApiError ? err.code : undefined;
+          const message =
+            err.message || `Failed to ${isEdit ? "update" : "create"} budget`;
+
+          // Set the inline error so it shows up inside the dialog even
+          // if sonner's toast is blocked by the CSP on inline styles.
+          setSubmitError({ message, code });
+
+          // Also fire the toast for users who can see it. If CSP blocks
+          // sonner styles this is a no-op visually — that's fine, the
+          // inline error is the primary UX.
+          toast.error(message);
+        },
       },
     );
   }
@@ -1276,6 +1306,35 @@ function BudgetDialog({
           </div>
         </div>
 
+        {/*
+          Inline submit error. Shown when the server rejects the create
+          with a tier-limit error (409 limit_exceeded / 400 spend_cap_exceeded)
+          or any other error. Rendered here rather than relying purely on
+          sonner toasts because the dashboard CSP (style-src 'self'
+          'nonce-...') blocks sonner's inline style attributes — the
+          toast may not be visible to the user even though it was fired.
+        */}
+        {submitError && (
+          <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2.5">
+            <p className="text-[12px] font-medium text-red-400">
+              {submitError.message}
+            </p>
+            {(submitError.code === "limit_exceeded" ||
+              submitError.code === "spend_cap_exceeded") && (
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="text-[11px] text-muted-foreground">
+                  Upgrade your plan to lift this limit.
+                </p>
+                <Link
+                  href="/app/billing"
+                  className="inline-flex h-7 items-center justify-center rounded-md bg-primary px-3 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Upgrade plan
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
         <DialogFooter>
           <DialogClose
             className="inline-flex h-8 items-center justify-center rounded-md border border-border/50 bg-secondary px-3 text-xs font-medium text-foreground hover:bg-accent"
