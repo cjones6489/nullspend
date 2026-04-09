@@ -3,6 +3,8 @@ import { sql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 
+import { REQUIRED_SCHEMA } from "./required-schema";
+
 /**
  * Health check endpoint (public, unauthenticated).
  *
@@ -15,26 +17,9 @@ import { getDb } from "@/lib/db/client";
  * parameter is present (intended for internal/operator use).
  */
 
-// Tables and columns that the application code requires.
-// If any are missing, routes will 500 at runtime.
-const REQUIRED_SCHEMA: Array<{ table: string; columns: string[] }> = [
-  { table: "organizations", columns: ["id", "name", "owner_user_id"] },
-  { table: "org_memberships", columns: ["id", "org_id", "user_id", "role"] },
-  { table: "org_invitations", columns: ["id", "org_id", "email", "role"] },
-  { table: "actions", columns: ["id", "org_id", "owner_user_id", "status", "agent_id", "action_type", "payload_json"] },
-  { table: "api_keys", columns: ["id", "org_id", "user_id", "key_hash", "revoked_at"] },
-  { table: "cost_events", columns: ["id", "org_id", "user_id", "cost_microdollars", "cost_breakdown"] },
-  { table: "budgets", columns: ["id", "org_id", "entity_type", "entity_id", "max_budget_microdollars"] },
-  { table: "webhook_endpoints", columns: ["id", "org_id", "user_id", "url", "signing_secret"] },
-  { table: "webhook_deliveries", columns: ["id", "endpoint_id", "event_id"] },
-  { table: "subscriptions", columns: ["id", "user_id", "stripe_customer_id"] },
-  { table: "tool_costs", columns: ["id", "org_id", "user_id", "server_name", "tool_name"] },
-  { table: "slack_configs", columns: ["id", "org_id", "user_id"] },
-  { table: "audit_events", columns: ["id", "org_id", "user_id", "action"] },
-  { table: "stripe_connections", columns: ["id", "org_id"] },
-  { table: "customer_mappings", columns: ["id", "org_id", "tag_value", "stripe_customer_id"] },
-  { table: "customer_revenue", columns: ["id", "org_id", "tag_value", "period"] },
-];
+// REQUIRED_SCHEMA lives in ./required-schema.ts so the test file can import it
+// without pulling in the Next.js route handler. The regression test cross-checks
+// it against the drizzle schema to prevent future drift.
 
 interface ComponentStatus {
   status: "ok" | "error";
