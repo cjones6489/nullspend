@@ -198,6 +198,54 @@ export async function GET(request: Request) {
     }
   }
 
+  // 2e. INSERT inside transaction — mirrors ensurePersonalOrg() exactly.
+  // Rolls back so no real data is created. If this fails when check 2d
+  // (empty transaction) passes, the issue is specifically with INSERTs
+  // in Supabase Shared Pooler — possibly RLS, triggers, or constraints.
+  if (components.database.status === "ok") {
+    try {
+      const db = getDb();
+      await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(organizations)
+          .values({
+            name: "__health_probe__",
+            slug: `__health_probe_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+            isPersonal: false,
+            createdBy: "00000000-0000-0000-0000-000000000000",
+          })
+          .returning({ id: organizations.id });
+
+        await tx.insert(orgMemberships).values({
+          orgId: created.id,
+          userId: "00000000-0000-0000-0000-000000000000",
+          role: "owner",
+        });
+
+        // Force rollback — we don't want to create real rows.
+        throw new Error("__rollback_health_probe__");
+      });
+      // If we reach here, the throw was swallowed — unexpected.
+      components.insert_transaction = {
+        status: "error",
+        error: "rollback did not throw",
+      };
+    } catch (err) {
+      if (err instanceof Error && err.message === "__rollback_health_probe__") {
+        // Expected — rollback succeeded
+        components.insert_transaction = { status: "ok" };
+      } else {
+        components.insert_transaction = {
+          status: "error",
+          error: verbose
+            ? (err instanceof Error ? err.message : "INSERT transaction failed")
+            : "check failed",
+          ...(verbose ? { debug: extractErrorDebug(err) } : {}),
+        };
+      }
+    }
+  }
+
   // 3. Redis connectivity (rate limiter)
   if (
     process.env.UPSTASH_REDIS_REST_URL &&
