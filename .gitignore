@@ -22,3 +22,9 @@ worker-configuration.d.ts
 .claude/settings.local.json
 validation-tests/
 .gstack/
+
+# E2E test framework
+.env.e2e
+test-results/
+playwright-report/
+.playwright/

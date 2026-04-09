@@ -29,13 +29,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:build && pnpm cost-engine:build
 
+      # Read untrusted webhook inputs into env vars FIRST, never interpolate
+      # `${{ github.event.* }}` directly into bash. See GitHub Actions
+      # hardening guide: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
       - name: Resolve preview URL
         id: url
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_URL: ${{ github.event.inputs.preview_url }}
+          DEPLOYMENT_URL: ${{ github.event.deployment_status.target_url }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            URL="${{ github.event.inputs.preview_url }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            URL="$DISPATCH_URL"
           else
-            URL="${{ github.event.deployment_status.target_url }}"
+            URL="$DEPLOYMENT_URL"
           fi
           if [ -z "$URL" ]; then
             echo "No preview URL found"; exit 1
@@ -44,9 +51,11 @@ jobs:
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Wait for deployment health
+        env:
+          TARGET_URL: ${{ steps.url.outputs.url }}
         run: |
           for i in $(seq 1 30); do
-            if curl -sf "${{ steps.url.outputs.url }}/api/health" > /dev/null 2>&1; then
+            if curl -sf "$TARGET_URL/api/health" > /dev/null 2>&1; then
               echo "Deployment reachable"; exit 0
             fi
             sleep 2
@@ -60,3 +69,14 @@ jobs:
           NULLSPEND_DEV_ACTOR: ${{ secrets.E2E_DEV_ACTOR }}
           DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
         run: pnpm tsx scripts/e2e-smoke.ts --no-cleanup
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-post-deploy-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore

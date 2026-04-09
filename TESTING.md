@@ -40,6 +40,56 @@ The 29 `apps/proxy/smoke*.test.ts` files hit the deployed Cloudflare Worker and 
 
 ---
 
+## E2E Framework (`tests/e2e/`)
+
+End-to-end tests that run against a live stack. See `tests/e2e/README.md` for
+the full tier model, directory layout, and how to add a test.
+
+**Status:** framework is being built incrementally. Current slices:
+
+| Slice | Status | What it adds |
+|---|---|---|
+| 0 — Scaffolding + script-injection fix + CI wiring | ✅ shipped | `tests/e2e/` skeleton, `vitest.e2e.config.ts`, `playwright.config.ts`, `e2e-post-deploy.yml` hardened, JUnit artifact upload |
+| 1 — Post-deploy infra smoke | ⬜ next | CSP nonce freshness, `/api/health`, DNS/SSL, proxy reachable, dashboard routes sweep |
+| 2 — Build-time + deploy-time env validation | ⬜ | `scripts/verify-env.ts`, Vercel env drift detection |
+| 3 — Link checker | ⬜ | `lychee` on PR + nightly |
+| 4 — Port orphan E2E scripts to vitest | ⬜ | `scripts/e2e-*.ts` → `tests/e2e/dashboard/` |
+| 5 — Browser E2E (Playwright) | ⬜ | Login hydration, signup flow, tier-limit toast |
+| 6 — Nightly full-model matrix | ⬜ | All OpenAI + Anthropic models incl. reasoning |
+| 7 — Python SDK into CI + E2E | ⬜ | Python unit tests in CI + pytest E2E nightly |
+| 8 — Alerting + flaky quarantine + Sentry verification | ⬜ | Slack on red, CSP report-uri, quarantine mechanism |
+| 9 — Phase 4 chaos validation | ⬜ | Intentional P0 regression → framework catches each |
+
+### Tier map
+
+| Layer | Where | Runs in | Blocks |
+|---|---|---|---|
+| L2 PR E2E | `tests/e2e/{infra,docs}/` | CI on every PR | ✅ merge |
+| L3 Post-deploy | `tests/e2e/{infra,dashboard,browser}/` | Every Preview + Production deploy | ✅ deploy |
+| L4 Nightly | `tests/e2e/{proxy-nightly,python-sdk}/` | cron 02:00 UTC | ❌ alert only |
+| L5 Chaos | `tests/e2e/chaos/` | manual only | ❌ |
+
+### Commands
+
+```bash
+pnpm e2e:run                 # Run all vitest E2E tests (tests/e2e/**/*.e2e.test.ts)
+pnpm e2e:scaffold-check      # Verify framework plumbing (0 tests expected in Slice 0)
+pnpm e2e:browser             # Run Playwright browser tests
+pnpm e2e:browser:install     # Install Chromium for Playwright (one-time)
+```
+
+The legacy `pnpm e2e`, `e2e:auth`, `e2e:observability`, `e2e:resilience` scripts
+still work and run the existing `scripts/e2e-*.ts` files. They will be deleted
+in Slice 4 after the ports land.
+
+### Env config
+
+Copy `.env.e2e.example` to `.env.e2e` (gitignored). CI reads the same vars from
+GitHub Actions secrets — see `.github/workflows/e2e-post-deploy.yml` for the
+full list.
+
+---
+
 ## Proxy Worker Tests (`apps/proxy/src/__tests__/`)
 
 77 files, ~1,309 tests. All mock `cloudflare:workers` and external dependencies.

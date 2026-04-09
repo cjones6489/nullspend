@@ -22,6 +22,10 @@
     "e2e:auth": "tsx scripts/e2e-auth-hardening.ts",
     "e2e:observability": "tsx scripts/e2e-observability.ts",
     "e2e:resilience": "tsx scripts/e2e-resilience.ts",
+    "e2e:run": "vitest run --config vitest.e2e.config.ts",
+    "e2e:scaffold-check": "vitest run --config vitest.e2e.config.ts --passWithNoTests",
+    "e2e:browser": "playwright test",
+    "e2e:browser:install": "playwright install chromium --with-deps",
     "proxy:dev": "pnpm --filter @nullspend/proxy dev",
     "proxy:deploy": "pnpm --filter @nullspend/proxy deploy",
     "proxy:test": "pnpm --filter @nullspend/proxy test",
@@ -90,6 +94,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.80",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.14",

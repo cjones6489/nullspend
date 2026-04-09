@@ -34,12 +34,16 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    "tests/e2e/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "packages",
     "scripts",
-    "apps"
+    "apps",
+    "tests/e2e/browser",
+    "tests/e2e/python-sdk",
+    "tests/e2e/chaos"
   ]
 }
