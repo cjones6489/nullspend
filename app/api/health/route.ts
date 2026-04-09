@@ -170,6 +170,34 @@ export async function GET(request: Request) {
     }
   }
 
+  // 2d. Transaction diagnostic — mirrors ensurePersonalOrg() which is hit
+  // on first-login cold path in lib/auth/session.ts. Uses an empty
+  // transaction that rolls back so it doesn't touch any real data.
+  // If this fails, drizzle + Supabase Transaction pooler has issues with
+  // db.transaction() specifically, not just parameterized queries.
+  if (components.database.status === "ok") {
+    try {
+      const db = getDb();
+      await db.transaction(async (tx) => {
+        // Do a simple query inside the transaction — enough to exercise the
+        // BEGIN/COMMIT flow without modifying any data.
+        await tx.execute(sql`SELECT 1`);
+        // No INSERT/UPDATE/DELETE — the transaction COMMITs cleanly with no
+        // side effects. If drizzle or postgres.js has issues with the
+        // transaction control wire protocol on the pooler, this fails.
+      });
+      components.transaction = { status: "ok" };
+    } catch (err) {
+      components.transaction = {
+        status: "error",
+        error: verbose
+          ? (err instanceof Error ? err.message : "Transaction failed")
+          : "check failed",
+        ...(verbose ? { debug: extractErrorDebug(err) } : {}),
+      };
+    }
+  }
+
   // 3. Redis connectivity (rate limiter)
   if (
     process.env.UPSTASH_REDIS_REST_URL &&
