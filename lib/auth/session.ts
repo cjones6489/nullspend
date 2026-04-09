@@ -34,37 +34,90 @@ export function getDevActor(): string | undefined {
   return process.env.NULLSPEND_DEV_ACTOR;
 }
 
+/**
+ * Classify a Supabase auth error as either a "service failure" (Supabase
+ * itself is broken) or a "client condition" (the caller is unauthenticated
+ * or has an invalid session).
+ *
+ * Supabase-js never throws for either class — both are returned via
+ * `{ data: { user: null }, error }`. We manually promote service failures
+ * to thrown exceptions inside the circuit breaker callback so the breaker
+ * can trip on real Supabase outages without also tripping on routine
+ * unauthenticated requests.
+ *
+ * Classification rules (verified against `@supabase/auth-js` source code
+ * in `node_modules/.../dist/module/lib/errors.ts`):
+ *
+ *   - `AuthRetryableFetchError` — network down, fetch abort, Cloudflare
+ *     5xx, rate-limited. ALWAYS a service failure.
+ *   - Any error with numeric `status >= 500` — server-side failure.
+ *   - Everything else (including `AuthSessionMissingError` with status
+ *     400, `AuthApiError` with status 401/403, `AuthInvalidJwtError`,
+ *     etc.) — client-side condition, does NOT trip the breaker.
+ *
+ * Why check `error.name` as a string: `isAuthRetryableFetchError` is
+ * exported from `@supabase/auth-js` but not re-exported from the top-
+ * level `@supabase/supabase-js` or `@supabase/ssr` packages we use.
+ * String-based `.name` comparison avoids a direct dep on auth-js and
+ * is stable across supabase-js versions (the name is part of the
+ * public API contract — breaking it would break every user's
+ * `error.name === "..."` guard code).
+ */
+export function isSupabaseServiceFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { name?: unknown; status?: unknown };
+  if (e.name === "AuthRetryableFetchError") return true;
+  if (typeof e.status === "number" && e.status >= 500) return true;
+  return false;
+}
+
 export async function getCurrentUserId(): Promise<string | null> {
   // createServerSupabaseClient() may throw SupabaseEnvError (missing env vars).
   // This is a config error that will never self-heal, so it must NOT trip the
   // circuit breaker. Only the actual auth call goes inside the circuit.
   const supabase = await createServerSupabaseClient();
 
-  // We run `supabase.auth.getUser()` inside the circuit breaker to protect
-  // against actual Supabase outages (network errors, 5xx responses,
-  // timeouts). But `auth.getUser()` NEVER throws on "no session" — it
-  // returns `{ data: { user: null }, error: AuthError }` where the error
-  // indicates a client-side condition (missing cookie, expired JWT, etc.),
-  // NOT a Supabase service failure.
+  // IMPORTANT: `supabase.auth.getUser()` NEVER throws for auth errors
+  // OR for HTTP 5xx from the Supabase backend OR for network failures.
+  // Supabase-js (since v1.0.1, confirmed via auth-js v2.98.0
+  // GoTrueClient._getUser) catches all `AuthError` subclasses inside a
+  // try block and returns them via `{ data: { user: null }, error }`.
   //
-  // Previously we threw `AuthenticationRequiredError` INSIDE the breaker
-  // callback. The breaker counted every unauthenticated request as a
-  // service failure and opened after 5 consecutive 401s. In production,
-  // any scan / crawler / legitimate unauth'd test hit opened the circuit
-  // and returned 503 with Retry-After:30 to ALL users on that Vercel
-  // instance — including authenticated ones.
+  // This means a naive `supabaseCircuit.call(() => auth.getUser())`
+  // NEVER counts a failure — the callback always resolves, even when
+  // Supabase is completely down. The breaker would be dead code.
   //
-  // Fix: return the auth result from the circuit callback as a success
-  // (the Supabase SERVICE succeeded — it responded with "no session").
-  // Throw `AuthenticationRequiredError` OUTSIDE the breaker so the
-  // circuit only counts real service failures.
+  // Fix: inside the circuit callback, classify the returned `error`
+  // via `isSupabaseServiceFailure()` and THROW for service-class
+  // errors so the breaker counts them. Client-class errors (no session,
+  // bad JWT, 401) return normally and get thrown OUTSIDE the breaker
+  // as `AuthenticationRequiredError` — which the caller can catch
+  // and treat as "user is not logged in" without tripping the breaker.
   //
-  // Regression guard: `lib/auth/session.test.ts` includes a test that
-  // fires 10+ no-session calls and asserts the circuit stays closed.
+  // This preserves BOTH properties we need:
+  //   1. Breaker protects against real Supabase outages (5xx, network)
+  //   2. Breaker does NOT trip on routine unauthenticated requests
+  //      (fixes the circuit-breaker sensitivity bug where 5 anon GETs
+  //       against session-authed routes took down all users for 30s)
+  //
+  // Regression tests in `lib/auth/session.test.ts` cover:
+  //   - AuthSessionMissingError via {error}          → does NOT trip
+  //   - AuthApiError with 401 via {error}            → does NOT trip
+  //   - AuthApiError with 500 via {error}            → DOES trip
+  //   - AuthRetryableFetchError via {error}          → DOES trip
+  //   - Mixed: 3 unauth + 5 retryable                → trips after the 5
+  //   - Valid user                                   → does NOT trip
   //
   // See: memory/project_finding_supabase_circuit_breaker_sensitivity.md
   const result = await supabaseCircuit.call(async () => {
-    return await supabase.auth.getUser();
+    const res = await supabase.auth.getUser();
+    if (res.error && isSupabaseServiceFailure(res.error)) {
+      // Promote service failures to thrown exceptions so the breaker
+      // counts them. The breaker catches this throw and rethrows it
+      // from .call(), so our outer code path sees the same error.
+      throw res.error;
+    }
+    return res;
   });
 
   if (result.error) {

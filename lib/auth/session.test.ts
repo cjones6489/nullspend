@@ -180,20 +180,66 @@ describe("session auth breadcrumbs", () => {
   });
 });
 
-describe("getCurrentUserId circuit breaker sensitivity (Slice 1g regression)", () => {
-  // These tests guard against reintroducing the bug where the Supabase
-  // auth circuit breaker counted `AuthenticationRequiredError` as a
-  // service failure. The old behavior: 5 consecutive unauthenticated
-  // requests would open the circuit, then every subsequent request
-  // (including authenticated ones) returned 503 for 30s.
+describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
+  // These tests guard the fix for the circuit breaker bug and its
+  // reverse regression (Slice 1i). The correct behavior is:
   //
-  // The fix: `AuthenticationRequiredError` is thrown OUTSIDE the breaker
-  // callback. The breaker only sees Supabase responses — success (user
-  // OR null user) or actual service errors (network, 5xx, timeout).
+  //   1. Supabase-js NEVER throws for auth errors — everything comes
+  //      back as `{ data: { user: null }, error }`. Verified against
+  //      @supabase/auth-js v2.98.0 GoTrueClient._getUser source.
+  //
+  //   2. The breaker only counts SERVICE failures (network, 5xx,
+  //      AuthRetryableFetchError), not CLIENT conditions (missing
+  //      session, invalid JWT, 401, 403).
+  //
+  //   3. Service-class errors are promoted to thrown exceptions INSIDE
+  //      the circuit callback (via `isSupabaseServiceFailure`) so the
+  //      breaker counts them.
+  //
+  // These tests use realistic `mockResolvedValue` patterns that match
+  // what supabase-js actually returns. The earlier Slice 1g tests used
+  // `mockRejectedValue` (synchronous throws), which is inconsistent
+  // with the library's documented behavior and would pass vacuously.
   //
   // See:
-  //   - lib/auth/session.ts:getCurrentUserId
+  //   - lib/auth/session.ts:isSupabaseServiceFailure + getCurrentUserId
   //   - memory/project_finding_supabase_circuit_breaker_sensitivity.md
+  //   - @supabase/auth-js dist/module/lib/errors.ts (error class source)
+  //   - @supabase/auth-js dist/module/GoTrueClient.js (_getUser catch block)
+
+  // Minimal mocks of the real supabase-js error objects. Supabase sets
+  // `name` in each class constructor and includes `status` for all
+  // error subclasses. See errors.ts for the full hierarchy.
+  const AUTH_SESSION_MISSING = {
+    name: "AuthSessionMissingError",
+    message: "Auth session missing!",
+    status: 400,
+    __isAuthError: true,
+  };
+  const AUTH_API_401 = {
+    name: "AuthApiError",
+    message: "Invalid JWT",
+    status: 401,
+    __isAuthError: true,
+  };
+  const AUTH_API_500 = {
+    name: "AuthApiError",
+    message: "Internal server error",
+    status: 500,
+    __isAuthError: true,
+  };
+  const AUTH_RETRYABLE_FETCH_NETWORK = {
+    name: "AuthRetryableFetchError",
+    message: "Failed to fetch",
+    status: 0, // supabase uses 0 for network-level failures
+    __isAuthError: true,
+  };
+  const AUTH_RETRYABLE_FETCH_502 = {
+    name: "AuthRetryableFetchError",
+    message: "Bad gateway",
+    status: 502,
+    __isAuthError: true,
+  };
 
   beforeEach(() => {
     _supabaseCircuitForTesting._resetForTesting();
@@ -204,44 +250,46 @@ describe("getCurrentUserId circuit breaker sensitivity (Slice 1g regression)", (
     vi.resetAllMocks();
   });
 
-  it("does NOT trip the circuit on repeated no-session responses", async () => {
-    // Simulate a browser that never attached a session cookie: Supabase
-    // returns `{ data: { user: null }, error: AuthError("Auth session missing!") }`
-    // on every call. Under the OLD behavior, this would open the circuit
-    // after 5 consecutive calls. Under the fix, the circuit stays CLOSED
-    // because the breaker sees these as successful service responses.
-    const authError = { message: "Auth session missing!", name: "AuthSessionMissingError" };
+  // --- Client-class: breaker should NOT trip ---
+
+  it("does NOT trip on AuthSessionMissingError (no cookie, status 400)", async () => {
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
           data: { user: null },
-          error: authError,
+          error: AUTH_SESSION_MISSING,
         }),
       },
     } as never);
 
     // Fire 15 calls — well past the 5-failure threshold.
-    const N = 15;
-    let authRequiredCount = 0;
-    for (let i = 0; i < N; i++) {
-      try {
-        await getCurrentUserId();
-      } catch (err) {
-        if (err instanceof AuthenticationRequiredError) {
-          authRequiredCount++;
-        } else {
-          throw err;
-        }
-      }
+    for (let i = 0; i < 15; i++) {
+      await expect(getCurrentUserId()).rejects.toBeInstanceOf(
+        AuthenticationRequiredError,
+      );
     }
-
-    // All 15 calls should have thrown AuthenticationRequiredError...
-    expect(authRequiredCount).toBe(N);
-    // ...but the circuit breaker must still be CLOSED (not OPEN).
     expect(_supabaseCircuitForTesting.getState()).toBe("CLOSED");
   });
 
-  it("does NOT trip the circuit when Supabase returns a valid user (obvious success)", async () => {
+  it("does NOT trip on AuthApiError with status 401 (client auth error)", async () => {
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: AUTH_API_401,
+        }),
+      },
+    } as never);
+
+    for (let i = 0; i < 15; i++) {
+      await expect(getCurrentUserId()).rejects.toBeInstanceOf(
+        AuthenticationRequiredError,
+      );
+    }
+    expect(_supabaseCircuitForTesting.getState()).toBe("CLOSED");
+  });
+
+  it("does NOT trip on happy-path successful auth", async () => {
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -252,50 +300,14 @@ describe("getCurrentUserId circuit breaker sensitivity (Slice 1g regression)", (
     } as never);
 
     for (let i = 0; i < 10; i++) {
-      const userId = await getCurrentUserId();
-      expect(userId).toBe("user-abc");
+      expect(await getCurrentUserId()).toBe("user-abc");
     }
     expect(_supabaseCircuitForTesting.getState()).toBe("CLOSED");
   });
 
-  it("DOES trip the circuit on repeated Supabase service errors (network down)", async () => {
-    // The breaker MUST still protect against real service outages.
-    // Simulate Supabase throwing (network error, timeout, 5xx from
-    // auth.getUser's underlying HTTP call).
-    mockedCreateServerSupabaseClient.mockResolvedValue({
-      auth: {
-        getUser: vi.fn().mockRejectedValue(new Error("ECONNREFUSED supabase.co")),
-      },
-    } as never);
-
-    // Fire 6 calls — one past the 5-failure threshold.
-    let networkFailures = 0;
-    let circuitOpenFailures = 0;
-    for (let i = 0; i < 6; i++) {
-      try {
-        await getCurrentUserId();
-      } catch (err) {
-        if (err instanceof Error && err.message.includes("ECONNREFUSED")) {
-          networkFailures++;
-        } else if (err instanceof Error && err.name === "CircuitOpenError") {
-          circuitOpenFailures++;
-        } else {
-          throw err;
-        }
-      }
-    }
-
-    // First 5 calls should be network failures; the 6th should be
-    // CircuitOpenError because the breaker opened after call 5.
-    expect(networkFailures).toBe(5);
-    expect(circuitOpenFailures).toBe(1);
-    expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
-  });
-
-  it("returns null when auth succeeds with no user (not an error, not a trip)", async () => {
-    // This is the "no cookie + no error" edge case — Supabase successfully
-    // confirmed there's no session. Should return null, NOT throw, and
-    // NOT count against the circuit.
+  it("returns null when Supabase reports no user and no error", async () => {
+    // Edge case: successful call, no session, no error. Should return
+    // null, NOT throw, NOT trip the breaker.
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -305,38 +317,153 @@ describe("getCurrentUserId circuit breaker sensitivity (Slice 1g regression)", (
       },
     } as never);
 
-    const userId = await getCurrentUserId();
-    expect(userId).toBeNull();
+    expect(await getCurrentUserId()).toBeNull();
     expect(_supabaseCircuitForTesting.getState()).toBe("CLOSED");
   });
 
-  it("mixed unauth + service-error calls only count the service errors", async () => {
-    // Alternating pattern: 3 no-session responses, then 5 network failures.
-    // The no-session responses must NOT count toward the breaker's
-    // failure counter, but the network failures should open it after 5.
-    const getUserMock = vi.fn();
-    const supabaseClient = { auth: { getUser: getUserMock } };
-    mockedCreateServerSupabaseClient.mockResolvedValue(supabaseClient as never);
+  // --- Service-class: breaker SHOULD trip ---
 
-    // 3 no-session (should NOT count as breaker failures)
+  it("DOES trip on AuthRetryableFetchError with status 0 (network down)", async () => {
+    // Realistic scenario: supabase-js's internal fetch fails (DNS,
+    // TCP reset, connection refused, fetch abort). The library catches
+    // it and returns it as `{error: AuthRetryableFetchError}` with
+    // status: 0. This matches real @supabase/auth-js behavior.
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: AUTH_RETRYABLE_FETCH_NETWORK,
+        }),
+      },
+    } as never);
+
+    // First 5 calls propagate the error; the 6th should be CircuitOpenError.
+    let thrownRetryableCount = 0;
+    let circuitOpenCount = 0;
+    for (let i = 0; i < 6; i++) {
+      try {
+        await getCurrentUserId();
+        throw new Error("should have thrown");
+      } catch (err) {
+        if (err instanceof Error && err.name === "CircuitOpenError") {
+          circuitOpenCount++;
+        } else if (
+          err &&
+          typeof err === "object" &&
+          (err as { name?: string }).name === "AuthRetryableFetchError"
+        ) {
+          thrownRetryableCount++;
+        } else {
+          throw err;
+        }
+      }
+    }
+    expect(thrownRetryableCount).toBe(5);
+    expect(circuitOpenCount).toBe(1);
+    expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
+  });
+
+  it("DOES trip on AuthRetryableFetchError with status 502 (gateway)", async () => {
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: AUTH_RETRYABLE_FETCH_502,
+        }),
+      },
+    } as never);
+
+    // 5 failures → breaker opens
+    for (let i = 0; i < 5; i++) {
+      await expect(getCurrentUserId()).rejects.toMatchObject({
+        name: "AuthRetryableFetchError",
+      });
+    }
+    expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
+  });
+
+  it("DOES trip on AuthApiError with status 500 (server error)", async () => {
+    // AuthApiError with a 5xx status means the Supabase backend returned
+    // an HTTP 500-class response. supabase-js catches this and returns
+    // it via `{error}` — but it's still a server-side failure that
+    // the breaker should treat as a service outage.
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: AUTH_API_500,
+        }),
+      },
+    } as never);
+
+    for (let i = 0; i < 5; i++) {
+      await expect(getCurrentUserId()).rejects.toMatchObject({
+        name: "AuthApiError",
+        status: 500,
+      });
+    }
+    expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
+  });
+
+  // --- Mixed / precedence ---
+
+  it("mixed unauth + service-error calls only count the service errors", async () => {
+    const getUserMock = vi.fn();
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: { getUser: getUserMock },
+    } as never);
+
+    // 3 no-session calls — should NOT count as failures
     for (let i = 0; i < 3; i++) {
       getUserMock.mockResolvedValueOnce({
         data: { user: null },
-        error: { message: "Auth session missing!", name: "AuthSessionMissingError" },
+        error: AUTH_SESSION_MISSING,
       });
       await expect(getCurrentUserId()).rejects.toBeInstanceOf(
         AuthenticationRequiredError,
       );
     }
-
     expect(_supabaseCircuitForTesting.getState()).toBe("CLOSED");
 
-    // 5 network failures (should trip the breaker on the 5th)
+    // 5 AuthRetryableFetchError — should open on the 5th
     for (let i = 0; i < 5; i++) {
-      getUserMock.mockRejectedValueOnce(new Error("ECONNREFUSED supabase.co"));
-      await expect(getCurrentUserId()).rejects.toThrow("ECONNREFUSED");
+      getUserMock.mockResolvedValueOnce({
+        data: { user: null },
+        error: AUTH_RETRYABLE_FETCH_NETWORK,
+      });
+      await expect(getCurrentUserId()).rejects.toMatchObject({
+        name: "AuthRetryableFetchError",
+      });
     }
-
     expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
+  });
+
+  // --- Unit test of the classifier itself ---
+
+  it("isSupabaseServiceFailure classifies errors correctly", async () => {
+    // Re-exported from the module for direct testing.
+    const { isSupabaseServiceFailure } = await import("@/lib/auth/session");
+
+    // Service failures
+    expect(isSupabaseServiceFailure(AUTH_RETRYABLE_FETCH_NETWORK)).toBe(true);
+    expect(isSupabaseServiceFailure(AUTH_RETRYABLE_FETCH_502)).toBe(true);
+    expect(isSupabaseServiceFailure(AUTH_API_500)).toBe(true);
+    expect(isSupabaseServiceFailure({ name: "Other", status: 503 })).toBe(true);
+    expect(isSupabaseServiceFailure({ name: "Other", status: 500 })).toBe(true);
+
+    // Client conditions (not service failures)
+    expect(isSupabaseServiceFailure(AUTH_SESSION_MISSING)).toBe(false);
+    expect(isSupabaseServiceFailure(AUTH_API_401)).toBe(false);
+    expect(isSupabaseServiceFailure({ name: "Other", status: 400 })).toBe(false);
+    expect(isSupabaseServiceFailure({ name: "Other", status: 499 })).toBe(false);
+
+    // Malformed / unclassifiable inputs default to "not a service failure"
+    expect(isSupabaseServiceFailure(null)).toBe(false);
+    expect(isSupabaseServiceFailure(undefined)).toBe(false);
+    expect(isSupabaseServiceFailure("string error")).toBe(false);
+    expect(isSupabaseServiceFailure(42)).toBe(false);
+    expect(isSupabaseServiceFailure({})).toBe(false);
+    expect(isSupabaseServiceFailure({ name: "Unknown" })).toBe(false);
+    expect(isSupabaseServiceFailure({ status: "500" /* string */ })).toBe(false);
   });
 });
