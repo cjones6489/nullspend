@@ -39,6 +39,49 @@ const REQUIRED_SCHEMA: Array<{ table: string; columns: string[] }> = [
 interface ComponentStatus {
   status: "ok" | "error";
   error?: string;
+  /** Additional debug context in verbose mode — underlying cause, postgres error code, etc. */
+  debug?: Record<string, unknown>;
+}
+
+/**
+ * Extract full debug context from an error — message, name, cause chain,
+ * and postgres.js-specific fields (code, severity, detail, hint, position).
+ * Used in verbose mode to diagnose DB connectivity issues in production
+ * without having to tail logs or redeploy.
+ */
+function extractErrorDebug(err: unknown): Record<string, unknown> {
+  if (!(err instanceof Error)) return { raw: String(err) };
+  const debug: Record<string, unknown> = {
+    name: err.name,
+    message: err.message,
+  };
+  // postgres.js / libpq error fields
+  const e = err as Error & {
+    code?: string;
+    severity?: string;
+    detail?: string;
+    hint?: string;
+    position?: string;
+    routine?: string;
+    address?: string;
+    port?: number;
+    syscall?: string;
+    errno?: number;
+  };
+  if (e.code) debug.code = e.code;
+  if (e.severity) debug.severity = e.severity;
+  if (e.detail) debug.detail = e.detail;
+  if (e.hint) debug.hint = e.hint;
+  if (e.routine) debug.routine = e.routine;
+  if (e.address) debug.address = e.address;
+  if (e.port) debug.port = e.port;
+  if (e.syscall) debug.syscall = e.syscall;
+  if (e.errno) debug.errno = e.errno;
+  // Node error cause chain (AggregateError / ES2022 Error cause)
+  if (err.cause !== undefined) {
+    debug.cause = extractErrorDebug(err.cause);
+  }
+  return debug;
 }
 
 export async function GET(request: Request) {
@@ -56,6 +99,7 @@ export async function GET(request: Request) {
       error: verbose
         ? (err instanceof Error ? err.message : "Database unreachable")
         : "unavailable",
+      ...(verbose ? { debug: extractErrorDebug(err) } : {}),
     };
   }
 
