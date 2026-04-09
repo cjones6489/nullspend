@@ -352,7 +352,12 @@ async function main() {
           "Content-Type": "application/json",
           "X-NullSpend-Key": rawKey,
           Authorization: "Bearer sk-invalid-proxy-verify-stub",
-          "X-NullSpend-Tags": "e2e_tier=bootstrap,e2e_purpose=key-verify",
+          // X-NullSpend-Tags must be a JSON object — not key=value.
+          // See apps/proxy/src/lib/tags.ts:13.
+          "X-NullSpend-Tags": JSON.stringify({
+            e2e_tier: "bootstrap",
+            e2e_purpose: "key-verify",
+          }),
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",

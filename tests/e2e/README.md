@@ -87,8 +87,14 @@ Every test file creates its own isolated test org via `createTestOrg()` in
 
 ## Cost tracking
 
-Every proxy call from an E2E test tags the request with:
-- `x-nullspend-tags: e2e_tier=<L2|L3|L4>,e2e_suite=<name>`
+Every proxy call from an E2E test tags the request with a JSON-encoded
+`X-NullSpend-Tags` header:
+- `X-NullSpend-Tags: {"e2e_tier":"<L2|L3|L4>","e2e_suite":"<name>","e2e_run_id":"<unique>"}`
+
+**Important:** the header MUST be a valid JSON object. The proxy's
+`parseTags()` helper at `apps/proxy/src/lib/tags.ts:13` calls
+`JSON.parse(header)` and silently drops the header if parsing fails.
+Comma-separated `key=value` format is NOT supported.
 
 Dashboard analytics filter these tags out of customer-facing reports. Per-suite
 cost trends are visible in the internal observability dashboard.

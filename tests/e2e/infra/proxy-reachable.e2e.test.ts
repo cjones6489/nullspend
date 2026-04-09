@@ -104,9 +104,15 @@ describe.skipIf(!hasCredentials)(
           "X-NullSpend-Key": nullspendKey!,
           Authorization: `Bearer ${openaiKey}`,
           // Tag the call so analytics filter it out of customer reports.
-          // The e2e_run_id is per-test-run and used below to locate
-          // this specific cost event in the DB.
-          "X-NullSpend-Tags": `e2e_tier=L3,e2e_suite=proxy-reachable,e2e_run_id=${E2E_RUN_ID}`,
+          // `X-NullSpend-Tags` MUST be a JSON object (not comma-separated
+          // key=value) — verified against apps/proxy/src/lib/tags.ts:13
+          // which does `JSON.parse(header)` and drops the header on
+          // parse failure with a silent warning.
+          "X-NullSpend-Tags": JSON.stringify({
+            e2e_tier: "L3",
+            e2e_suite: "proxy-reachable",
+            e2e_run_id: E2E_RUN_ID,
+          }),
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -159,7 +165,12 @@ describe.skipIf(!hasCredentials)(
             "Content-Type": "application/json",
             "X-NullSpend-Key": nullspendKey!,
             Authorization: `Bearer ${openaiKey}`,
-            "X-NullSpend-Tags": `e2e_tier=L3,e2e_suite=proxy-reachable,e2e_run_id=${runId}`,
+            // JSON object, NOT key=value — see apps/proxy/src/lib/tags.ts
+            "X-NullSpend-Tags": JSON.stringify({
+              e2e_tier: "L3",
+              e2e_suite: "proxy-reachable",
+              e2e_run_id: runId,
+            }),
           },
           body: JSON.stringify({
             model: "gpt-4o-mini",
