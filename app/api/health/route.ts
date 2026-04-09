@@ -1,6 +1,7 @@
 import { Redis } from "@upstash/redis";
 import { sql, eq, asc } from "drizzle-orm";
 
+import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getDb } from "@/lib/db/client";
 import { organizations, orgMemberships } from "@nullspend/db";
 
@@ -244,6 +245,40 @@ export async function GET(request: Request) {
         };
       }
     }
+  }
+
+  // 2f. Supabase auth layer — creates the server-side Supabase client and
+  // calls auth.getUser() with whatever cookies are present (or none).
+  // This exercises the exact path that /api/auth/session and
+  // resolveSessionContext() hit first. If this fails while all DB checks
+  // pass, the 500s are coming from the Supabase client layer, not from
+  // drizzle.
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { error: authError } = await supabase.auth.getUser();
+    // Missing session is expected for public health check hits — only
+    // structural errors (env misconfig, client init failure, thrown
+    // exceptions) are a problem.
+    const isMissingSession =
+      authError?.message === "Auth session missing!" ||
+      authError?.name === "AuthSessionMissingError";
+    if (!authError || isMissingSession) {
+      components.supabase_auth = { status: "ok" };
+    } else {
+      components.supabase_auth = {
+        status: "error",
+        error: verbose ? authError.message : "supabase auth error",
+        ...(verbose ? { debug: { name: authError.name, message: authError.message } } : {}),
+      };
+    }
+  } catch (err) {
+    components.supabase_auth = {
+      status: "error",
+      error: verbose
+        ? (err instanceof Error ? err.message : "Supabase client init failed")
+        : "check failed",
+      ...(verbose ? { debug: extractErrorDebug(err) } : {}),
+    };
   }
 
   // 3. Redis connectivity (rate limiter)
