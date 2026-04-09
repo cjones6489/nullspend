@@ -76,7 +76,35 @@ pnpm e2e:run                 # Run all vitest E2E tests (tests/e2e/**/*.e2e.test
 pnpm e2e:scaffold-check      # Verify framework plumbing (0 tests expected in Slice 0)
 pnpm e2e:browser             # Run Playwright browser tests
 pnpm e2e:browser:install     # Install Chromium for Playwright (one-time)
+pnpm e2e:bootstrap           # Provision / rotate the dedicated E2E test org
 ```
+
+### E2E bootstrap org
+
+`scripts/bootstrap-e2e-org.ts` provisions a dedicated test org (slug:
+`e2e-bootstrap-org`, user_id: `e2e-bootstrap-user`) and emits credentials
+to stdout in `key=value` format. It's idempotent — re-running deletes
+any prior bootstrap org (matched by slug) and creates a fresh one.
+
+The script uses the real `generateRawKey()` / `hashKey()` / `extractPrefix()`
+helpers from `lib/auth/api-key.ts`, the same code path the dashboard uses
+when a real user creates a key. No parallel implementation, no mocked hashing.
+
+**To rotate credentials** (and update CI):
+
+```bash
+pnpm e2e:bootstrap | while IFS='=' read -r name value; do
+  case "$name" in
+    E2E_API_KEY|E2E_DEV_ACTOR)
+      printf '%s' "$value" | gh secret set "$name"
+      ;;
+  esac
+done
+```
+
+The pipeline never echoes plaintext values to terminal or logs. The
+plaintext API key is unrecoverable after the script completes — it's
+hashed at insert time, only the hash is stored.
 
 The legacy `pnpm e2e`, `e2e:auth`, `e2e:observability`, `e2e:resilience` scripts
 still work and run the existing `scripts/e2e-*.ts` files. They will be deleted

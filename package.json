@@ -26,6 +26,7 @@
     "e2e:scaffold-check": "vitest run --config vitest.e2e.config.ts --passWithNoTests",
     "e2e:browser": "playwright test",
     "e2e:browser:install": "playwright install chromium --with-deps",
+    "e2e:bootstrap": "tsx scripts/bootstrap-e2e-org.ts",
     "proxy:dev": "pnpm --filter @nullspend/proxy dev",
     "proxy:deploy": "pnpm --filter @nullspend/proxy deploy",
     "proxy:test": "pnpm --filter @nullspend/proxy test",
