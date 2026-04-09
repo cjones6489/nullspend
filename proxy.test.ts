@@ -586,9 +586,18 @@ describe("proxy()", () => {
       expect(response.headers.get("Vary")).toBe("Cookie");
     });
 
-    it("does NOT set Cache-Control: private, no-store on non-API routes", async () => {
+    it("sets Cache-Control: private, no-store on non-API (HTML) routes", async () => {
+      // Regression: ISSUE-001 — CSP nonce + CDN cache collision
+      // Found by /qa on 2026-04-08
+      // Report: .gstack/qa-reports/qa-report-nullspend-dev-2026-04-08.md
+      // Every response from proxy() carries a per-request CSP nonce in both
+      // the response header and (via the x-nonce request header) in the HTML
+      // <script nonce="..."> tags. If the HTML body is CDN-cached, subsequent
+      // requests get a fresh nonce in the CSP header but a STALE nonce baked
+      // into the HTML, and the browser blocks every script (React fails to
+      // hydrate). Cache-Control: no-store on ALL routes prevents this.
       const response = await proxy(makeRequest("https://example.com/dashboard") as any);
-      expect(response.headers.get("Cache-Control")).toBeNull();
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     });
 
     it("sets Cache-Control on 429 rate limit response", async () => {
@@ -626,6 +635,64 @@ describe("proxy()", () => {
       const response = await proxy(req as any);
       expect(response.status).toBe(403);
       expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    });
+  });
+
+  describe("ISSUE-001 regression: CSP nonce + CDN cache prevention", () => {
+    // Regression: ISSUE-001 — CSP nonce + CDN cache collision
+    // Found by /qa on 2026-04-08 against www.nullspend.dev
+    // Report: .gstack/qa-reports/qa-report-nullspend-dev-2026-04-08.md
+    //
+    // BUG: proxy.ts used to only set Cache-Control: no-store on /api/* routes.
+    // Next.js HTML page routes were CDN-cacheable, but each response carried a
+    // per-request CSP nonce in the response header. Vercel cached the HTML body
+    // with a stale nonce while serving fresh CSP headers on each request, so
+    // browsers blocked every <script> tag and React never hydrated. Symptoms:
+    // login page stuck on <Suspense fallback>, signup form non-interactive,
+    // landing page CTAs dead, 35+ CSP violations per page load.
+    //
+    // FIX: set Cache-Control: no-store on ALL responses from the middleware,
+    // not just /api/*. The matcher already excludes static assets.
+
+    it("sets Cache-Control: no-store on /login (Suspense + useSearchParams page)", async () => {
+      const response = await proxy(makeRequest("https://example.com/login") as any);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    });
+
+    it("sets Cache-Control: no-store on / (root marketing page)", async () => {
+      const response = await proxy(makeRequest("https://example.com/") as any);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    });
+
+    it("sets Cache-Control: no-store on /signup", async () => {
+      const response = await proxy(makeRequest("https://example.com/signup") as any);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    });
+
+    it("sets Cache-Control: no-store on /app/home (authenticated dashboard)", async () => {
+      const response = await proxy(makeRequest("https://example.com/app/home") as any);
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    });
+
+    it("sets Vary: Cookie on non-API (HTML) routes", async () => {
+      const response = await proxy(makeRequest("https://example.com/signup") as any);
+      expect(response.headers.get("Vary")).toBe("Cookie");
+    });
+
+    it("nonce changes per request AND Cache-Control is no-store (the whole invariant)", async () => {
+      const res1 = await proxy(makeRequest("https://example.com/login") as any);
+      const res2 = await proxy(makeRequest("https://example.com/login") as any);
+
+      const nonce1 = res1.headers.get("Content-Security-Policy")!.match(/'nonce-([^']+)'/)![1];
+      const nonce2 = res2.headers.get("Content-Security-Policy")!.match(/'nonce-([^']+)'/)![1];
+
+      // Fresh nonce per request (proves middleware is generating new nonces)
+      expect(nonce1).not.toBe(nonce2);
+
+      // And both responses say "do not cache" — so the CDN won't serve stale
+      // HTML with a mismatched nonce to the next visitor.
+      expect(res1.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(res2.headers.get("Cache-Control")).toBe("private, no-store");
     });
   });
 

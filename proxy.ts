@@ -150,11 +150,15 @@ export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("x-request-id", requestId);
 
-  // Prevent CDN/browser caching of API responses that may carry session cookies
-  if (request.nextUrl.pathname.startsWith("/api/")) {
-    response.headers.set("Cache-Control", "private, no-store");
-    response.headers.append("Vary", "Cookie");
-  }
+  // Prevent CDN/browser caching of ALL responses from this middleware.
+  // Every response carries a per-request CSP nonce both in the header
+  // (set below) and injected into <script nonce="..."> tags in the HTML.
+  // If Vercel/the CDN caches the HTML body, subsequent requests get a
+  // fresh CSP nonce in the header but a STALE nonce baked into the HTML,
+  // and the browser blocks every script (React fails to hydrate).
+  // See: .gstack/qa-reports/qa-report-nullspend-dev-2026-04-08.md ISSUE-001
+  response.headers.set("Cache-Control", "private, no-store");
+  response.headers.append("Vary", "Cookie");
 
   // Enforce CSP in production, report-only in development
   response.headers.set(
