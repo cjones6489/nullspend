@@ -23,12 +23,57 @@
  *   - memory/project_session_summary_20260408_launch.md "End-to-end verification"
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
+import postgres from "postgres";
 import { getProxyUrl } from "../lib/env";
 
 const openaiKey = process.env.OPENAI_API_KEY;
 const nullspendKey = process.env.NULLSPEND_API_KEY;
 const hasCredentials = Boolean(openaiKey && nullspendKey);
+
+// Optional DB verification: if DATABASE_URL is set, after a successful
+// PONG we query the cost_events table to verify the event actually
+// landed in Postgres within the expected latency window. Closes
+// Gap-7 from the Slice 1 audit (end-to-end cost-tracking verification,
+// not just HTTP-response-level).
+//
+// Gracefully degrades: if DATABASE_URL isn't set (local dev without
+// Supabase pooler access), the DB check is skipped with a clear
+// message rather than failing.
+const databaseUrl = process.env.DATABASE_URL;
+const hasDbAccess = Boolean(databaseUrl && databaseUrl.startsWith("postgres"));
+
+// Shared unique run ID — lets the DB query find THIS test's cost event
+// even if other test runs are writing events to the same table
+// concurrently. Must match the `X-NullSpend-Tags` header on the PONG
+// request below.
+const E2E_RUN_ID = `proxy-reachable-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+// Lazy singleton — only connects when we actually query.
+let sqlClient: ReturnType<typeof postgres> | null = null;
+function getSqlClient(): ReturnType<typeof postgres> {
+  if (!sqlClient && databaseUrl) {
+    sqlClient = postgres(databaseUrl, {
+      // Matches lib/db/client.ts config for Supabase pooler compat
+      prepare: false,
+      fetch_types: false,
+      max: 2,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
+  }
+  if (!sqlClient) {
+    throw new Error("DATABASE_URL not set — cannot query cost_events");
+  }
+  return sqlClient;
+}
+
+afterAll(async () => {
+  if (sqlClient) {
+    await sqlClient.end().catch(() => undefined);
+    sqlClient = null;
+  }
+});
 
 describe.skipIf(!hasCredentials)(
   "Proxy reachability (P0-F regression)",
@@ -59,7 +104,9 @@ describe.skipIf(!hasCredentials)(
           "X-NullSpend-Key": nullspendKey!,
           Authorization: `Bearer ${openaiKey}`,
           // Tag the call so analytics filter it out of customer reports.
-          "X-NullSpend-Tags": "e2e_tier=L3,e2e_suite=proxy-reachable",
+          // The e2e_run_id is per-test-run and used below to locate
+          // this specific cost event in the DB.
+          "X-NullSpend-Tags": `e2e_tier=L3,e2e_suite=proxy-reachable,e2e_run_id=${E2E_RUN_ID}`,
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
@@ -90,6 +137,102 @@ describe.skipIf(!hasCredentials)(
         `PONG round-trip took ${elapsed}ms (budget 30s)`,
       ).toBeLessThan(30_000);
     });
+
+    // Gap-7 regression: verify the cost event actually lands in
+    // Postgres within the expected window. The HTTP-level PING test
+    // above only verifies the request/response path — it does not
+    // verify that the FULL chain (proxy → OpenAI → SSE parser → cost
+    // calculator → Cloudflare Queue → Hyperdrive → Postgres) works.
+    // That's the actual launch-night manual verification path.
+    //
+    // Auto-skips if DATABASE_URL is not configured (local dev).
+    it.skipIf(!hasDbAccess)(
+      "PONG cost event lands in Postgres within 15s (Gap-7 regression)",
+      async () => {
+        // Fire a fresh PONG with a new run-id suffix so this
+        // assertion doesn't collide with the one above. The DB lookup
+        // uses `e2e_run_id` from the tags.
+        const runId = `${E2E_RUN_ID}-db-verify`;
+        const res = await fetch(`${proxyUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-NullSpend-Key": nullspendKey!,
+            Authorization: `Bearer ${openaiKey}`,
+            "X-NullSpend-Tags": `e2e_tier=L3,e2e_suite=proxy-reachable,e2e_run_id=${runId}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: "Respond with: PONG" }],
+            max_completion_tokens: 10,
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        expect(res.status).toBe(200);
+
+        // Poll the DB until the cost event appears. Typical latency
+        // is <500ms (proxy → queue → hyperdrive → pg insert). Budget
+        // 15s to tolerate queue consumer cold starts.
+        const sql = getSqlClient();
+        const deadline = Date.now() + 15_000;
+        let event: {
+          cost_microdollars: string | number;
+          provider: string;
+          model: string;
+          input_tokens: number;
+          output_tokens: number;
+        } | undefined;
+
+        while (Date.now() < deadline) {
+          // tags is JSONB; `tags ->> 'e2e_run_id' = $1` does the safe
+          // parameterized lookup. LIMIT 1 because there should be
+          // exactly one event per run-id.
+          const rows = (await sql`
+            SELECT cost_microdollars, provider, model, input_tokens, output_tokens
+            FROM cost_events
+            WHERE tags ->> 'e2e_run_id' = ${runId}
+            ORDER BY created_at DESC
+            LIMIT 1
+          `) as unknown as Array<{
+            cost_microdollars: string | number;
+            provider: string;
+            model: string;
+            input_tokens: number;
+            output_tokens: number;
+          }>;
+          if (rows.length > 0) {
+            event = rows[0];
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+
+        expect(
+          event,
+          `Cost event with tags.e2e_run_id="${runId}" never landed in ` +
+            `cost_events within 15s. The full proxy → OpenAI → SSE parser ` +
+            `→ cost calculator → Queue → Hyperdrive → Postgres chain is ` +
+            `broken at some stage. Check Cloudflare Queue metrics and ` +
+            `Hyperdrive connection state.`,
+        ).toBeDefined();
+
+        if (event) {
+          expect(event.provider).toBe("openai");
+          expect(event.model).toMatch(/^gpt-4o-mini/);
+          // cost_microdollars is bigint — could come back as string
+          const cost = typeof event.cost_microdollars === "string"
+            ? Number(event.cost_microdollars)
+            : event.cost_microdollars;
+          expect(
+            cost,
+            `Cost must be > 0 — the cost calculator should have priced ` +
+              `the real PONG call at a non-zero microdollar amount.`,
+          ).toBeGreaterThan(0);
+          expect(event.input_tokens).toBeGreaterThan(0);
+          expect(event.output_tokens).toBeGreaterThan(0);
+        }
+      },
+    );
 
     it("rejects invalid NullSpend key with 401/403 (auth path alive)", async () => {
       const res = await fetch(`${proxyUrl}/v1/chat/completions`, {

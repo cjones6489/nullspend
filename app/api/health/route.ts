@@ -1,3 +1,5 @@
+import { timingSafeEqual } from "node:crypto";
+
 import { Redis } from "@upstash/redis";
 import { sql, eq } from "drizzle-orm";
 
@@ -13,11 +15,74 @@ import { REQUIRED_SCHEMA } from "./required-schema";
  * Checks:
  * - Database connectivity (SELECT 1)
  * - Schema completeness (critical tables and columns exist)
+ * - Parameterized query against Supabase pooler
+ * - Supabase auth client init
+ * - COOKIE_SECRET presence in production
+ * - Redis (if configured)
  *
  * Returns 200 if healthy, 503 if any check fails.
- * Detailed component status is only returned when the `?verbose=1` query
- * parameter is present (intended for internal/operator use).
+ *
+ * # Verbose mode
+ *
+ * Detailed component status is returned when the `?verbose=1` query
+ * parameter is present. Verbose mode reveals env var names, schema
+ * drift details, and postgres.js error fields — information useful
+ * for operators debugging production issues, but also useful to
+ * attackers performing reconnaissance.
+ *
+ * Verbose mode supports an OPT-IN gate via `INTERNAL_HEALTH_SECRET`:
+ *
+ *   - If `INTERNAL_HEALTH_SECRET` is NOT set on the server, verbose
+ *     mode is OPEN (anyone with the URL can read it). This is the
+ *     default state — backward-compatible with existing operators
+ *     who may not have configured the secret yet.
+ *
+ *   - If `INTERNAL_HEALTH_SECRET` is set on the server, verbose mode
+ *     requires the client to send a matching `x-ops-health-secret`
+ *     header. Without the header (or with a mismatched value), the
+ *     response silently downgrades to non-verbose `{status}`. No
+ *     401 — the gate is invisible to unauthenticated scanners so
+ *     they can't even tell verbose mode exists.
+ *
+ * To activate the gate in production, set `INTERNAL_HEALTH_SECRET` in
+ * Vercel env vars AND update the E2E test's environment to carry the
+ * same value via `INTERNAL_HEALTH_SECRET`. Comparison is timing-safe
+ * via `timingSafeEqual`.
+ *
+ * Closes Drift-3 from the Slice 1 audit (G-18 from launch-night).
  */
+
+/**
+ * Constant-time header check for the verbose-mode opt-in gate.
+ * Returns true if verbose mode is allowed for this request.
+ *
+ * Exported for unit testing only (see route.test.ts). Do NOT call
+ * from outside this module.
+ */
+export function _verboseAllowedForTesting(request: Request): boolean {
+  return verboseAllowed(request);
+}
+
+function verboseAllowed(request: Request): boolean {
+  const serverSecret = process.env.INTERNAL_HEALTH_SECRET;
+  if (!serverSecret || serverSecret.trim() === "") {
+    // Opt-in disabled on this server: verbose mode is open.
+    return true;
+  }
+  const clientHeader = request.headers.get("x-ops-health-secret");
+  if (!clientHeader) return false;
+  // Reject length mismatches before timingSafeEqual (which throws
+  // on unequal-length buffers).
+  if (clientHeader.length !== serverSecret.length) return false;
+  try {
+    return timingSafeEqual(
+      Buffer.from(clientHeader),
+      Buffer.from(serverSecret),
+    );
+  } catch {
+    return false;
+  }
+}
 
 // REQUIRED_SCHEMA lives in ./required-schema.ts so the test file can import it
 // without pulling in the Next.js route handler. The regression test cross-checks
@@ -72,7 +137,11 @@ function extractErrorDebug(err: unknown): Record<string, unknown> {
 }
 
 export async function GET(request: Request) {
-  const verbose = new URL(request.url).searchParams.get("verbose") === "1";
+  const verboseRequested =
+    new URL(request.url).searchParams.get("verbose") === "1";
+  // Gate verbose mode behind the optional INTERNAL_HEALTH_SECRET header.
+  // See verboseAllowed() for the opt-in semantics.
+  const verbose = verboseRequested && verboseAllowed(request);
   const components: Record<string, ComponentStatus> = {};
 
   // 1. Database connectivity

@@ -30,20 +30,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build @nullspend/db
-        run: pnpm db:build
-
-      - name: Build @nullspend/cost-engine
-        run: pnpm cost-engine:build
-
-      - name: Build @nullspend/sdk
-        run: pnpm sdk:build
-
-      - name: Build @nullspend/claude-agent
-        run: pnpm claude-agent:build
-
-      - name: Build @nullspend/docs
-        run: pnpm docs-mcp:build
+      # Build all @nullspend/* workspace packages via the shared
+      # composite action. Keep in sync by editing the action file
+      # directly — both workflows pick up the change automatically.
+      - name: Build workspace packages
+        uses: ./.github/actions/build-workspace-packages
 
       - name: Typecheck
         run: pnpm typecheck

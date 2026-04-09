@@ -62,23 +62,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Build workspace packages — mirrors .github/workflows/ci.yml build
-      # steps exactly. Keep in sync with ci.yml. The legacy
-      # scripts/e2e-smoke.ts imports @nullspend/sdk which resolves to
-      # packages/sdk/dist/index.cjs, so sdk:build is required before the
-      # legacy step runs. Slice 1 infra tests don't need sdk/claude-agent/
-      # docs, but building them keeps parity with ci.yml and avoids
-      # "works in unit tests, breaks in post-deploy" drift.
-      - name: Build @nullspend/db
-        run: pnpm db:build
-      - name: Build @nullspend/cost-engine
-        run: pnpm cost-engine:build
-      - name: Build @nullspend/sdk
-        run: pnpm sdk:build
-      - name: Build @nullspend/claude-agent
-        run: pnpm claude-agent:build
-      - name: Build @nullspend/docs
-        run: pnpm docs-mcp:build
+      # Build all @nullspend/* workspace packages via the shared
+      # composite action used by ci.yml. Single source of truth —
+      # no more drift between the two workflows. See the action file
+      # at .github/actions/build-workspace-packages/action.yml for
+      # the build order and rationale.
+      - name: Build workspace packages
+        uses: ./.github/actions/build-workspace-packages
 
       # Pre-flight: verify the required secrets are actually set. If any are
       # missing, fail FAST with a clear message naming the missing secret
@@ -237,15 +227,24 @@ jobs:
           exit 1
 
       # Slice 1 infra suite — CSP nonce freshness, /api/health all-components-ok,
-      # DNS/SSL for prod hosts, proxy reachable, dashboard route crash sweep.
+      # DNS/SSL for prod hosts, proxy reachable (incl. cost event DB
+      # verification), dashboard route crash sweep.
       # Closes launch-night P0-1/A2, P0-C, P0-D, P0-E, P0-F, P1-19 detection gaps.
-      # Runs BEFORE the legacy e2e-smoke.ts so infra failures fail fast.
       - name: Run e2e infra tests (Slice 1)
         env:
           NULLSPEND_BASE_URL: ${{ steps.url.outputs.url }}
           NULLSPEND_PROXY_URL: ${{ vars.NULLSPEND_PROXY_URL || 'https://proxy.nullspend.dev' }}
           NULLSPEND_API_KEY: ${{ secrets.E2E_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.E2E_OPENAI_API_KEY }}
+          # Gap-7: DB verification that PONG cost events land in
+          # Postgres. Reuses the existing E2E_DATABASE_URL secret
+          # that the legacy e2e-smoke.ts step already uses.
+          DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          # Drift-3 / G-18: verbose /api/health gate. Optional secret.
+          # If not set in GitHub secrets, the E2E test auto-downgrades
+          # to non-verbose assertions. If set, the test passes the
+          # `x-ops-health-secret` header to unlock verbose.
+          INTERNAL_HEALTH_SECRET: ${{ secrets.INTERNAL_HEALTH_SECRET }}
           CI: "true"
         run: pnpm e2e:run tests/e2e/infra/
 

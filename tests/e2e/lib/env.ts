@@ -28,6 +28,12 @@ export const E2E_ENV_KEYS = {
   OPENAI_API_KEY: "OPENAI_API_KEY",
   /** Anthropic API key for model-matrix nightly runs. */
   ANTHROPIC_API_KEY: "ANTHROPIC_API_KEY",
+  /**
+   * Optional shared secret for the /api/health?verbose=1 gate
+   * (Drift-3 / G-18). If set, the health-endpoint E2E test sends
+   * this value as the `x-ops-health-secret` header.
+   */
+  INTERNAL_HEALTH_SECRET: "INTERNAL_HEALTH_SECRET",
 } as const;
 
 export type E2EEnvKey = keyof typeof E2E_ENV_KEYS;

@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { getTableConfig } from "drizzle-orm/pg-core";
 
 import * as schema from "@nullspend/db";
 
 import { REQUIRED_SCHEMA } from "./required-schema";
+import { _verboseAllowedForTesting as verboseAllowed } from "./route";
 
 /**
  * This test cross-checks the health endpoint's REQUIRED_SCHEMA list
@@ -65,4 +66,99 @@ describe("app/api/health REQUIRED_SCHEMA drizzle cross-check", () => {
       }
     });
   }
+});
+
+describe("verbose mode opt-in gate (Drift-3 / G-18)", () => {
+  const savedSecret = process.env.INTERNAL_HEALTH_SECRET;
+
+  beforeEach(() => {
+    delete process.env.INTERNAL_HEALTH_SECRET;
+  });
+
+  afterEach(() => {
+    if (savedSecret !== undefined) {
+      process.env.INTERNAL_HEALTH_SECRET = savedSecret;
+    } else {
+      delete process.env.INTERNAL_HEALTH_SECRET;
+    }
+  });
+
+  const makeRequest = (headers?: Record<string, string>) =>
+    new Request("http://localhost/api/health?verbose=1", {
+      method: "GET",
+      headers,
+    });
+
+  it("allows verbose when no server secret is set (opt-in disabled)", () => {
+    expect(verboseAllowed(makeRequest())).toBe(true);
+  });
+
+  it("allows verbose when server secret is an empty string (disabled)", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "";
+    expect(verboseAllowed(makeRequest())).toBe(true);
+  });
+
+  it("allows verbose when server secret is whitespace-only (disabled)", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "   ";
+    expect(verboseAllowed(makeRequest())).toBe(true);
+  });
+
+  it("DENIES verbose when server secret is set and no client header", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "sekret-abc-123";
+    expect(verboseAllowed(makeRequest())).toBe(false);
+  });
+
+  it("DENIES verbose when server secret is set and client header is wrong", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "sekret-abc-123";
+    expect(
+      verboseAllowed(
+        makeRequest({ "x-ops-health-secret": "different-secret" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("DENIES verbose when server secret is set and header is empty string", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "sekret-abc-123";
+    expect(
+      verboseAllowed(makeRequest({ "x-ops-health-secret": "" })),
+    ).toBe(false);
+  });
+
+  it("ALLOWS verbose when client header exactly matches server secret", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "sekret-abc-123";
+    expect(
+      verboseAllowed(
+        makeRequest({ "x-ops-health-secret": "sekret-abc-123" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("DENIES verbose on length-mismatch (pre-empts timingSafeEqual throw)", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "short";
+    expect(
+      verboseAllowed(
+        makeRequest({
+          "x-ops-health-secret": "much-longer-than-the-server-value",
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("uses timing-safe comparison (same length, different content)", () => {
+    // Two strings of the same length but with different content.
+    // This exercises timingSafeEqual directly — if we used ===, the
+    // comparison would short-circuit on the first byte difference
+    // and leak timing information about the secret.
+    process.env.INTERNAL_HEALTH_SECRET = "aaaaaaaaaaaaaaaa";
+    expect(
+      verboseAllowed(
+        makeRequest({ "x-ops-health-secret": "bbbbbbbbbbbbbbbb" }),
+      ),
+    ).toBe(false);
+    expect(
+      verboseAllowed(
+        makeRequest({ "x-ops-health-secret": "aaaaaaaaaaaaaaaa" }),
+      ),
+    ).toBe(true);
+  });
 });
