@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.ts"],
-    exclude: ["node_modules", "packages/**", "apps/**", ".next/**"],
+    // tests/** is the E2E framework — runs via pnpm e2e:run + vitest.e2e.config.ts
+    exclude: ["node_modules", "packages/**", "apps/**", ".next/**", "tests/**"],
   },
 });

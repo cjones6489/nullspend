@@ -50,7 +50,7 @@ the full tier model, directory layout, and how to add a test.
 | Slice | Status | What it adds |
 |---|---|---|
 | 0 — Scaffolding + script-injection fix + CI wiring | ✅ shipped | `tests/e2e/` skeleton, `vitest.e2e.config.ts`, `playwright.config.ts`, `e2e-post-deploy.yml` hardened, JUnit artifact upload |
-| 1 — Post-deploy infra smoke | ⬜ next | CSP nonce freshness, `/api/health`, DNS/SSL, proxy reachable, dashboard routes sweep |
+| 1 — Post-deploy infra smoke | ✅ shipped | `tests/e2e/infra/` with 5 suites: CSP nonce freshness, `/api/health` all-components-ok, DNS/SSL for prod hosts, proxy PONG, dashboard routes crash sweep. Closes P0-1/A2, P0-B, P0-C, P0-D, P0-E, P0-F, P1-19 detection gaps. |
 | 2 — Build-time + deploy-time env validation | ⬜ | `scripts/verify-env.ts`, Vercel env drift detection |
 | 3 — Link checker | ⬜ | `lychee` on PR + nightly |
 | 4 — Port orphan E2E scripts to vitest | ⬜ | `scripts/e2e-*.ts` → `tests/e2e/dashboard/` |
