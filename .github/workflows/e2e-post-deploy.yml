@@ -173,6 +173,69 @@ jobs:
           done
           echo "Deployment not reachable after 60s"; exit 1
 
+      # EC-5: verify the deployed commit SHA matches the commit that
+      # triggered this workflow run. Catches Vercel auto-rollback,
+      # multiple-rapid-deploy races, and the brief atomic-swap window
+      # where the stable URL hasn't yet pointed at the new deployment.
+      #
+      # Skip on workflow_dispatch: manual runs don't necessarily
+      # correspond to a specific commit. Skip when the endpoint
+      # returns null commit_sha: local dev or non-Vercel target.
+      # Skip when we can't reach /api/version (e.g., the endpoint
+      # doesn't exist yet in an older deployment being verified).
+      #
+      # Up to 5 retries with 3s delay to tolerate atomic-swap window.
+      - name: Verify deployed commit SHA matches workflow commit
+        if: github.event_name == 'deployment_status'
+        env:
+          TARGET_URL: ${{ steps.url.outputs.url }}
+          EXPECTED_SHA: ${{ github.sha }}
+          ENVIRONMENT: ${{ steps.url.outputs.env_label }}
+        run: |
+          echo "Expected SHA: $EXPECTED_SHA"
+          echo "Target:       $TARGET_URL ($ENVIRONMENT)"
+
+          for attempt in 1 2 3 4 5; do
+            RESPONSE=$(curl -sf "$TARGET_URL/api/version" 2>&1) || RESPONSE=""
+            if [ -z "$RESPONSE" ]; then
+              echo "Attempt $attempt: /api/version unreachable, retrying in 3s..."
+              sleep 3
+              continue
+            fi
+
+            DEPLOYED_SHA=$(echo "$RESPONSE" | grep -oE '"commit_sha":"[a-f0-9]+"' | head -1 | sed 's/"commit_sha":"//;s/"$//')
+            if [ -z "$DEPLOYED_SHA" ] || [ "$DEPLOYED_SHA" = "null" ]; then
+              echo "Attempt $attempt: /api/version returned null commit_sha."
+              echo "Target is likely not a Vercel deployment. Skipping SHA verification."
+              echo "Response: $RESPONSE"
+              exit 0
+            fi
+
+            echo "Attempt $attempt: deployed SHA = $DEPLOYED_SHA"
+            if [ "$DEPLOYED_SHA" = "$EXPECTED_SHA" ]; then
+              echo "SHA match — deployed commit corresponds to this workflow run."
+              exit 0
+            fi
+
+            echo "SHA mismatch (expected $EXPECTED_SHA, got $DEPLOYED_SHA)"
+            if [ $attempt -lt 5 ]; then
+              echo "Retrying in 3s to tolerate atomic-swap window..."
+              sleep 3
+            fi
+          done
+
+          echo ""
+          echo "FAIL: deployed commit_sha never matched the expected SHA after 5 attempts."
+          echo ""
+          echo "This indicates one of:"
+          echo "  1. Vercel auto-rolled back this deployment (check Vercel dashboard)"
+          echo "  2. A newer commit landed before this workflow could verify"
+          echo "  3. The stable URL ($TARGET_URL) isn't serving this commit yet"
+          echo ""
+          echo "Expected: $EXPECTED_SHA"
+          echo "Got:      $DEPLOYED_SHA"
+          exit 1
+
       # Slice 1 infra suite — CSP nonce freshness, /api/health all-components-ok,
       # DNS/SSL for prod hosts, proxy reachable, dashboard route crash sweep.
       # Closes launch-night P0-1/A2, P0-C, P0-D, P0-E, P0-F, P1-19 detection gaps.
