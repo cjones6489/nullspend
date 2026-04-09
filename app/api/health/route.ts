@@ -1,8 +1,8 @@
 import { Redis } from "@upstash/redis";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, asc } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
-import { organizations } from "@nullspend/db";
+import { organizations, orgMemberships } from "@nullspend/db";
 
 import { REQUIRED_SCHEMA } from "./required-schema";
 
@@ -136,6 +136,34 @@ export async function GET(request: Request) {
         status: "error",
         error: verbose
           ? (err instanceof Error ? err.message : "Parameterized query failed")
+          : "check failed",
+        ...(verbose ? { debug: extractErrorDebug(err) } : {}),
+      };
+    }
+  }
+
+  // 2c. JOIN query — exactly mirrors /api/orgs query shape (inner join +
+  // where on text userId + orderBy). If this fails when 2b passes, the
+  // issue is with JOIN semantics, text parameter binding, or orderBy
+  // rather than basic parameterized queries.
+  if (components.database.status === "ok") {
+    try {
+      const db = getDb();
+      await db
+        .select({
+          id: organizations.id,
+          role: orgMemberships.role,
+        })
+        .from(orgMemberships)
+        .innerJoin(organizations, eq(orgMemberships.orgId, organizations.id))
+        .where(eq(orgMemberships.userId, "00000000-0000-0000-0000-000000000000"))
+        .orderBy(asc(organizations.createdAt));
+      components.join_query = { status: "ok" };
+    } catch (err) {
+      components.join_query = {
+        status: "error",
+        error: verbose
+          ? (err instanceof Error ? err.message : "JOIN query failed")
           : "check failed",
         ...(verbose ? { debug: extractErrorDebug(err) } : {}),
       };
