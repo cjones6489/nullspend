@@ -9,11 +9,30 @@
  * The fix: `proxy.ts` sets `Cache-Control: private, no-store` on every
  * response + the root layout calls `headers()` to force dynamic rendering.
  *
- * This test catches any regression by verifying:
- *   1. HTML routes return a CSP header with a nonce
- *   2. Back-to-back requests return DIFFERENT nonces (no CDN caching)
- *   3. `X-Vercel-Cache` is never `HIT` on HTML routes
- *   4. `Cache-Control` always contains `no-store`
+ * # The exact bug class this test catches
+ *
+ * The regression we're guarding against is NOT just "the header has a
+ * fresh nonce" — the header was ALWAYS fresh. The actual bug was
+ * "header fresh + body stale": the middleware set a new nonce on every
+ * response, but Vercel's CDN cached the HTML body from a prior request,
+ * so the `<script nonce="OLD">` tags baked into the cached body never
+ * matched the fresh header nonce. React blocked the script loads and
+ * failed to hydrate.
+ *
+ * To catch THAT bug class, we have to:
+ *   1. Read the HTML body (not just headers)
+ *   2. Extract the CSP header nonce
+ *   3. Parse all `<script nonce="...">` tags from the body
+ *   4. Assert body nonces match header nonce (same-response consistency)
+ *   5. Fire a second request, assert body nonces differ from first
+ *      (body not served from CDN cache)
+ *
+ * Each test covers a different axis of the bug:
+ *   - same-response consistency catches CDN caching the body while the
+ *     edge middleware sets a fresh header
+ *   - cross-response freshness catches CDN caching the whole response
+ *   - cache headers + X-Vercel-Cache catch the directive gap that led
+ *     to caching in the first place
  *
  * See:
  *   - proxy.ts:133 (CSP header construction)
@@ -25,8 +44,6 @@
 import { describe, it, expect } from "vitest";
 import { getBaseUrl } from "../lib/env";
 
-const unreachable = process.env.E2E_TARGET_UNREACHABLE === "1";
-
 // Routes that should carry a fresh CSP nonce on every request. Add HTML
 // routes here as new pages are added — the anchor point is "any server-
 // rendered page that ships inline scripts or styles with a nonce."
@@ -37,69 +54,149 @@ const HTML_ROUTES = [
   "/docs",   // docs landing (Fumadocs)
 ];
 
-interface HtmlResponseHeaders {
-  nonce: string | null;
+interface HtmlResponseSnapshot {
+  status: number;
+  headerNonce: string | null;
+  /** All `<script nonce="...">` values found in the response body. */
+  bodyScriptNonces: string[];
+  /** All `<style nonce="...">` values found in the response body. */
+  bodyStyleNonces: string[];
   vercelCache: string | null;
   cacheControl: string | null;
-  status: number;
 }
 
-async function fetchHtmlHeaders(url: string): Promise<HtmlResponseHeaders> {
+/**
+ * Fetch a URL and extract nonces from both the CSP header AND the HTML body.
+ * Returns a single-request snapshot — critical for same-response
+ * consistency checks (the body nonce MUST match the header nonce from
+ * the SAME request, not a different one).
+ */
+async function fetchHtmlSnapshot(url: string): Promise<HtmlResponseSnapshot> {
   const res = await fetch(url, {
     redirect: "manual",
     headers: { accept: "text/html" },
   });
+
   const csp =
     res.headers.get("content-security-policy") ??
     res.headers.get("content-security-policy-report-only");
-  // Nonce format: `'nonce-<base64>'` per CSP3 spec.
-  // proxy.ts uses `btoa(crypto.randomUUID())` which produces base64 with
-  // `/+=` characters. Pattern tolerates all valid base64 chars.
-  const nonceMatch = csp?.match(/'nonce-([A-Za-z0-9+/=_-]+)'/);
+  // Nonce format per CSP3: `'nonce-<base64>'`. `proxy.ts` uses
+  // `btoa(crypto.randomUUID())` which produces base64 (+ / =). We
+  // tolerate base64url too for future-compatibility.
+  const headerNonceMatch = csp?.match(/'nonce-([A-Za-z0-9+/=_-]+)'/);
+  const headerNonce = headerNonceMatch?.[1] ?? null;
+
+  // Parse body for `<script nonce="..."` and `<style nonce="..."` tags.
+  // Only try to parse if the response has a body (skip redirects).
+  const bodyScriptNonces: string[] = [];
+  const bodyStyleNonces: string[] = [];
+  if (res.status >= 200 && res.status < 300) {
+    const body = await res.text();
+    // Tag attribute regex — tolerates both double and single quoted nonces
+    // and arbitrary attribute order before `nonce=`.
+    const scriptRe = /<script\b[^>]*\bnonce=["']([A-Za-z0-9+/=_-]+)["']/gi;
+    const styleRe = /<style\b[^>]*\bnonce=["']([A-Za-z0-9+/=_-]+)["']/gi;
+    let m: RegExpExecArray | null;
+    while ((m = scriptRe.exec(body)) !== null) bodyScriptNonces.push(m[1]);
+    while ((m = styleRe.exec(body)) !== null) bodyStyleNonces.push(m[1]);
+  } else {
+    // Consume the body to free the connection even if we don't parse it
+    await res.text().catch(() => undefined);
+  }
+
   return {
-    nonce: nonceMatch?.[1] ?? null,
+    status: res.status,
+    headerNonce,
+    bodyScriptNonces,
+    bodyStyleNonces,
     vercelCache: res.headers.get("x-vercel-cache"),
     cacheControl: res.headers.get("cache-control"),
-    status: res.status,
   };
 }
 
-describe.skipIf(unreachable)("CSP nonce freshness (P0-1 / P0-A2 regression)", () => {
+describe("CSP nonce freshness (P0-1 / P0-A2 regression)", () => {
   const baseUrl = getBaseUrl();
 
   describe.each(HTML_ROUTES)("route %s", (route) => {
     it("returns a CSP header with a nonce", async () => {
-      const headers = await fetchHtmlHeaders(`${baseUrl}${route}`);
-      // Accept 200 and 3xx redirects — both are valid server-rendered paths
-      expect(headers.status).toBeLessThan(500);
-      expect(headers.nonce).toBeTruthy();
-      expect(headers.nonce!.length).toBeGreaterThan(16);
+      const snap = await fetchHtmlSnapshot(`${baseUrl}${route}`);
+      expect(snap.status).toBeLessThan(500);
+      expect(snap.headerNonce).toBeTruthy();
+      expect(snap.headerNonce!.length).toBeGreaterThan(16);
     });
 
-    it("returns a different nonce on back-to-back requests (no CDN caching)", async () => {
-      const a = await fetchHtmlHeaders(`${baseUrl}${route}`);
+    it("body <script nonce=\"...\"> values match the CSP header nonce (P0-1/A2 core assertion)", async () => {
+      const snap = await fetchHtmlSnapshot(`${baseUrl}${route}`);
+      // Only enforce body-header consistency on 2xx responses with actual HTML.
+      // 3xx redirects have no body nonces to check.
+      if (snap.status < 200 || snap.status >= 300) return;
+
+      expect(snap.headerNonce).toBeTruthy();
+
+      // At least ONE script tag with a nonce must be present on a real
+      // HTML page. If this regresses to zero, someone removed the nonce
+      // propagation in the layout or Next.js stopped stamping scripts.
+      expect(
+        snap.bodyScriptNonces.length,
+        `No <script nonce="..."> tags found in ${route} body. Next.js nonce ` +
+          `auto-propagation may be broken. Check app/layout.tsx imports headers().`,
+      ).toBeGreaterThan(0);
+
+      // THE core P0-1/A2 check: every body nonce MUST match the header nonce
+      // from the SAME response. Body-header mismatch = the CDN served a
+      // cached body with a stale nonce baked in.
+      for (const bodyNonce of snap.bodyScriptNonces) {
+        expect(
+          bodyNonce,
+          `Body <script nonce="${bodyNonce}"> does not match CSP header ` +
+            `nonce "${snap.headerNonce}" on ${route}. This is the exact ` +
+            `P0-1/A2 bug class — CDN cached a stale body while the edge ` +
+            `middleware set a fresh header nonce.`,
+        ).toBe(snap.headerNonce);
+      }
+      // Same rule for <style nonce> tags (rarer but CSP3 allows them).
+      for (const bodyNonce of snap.bodyStyleNonces) {
+        expect(bodyNonce).toBe(snap.headerNonce);
+      }
+    });
+
+    it("returns fresh nonces across back-to-back requests (body-level freshness)", async () => {
+      const a = await fetchHtmlSnapshot(`${baseUrl}${route}`);
       // Small delay — just enough that a CDN would serve from cache if it
       // were going to. Real CDN cache TTLs are much longer than this.
       await new Promise((r) => setTimeout(r, 1500));
-      const b = await fetchHtmlHeaders(`${baseUrl}${route}`);
+      const b = await fetchHtmlSnapshot(`${baseUrl}${route}`);
 
-      expect(a.nonce).toBeTruthy();
-      expect(b.nonce).toBeTruthy();
-      expect(a.nonce).not.toBe(b.nonce);
+      expect(a.headerNonce).toBeTruthy();
+      expect(b.headerNonce).toBeTruthy();
+      // Header freshness
+      expect(a.headerNonce).not.toBe(b.headerNonce);
+
+      // Body freshness — if there were body nonces in both responses,
+      // they must differ. This catches a CDN that re-served the body
+      // while edge middleware generated a new header nonce.
+      if (a.bodyScriptNonces.length > 0 && b.bodyScriptNonces.length > 0) {
+        expect(
+          a.bodyScriptNonces[0],
+          `Body nonce is the same across back-to-back requests on ${route}. ` +
+            `This means the HTML body was served from cache even though the ` +
+            `header changed — the P0-1/A2 bug class.`,
+        ).not.toBe(b.bodyScriptNonces[0]);
+      }
     });
 
     it("never returns X-Vercel-Cache: HIT on HTML", async () => {
-      const headers = await fetchHtmlHeaders(`${baseUrl}${route}`);
+      const snap = await fetchHtmlSnapshot(`${baseUrl}${route}`);
       // HIT means Vercel served from CDN cache — the root cause of P0-1.
       // MISS or null (cache not involved) are both fine.
-      if (headers.vercelCache !== null) {
-        expect(headers.vercelCache.toUpperCase()).not.toBe("HIT");
+      if (snap.vercelCache !== null) {
+        expect(snap.vercelCache.toUpperCase()).not.toBe("HIT");
       }
     });
 
     it("sets Cache-Control: no-store on HTML routes", async () => {
-      const headers = await fetchHtmlHeaders(`${baseUrl}${route}`);
-      expect(headers.cacheControl?.toLowerCase()).toContain("no-store");
+      const snap = await fetchHtmlSnapshot(`${baseUrl}${route}`);
+      expect(snap.cacheControl?.toLowerCase()).toContain("no-store");
     });
   });
 });

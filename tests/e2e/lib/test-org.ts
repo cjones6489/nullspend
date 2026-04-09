@@ -35,15 +35,13 @@ export interface TestOrg {
 }
 
 /**
- * Protected org IDs that the cleanup sweep will refuse to touch. Edit here
- * if new protected orgs are added (e.g. other internal dogfood orgs).
+ * Protected org IDs that the cleanup sweep will refuse to touch.
  *
- * See memory/project_founder_dogfood_upgrade.md for the founder org IDs.
+ * Re-exported from `./protected-orgs` so callers can import from either
+ * path during the Slice 1e→1g transition. New code should import directly
+ * from `./protected-orgs`.
  */
-export const PROTECTED_ORG_IDS = new Set<string>([
-  "052f5cc2-63e6-41db-ace7-ea20364851ab", // founder Personal org (Pro dogfood)
-  "55c30156-1d15-46f7-bdb4-ca2a15a69d77", // founder Test org
-]);
+export { PROTECTED_ORG_IDS, assertNotProtected } from "./protected-orgs";
 
 export interface CreateTestOrgOptions {
   /**

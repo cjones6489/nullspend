@@ -31,7 +31,8 @@
 import { describe, it, expect } from "vitest";
 import { getBaseUrl } from "../lib/env";
 
-const unreachable = process.env.E2E_TARGET_UNREACHABLE === "1";
+// Global setup (tests/e2e/lib/global-setup.ts) fails the entire run if
+// the target is not reachable, so tests below can assume connectivity.
 
 interface ComponentStatus {
   status: "ok" | "error";
@@ -43,7 +44,7 @@ interface VerboseHealth {
   components: Record<string, ComponentStatus>;
 }
 
-describe.skipIf(unreachable)("Dashboard /api/health (launch-night P0 regression)", () => {
+describe("Dashboard /api/health (launch-night P0 regression)", () => {
   const baseUrl = getBaseUrl();
 
   it("GET /api/health returns 200 + { status: 'ok' }", async () => {

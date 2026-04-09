@@ -16,11 +16,25 @@
  *   and org_id that never touches the founder's Personal or Test orgs.
  *   Per memory/project_founder_dogfood_upgrade.md the founder orgs have
  *   IDs in PROTECTED_ORG_IDS — this script asserts it never touches them.
+ *   `PROTECTED_ORG_IDS` is imported from the single source of truth at
+ *   `tests/e2e/lib/protected-orgs.ts`.
  *
- * - **Rotatable.** Re-running the script deletes the prior bootstrap org
- *   (matched by the stable slug `e2e-bootstrap-org`) and creates a fresh
- *   one. The new API key's plaintext is the only way to access it — the
- *   previous key's plaintext is unrecoverable.
+ * - **Transactional.** The entire delete-then-insert sequence runs inside
+ *   a single `db.transaction()` so partial failures roll back. Without
+ *   this, a network blip between the delete and insert steps could leave
+ *   orphaned state that breaks subsequent runs.
+ *
+ * - **Idempotent.** Re-running deletes the prior bootstrap org (matched
+ *   by the stable slug `e2e-bootstrap-org`) and creates a fresh one.
+ *   Orphan-table cleanup catches non-FK-linked rows (cost_events,
+ *   actions, budgets, audit_events, sessions, slack_configs,
+ *   subscriptions, tool_costs, webhook_endpoints) that the schema's
+ *   CASCADE rules don't touch automatically.
+ *
+ * - **Verified.** After creating the key, the script issues a real HTTP
+ *   request through the proxy to confirm the key authenticates. If the
+ *   proxy rejects the key (hash format drift, schema mismatch), the
+ *   script fails loudly BEFORE printing credentials.
  *
  * - **Human-readable output.** Prints a summary banner + key=value lines
  *   separated by a `---` marker so downstream shell can `tail -4` or
@@ -33,20 +47,24 @@
  *
  * # Usage
  *
+ *   pnpm e2e:bootstrap
+ *   # or
  *   pnpm tsx scripts/bootstrap-e2e-org.ts
  *
  * Requires:
  *   - DATABASE_URL in the environment (loaded from .env.local automatically)
+ *   - NULLSPEND_PROXY_URL in the environment (optional; defaults to
+ *     https://proxy.nullspend.dev for the verification step). Set to "skip"
+ *     to disable the verification step entirely (useful for offline runs).
  *
  * # Security
  *
  * The plaintext API key appears exactly ONCE on stdout. Do not log it,
  * paste it, screenshot it, or commit it. Pipe directly to `gh secret set`:
  *
- *   pnpm tsx scripts/bootstrap-e2e-org.ts | tee /dev/null | \
- *     while IFS='=' read -r name value; do
- *       case "$name" in E2E_*) printf '%s' "$value" | gh secret set "$name" ;; esac
- *     done
+ *   pnpm e2e:bootstrap 2>/dev/null | while IFS='=' read -r name value; do
+ *     case "$name" in E2E_*) printf '%s' "$value" | gh secret set "$name" ;; esac
+ *   done
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -74,7 +92,7 @@ function loadEnvLocal() {
 }
 loadEnvLocal();
 
-import { eq, inArray } from "drizzle-orm";
+import { eq, sql as dsql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import {
@@ -87,6 +105,7 @@ import {
   organizations,
   orgMemberships,
 } from "@nullspend/db";
+import { assertNotProtected } from "@/tests/e2e/lib/protected-orgs";
 
 // Stable identifiers that make the bootstrap org easy to find + reset.
 // The slug is the anchor — `e2e-bootstrap-org` is never used by a real
@@ -96,12 +115,27 @@ const BOOTSTRAP_ORG_NAME = "E2E Bootstrap";
 const BOOTSTRAP_USER_ID = "e2e-bootstrap-user";
 const BOOTSTRAP_KEY_NAME = "e2e-test-suite";
 
-// Founder orgs that must never be touched by this script. Mirrors the
-// PROTECTED_ORG_IDS set in tests/e2e/lib/test-org.ts.
-const PROTECTED_ORG_IDS = new Set<string>([
-  "052f5cc2-63e6-41db-ace7-ea20364851ab", // founder Personal (Pro dogfood)
-  "55c30156-1d15-46f7-bdb4-ca2a15a69d77", // founder Test
-]);
+// Tables that have an `org_id` column but NO foreign-key constraint to
+// organizations. The schema's CASCADE rules only clean up tables with
+// explicit FKs (customer_mappings, customer_revenue, customer_settings,
+// org_invitations, org_memberships, stripe_connections). These 9 tables
+// would leave orphan rows pointing at a deleted org_id if we didn't
+// explicitly clean them up on bootstrap rotation.
+//
+// Verified against information_schema.columns on 2026-04-09. If new
+// org_id-scoped tables are added to the schema, add them here too.
+const ORPHAN_CLEANUP_TABLES = [
+  "actions",
+  "api_keys",
+  "audit_events",
+  "budgets",
+  "cost_events",
+  "sessions",
+  "slack_configs",
+  "subscriptions",
+  "tool_costs",
+  "webhook_endpoints",
+] as const;
 
 async function main() {
   if (!process.env.DATABASE_URL) {
@@ -115,111 +149,207 @@ async function main() {
 
   const db = getDb();
 
-  // Step 1: find any existing bootstrap org so we can reset cleanly.
+  // Step 1: find any existing bootstrap org so we can assert it's safe
+  // to reset OUTSIDE the transaction (a single SELECT doesn't need to
+  // be in the tx).
   const existing = await db
-    .select({ id: organizations.id, name: organizations.name })
+    .select({ id: organizations.id })
     .from(organizations)
     .where(eq(organizations.slug, BOOTSTRAP_ORG_SLUG))
     .limit(1);
 
-  if (existing.length > 0) {
-    const orgId = existing[0].id;
-    if (PROTECTED_ORG_IDS.has(orgId)) {
-      throw new Error(
-        `SAFETY: bootstrap slug resolved to protected org ${orgId}. ` +
-          `Refusing to reset. Check PROTECTED_ORG_IDS vs BOOTSTRAP_ORG_SLUG.`,
-      );
-    }
-    console.error(`Found existing bootstrap org ${orgId} — resetting...`);
-
-    // Delete api_keys + memberships first (FK dependency order)
-    await db.delete(apiKeys).where(eq(apiKeys.orgId, orgId));
-    await db.delete(orgMemberships).where(eq(orgMemberships.orgId, orgId));
-    await db.delete(organizations).where(eq(organizations.id, orgId));
-    console.error(`Deleted prior bootstrap org ${orgId}`);
+  const existingOrgId = existing[0]?.id ?? null;
+  if (existingOrgId) {
+    assertNotProtected(existingOrgId, "bootstrap script reset of existing org");
+    console.error(`Found existing bootstrap org ${existingOrgId} — will reset.`);
   } else {
-    console.error("No existing bootstrap org found — creating fresh.");
+    console.error("No existing bootstrap org found — will create fresh.");
   }
 
-  // Step 2: create the org.
-  const [newOrg] = await db
-    .insert(organizations)
-    .values({
-      name: BOOTSTRAP_ORG_NAME,
-      slug: BOOTSTRAP_ORG_SLUG,
-      isPersonal: false,
-      createdBy: BOOTSTRAP_USER_ID,
-      metadata: {
-        purpose: "e2e-bootstrap",
-        owner: "nullspend e2e framework",
-        rotatable: "true",
-      },
-    })
-    .returning({ id: organizations.id });
-
-  if (PROTECTED_ORG_IDS.has(newOrg.id)) {
-    // Extraordinarily unlikely (UUIDv4 collision) but defense in depth
-    throw new Error(
-      `SAFETY: newly created bootstrap org ID ${newOrg.id} collides with ` +
-        `a protected founder org. Delete + retry.`,
-    );
-  }
-  console.error(`Created org: ${newOrg.id}`);
-
-  // Step 3: create the owner membership.
-  await db.insert(orgMemberships).values({
-    orgId: newOrg.id,
-    userId: BOOTSTRAP_USER_ID,
-    role: "owner",
-  });
-  console.error(`Created membership: ${BOOTSTRAP_USER_ID} -> ${newOrg.id}`);
-
-  // Step 4: generate + insert the API key using the REAL helpers.
+  // Step 2: run the full delete-then-insert sequence inside a single
+  // transaction. Any failure rolls back ALL changes — no orphaned org,
+  // no orphaned membership, no orphaned api_key.
   const rawKey = generateRawKey();
   const keyHash = hashKey(rawKey);
   const keyPrefix = extractPrefix(rawKey);
 
-  const [newKey] = await db
-    .insert(apiKeys)
-    .values({
-      userId: BOOTSTRAP_USER_ID,
-      orgId: newOrg.id,
-      name: BOOTSTRAP_KEY_NAME,
-      keyHash,
-      keyPrefix,
-      apiVersion: "2026-04-01",
-      environment: "live",
-      defaultTags: { e2e_tier: "L3", e2e_purpose: "bootstrap" },
-    })
-    .returning({ id: apiKeys.id });
+  const txResult = await db.transaction(async (tx) => {
+    // 2a. Clean up prior bootstrap org + all orphan rows.
+    if (existingOrgId) {
+      // Clean up orphan rows in tables without FK CASCADE.
+      // Uses raw sql() because we iterate over table names — drizzle
+      // query builder doesn't have a clean dynamic-table API here, and
+      // sql.identifier() would add its own quoting. The table names are
+      // compile-time constants from ORPHAN_CLEANUP_TABLES, so there's no
+      // injection surface.
+      for (const table of ORPHAN_CLEANUP_TABLES) {
+        await tx.execute(
+          dsql.raw(`DELETE FROM "${table}" WHERE org_id = '${existingOrgId}'`),
+        );
+      }
 
-  console.error(`Created API key: ${newKey.id} (prefix ${keyPrefix})`);
+      // Deleting the organization triggers CASCADE on FK-linked tables
+      // (customer_mappings, customer_revenue, customer_settings,
+      // org_invitations, org_memberships, stripe_connections).
+      await tx
+        .delete(organizations)
+        .where(eq(organizations.id, existingOrgId));
+
+      console.error(
+        `Deleted prior bootstrap org ${existingOrgId} + orphan cleanup across ${ORPHAN_CLEANUP_TABLES.length} tables`,
+      );
+    }
+
+    // 2b. Create the new org.
+    const [newOrg] = await tx
+      .insert(organizations)
+      .values({
+        name: BOOTSTRAP_ORG_NAME,
+        slug: BOOTSTRAP_ORG_SLUG,
+        isPersonal: false,
+        createdBy: BOOTSTRAP_USER_ID,
+        metadata: {
+          purpose: "e2e-bootstrap",
+          owner: "nullspend e2e framework",
+          rotatable: "true",
+        },
+      })
+      .returning({ id: organizations.id });
+
+    // Defense-in-depth: refuse to continue if UUIDv4 collides with a
+    // protected org (extraordinarily unlikely but free to check).
+    assertNotProtected(newOrg.id, "bootstrap script new org creation");
+
+    // 2c. Create the owner membership.
+    await tx.insert(orgMemberships).values({
+      orgId: newOrg.id,
+      userId: BOOTSTRAP_USER_ID,
+      role: "owner",
+    });
+
+    // 2d. Insert the API key using the REAL helpers.
+    const [newKey] = await tx
+      .insert(apiKeys)
+      .values({
+        userId: BOOTSTRAP_USER_ID,
+        orgId: newOrg.id,
+        name: BOOTSTRAP_KEY_NAME,
+        keyHash,
+        keyPrefix,
+        apiVersion: "2026-04-01",
+        environment: "live",
+        defaultTags: { e2e_tier: "L3", e2e_purpose: "bootstrap" },
+      })
+      .returning({ id: apiKeys.id });
+
+    return { orgId: newOrg.id, keyId: newKey.id };
+  });
+
+  console.error(`Created org: ${txResult.orgId}`);
+  console.error(`Created membership: ${BOOTSTRAP_USER_ID} -> ${txResult.orgId}`);
+  console.error(`Created API key: ${txResult.keyId} (prefix ${keyPrefix})`);
+
+  // Step 3: verify the new key actually authenticates against the proxy.
+  // This catches hash format drift, schema mismatches, or other silent
+  // breakage before we hand out (possibly dead) credentials.
+  const proxyUrl = process.env.NULLSPEND_PROXY_URL ?? "https://proxy.nullspend.dev";
+  if (proxyUrl === "skip") {
+    console.error("Skipping proxy key verification (NULLSPEND_PROXY_URL=skip)");
+  } else {
+    console.error(`Verifying new key against ${proxyUrl}...`);
+    try {
+      // Issue a request with an OBVIOUSLY invalid OpenAI key so the
+      // proxy authenticates our key, then fails upstream. We only care
+      // that the NullSpend auth path accepts the key — the OpenAI
+      // response doesn't matter.
+      const res = await fetch(`${proxyUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-NullSpend-Key": rawKey,
+          Authorization: "Bearer sk-invalid-proxy-verify-stub",
+          "X-NullSpend-Tags": "e2e_tier=bootstrap,e2e_purpose=key-verify",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: "x" }],
+          max_completion_tokens: 1,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      // Expected outcomes:
+      //   200 — unlikely (OpenAI somehow accepted the stub key)
+      //   401/403 — FROM OPENAI (upstream), means our proxy key worked
+      //              and passed the request to OpenAI
+      //   401/403 — FROM PROXY (nullspend), means our key was REJECTED
+      //              by the proxy — this is the failure we want to catch
+      //   502/504 — proxy worker is down, can't verify
+      //
+      // We differentiate by reading the response body. NullSpend's auth
+      // errors have shape `{ error: { code: "invalid_api_key", ... } }`.
+      // Any other 401/403 shape means the proxy accepted our key and
+      // forwarded to upstream.
+      if (res.status === 401 || res.status === 403) {
+        const body = await res.json().catch(() => null) as {
+          error?: { code?: string; message?: string };
+        } | null;
+        const code = body?.error?.code;
+        // NullSpend proxy auth error codes we need to catch:
+        if (code === "invalid_api_key" || code === "missing_api_key") {
+          throw new Error(
+            `Proxy rejected the newly created key (status ${res.status}, ` +
+              `code ${code}). Hash format may have drifted — check ` +
+              `lib/auth/api-key.ts hashKey() implementation vs. the proxy's ` +
+              `key lookup.`,
+          );
+        }
+        // Upstream (OpenAI) 401/403 is the expected success path.
+      } else if (res.status >= 500) {
+        console.error(
+          `  WARNING: proxy verification got ${res.status} — proxy may be ` +
+            `down. Bootstrap succeeded but key validity is unverified.`,
+        );
+      }
+      console.error(`  OK (proxy responded ${res.status})`);
+    } catch (err) {
+      // Re-throw our own Error (for key rejection), but tolerate network
+      // errors (proxy down) with a warning rather than a failure.
+      if (err instanceof Error && err.message.startsWith("Proxy rejected")) {
+        throw err;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `  WARNING: could not verify key (${msg}). Bootstrap succeeded ` +
+          `but key validity is unverified.`,
+      );
+    }
+  }
+
   console.error("");
   console.error("=== Credentials (plaintext, one-time output) ===");
   console.error("The plaintext API key below is the ONLY time it can be");
   console.error("retrieved. Pipe to gh secret set immediately.");
   console.error("");
 
-  // Step 5: emit to stdout in key=value format for `gh secret set`
-  // Each line is a single secret name + value, parseable by shell.
+  // Step 4: emit to stdout in key=value format for `gh secret set`
   process.stdout.write(`E2E_API_KEY=${rawKey}\n`);
   process.stdout.write(`E2E_DEV_ACTOR=${BOOTSTRAP_USER_ID}\n`);
-  process.stdout.write(`E2E_BOOTSTRAP_ORG_ID=${newOrg.id}\n`);
-  process.stdout.write(`E2E_BOOTSTRAP_KEY_ID=${newKey.id}\n`);
+  process.stdout.write(`E2E_BOOTSTRAP_ORG_ID=${txResult.orgId}\n`);
+  process.stdout.write(`E2E_BOOTSTRAP_KEY_ID=${txResult.keyId}\n`);
 
-  // Step 6: close the pool cleanly so tsx exits
-  const sql = (globalThis as { __nullspendSql?: { end: () => Promise<void> } })
+  // Step 5: close the pool cleanly so tsx exits
+  const pool = (globalThis as { __nullspendSql?: { end: () => Promise<void> } })
     .__nullspendSql;
-  if (sql) await sql.end();
+  if (pool) await pool.end();
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error("\nBootstrap failed:", err instanceof Error ? err.stack : err);
-  const sql = (globalThis as { __nullspendSql?: { end: () => Promise<void> } })
+  const pool = (globalThis as { __nullspendSql?: { end: () => Promise<void> } })
     .__nullspendSql;
-  if (sql) {
-    sql.end().finally(() => process.exit(1));
-  } else {
-    process.exit(1);
+  if (pool) {
+    await pool.end().catch(() => undefined);
   }
+  process.exit(1);
 });
