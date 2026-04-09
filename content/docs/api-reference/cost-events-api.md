@@ -43,7 +43,7 @@ API key
 ### Request
 
 ```typescript
-const res = await fetch("https://nullspend.com/api/cost-events", {
+const res = await fetch("https://nullspend.dev/api/cost-events", {
   method: "POST",
   headers: {
     "X-NullSpend-Key": "ns_live_sk_abc123...",
@@ -64,7 +64,7 @@ const res = await fetch("https://nullspend.com/api/cost-events", {
 import requests
 
 resp = requests.post(
-    "https://nullspend.com/api/cost-events",
+    "https://nullspend.dev/api/cost-events",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
     json={
         "provider": "openai",
@@ -78,7 +78,7 @@ resp = requests.post(
 ```
 
 ```bash
-curl -X POST https://nullspend.com/api/cost-events \
+curl -X POST https://nullspend.dev/api/cost-events \
   -H "X-NullSpend-Key: ns_live_sk_abc123..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -146,7 +146,7 @@ API key
 ### Request
 
 ```typescript
-const res = await fetch("https://nullspend.com/api/cost-events/batch", {
+const res = await fetch("https://nullspend.dev/api/cost-events/batch", {
   method: "POST",
   headers: {
     "X-NullSpend-Key": "ns_live_sk_abc123...",
@@ -177,7 +177,7 @@ const res = await fetch("https://nullspend.com/api/cost-events/batch", {
 import requests
 
 resp = requests.post(
-    "https://nullspend.com/api/cost-events/batch",
+    "https://nullspend.dev/api/cost-events/batch",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
     json={
         "events": [
@@ -201,7 +201,7 @@ resp = requests.post(
 ```
 
 ```bash
-curl -X POST https://nullspend.com/api/cost-events/batch \
+curl -X POST https://nullspend.dev/api/cost-events/batch \
   -H "X-NullSpend-Key: ns_live_sk_abc123..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -270,7 +270,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/cost-events?limit=10&provider=openai \
+curl https://nullspend.dev/api/cost-events?limit=10&provider=openai \
   -H "Cookie: session=..."
 ```
 
@@ -339,7 +339,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/cost-events/ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+curl https://nullspend.dev/api/cost-events/ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
   -H "Cookie: session=..."
 ```
 
@@ -401,7 +401,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/cost-events/sessions/research-task-47 \
+curl https://nullspend.dev/api/cost-events/sessions/research-task-47 \
   -H "Cookie: session=..."
 ```
 
@@ -472,7 +472,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl "https://nullspend.com/api/cost-events/summary?period=7d" \
+curl "https://nullspend.dev/api/cost-events/summary?period=7d" \
   -H "Cookie: session=..."
 ```
 
@@ -590,7 +590,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl "https://nullspend.com/api/cost-events/export?provider=openai" \
+curl "https://nullspend.dev/api/cost-events/export?provider=openai" \
   -H "Cookie: session=..." \
   -o cost-events.csv
 ```
@@ -640,15 +640,15 @@ Session (dashboard)
 
 ```bash
 # Group by API key (requires dashboard session)
-curl "https://nullspend.com/api/cost-events/attribution?groupBy=api_key&period=30d" \
+curl "https://nullspend.dev/api/cost-events/attribution?groupBy=api_key&period=30d" \
   -H "Cookie: session=..."
 
 # Group by customer_id tag
-curl "https://nullspend.com/api/cost-events/attribution?groupBy=customer_id&period=30d" \
+curl "https://nullspend.dev/api/cost-events/attribution?groupBy=customer_id&period=30d" \
   -H "Cookie: session=..."
 
 # CSV export
-curl "https://nullspend.com/api/cost-events/attribution?groupBy=api_key&format=csv" \
+curl "https://nullspend.dev/api/cost-events/attribution?groupBy=api_key&format=csv" \
   -H "Cookie: session=..." \
   -o attribution.csv
 ```
@@ -759,11 +759,11 @@ Session (dashboard)
 
 ```bash
 # API key detail (requires dashboard session)
-curl "https://nullspend.com/api/cost-events/attribution/ns_key_11223344-5566-7788-99aa-bbccddeeff00?groupBy=api_key" \
+curl "https://nullspend.dev/api/cost-events/attribution/ns_key_11223344-5566-7788-99aa-bbccddeeff00?groupBy=api_key" \
   -H "Cookie: session=..."
 
 # Tag value detail
-curl "https://nullspend.com/api/cost-events/attribution/acme-corp?groupBy=customer_id" \
+curl "https://nullspend.dev/api/cost-events/attribution/acme-corp?groupBy=customer_id" \
   -H "Cookie: session=..."
 ```
 
@@ -817,7 +817,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session
-curl "https://nullspend.com/api/cost-events/tag-keys" \
+curl "https://nullspend.dev/api/cost-events/tag-keys" \
   -H "Cookie: session=..."
 ```
 

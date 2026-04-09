@@ -27,7 +27,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/keys?limit=10 \
+curl https://nullspend.dev/api/keys?limit=10 \
   -H "Cookie: session=..."
 ```
 
@@ -81,7 +81,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/keys \
+curl -X POST https://nullspend.dev/api/keys \
   -H "Cookie: session=..." \
   -H "Content-Type: application/json" \
   -d '{"name": "production-key"}'
@@ -133,7 +133,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X DELETE https://nullspend.com/api/keys/ns_key_11223344-5566-7788-99aa-bbccddeeff00 \
+curl -X DELETE https://nullspend.dev/api/keys/ns_key_11223344-5566-7788-99aa-bbccddeeff00 \
   -H "Cookie: session=..."
 ```
 
@@ -179,7 +179,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X PATCH https://nullspend.com/api/keys/ns_key_11223344-5566-7788-99aa-bbccddeeff00 \
+curl -X PATCH https://nullspend.dev/api/keys/ns_key_11223344-5566-7788-99aa-bbccddeeff00 \
   -H "Cookie: session=..." \
   -H "Content-Type: application/json" \
   -d '{"name": "renamed-key", "defaultTags": {"team": "billing"}}'
@@ -225,7 +225,7 @@ API key
 ### Request
 
 ```typescript
-const res = await fetch("https://nullspend.com/api/auth/introspect", {
+const res = await fetch("https://nullspend.dev/api/auth/introspect", {
   headers: { "X-NullSpend-Key": "ns_live_sk_abc123..." },
 });
 ```
@@ -234,13 +234,13 @@ const res = await fetch("https://nullspend.com/api/auth/introspect", {
 import requests
 
 resp = requests.get(
-    "https://nullspend.com/api/auth/introspect",
+    "https://nullspend.dev/api/auth/introspect",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
 )
 ```
 
 ```bash
-curl https://nullspend.com/api/auth/introspect \
+curl https://nullspend.dev/api/auth/introspect \
   -H "X-NullSpend-Key: ns_live_sk_abc123..."
 ```
 

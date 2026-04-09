@@ -86,7 +86,7 @@ export function UpgradeCard({
           </Button>
         ) : (
           <a
-            href="mailto:sales@nullspend.com"
+            href="mailto:sales@nullspend.dev"
             className={buttonVariants({ variant: "outline" })}
           >
             Contact Sales

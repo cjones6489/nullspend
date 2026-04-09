@@ -21,7 +21,7 @@ Two config changes. No SDK. No code rewrite.
 
 ```bash
 # Before                                    # After
-OPENAI_BASE_URL=https://api.openai.com/v1   OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+OPENAI_BASE_URL=https://api.openai.com/v1   OPENAI_BASE_URL=https://proxy.nullspend.dev/v1
 ```
 
 Add an `X-NullSpend-Key` header and every request is tracked, budgeted, and visible.

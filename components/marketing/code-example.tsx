@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { CopyButton } from "@/components/ui/copy-button";
 
-const PROXY_URL = "https://proxy.nullspend.com/v1";
+const PROXY_URL = "https://proxy.nullspend.dev/v1";
 
 const snippets = {
   Proxy: `import OpenAI from "openai";
@@ -18,7 +18,7 @@ const client = new OpenAI({
   SDK: `import { NullSpend } from "@nullspend/sdk";
 
 const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.com",
+  baseUrl: "https://app.nullspend.dev",
   apiKey: process.env.NULLSPEND_API_KEY,
   costReporting: {},
 });

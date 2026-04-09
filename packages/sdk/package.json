@@ -8,7 +8,7 @@
     "url": "https://github.com/NullSpend/nullspend",
     "directory": "packages/sdk"
   },
-  "homepage": "https://nullspend.com",
+  "homepage": "https://nullspend.dev",
   "author": "NullSpend <chris@nullspend.dev>",
   "keywords": ["nullspend", "finops", "ai-agents", "cost-tracking", "budget", "llm", "typescript"],
   "engines": { "node": ">=20.11.0" },

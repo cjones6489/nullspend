@@ -481,7 +481,7 @@ function EmptyActivity({ hasFilter }: { hasFilter: boolean }) {
         <p className="mt-1 max-w-xs text-xs text-muted-foreground">
           {hasFilter
             ? "Try adjusting your provider or API key filters."
-            : "Set your OPENAI_BASE_URL to proxy.nullspend.com/v1 and costs will appear here within seconds."}
+            : "Set your OPENAI_BASE_URL to proxy.nullspend.dev/v1 and costs will appear here within seconds."}
         </p>
       </div>
     </div>

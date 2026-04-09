@@ -68,7 +68,7 @@ The `proposeAndWait` method handles the full lifecycle: create action, poll for 
 import { NullSpend, RejectedError, TimeoutError } from "@nullspend/sdk";
 
 const ns = new NullSpend({
-  baseUrl: "https://nullspend.com",
+  baseUrl: "https://nullspend.dev",
   apiKey: "ns_live_sk_...",
 });
 
@@ -117,7 +117,7 @@ try {
 import time
 import requests
 
-BASE = "https://nullspend.com"
+BASE = "https://nullspend.dev"
 HEADERS = {"X-NullSpend-Key": "ns_live_sk_..."}
 
 # 1. Create the action

@@ -11,7 +11,7 @@ export interface NullSpendAgentOptions {
   traceId?: string;
   /** NullSpend action ID in ns_act_<UUID> format (e.g. "ns_act_550e8400-e29b-41d4-a716-446655440000") */
   actionId?: string;
-  /** Override the proxy URL (default: https://proxy.nullspend.com) */
+  /** Override the proxy URL (default: https://proxy.nullspend.dev) */
   proxyUrl?: string;
   /** Fetch budget policy at init and inject constraints into system prompt (default: true) */
   budgetAwareness?: boolean;

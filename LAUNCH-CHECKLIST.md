@@ -58,21 +58,21 @@
 ### P0-3 — Docs hardcode wrong domain
 **Status:** 🔴 blocked on decision — what IS the real proxy URL?
 
-**Why it's P0:** `docs/quickstart/openai.md`, `docs/overview.md`, `docs/guides/migrating-from-helicone.md` (and others) hardcode `nullspend.com` and `proxy.nullspend.com`. Anyone following the quickstart tomorrow copies a URL that doesn't resolve in DNS.
+**Why it's P0:** `docs/quickstart/openai.md`, `docs/overview.md`, `docs/guides/migrating-from-helicone.md` (and others) hardcode `nullspend.dev` and `proxy.nullspend.dev`. Anyone following the quickstart tomorrow copies a URL that doesn't resolve in DNS.
 
 **Evidence:**
-- `curl -sI https://proxy.nullspend.com` → `Could not resolve host`
-- `curl -s https://nullspend.com` → 114 bytes, JS redirects to `/lander` (parking page)
+- `curl -sI https://proxy.nullspend.dev` → `Could not resolve host`
+- `curl -s https://nullspend.dev` → 114 bytes, JS redirects to `/lander` (parking page)
 
 **Decisions needed:**
 - [ ] What is the real proxy Worker URL? Options:
   - (a) `https://proxy.nullspend.dev` — requires new DNS record + Cloudflare Worker route
   - (b) Subpath on dashboard domain like `https://www.nullspend.dev/proxy/v1` — simpler, no new DNS, but changes the worker routing
-  - (c) Point `proxy.nullspend.com` at the real Worker — requires domain ownership of `.com`
-- [ ] What should `nullspend.com` do? (redirect to `.dev`, placeholder, nothing?)
+  - (c) Point `proxy.nullspend.dev` at the real Worker — requires domain ownership of `.com`
+- [ ] What should `nullspend.dev` do? (redirect to `.dev`, placeholder, nothing?)
 
 **After decision:**
-- [ ] Global sed: `nullspend.com` → `nullspend.dev` across `docs/` and `content/`
+- [ ] Global sed: `nullspend.dev` → `nullspend.dev` across `docs/` and `content/`
 - [ ] Update `OPENAI_BASE_URL` / `baseURL` references to the chosen proxy URL
 - [ ] Manually verify one quickstart flow end-to-end with a real OpenAI key
 
@@ -95,9 +95,9 @@
 ### P1-5 — Contact Us email wrong domain
 **Status:** ⬜ one-line fix
 
-**Evidence:** `Contact Us → mailto:support@nullspend.com`. Domain has no email delivery.
+**Evidence:** `Contact Us → mailto:support@nullspend.dev`. Domain has no email delivery.
 
-**Fix:** change to `support@nullspend.dev` (if mailbox exists) OR replace with a contact form OR remove. Grep for `support@nullspend.com` across the repo to find all occurrences.
+**Fix:** change to `support@nullspend.dev` (if mailbox exists) OR replace with a contact form OR remove. Grep for `support@nullspend.dev` across the repo to find all occurrences.
 
 ---
 
@@ -209,6 +209,13 @@ async redirects() {
 - **Fix options:** (a) `lychee` GitHub Action pointed at the deployed preview URL, (b) custom script that parses `<a href>` from the rendered HTML + every `](url)` in `docs/` markdown and `curl -I`s each, (c) `linkinator` npm package
 - **Effort:** S (~30 min to wire up + add to `.github/workflows/ci.yml`)
 
+**G-24 — Post-deploy DB connectivity assertion** 🔴 would have caught P0-C
+- **Bug it would have caught:** P0-C (ENOTFOUND on Supabase direct Postgres URL from Vercel Node runtime, due to Supabase IPv6-only migration for free-tier direct URLs)
+- **Gap:** `/api/health` has been reporting `{"status":"degraded"}` in production since the first deploy and nothing alerted on it. The CSO and QA passes never verified actual DB connectivity from the deployed runtime.
+- **Fix:** add a step to `.github/workflows/e2e-post-deploy.yml` that hits `/api/health` and fails the deploy if it returns non-200 or `{"status":"degraded"}`. Takes 3 lines.
+- **Effort:** S (~10 min)
+- **Lesson learned:** "tests pass locally with .env.local" does not equal "works in production." Always include a deploy-time connectivity check.
+
 **G-3 — Health endpoint alerting** 🔴 needed within 24h of launch
 - **Bug it would have caught:** ISSUE-002 (`/api/health` reporting degraded in production)
 - **Gap:** No uptime monitor. `/api/health` reports degraded but nothing pages you.
@@ -224,8 +231,8 @@ async redirects() {
 - **Effort:** M (~1h including Playwright setup if not already installed)
 
 **G-5 — Docs drift detection**
-- **Bug it would have caught:** P0-3 (docs hardcode nullspend.com)
-- **Gap:** No verification that URLs in docs match the real deployed endpoints. The docs quickstart tells users to hit `proxy.nullspend.com` which doesn't resolve.
+- **Bug it would have caught:** P0-3 (docs hardcode nullspend.dev)
+- **Gap:** No verification that URLs in docs match the real deployed endpoints. The docs quickstart tells users to hit `proxy.nullspend.dev` which doesn't resolve.
 - **Fix:** A script in `scripts/verify-docs-urls.ts` that parses every URL from `docs/**/*.md` and `content/**/*.md`, ignores localhost, then `curl -I`s each. Fail CI on any 4xx/5xx/DNS failure. Run on push + nightly.
 - **Effort:** S (~45 min)
 

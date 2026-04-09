@@ -1,7 +1,7 @@
 import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import type { NullSpendAgentOptions } from "./types.js";
 
-const DEFAULT_PROXY_URL = "https://proxy.nullspend.com";
+const DEFAULT_PROXY_URL = "https://proxy.nullspend.dev";
 const MAX_TAG_KEYS = 10;
 const MAX_TAG_KEY_LENGTH = 64;
 const MAX_TAG_VALUE_LENGTH = 256;

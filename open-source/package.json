@@ -7,7 +7,7 @@
     "type": "git",
     "url": "https://github.com/NullSpend/nullspend"
   },
-  "homepage": "https://nullspend.com",
+  "homepage": "https://nullspend.dev",
   "author": "NullSpend <chris@nullspend.dev>",
   "scripts": {
     "test": "echo \"Run package-specific tests — see below\" && exit 1",

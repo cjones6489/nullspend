@@ -23,7 +23,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/webhooks \
+curl https://nullspend.dev/api/webhooks \
   -H "Cookie: session=..."
 ```
 
@@ -84,7 +84,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/webhooks \
+curl -X POST https://nullspend.dev/api/webhooks \
   -H "Cookie: session=..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -153,7 +153,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X PATCH https://nullspend.com/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+curl -X PATCH https://nullspend.dev/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
   -H "Cookie: session=..." \
   -H "Content-Type: application/json" \
   -d '{"enabled": false}'
@@ -209,7 +209,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X DELETE https://nullspend.com/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+curl -X DELETE https://nullspend.dev/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
   -H "Cookie: session=..."
 ```
 
@@ -254,7 +254,7 @@ No request body required.
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890/test \
+curl -X POST https://nullspend.dev/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890/test \
   -H "Cookie: session=..."
 ```
 
@@ -313,7 +313,7 @@ No request body required.
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890/rotate-secret \
+curl -X POST https://nullspend.dev/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890/rotate-secret \
   -H "Cookie: session=..."
 ```
 
@@ -361,7 +361,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890/deliveries \
+curl https://nullspend.dev/api/webhooks/ns_wh_a1b2c3d4-e5f6-7890-abcd-ef1234567890/deliveries \
   -H "Cookie: session=..."
 ```
 

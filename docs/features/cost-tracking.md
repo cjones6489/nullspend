@@ -131,7 +131,7 @@ Cost events are deduplicated by `(requestId, provider)` — reprocessing the sam
 
 | Source | How It Works |
 |---|---|
-| **proxy** | Automatic. Every request through `proxy.nullspend.com` generates a cost event. |
+| **proxy** | Automatic. Every request through `proxy.nullspend.dev` generates a cost event. |
 | **api** | Manual. POST to `/api/cost-events` with token counts. Used by the SDK or direct HTTP. |
 | **mcp** | MCP tool calls. Budget check and cost event ingestion via `/v1/mcp/budget/check` and `/v1/mcp/events`. |
 
@@ -146,7 +146,7 @@ The estimate uses the pre-request estimation formula. These events are included 
 
 ## Where to See Costs
 
-- **Dashboard** — Daily spend chart, model breakdown, per-key breakdown at [nullspend.com/app/analytics](https://nullspend.com/app/analytics)
+- **Dashboard** — Daily spend chart, model breakdown, per-key breakdown at [nullspend.dev/app/analytics](https://nullspend.dev/app/analytics)
 - **API** — [`GET /api/cost-events`](../api-reference/cost-events-api.md#list-cost-events) with filters for model, provider, API key, tags, trace ID, and more. Ingest custom events with [`POST /api/cost-events`](../api-reference/cost-events-api.md#ingest-single-event).
 - **Webhooks** — `cost_event.created` fires for every cost event. Supports [full and thin payload modes](../webhooks/overview.md).
 

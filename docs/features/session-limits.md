@@ -39,7 +39,7 @@ Send the `X-NullSpend-Session` header with each request to identify the conversa
 **TypeScript:**
 
 ```typescript
-const response = await fetch("https://proxy.nullspend.com/v1/chat/completions", {
+const response = await fetch("https://proxy.nullspend.dev/v1/chat/completions", {
   method: "POST",
   headers: {
     "Authorization": `Bearer ${apiKey}`,
@@ -57,7 +57,7 @@ const response = await fetch("https://proxy.nullspend.com/v1/chat/completions", 
 
 ```python
 response = requests.post(
-    "https://proxy.nullspend.com/v1/chat/completions",
+    "https://proxy.nullspend.dev/v1/chat/completions",
     headers={
         "Authorization": f"Bearer {api_key}",
         "X-NullSpend-Session": "task-042",
@@ -179,7 +179,7 @@ The `@nullspend/sdk` provides client-side session limit enforcement via `createT
 import { NullSpend, SessionLimitExceededError } from "@nullspend/sdk";
 
 const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.com",
+  baseUrl: "https://app.nullspend.dev",
   apiKey: "ns_live_sk_...",
   costReporting: {},
 });

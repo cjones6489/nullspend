@@ -1,6 +1,6 @@
 # API Reference Overview
 
-NullSpend exposes a REST API for cost tracking, budget management, and human-in-the-loop workflows. All endpoints live under `https://nullspend.com/api/`.
+NullSpend exposes a REST API for cost tracking, budget management, and human-in-the-loop workflows. All endpoints live under `https://nullspend.dev/api/`.
 
 ---
 

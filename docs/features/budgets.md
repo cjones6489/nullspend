@@ -231,7 +231,7 @@ Budget creation and management uses session authentication (dashboard). See the 
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST "https://nullspend.com/api/budgets" \
+curl -X POST "https://nullspend.dev/api/budgets" \
   -H "Cookie: session=..." \
   -H "Content-Type: application/json" \
   -d '{

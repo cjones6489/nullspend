@@ -7,12 +7,12 @@ Get cost tracking for your OpenAI calls in under 2 minutes.
 
 ## Prerequisites
 
-- A NullSpend account ([sign up](https://nullspend.com/signup))
+- A NullSpend account ([sign up](https://nullspend.dev/signup))
 - An existing app that calls the OpenAI API
 
 ## Step 1: Create an API Key
 
-1. Log in to the [NullSpend dashboard](https://nullspend.com/app/analytics)
+1. Log in to the [NullSpend dashboard](https://nullspend.dev/app/analytics)
 2. Go to **Settings** → **Create API Key**
 3. Copy the key (starts with `ns_live_sk_`) — you won't see it again
 
@@ -22,7 +22,7 @@ Set two environment variables:
 
 ```bash
 # Point OpenAI SDK at NullSpend
-OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.dev/v1
 
 # Your real OpenAI key — unchanged
 OPENAI_API_KEY=sk-your-openai-key
@@ -39,7 +39,7 @@ Then add the `X-NullSpend-Key` header to your client:
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: {
     "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
@@ -59,7 +59,7 @@ from openai import OpenAI
 import os
 
 client = OpenAI(
-    base_url="https://proxy.nullspend.com/v1",
+    base_url="https://proxy.nullspend.dev/v1",
     default_headers={
         "X-NullSpend-Key": os.environ["NULLSPEND_API_KEY"],
     },
@@ -74,7 +74,7 @@ response = client.chat.completions.create(
 ### cURL
 
 ```bash
-curl https://proxy.nullspend.com/v1/chat/completions \
+curl https://proxy.nullspend.dev/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "X-NullSpend-Key: $NULLSPEND_API_KEY" \
   -H "Content-Type: application/json" \
@@ -86,7 +86,7 @@ curl https://proxy.nullspend.com/v1/chat/completions \
 
 ## Step 3: Check the Dashboard
 
-Open the [NullSpend dashboard](https://nullspend.com/app/analytics). Cost events appear within seconds of each request completing. You'll see:
+Open the [NullSpend dashboard](https://nullspend.dev/app/analytics). Cost events appear within seconds of each request completing. You'll see:
 
 - **Daily spend chart** — cost over time
 - **Model breakdown** — which models cost the most

@@ -1,6 +1,6 @@
 # nullspend
 
-Python SDK for [NullSpend](https://nullspend.com) — FinOps for AI agents.
+Python SDK for [NullSpend](https://nullspend.dev) — FinOps for AI agents.
 
 ## Installation
 
@@ -14,7 +14,7 @@ pip install nullspend
 from nullspend import NullSpend, CostEventInput
 
 ns = NullSpend(
-    base_url="https://nullspend.com",
+    base_url="https://nullspend.dev",
     api_key="ns_live_sk_...",
 )
 
@@ -48,4 +48,4 @@ for entity in status.entities:
 
 ## Documentation
 
-See the [NullSpend docs](https://nullspend.com/docs) for full API reference.
+See the [NullSpend docs](https://nullspend.dev/docs) for full API reference.

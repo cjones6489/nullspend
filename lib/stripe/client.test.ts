@@ -19,35 +19,35 @@ describe("getOrigin", () => {
   });
 
   it("uses NEXT_PUBLIC_APP_URL when set", () => {
-    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.nullspend.com");
-    expect(getOrigin(makeRequest())).toBe("https://app.nullspend.com");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.nullspend.dev");
+    expect(getOrigin(makeRequest())).toBe("https://app.nullspend.dev");
   });
 
   it("strips trailing slashes from NEXT_PUBLIC_APP_URL", () => {
-    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.nullspend.com///");
-    expect(getOrigin(makeRequest())).toBe("https://app.nullspend.com");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.nullspend.dev///");
+    expect(getOrigin(makeRequest())).toBe("https://app.nullspend.dev");
   });
 
   it("falls back to x-forwarded-host + x-forwarded-proto", () => {
     expect(
       getOrigin(
         makeRequest({
-          "x-forwarded-host": "app.nullspend.com",
+          "x-forwarded-host": "app.nullspend.dev",
           "x-forwarded-proto": "https",
         }),
       ),
-    ).toBe("https://app.nullspend.com");
+    ).toBe("https://app.nullspend.dev");
   });
 
   it("picks first proto when x-forwarded-proto has multiple values", () => {
     expect(
       getOrigin(
         makeRequest({
-          "x-forwarded-host": "app.nullspend.com",
+          "x-forwarded-host": "app.nullspend.dev",
           "x-forwarded-proto": "https,http",
         }),
       ),
-    ).toBe("https://app.nullspend.com");
+    ).toBe("https://app.nullspend.dev");
   });
 
   it("falls back to host header", () => {

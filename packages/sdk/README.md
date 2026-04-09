@@ -95,7 +95,7 @@ import { NullSpend, SessionLimitExceededError, BudgetExceededError, MandateViola
 import OpenAI from "openai";
 
 const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.com",
+  baseUrl: "https://app.nullspend.dev",
   apiKey: "ns_live_sk_...",
   costReporting: {},
 });
@@ -132,7 +132,7 @@ All denial types fire the `onDenied` callback before throwing. Proxy 429s with n
 1. `proxyUrl` is set on the `NullSpend` constructor AND the request URL's origin matches it (strict on scheme + host + **port** — include the port if your proxy uses a non-default one), OR
 2. The request carries an `x-nullspend-key` header (set on either `init.headers` or the underlying `Request` object's headers).
 
-See the [full SDK docs](https://nullspend.com/docs/sdks/javascript) for `TrackedFetchOptions` reference.
+See the [full SDK docs](https://nullspend.dev/docs/sdks/javascript) for `TrackedFetchOptions` reference.
 
 ## Error handling
 

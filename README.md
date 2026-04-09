@@ -25,7 +25,7 @@ minutes. Your options today:
 
 ```bash
 # Change one environment variable
-OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.dev/v1
 ```
 
 That's it. Your existing code, existing SDK, existing streaming — all works
@@ -34,14 +34,14 @@ identically. No packages to install, no clients to wrap, no config files.
 Works the same for Anthropic:
 
 ```bash
-ANTHROPIC_BASE_URL=https://proxy.nullspend.com/anthropic
+ANTHROPIC_BASE_URL=https://proxy.nullspend.dev/anthropic
 ```
 
 ## Setup (5 minutes)
 
 ### 1. Sign up and create an API key
 
-Go to [nullspend.com](https://nullspend.com), sign up, and create an API key in
+Go to [nullspend.dev](https://nullspend.dev), sign up, and create an API key in
 **Settings**.
 
 ### 2. Point your SDK at NullSpend
@@ -51,7 +51,7 @@ Go to [nullspend.com](https://nullspend.com), sign up, and create an API key in
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: {
     "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
@@ -69,7 +69,7 @@ const response = await client.chat.completions.create({
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://proxy.nullspend.com/v1",
+    base_url="https://proxy.nullspend.dev/v1",
     default_headers={
         "X-NullSpend-Key": os.environ["NULLSPEND_API_KEY"],
     },
@@ -81,7 +81,7 @@ client = OpenAI(
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
-  baseURL: "https://proxy.nullspend.com/anthropic",
+  baseURL: "https://proxy.nullspend.dev/anthropic",
   defaultHeaders: {
     "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
@@ -99,7 +99,7 @@ needed.
 
 ### 4. See your costs
 
-Open the [dashboard](https://nullspend.com/app/analytics). Cost events appear
+Open the [dashboard](https://nullspend.dev/app/analytics). Cost events appear
 within seconds — daily spend charts, per-model breakdown, per-key attribution.
 
 ## What you get
@@ -161,7 +161,7 @@ RLS on all database tables. Rate limiting (per-IP and per-key). Nonce-based CSP.
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  Your Agent (existing code, unchanged)                        │
-│  OPENAI_BASE_URL=https://proxy.nullspend.com/v1              │
+│  OPENAI_BASE_URL=https://proxy.nullspend.dev/v1              │
 └──────────────┬───────────────────────────────────────────────┘
                │ Standard API calls
                ▼
@@ -309,7 +309,7 @@ when changes span dashboard and proxy.
 
 - [Budget Configuration](docs/guides/budget-configuration.md)
 - [Migrating from Helicone](docs/guides/migrating-from-helicone.md)
-- Full docs at [nullspend.com/docs](https://nullspend.com/docs)
+- Full docs at [nullspend.dev/docs](https://nullspend.dev/docs)
 
 ## License
 

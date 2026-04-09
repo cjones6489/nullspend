@@ -23,7 +23,7 @@ describe("Get Started snippet validity", () => {
     const { NullSpend } = await import("../../../../packages/sdk/src/client");
     expect(() => {
       new NullSpend({
-        baseUrl: "https://app.nullspend.com",
+        baseUrl: "https://app.nullspend.dev",
         apiKey: "ns_test_sk_abc",
         costReporting: {},
       });
@@ -50,10 +50,10 @@ describe("Snippet URL safety", () => {
 
   it("proxy snippet uses PROXY_URL variable, not hardcoded URL", () => {
     expect(PAGE_SOURCE).toContain("PROXY_URL");
-    expect(PAGE_SOURCE).toMatch(/NEXT_PUBLIC_NULLSPEND_PROXY_URL.*proxy\.nullspend\.com/);
+    expect(PAGE_SOURCE).toMatch(/NEXT_PUBLIC_NULLSPEND_PROXY_URL.*proxy\.nullspend\.dev/);
   });
 
   it("DASHBOARD_URL falls back to production URL", () => {
-    expect(PAGE_SOURCE).toMatch(/NEXT_PUBLIC_APP_URL.*app\.nullspend\.com/);
+    expect(PAGE_SOURCE).toMatch(/NEXT_PUBLIC_APP_URL.*app\.nullspend\.dev/);
   });
 });

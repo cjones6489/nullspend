@@ -29,7 +29,7 @@ HELICONE_API_KEY=sk-helicone-...
 ### NullSpend (after)
 
 ```bash
-OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.dev/v1
 # Remove HELICONE_API_KEY — not needed
 ```
 
@@ -37,7 +37,7 @@ Add the NullSpend authentication header to your client:
 
 ```typescript
 const client = new OpenAI({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: {
     "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
@@ -54,7 +54,7 @@ the same.
 ANTHROPIC_BASE_URL=https://anthropic.helicone.ai
 
 # NullSpend (after)
-ANTHROPIC_BASE_URL=https://proxy.nullspend.com
+ANTHROPIC_BASE_URL=https://proxy.nullspend.dev
 ```
 
 ## Feature mapping
@@ -116,7 +116,7 @@ The proxy automatically forwards `traceparent` and `tracestate` headers to upstr
 
 ### 1. Sign up for NullSpend
 
-Go to [nullspend.com/signup](https://nullspend.com/signup) and create an
+Go to [nullspend.dev/signup](https://nullspend.dev/signup) and create an
 account.
 
 ### 2. Create an API key

@@ -1,9 +1,9 @@
 ---
 title: "API Reference Overview"
-description: "NullSpend exposes a REST API for cost tracking, budget management, and human-in-the-loop workflows. All endpoints live under `https://nullspend.com/api/`."
+description: "NullSpend exposes a REST API for cost tracking, budget management, and human-in-the-loop workflows. All endpoints live under `https://nullspend.dev/api/`."
 ---
 
-NullSpend exposes a REST API for cost tracking, budget management, and human-in-the-loop workflows. All endpoints live under `https://nullspend.com/api/`.
+NullSpend exposes a REST API for cost tracking, budget management, and human-in-the-loop workflows. All endpoints live under `https://nullspend.dev/api/`.
 
 ---
 

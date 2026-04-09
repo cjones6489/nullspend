@@ -133,7 +133,7 @@ class NullSpend:
         from nullspend import NullSpend
 
         ns = NullSpend(
-            base_url="https://nullspend.com",
+            base_url="https://nullspend.dev",
             api_key="ns_live_sk_...",
         )
 

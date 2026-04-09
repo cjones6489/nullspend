@@ -2,7 +2,7 @@
 
 The NullSpend proxy sits between your agents and upstream providers. It authenticates requests, tracks costs, and enforces budgets transparently.
 
-**Base URL:** `https://proxy.nullspend.com`
+**Base URL:** `https://proxy.nullspend.dev`
 
 ---
 

@@ -23,7 +23,7 @@ Set environment variables before starting the server:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `NULLSPEND_URL` | Yes | — | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
+| `NULLSPEND_URL` | Yes | — | NullSpend dashboard URL (e.g. `https://nullspend.dev`) |
 | `NULLSPEND_API_KEY` | Yes | — | API key (`ns_live_sk_...`) |
 | `NULLSPEND_AGENT_ID` | No | `"mcp-agent"` | Default agent ID for actions created by this server |
 
@@ -315,7 +315,7 @@ Add the server to your `claude_desktop_config.json`:
       "command": "node",
       "args": ["path/to/packages/mcp-server/dist/index.js"],
       "env": {
-        "NULLSPEND_URL": "https://nullspend.com",
+        "NULLSPEND_URL": "https://nullspend.dev",
         "NULLSPEND_API_KEY": "ns_live_sk_your-key-here"
       }
     }

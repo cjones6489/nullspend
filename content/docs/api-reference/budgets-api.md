@@ -23,7 +23,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/budgets \
+curl https://nullspend.dev/api/budgets \
   -H "Cookie: session=..."
 ```
 
@@ -112,7 +112,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/budgets \
+curl -X POST https://nullspend.dev/api/budgets \
   -H "Cookie: session=..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -181,7 +181,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X DELETE https://nullspend.com/api/budgets/ns_bgt_aabbccdd-eeff-0011-2233-445566778899 \
+curl -X DELETE https://nullspend.dev/api/budgets/ns_bgt_aabbccdd-eeff-0011-2233-445566778899 \
   -H "Cookie: session=..."
 ```
 
@@ -226,7 +226,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/budgets/ns_bgt_aabbccdd-eeff-0011-2233-445566778899 \
+curl -X POST https://nullspend.dev/api/budgets/ns_bgt_aabbccdd-eeff-0011-2233-445566778899 \
   -H "Cookie: session=..."
 ```
 
@@ -278,7 +278,7 @@ API key
 ### Request
 
 ```typescript
-const res = await fetch("https://nullspend.com/api/budgets/status", {
+const res = await fetch("https://nullspend.dev/api/budgets/status", {
   headers: { "X-NullSpend-Key": "ns_live_sk_abc123..." },
 });
 ```
@@ -287,13 +287,13 @@ const res = await fetch("https://nullspend.com/api/budgets/status", {
 import requests
 
 resp = requests.get(
-    "https://nullspend.com/api/budgets/status",
+    "https://nullspend.dev/api/budgets/status",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
 )
 ```
 
 ```bash
-curl https://nullspend.com/api/budgets/status \
+curl https://nullspend.dev/api/budgets/status \
   -H "X-NullSpend-Key: ns_live_sk_abc123..."
 ```
 
@@ -367,7 +367,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl https://nullspend.com/api/budgets/velocity-status \
+curl https://nullspend.dev/api/budgets/velocity-status \
   -H "Cookie: session=..."
 ```
 

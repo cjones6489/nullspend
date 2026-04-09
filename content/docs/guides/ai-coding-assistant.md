@@ -16,7 +16,7 @@ NullSpend is a proxy for OpenAI/Anthropic that tracks costs, enforces budgets, a
 
 ## Setup
 ```bash
-OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.dev/v1
 NULLSPEND_API_KEY=ns_live_sk_...  # from dashboard
 ```
 
@@ -42,7 +42,7 @@ const openai = new OpenAI({
 ```typescript
 import Anthropic from "@anthropic-ai/sdk";
 const anthropic = new Anthropic({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: { "X-NullSpend-Key": process.env.NULLSPEND_API_KEY },
 });
 // Use anthropic.messages.create() as normal
@@ -66,13 +66,13 @@ All costs in microdollars: 1 microdollar = $0.000001. $1 = 1,000,000 microdollar
 ## JS SDK
 ```typescript
 import { NullSpend } from "@nullspend/sdk";
-const ns = new NullSpend({ baseUrl: "https://nullspend.com", apiKey: process.env.NULLSPEND_API_KEY });
+const ns = new NullSpend({ baseUrl: "https://nullspend.dev", apiKey: process.env.NULLSPEND_API_KEY });
 await ns.reportCost({ provider: "openai", model: "gpt-4o", inputTokens: 1000, outputTokens: 500, costMicrodollars: 6750 });
 const budget = await ns.checkBudget();
 ```
 
-## Docs: https://nullspend.com/docs
-## llms.txt: https://nullspend.com/llms.txt
+## Docs: https://nullspend.dev/docs
+## llms.txt: https://nullspend.dev/llms.txt
 ````
 
 ## For Claude Code
@@ -84,7 +84,7 @@ Add to your project's `CLAUDE.md` file:
 
 This project uses NullSpend for AI cost tracking and budget enforcement.
 
-- Proxy URL: `https://proxy.nullspend.com/v1` (set as OPENAI_BASE_URL or ANTHROPIC_BASE_URL)
+- Proxy URL: `https://proxy.nullspend.dev/v1` (set as OPENAI_BASE_URL or ANTHROPIC_BASE_URL)
 - API key: stored in NULLSPEND_API_KEY env var, sent as `X-NullSpend-Key` header
 - Tags: `X-NullSpend-Tags` header with JSON `{"key":"value"}` for per-customer attribution
 - Sessions: `X-NullSpend-Session` header for per-conversation spend limits
@@ -95,7 +95,7 @@ This project uses NullSpend for AI cost tracking and budget enforcement.
 - Costs in microdollars (1M microdollars = $1)
 - JS SDK: `@nullspend/sdk` — NullSpend class with reportCost, checkBudget, createAction, proposeAndWait
 - Python SDK: `nullspend` — NullSpendClient class with same methods
-- Full API reference: https://nullspend.com/llms.txt
+- Full API reference: https://nullspend.dev/llms.txt
 ````
 
 ## For GitHub Copilot
@@ -104,7 +104,7 @@ Create `.github/copilot-instructions.md`:
 
 ````markdown
 When working with NullSpend:
-- The proxy sits at proxy.nullspend.com/v1 (replaces api.openai.com/v1 or anthropic base URL)
+- The proxy sits at proxy.nullspend.dev/v1 (replaces api.openai.com/v1 or anthropic base URL)
 - Every request needs the X-NullSpend-Key header with the API key from NULLSPEND_API_KEY env var
 - Cost attribution tags go in X-NullSpend-Tags header as JSON: {"customer_id":"acme"}
 - Session tracking uses X-NullSpend-Session header
@@ -112,12 +112,12 @@ When working with NullSpend:
 - Budget status: GET /api/budgets/status with the API key header
 - Error shape: { error: { code, message, details } }
 - JS SDK: @nullspend/sdk, Python SDK: nullspend
-- Docs: https://nullspend.com/docs
-- Machine-readable API reference: https://nullspend.com/llms.txt
+- Docs: https://nullspend.dev/docs
+- Machine-readable API reference: https://nullspend.dev/llms.txt
 ````
 
 ## Machine-Readable API Reference
 
-NullSpend publishes a structured text file at [`/llms.txt`](https://nullspend.com/llms.txt) that AI tools can fetch for complete API context. This follows the [llms.txt standard](https://llmstxt.org/) for making documentation agent-discoverable.
+NullSpend publishes a structured text file at [`/llms.txt`](https://nullspend.dev/llms.txt) that AI tools can fetch for complete API context. This follows the [llms.txt standard](https://llmstxt.org/) for making documentation agent-discoverable.
 
-If your AI tool supports URL fetching, point it at `https://nullspend.com/llms.txt` instead of copying blocks manually.
+If your AI tool supports URL fetching, point it at `https://nullspend.dev/llms.txt` instead of copying blocks manually.

@@ -14,7 +14,7 @@ pip install nullspend
 from nullspend import NullSpend, CostEventInput
 
 ns = NullSpend(
-    base_url="https://nullspend.com",
+    base_url="https://nullspend.dev",
     api_key="ns_live_sk_...",
 )
 
@@ -34,7 +34,7 @@ The `NullSpend` constructor accepts keyword arguments or a `NullSpendConfig` dat
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `base_url` | `str` | **required** | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
+| `base_url` | `str` | **required** | NullSpend dashboard URL (e.g. `https://nullspend.dev`) |
 | `api_key` | `str` | **required** | API key (`ns_live_sk_...`) |
 | `api_version` | `str` | `"2026-04-01"` | API version sent via `NullSpend-Version` header |
 | `request_timeout_s` | `float` | `30.0` | Per-request timeout in seconds |
@@ -43,13 +43,13 @@ The `NullSpend` constructor accepts keyword arguments or a `NullSpendConfig` dat
 
 ```python
 # Using keyword arguments
-ns = NullSpend(base_url="https://nullspend.com", api_key="ns_live_sk_...")
+ns = NullSpend(base_url="https://nullspend.dev", api_key="ns_live_sk_...")
 
 # Using config dataclass
 from nullspend import NullSpendConfig
 
 config = NullSpendConfig(
-    base_url="https://nullspend.com",
+    base_url="https://nullspend.dev",
     api_key="ns_live_sk_...",
     max_retries=3,
     request_timeout_s=60.0,

@@ -4,12 +4,12 @@ Get cost tracking for Claude Agent SDK calls in under 2 minutes.
 
 ## Prerequisites
 
-- A NullSpend account ([sign up](https://nullspend.com/signup))
+- A NullSpend account ([sign up](https://nullspend.dev/signup))
 - An existing app using the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`)
 
 ## Step 1: Create an API Key
 
-1. Log in to the [NullSpend dashboard](https://nullspend.com/app/analytics)
+1. Log in to the [NullSpend dashboard](https://nullspend.dev/app/analytics)
 2. Go to **Settings** → **Create API Key**
 3. Copy the key (starts with `ns_live_sk_`) — you won't see it again
 
@@ -44,7 +44,7 @@ Under the hood, `withNullSpend` sets `ANTHROPIC_BASE_URL` to the NullSpend proxy
 
 ## Step 4: Check the Dashboard
 
-Open the [NullSpend dashboard](https://nullspend.com/app/analytics). Cost events appear within seconds of each request completing. You'll see:
+Open the [NullSpend dashboard](https://nullspend.dev/app/analytics). Cost events appear within seconds of each request completing. You'll see:
 
 - **Daily spend chart** — cost over time
 - **Model breakdown** — which models cost the most
@@ -84,7 +84,7 @@ const options = withNullSpend({
 Your NullSpend API key is missing or invalid. Verify the key in Settings. The key must start with `ns_live_sk_`.
 
 **Costs don't appear in the dashboard**
-Cost logging is asynchronous. Wait a few seconds and refresh. If costs still don't appear, verify that `ANTHROPIC_BASE_URL` is set to `https://proxy.nullspend.com` in the subprocess environment — `withNullSpend` sets this automatically.
+Cost logging is asynchronous. Wait a few seconds and refresh. If costs still don't appear, verify that `ANTHROPIC_BASE_URL` is set to `https://proxy.nullspend.dev` in the subprocess environment — `withNullSpend` sets this automatically.
 
 **429 Budget Exceeded**
 A budget ceiling was hit. Check the dashboard for which budget was exceeded. See the [error reference](../api-reference/errors.md).

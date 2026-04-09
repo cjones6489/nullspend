@@ -2,7 +2,7 @@ const steps = [
   {
     number: "1",
     title: "Point your SDK",
-    description: "Change your base URL to proxy.nullspend.com. One environment variable.",
+    description: "Change your base URL to proxy.nullspend.dev. One environment variable.",
   },
   {
     number: "2",

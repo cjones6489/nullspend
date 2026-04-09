@@ -8,7 +8,7 @@
     "url": "https://github.com/NullSpend/nullspend",
     "directory": "packages/mcp-proxy"
   },
-  "homepage": "https://nullspend.com",
+  "homepage": "https://nullspend.dev",
   "author": "NullSpend <chris@nullspend.dev>",
   "keywords": ["nullspend", "mcp", "proxy", "gateway", "tool-gating", "model-context-protocol"],
   "engines": { "node": ">=20.11.0" },

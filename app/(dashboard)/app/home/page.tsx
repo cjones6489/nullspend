@@ -38,8 +38,8 @@ import {
 } from "@/lib/utils/dashboard";
 import { cn } from "@/lib/utils";
 
-const PROXY_URL = process.env.NEXT_PUBLIC_NULLSPEND_PROXY_URL ?? "https://proxy.nullspend.com/v1";
-const DASHBOARD_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.nullspend.com";
+const PROXY_URL = process.env.NEXT_PUBLIC_NULLSPEND_PROXY_URL ?? "https://proxy.nullspend.dev/v1";
+const DASHBOARD_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.nullspend.dev";
 
 const snippets = {
   Proxy: `import OpenAI from "openai";

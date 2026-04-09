@@ -34,7 +34,7 @@ npm run build
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `NULLSPEND_URL` | Yes | — | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
+| `NULLSPEND_URL` | Yes | — | NullSpend dashboard URL (e.g. `https://nullspend.dev`) |
 | `NULLSPEND_API_KEY` | Yes | — | API key (`ns_live_sk_...` or `ns_test_sk_...`) |
 | `UPSTREAM_COMMAND` | Yes | — | Command to start the upstream MCP server |
 | `UPSTREAM_ARGS` | No | `[]` | JSON array of arguments for the upstream command |
@@ -145,7 +145,7 @@ Example `claude_desktop_config.json` with gating and passthrough:
       "command": "node",
       "args": ["path/to/packages/mcp-proxy/dist/index.js"],
       "env": {
-        "NULLSPEND_URL": "https://nullspend.com",
+        "NULLSPEND_URL": "https://nullspend.dev",
         "NULLSPEND_API_KEY": "ns_live_sk_your-key-here",
         "UPSTREAM_COMMAND": "npx",
         "UPSTREAM_ARGS": "[\"@modelcontextprotocol/server-filesystem\", \"/home/user/projects\"]",
@@ -167,7 +167,7 @@ Example `claude_desktop_config.json` with gating and passthrough:
       "command": "node",
       "args": ["path/to/packages/mcp-proxy/dist/index.js"],
       "env": {
-        "NULLSPEND_URL": "https://nullspend.com",
+        "NULLSPEND_URL": "https://nullspend.dev",
         "NULLSPEND_API_KEY": "ns_live_sk_your-key-here",
         "UPSTREAM_COMMAND": "npx",
         "UPSTREAM_ARGS": "[\"some-mcp-server\"]",

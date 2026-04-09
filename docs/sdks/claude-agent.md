@@ -24,7 +24,7 @@ const options = withNullSpend({
   tags: { project: "customer-support", environment: "production" },
   traceId: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
   actionId: "ns_act_550e8400-e29b-41d4-a716-446655440000",
-  proxyUrl: "https://proxy.nullspend.com", // default
+  proxyUrl: "https://proxy.nullspend.dev", // default
 
   // Claude Agent SDK options (passed through)
   model: "claude-sonnet-4-20250514",
@@ -45,7 +45,7 @@ const options = withNullSpend({
 | `tags` | `Record<string, string>` | No | — | Key-value tags for cost attribution |
 | `traceId` | `string` | No | — | 32-char lowercase hex trace ID for request correlation |
 | `actionId` | `string` | No | — | NullSpend action ID (`ns_act_<UUID>`) to correlate costs with an approved action |
-| `proxyUrl` | `string` | No | `https://proxy.nullspend.com` | Override the proxy URL |
+| `proxyUrl` | `string` | No | `https://proxy.nullspend.dev` | Override the proxy URL |
 
 All other fields are passed through to the Claude Agent SDK as-is.
 
@@ -66,7 +66,7 @@ All other fields are passed through to the Claude Agent SDK as-is.
 
 `withNullSpend` sets two environment variables in the returned options:
 
-- **`ANTHROPIC_BASE_URL`** — set to `proxyUrl` (default `https://proxy.nullspend.com`), routing all Anthropic API calls through the proxy
+- **`ANTHROPIC_BASE_URL`** — set to `proxyUrl` (default `https://proxy.nullspend.dev`), routing all Anthropic API calls through the proxy
 - **`ANTHROPIC_CUSTOM_HEADERS`** — newline-delimited custom headers injected into every request
 
 ### Headers Set

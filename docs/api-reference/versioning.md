@@ -39,7 +39,7 @@ If a source provides a version not in the supported list, it's ignored and the n
 Send the `NullSpend-Version` header with any proxy request:
 
 ```bash
-curl https://proxy.nullspend.com/v1/chat/completions \
+curl https://proxy.nullspend.dev/v1/chat/completions \
   -H "NullSpend-Version: 2026-04-01" \
   -H "X-NullSpend-Key: ns_live_sk_..." \
   -H "Authorization: Bearer sk-..." \

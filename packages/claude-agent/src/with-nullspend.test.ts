@@ -9,7 +9,7 @@ describe("withNullSpend", () => {
   it("sets ANTHROPIC_BASE_URL to default proxy URL", () => {
     const result = withNullSpend({ ...BASE });
     expect(result.env?.ANTHROPIC_BASE_URL).toBe(
-      "https://proxy.nullspend.com",
+      "https://proxy.nullspend.dev",
     );
   });
 
@@ -287,7 +287,7 @@ describe("withNullSpend", () => {
   it("spreads process.env when no env provided", () => {
     const result = withNullSpend({ ...BASE });
     expect(result.env?.ANTHROPIC_BASE_URL).toBe(
-      "https://proxy.nullspend.com",
+      "https://proxy.nullspend.dev",
     );
     expect(result.env).toBeDefined();
   });
@@ -332,10 +332,10 @@ describe("withNullSpend", () => {
   it("preserves proxyUrl trailing slash as-is", () => {
     const result = withNullSpend({
       ...BASE,
-      proxyUrl: "https://proxy.nullspend.com/",
+      proxyUrl: "https://proxy.nullspend.dev/",
     });
     expect(result.env?.ANTHROPIC_BASE_URL).toBe(
-      "https://proxy.nullspend.com/",
+      "https://proxy.nullspend.dev/",
     );
   });
 });
@@ -395,7 +395,7 @@ describe("withNullSpendAsync", () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("network error"));
     const result = await withNullSpendAsync({ ...BASE });
     // Should not throw, should return base options without appendSystemPrompt
-    expect(result.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.nullspend.com");
+    expect(result.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.nullspend.dev");
     expect((result as any).appendSystemPrompt).toBeUndefined();
   });
 
@@ -425,7 +425,7 @@ describe("withNullSpendAsync", () => {
       env: { MY_VAR: "test" },
     });
     expect(result.env?.MY_VAR).toBe("test");
-    expect(result.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.nullspend.com");
+    expect(result.env?.ANTHROPIC_BASE_URL).toBe("https://proxy.nullspend.dev");
   });
 
   it("includes budget remaining and period end in prompt", async () => {

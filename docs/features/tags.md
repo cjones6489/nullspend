@@ -47,7 +47,7 @@ response = client.chat.completions.create(
 ### cURL
 
 ```bash
-curl https://proxy.nullspend.com/v1/chat/completions \
+curl https://proxy.nullspend.dev/v1/chat/completions \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
   -H "X-NullSpend-Key: $NULLSPEND_API_KEY" \
   -H 'X-NullSpend-Tags: {"team":"billing","env":"production"}' \
@@ -91,11 +91,11 @@ Use `tag.*` query parameters on [`GET /api/cost-events`](../api-reference/cost-e
 
 ```bash
 # All cost events tagged with team=billing (requires dashboard session)
-curl "https://nullspend.com/api/cost-events?tag.team=billing" \
+curl "https://nullspend.dev/api/cost-events?tag.team=billing" \
   -H "Cookie: session=..."
 
 # Multiple tag filters (AND logic)
-curl "https://nullspend.com/api/cost-events?tag.team=billing&tag.env=production" \
+curl "https://nullspend.dev/api/cost-events?tag.team=billing&tag.env=production" \
   -H "Cookie: session=..."
 ```
 

@@ -13,7 +13,7 @@ Budget enforcement happens **before** the request is forwarded to the LLM provid
 
 ## Creating a budget
 
-1. Open the [NullSpend dashboard](https://nullspend.com/app/budgets)
+1. Open the [NullSpend dashboard](https://nullspend.dev/app/budgets)
 2. Click **Set Budget**
 3. Configure:
    - **Budget for** — your account or a specific API key

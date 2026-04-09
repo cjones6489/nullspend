@@ -5,6 +5,13 @@
   "compatibility_date": "2026-03-09",
   "compatibility_flags": ["nodejs_compat"],
   "placement": { "mode": "smart" },
+  // proxy.nullspend.dev is the public proxy URL. Configured as a custom
+  // domain via the Cloudflare dashboard on 2026-04-08 (task P0-F).
+  // Declared here so `pnpm proxy:deploy` manages it via code going forward,
+  // instead of drifting from the dashboard-only state.
+  "routes": [
+    { "pattern": "proxy.nullspend.dev", "custom_domain": true }
+  ],
   "vars": {},
   "ratelimits": [
     {

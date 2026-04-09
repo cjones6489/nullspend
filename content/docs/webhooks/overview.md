@@ -7,7 +7,7 @@ Webhooks send real-time HTTP POST notifications to your server when events happe
 
 ## Quick Setup
 
-1. Open the [NullSpend dashboard](https://nullspend.com/app/settings)
+1. Open the [NullSpend dashboard](https://nullspend.dev/app/settings)
 2. Go to **Settings** → **Webhooks** → **Add Endpoint**
 3. Enter your HTTPS endpoint URL
 4. Choose which event types to receive (or leave empty for all events)

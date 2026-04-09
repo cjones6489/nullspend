@@ -14,7 +14,7 @@ npm install @nullspend/sdk
 import { NullSpend } from "@nullspend/sdk";
 
 const ns = new NullSpend({
-  baseUrl: "https://nullspend.com",
+  baseUrl: "https://nullspend.dev",
   apiKey: "ns_live_sk_...",
 });
 
@@ -34,7 +34,7 @@ The `NullSpend` constructor accepts a `NullSpendConfig` object:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `baseUrl` | `string` | **required** | NullSpend dashboard URL (e.g. `https://nullspend.com`) |
+| `baseUrl` | `string` | **required** | NullSpend dashboard URL (e.g. `https://nullspend.dev`) |
 | `apiKey` | `string` | **required** | API key (`ns_live_sk_...`) |
 | `proxyUrl` | `string` | — | NullSpend proxy URL. When set, `createTrackedFetch` skips client-side cost tracking for requests whose URL origin matches (strict on scheme, host, AND **port** — include the port if your proxy uses a non-default one). Optional — header-based detection (`x-nullspend-key`) is the always-on fallback. See [Proxy 429 interception](#proxy-429-interception). |
 | `apiVersion` | `string` | `"2026-04-01"` | API version sent via `NullSpend-Version` header |
@@ -175,7 +175,7 @@ Enable automatic batching by passing `costReporting` in the constructor:
 
 ```typescript
 const ns = new NullSpend({
-  baseUrl: "https://nullspend.com",
+  baseUrl: "https://nullspend.dev",
   apiKey: "ns_live_sk_...",
   costReporting: {
     batchSize: 10,          // default: 10 (clamped [1, 100])
@@ -312,7 +312,7 @@ The `onRetry` callback receives a `RetryInfo` object:
 
 ```typescript
 const ns = new NullSpend({
-  baseUrl: "https://nullspend.com",
+  baseUrl: "https://nullspend.dev",
   apiKey: "ns_live_sk_...",
   maxRetries: 3,
   onRetry: ({ attempt, delayMs, error, method, path }) => {
@@ -330,7 +330,7 @@ Wrap your LLM provider's `fetch` to automatically track costs and enforce polici
 
 ```typescript
 const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.com",
+  baseUrl: "https://app.nullspend.dev",
   apiKey: "ns_live_sk_...",
   costReporting: {},  // required for createTrackedFetch
 });

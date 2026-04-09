@@ -8,7 +8,7 @@
     "url": "https://github.com/NullSpend/nullspend",
     "directory": "packages/mcp-server"
   },
-  "homepage": "https://nullspend.com",
+  "homepage": "https://nullspend.dev",
   "author": "NullSpend <chris@nullspend.dev>",
   "keywords": ["nullspend", "mcp", "model-context-protocol", "approval", "human-in-the-loop"],
   "engines": { "node": ">=20.11.0" },

@@ -60,7 +60,7 @@ const tiers: Tier[] = [
       "Dedicated support",
     ],
     cta: "Contact Us",
-    ctaHref: "mailto:support@nullspend.com",
+    ctaHref: "mailto:support@nullspend.dev",
   },
 ];
 

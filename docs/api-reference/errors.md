@@ -18,7 +18,7 @@ Every error response from NullSpend — both the proxy and the dashboard API —
 
 ## Proxy Errors
 
-These errors are returned by the NullSpend proxy (`proxy.nullspend.com`).
+These errors are returned by the NullSpend proxy (`proxy.nullspend.dev`).
 
 ### Authentication
 
@@ -63,7 +63,7 @@ Rate limit responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-Ra
 
 ## Dashboard API Errors
 
-These errors are returned by the NullSpend dashboard API (`nullspend.com/api/`).
+These errors are returned by the NullSpend dashboard API (`nullspend.dev/api/`).
 
 ### Validation
 
@@ -138,7 +138,7 @@ Validation error details include an `issues` array:
 ## Handling Errors Programmatically
 
 ```typescript
-const response = await fetch("https://proxy.nullspend.com/v1/chat/completions", {
+const response = await fetch("https://proxy.nullspend.dev/v1/chat/completions", {
   method: "POST",
   headers: {
     "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,

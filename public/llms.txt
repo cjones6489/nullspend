@@ -12,7 +12,7 @@ Every cost event has a `source` field indicating how it was ingested:
 
 | Source | Value | How It Works |
 |---|---|---|
-| Proxy | `"proxy"` | Route LLM calls through `proxy.nullspend.com`. Automatic cost tracking, budget enforcement, zero code changes beyond config. |
+| Proxy | `"proxy"` | Route LLM calls through `proxy.nullspend.dev`. Automatic cost tracking, budget enforcement, zero code changes beyond config. |
 | SDK | `"api"` | Use `@nullspend/sdk` with `createTrackedFetch()` to auto-track costs client-side. Call providers directly, report costs to NullSpend. |
 | MCP | `"mcp"` | Use `@nullspend/claude-agent` or `@nullspend/mcp-server` for Claude Agent SDK and MCP tool cost tracking. |
 
@@ -23,13 +23,13 @@ Every cost event has a `source` field indicating how it was ingested:
 ```typescript
 // OpenAI — change base URL, add one header
 const openai = new OpenAI({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: { "X-NullSpend-Key": process.env.NULLSPEND_API_KEY },
 });
 
 // Anthropic
 const anthropic = new Anthropic({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: { "X-NullSpend-Key": process.env.NULLSPEND_API_KEY },
 });
 ```
@@ -40,7 +40,7 @@ const anthropic = new Anthropic({
 import { NullSpend } from "@nullspend/sdk";
 
 const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.com",
+  baseUrl: "https://app.nullspend.dev",
   apiKey: process.env.NULLSPEND_API_KEY,
   costReporting: {},
 });
@@ -177,7 +177,7 @@ Common codes: `authentication_required` (401), `forbidden` (403), `budget_exceed
 
 ## Documentation
 
-Full docs: https://nullspend.com/docs
-API Reference: https://nullspend.com/docs/api-reference/overview
-Quickstart (OpenAI): https://nullspend.com/docs/quickstart/openai
-Quickstart (Anthropic): https://nullspend.com/docs/quickstart/anthropic
+Full docs: https://nullspend.dev/docs
+API Reference: https://nullspend.dev/docs/api-reference/overview
+Quickstart (OpenAI): https://nullspend.dev/docs/quickstart/openai
+Quickstart (Anthropic): https://nullspend.dev/docs/quickstart/anthropic

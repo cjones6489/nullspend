@@ -31,7 +31,7 @@ Session (dashboard)
 
 ```bash
 # Requires dashboard session cookie
-curl "https://nullspend.com/api/actions?statuses=pending,approved&limit=20" \
+curl "https://nullspend.dev/api/actions?statuses=pending,approved&limit=20" \
   -H "Cookie: session=..."
 ```
 
@@ -103,7 +103,7 @@ API key
 ### Request
 
 ```typescript
-const res = await fetch("https://nullspend.com/api/actions", {
+const res = await fetch("https://nullspend.dev/api/actions", {
   method: "POST",
   headers: {
     "X-NullSpend-Key": "ns_live_sk_abc123...",
@@ -127,7 +127,7 @@ const res = await fetch("https://nullspend.com/api/actions", {
 import requests
 
 resp = requests.post(
-    "https://nullspend.com/api/actions",
+    "https://nullspend.dev/api/actions",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
     json={
         "agentId": "support-bot",
@@ -144,7 +144,7 @@ resp = requests.post(
 ```
 
 ```bash
-curl -X POST https://nullspend.com/api/actions \
+curl -X POST https://nullspend.dev/api/actions \
   -H "X-NullSpend-Key: ns_live_sk_abc123..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -205,7 +205,7 @@ Dual (API key or session)
 ```typescript
 // Agent polling for approval
 const res = await fetch(
-  "https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   { headers: { "X-NullSpend-Key": "ns_live_sk_abc123..." } }
 );
 ```
@@ -214,13 +214,13 @@ const res = await fetch(
 import requests
 
 resp = requests.get(
-    "https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
 )
 ```
 
 ```bash
-curl https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
+curl https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890 \
   -H "X-NullSpend-Key: ns_live_sk_abc123..."
 ```
 
@@ -286,7 +286,7 @@ No request body required.
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/approve \
+curl -X POST https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/approve \
   -H "Cookie: session=..."
 ```
 
@@ -340,7 +340,7 @@ No request body required.
 
 ```bash
 # Requires dashboard session cookie
-curl -X POST https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/reject \
+curl -X POST https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/reject \
   -H "Cookie: session=..."
 ```
 
@@ -397,7 +397,7 @@ API key
 ```typescript
 // Mark as executing
 await fetch(
-  "https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result",
+  "https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result",
   {
     method: "POST",
     headers: {
@@ -410,7 +410,7 @@ await fetch(
 
 // Mark as executed with result
 await fetch(
-  "https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result",
+  "https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result",
   {
     method: "POST",
     headers: {
@@ -430,7 +430,7 @@ import requests
 
 # Mark as failed
 resp = requests.post(
-    "https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result",
+    "https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
     json={
         "status": "failed",
@@ -440,7 +440,7 @@ resp = requests.post(
 ```
 
 ```bash
-curl -X POST https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result \
+curl -X POST https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/result \
   -H "X-NullSpend-Key: ns_live_sk_abc123..." \
   -H "Content-Type: application/json" \
   -d '{"status": "executed", "result": {"emailId": "msg_abc123"}}'
@@ -509,7 +509,7 @@ Dual (API key or session)
 
 ```typescript
 const res = await fetch(
-  "https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/costs",
+  "https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/costs",
   { headers: { "X-NullSpend-Key": "ns_live_sk_abc123..." } }
 );
 ```
@@ -518,13 +518,13 @@ const res = await fetch(
 import requests
 
 resp = requests.get(
-    "https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/costs",
+    "https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/costs",
     headers={"X-NullSpend-Key": "ns_live_sk_abc123..."},
 )
 ```
 
 ```bash
-curl https://nullspend.com/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/costs \
+curl https://nullspend.dev/api/actions/ns_act_a1b2c3d4-e5f6-7890-abcd-ef1234567890/costs \
   -H "X-NullSpend-Key: ns_live_sk_abc123..."
 ```
 

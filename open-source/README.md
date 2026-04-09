@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/NullSpend/nullspend/actions"><img src="https://github.com/NullSpend/nullspend/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/NullSpend/nullspend/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" /></a>
-  <a href="https://nullspend.com/docs"><img src="https://img.shields.io/badge/docs-nullspend.com-brightgreen" alt="Docs" /></a>
+  <a href="https://nullspend.dev/docs"><img src="https://img.shields.io/badge/docs-nullspend.dev-brightgreen" alt="Docs" /></a>
 </p>
 
 ---
@@ -22,7 +22,7 @@ AI agents are becoming autonomous economic actors. They negotiate, transact, and
 We're creating the financial infrastructure layer for the autonomous AI economy: real-time budget authorization, model and provider mandates, spend velocity controls, cost attribution, cross-provider governance, and human-in-the-loop approval — all through a transparent proxy that integrates in one line and enforces in under a millisecond.
 
 ```
-OPENAI_BASE_URL=https://proxy.nullspend.com/v1
+OPENAI_BASE_URL=https://proxy.nullspend.dev/v1
 ```
 
 This isn't observability. This isn't logging. This is **financial authorization** — every request checked against your budget before it executes, with the spend reserved atomically and the cost reconciled on completion.
@@ -51,7 +51,7 @@ NullSpend provides:
 import OpenAI from "openai";
 
 const openai = new OpenAI({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: { "X-NullSpend-Key": process.env.NULLSPEND_API_KEY },
 });
 
@@ -68,7 +68,7 @@ const response = await openai.chat.completions.create({
 import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({
-  baseURL: "https://proxy.nullspend.com/v1",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: { "X-NullSpend-Key": process.env.NULLSPEND_API_KEY },
 });
 ```
@@ -95,7 +95,7 @@ import OpenAI from "openai";
 import { NullSpend } from "@nullspend/sdk";
 
 const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.com",
+  baseUrl: "https://app.nullspend.dev",
   apiKey: process.env.NULLSPEND_API_KEY,
   costReporting: {},
 });
@@ -263,7 +263,7 @@ Built-in abuse protection: 120 requests/min per IP, 600 requests/min per API key
 
 ## Hosted Platform
 
-The open-source packages handle authorization and enforcement at the network layer. The [hosted platform at nullspend.com](https://nullspend.com) adds real-time analytics, attribution dashboards, budget management, webhook configuration, team governance, and session replay.
+The open-source packages handle authorization and enforcement at the network layer. The [hosted platform at nullspend.dev](https://nullspend.dev) adds real-time analytics, attribution dashboards, budget management, webhook configuration, team governance, and session replay.
 
 ## Proxy Endpoints
 
@@ -303,7 +303,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 - [Quick Start — Anthropic](docs/quickstart/anthropic.md)
 - [API Reference](docs/api-reference/overview.md)
 - [Webhooks](docs/webhooks/overview.md)
-- [Full docs at nullspend.com](https://nullspend.com/docs)
+- [Full docs at nullspend.dev](https://nullspend.dev/docs)
 
 ## License
 

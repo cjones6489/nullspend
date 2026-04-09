@@ -59,7 +59,7 @@ Async variant. Same as `withNullSpend`, but also fetches the API key's budget po
 | Option             | Type                    | Required | Default                          | Description                                              |
 | ------------------ | ----------------------- | -------- | -------------------------------- | -------------------------------------------------------- |
 | `apiKey`           | `string`                | Yes      |                                  | NullSpend API key (`ns_live_sk_...` or `ns_test_sk_...`) |
-| `proxyUrl`         | `string`                | No       | `https://proxy.nullspend.com`    | Override the proxy URL                                   |
+| `proxyUrl`         | `string`                | No       | `https://proxy.nullspend.dev`    | Override the proxy URL                                   |
 | `tags`             | `Record<string,string>` | No       |                                  | Cost attribution tags (max 10 keys, key max 64 chars, value max 256 chars) |
 | `budgetSessionId`  | `string`                | No       |                                  | Session ID for budget-level cost grouping                |
 | `autoSession`      | `boolean`               | No       | `true`                           | Auto-generate a session ID if `budgetSessionId` is not provided |

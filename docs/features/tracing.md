@@ -40,7 +40,7 @@ Both `traceparent` and `tracestate` are forwarded to the upstream provider.
 **TypeScript:**
 
 ```typescript
-const response = await fetch("https://proxy.nullspend.com/v1/chat/completions", {
+const response = await fetch("https://proxy.nullspend.dev/v1/chat/completions", {
   method: "POST",
   headers: {
     "X-NullSpend-Key": "ns_live_sk_...",
@@ -58,7 +58,7 @@ const response = await fetch("https://proxy.nullspend.com/v1/chat/completions", 
 **cURL:**
 
 ```bash
-curl https://proxy.nullspend.com/v1/chat/completions \
+curl https://proxy.nullspend.dev/v1/chat/completions \
   -H "X-NullSpend-Key: ns_live_sk_..." \
   -H "Authorization: Bearer sk-..." \
   -H "Content-Type: application/json" \
@@ -83,7 +83,7 @@ Invalid values (wrong length, uppercase, non-hex characters) are silently ignore
 If neither header is present (or both are invalid), the proxy generates a trace ID via `crypto.randomUUID()` with dashes removed. The generated ID is returned in the `X-NullSpend-Trace-Id` response header so you can capture it for subsequent requests in the same trace.
 
 ```typescript
-const response = await fetch("https://proxy.nullspend.com/v1/chat/completions", {
+const response = await fetch("https://proxy.nullspend.dev/v1/chat/completions", {
   method: "POST",
   headers: {
     "X-NullSpend-Key": "ns_live_sk_...",
