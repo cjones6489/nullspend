@@ -51,6 +51,20 @@ the full tier model, directory layout, and how to add a test.
 |---|---|---|
 | 0 — Scaffolding + script-injection fix + CI wiring | ✅ shipped | `tests/e2e/` skeleton, `vitest.e2e.config.ts`, `playwright.config.ts`, `e2e-post-deploy.yml` hardened, JUnit artifact upload |
 | 1 — Post-deploy infra smoke | ✅ shipped | `tests/e2e/infra/` with 5 suites: CSP nonce freshness, `/api/health` all-components-ok, DNS/SSL for prod hosts, proxy PONG, dashboard routes crash sweep. Closes P0-1/A2, P0-B, P0-C, P0-D, P0-E, P0-F, P1-19 detection gaps. |
+| 1a — Workflow unblock + secret guard + Slack alerts | ✅ shipped | Extended condition to cover Production, pre-flight secret guard, Slack-on-failure. The workflow has NEVER run before Slice 1a because the condition was Preview-only. |
+| 1b — Bootstrap E2E test org script | ✅ shipped | `scripts/bootstrap-e2e-org.ts` provisions `e2e-bootstrap-org` via real drizzle + `lib/auth/api-key.ts` helpers. Idempotent rotation. |
+| 1c — Workflow build-step parity | ✅ shipped | Added missing sdk/claude-agent/docs builds to `e2e-post-deploy.yml` |
+| 1d — Disable legacy `scripts/e2e-smoke.ts` | ✅ shipped | Legacy script requires dev mode; disabled in CI pending Slice 4 port |
+| 1e — Critical audit fixes | ✅ shipped | globalSetup fail-fast, CSP body parsing, transactional bootstrap, shared `PROTECTED_ORG_IDS`, bootstrap key verification |
+| 1f — Slice 1e audit follow-up | ✅ shipped | Typed drizzle deletes (replaced `sql.raw`), Object.freeze drop + `ProtectedOrgError` class, Content-Type gated verify, exit code 2 for inconclusive, `NULLSPEND_SKIP_KEY_VERIFY` flag, 24 new unit tests for global-setup + protected-orgs |
+| 1g — Supabase circuit breaker fix | ✅ shipped | `getCurrentUserId()` throws `AuthenticationRequiredError` OUTSIDE the breaker so unauthenticated requests don't trip it |
+| 1h — Production URL override | ✅ shipped | Workflow uses stable `www.nullspend.dev` for Production deploys (Vercel per-deployment URLs are behind Deployment Protection) |
+| 1i — Circuit breaker service/client classification | ✅ shipped | Verified against `@supabase/auth-js` source: `auth.getUser()` NEVER throws. Added `isSupabaseServiceFailure` helper that promotes `AuthRetryableFetchError` + 5xx responses to thrown exceptions INSIDE the breaker. 10 new regression tests with realistic `mockResolvedValue({error: ...})` patterns. |
+| 1j — Medium edge-case fixes | ✅ shipped | CSP body test explicit 3xx assertion (EC-2), orphan cleanup drift test walking drizzle schema (EC-3), `assertNotProtected` input normalization + 6 new tests (EC-4) |
+| 1k — Commit-SHA verification | ✅ shipped | New `/api/version` endpoint + workflow step that verifies deployed SHA matches `github.sha`. Catches Vercel auto-rollback, multi-deploy races, atomic-swap window (EC-5). 13 unit tests. |
+| 1l — Composite action + verbose gate + cost event DB verification | ✅ shipped | `.github/actions/build-workspace-packages/action.yml` (BUG-8), `/api/health?verbose=1` opt-in gate via `INTERNAL_HEALTH_SECRET` + 9 new tests (Drift-3 / G-18), DB verification of PONG cost events (Gap-7) |
+| 1m — Low-severity edge cases | ✅ shipped | Bootstrap 429 as inconclusive (EC-7), Postgres advisory lock for concurrent bootstrap (EC-9), workflow URL sanity check (EC-10) |
+| 1n — Documentation + observability | ✅ shipped | Triage runbook + cost observability SQL examples in `tests/e2e/README.md` |
 | 2 — Build-time + deploy-time env validation | ⬜ | `scripts/verify-env.ts`, Vercel env drift detection |
 | 3 — Link checker | ⬜ | `lychee` on PR + nightly |
 | 4 — Port orphan E2E scripts to vitest | ⬜ | `scripts/e2e-*.ts` → `tests/e2e/dashboard/` |
