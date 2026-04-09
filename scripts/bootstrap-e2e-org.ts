@@ -107,7 +107,7 @@ function loadEnvLocal() {
 }
 loadEnvLocal();
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import {
@@ -167,19 +167,20 @@ async function main() {
 
   const db = getDb();
 
-  // Step 1: find any existing bootstrap org so we can assert it's safe
-  // to reset OUTSIDE the transaction (a single SELECT doesn't need to
-  // be in the tx).
-  const existing = await db
+  // Step 1: early status message for the operator. The authoritative
+  // read happens INSIDE the transaction after acquiring the advisory
+  // lock (see Step 2) to avoid races with concurrent bootstrap runs.
+  const earlyPeek = await db
     .select({ id: organizations.id })
     .from(organizations)
     .where(eq(organizations.slug, BOOTSTRAP_ORG_SLUG))
     .limit(1);
-
-  const existingOrgId = existing[0]?.id ?? null;
-  if (existingOrgId) {
-    assertNotProtected(existingOrgId, "bootstrap script reset of existing org");
-    console.error(`Found existing bootstrap org ${existingOrgId} — will reset.`);
+  if (earlyPeek[0]?.id) {
+    assertNotProtected(
+      earlyPeek[0].id,
+      "bootstrap script early peek",
+    );
+    console.error(`Found existing bootstrap org ${earlyPeek[0].id} — will reset.`);
   } else {
     console.error("No existing bootstrap org found — will create fresh.");
   }
@@ -191,7 +192,49 @@ async function main() {
   const keyHash = hashKey(rawKey);
   const keyPrefix = extractPrefix(rawKey);
 
+  // EC-9: serialize concurrent bootstrap runs via a Postgres advisory
+  // lock. Without this, two developers running `pnpm e2e:bootstrap`
+  // within seconds of each other would both SELECT the existing org,
+  // both DELETE it (race-benign), and both try to INSERT a new org
+  // with slug `e2e-bootstrap-org` — the second one failing with a
+  // UNIQUE constraint violation that looks like a bug but is actually
+  // a race.
+  //
+  // Advisory locks are transaction-scoped (pg_advisory_xact_lock)
+  // so they release automatically on transaction commit or rollback.
+  // The key is a single-int64 derived from hashing the slug — any
+  // two processes bootstrapping the same slug will serialize on
+  // the same lock. Other operations against the DB are unaffected.
+  //
+  // Lock key: hashtext('e2e-bootstrap-org') — Postgres-native hash
+  // function. Using a stable value so different runs always resolve
+  // to the same lock.
   const txResult = await db.transaction(async (tx) => {
+    // Acquire the advisory lock FIRST. If another process holds it,
+    // this call blocks until they commit/rollback. The lock is
+    // released automatically when this transaction ends.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${BOOTSTRAP_ORG_SLUG}))`,
+    );
+
+    // Authoritative re-read of the existing org INSIDE the lock.
+    // Another process may have committed a new org between our
+    // early-peek SELECT above and our lock acquisition. Without this
+    // re-read, we'd try to delete a stale org ID (no-op) and then
+    // insert a second org with the same slug (UNIQUE violation).
+    const inLock = await tx
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.slug, BOOTSTRAP_ORG_SLUG))
+      .limit(1);
+    const existingOrgId = inLock[0]?.id ?? null;
+    if (existingOrgId) {
+      assertNotProtected(
+        existingOrgId,
+        "bootstrap script reset of existing org (in-lock)",
+      );
+    }
+
     // 2a. Clean up prior bootstrap org + all orphan rows.
     if (existingOrgId) {
       // Clean up orphan rows using the typed drizzle query builder.
@@ -356,6 +399,17 @@ async function main() {
           }
           // Upstream (OpenAI) 401/403 is the expected success path.
         }
+      } else if (res.status === 429) {
+        // EC-7: Rate limit from upstream (OpenAI). The NullSpend auth
+        // layer worked — the request reached upstream — but we can't
+        // conclusively say the key is valid because the upstream
+        // response didn't reach us. Treat as inconclusive.
+        console.error(
+          `  WARNING: proxy verification got 429 — upstream (OpenAI) rate ` +
+            `limited us. NullSpend auth path accepted the key but the full ` +
+            `round-trip couldn't complete. Key validity is inconclusive.`,
+        );
+        verificationInconclusive = true;
       } else if (res.status >= 500) {
         console.error(
           `  WARNING: proxy verification got ${res.status} — proxy may be ` +

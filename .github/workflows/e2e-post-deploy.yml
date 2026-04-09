@@ -147,6 +147,17 @@ jobs:
           if [ -z "$URL" ]; then
             echo "No target URL found"; exit 1
           fi
+          # EC-10: sanity-check the resolved URL. A malformed
+          # NULLSPEND_PRODUCTION_URL variable (e.g., "https://" with
+          # no host, or a typo like "htps://...") would produce a
+          # confusing "connection refused" error downstream. Fail
+          # fast with a clear message.
+          if ! [[ "$URL" =~ ^https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/.*)?$ ]]; then
+            echo "Resolved URL is malformed: '$URL'"
+            echo "Expected: http(s)://host[:port][/path]"
+            echo "Check vars.NULLSPEND_PRODUCTION_URL or the dispatch input."
+            exit 1
+          fi
           echo "Target: $URL ($ENV_LABEL)"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "env_label=$ENV_LABEL" >> "$GITHUB_OUTPUT"
