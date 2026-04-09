@@ -3,7 +3,15 @@ import { z } from "zod";
 const envSchema = z.object({
   DATABASE_URL: z.string(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().startsWith("https://"),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string(),
+  // Supabase renamed "anon key" to "publishable key" in their naming migration.
+  // lib/auth/supabase.ts + lib/auth/supabase-browser.ts read the new name
+  // (NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) directly via process.env. Validating
+  // the OLD name here (NEXT_PUBLIC_SUPABASE_ANON_KEY) caused every server route
+  // that calls getDb() -> getEnv() to throw on the Zod check in production,
+  // even though the actual Supabase client was reading a different var.
+  // Found by /qa on 2026-04-08: /api/health degraded + every authed API
+  // route 500-ing with "Missing or invalid environment variables".
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string(),
   UPSTASH_REDIS_REST_URL: z.string().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
