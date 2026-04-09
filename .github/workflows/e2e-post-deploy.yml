@@ -61,7 +61,24 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm db:build && pnpm cost-engine:build
+
+      # Build workspace packages — mirrors .github/workflows/ci.yml build
+      # steps exactly. Keep in sync with ci.yml. The legacy
+      # scripts/e2e-smoke.ts imports @nullspend/sdk which resolves to
+      # packages/sdk/dist/index.cjs, so sdk:build is required before the
+      # legacy step runs. Slice 1 infra tests don't need sdk/claude-agent/
+      # docs, but building them keeps parity with ci.yml and avoids
+      # "works in unit tests, breaks in post-deploy" drift.
+      - name: Build @nullspend/db
+        run: pnpm db:build
+      - name: Build @nullspend/cost-engine
+        run: pnpm cost-engine:build
+      - name: Build @nullspend/sdk
+        run: pnpm sdk:build
+      - name: Build @nullspend/claude-agent
+        run: pnpm claude-agent:build
+      - name: Build @nullspend/docs
+        run: pnpm docs-mcp:build
 
       # Pre-flight: verify the required secrets are actually set. If any are
       # missing, fail FAST with a clear message naming the missing secret
