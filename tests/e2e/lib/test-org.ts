@@ -34,14 +34,10 @@ export interface TestOrg {
   cleanup: () => Promise<void>;
 }
 
-/**
- * Protected org IDs that the cleanup sweep will refuse to touch.
- *
- * Re-exported from `./protected-orgs` so callers can import from either
- * path during the Slice 1e→1g transition. New code should import directly
- * from `./protected-orgs`.
- */
-export { PROTECTED_ORG_IDS, assertNotProtected } from "./protected-orgs";
+// PROTECTED_ORG_IDS + assertNotProtected live in `./protected-orgs` —
+// the single source of truth for founder-org protection. Slice 4's
+// createTestOrg implementation should import directly from there:
+//   import { assertNotProtected } from "./protected-orgs";
 
 export interface CreateTestOrgOptions {
   /**

@@ -29,30 +29,59 @@
  */
 
 /**
- * Frozen read-only set. Use `.has(id)` to check membership.
+ * Read-only set of founder org IDs that E2E tooling must never touch.
+ *
+ * # Runtime vs. compile-time immutability
+ *
+ * This constant is typed as `ReadonlySet<string>`, which prevents
+ * TypeScript callers from calling `.add()`, `.delete()`, or `.clear()`
+ * at compile time. It is NOT frozen at runtime — `Object.freeze()` on
+ * a `Set` is a no-op because Set mutations happen via internal slots,
+ * not own properties. A caller who does
+ *   `(PROTECTED_ORG_IDS as Set<string>).add(...)`
+ * will succeed at runtime, but the type cast makes the intent obvious
+ * and requires an explicit bypass of the safety guarantee.
+ *
+ * Type-level immutability is sufficient for internal tooling because
+ * every caller is trusted code in this same repo. If we ever needed
+ * runtime enforcement (e.g., if this constant were exposed to
+ * untrusted code), we'd wrap it in a `Proxy` that throws on mutation.
  *
  * @see memory/project_founder_dogfood_upgrade.md for the founder org IDs
  */
-export const PROTECTED_ORG_IDS: ReadonlySet<string> = Object.freeze(
-  new Set<string>([
-    // Founder Personal org (Pro dogfood tier per founder dogfood memory)
-    "052f5cc2-63e6-41db-ace7-ea20364851ab",
-    // Founder Test org
-    "55c30156-1d15-46f7-bdb4-ca2a15a69d77",
-  ]),
-);
+export const PROTECTED_ORG_IDS: ReadonlySet<string> = new Set<string>([
+  // Founder Personal org (Pro dogfood tier per founder dogfood memory)
+  "052f5cc2-63e6-41db-ace7-ea20364851ab",
+  // Founder Test org
+  "55c30156-1d15-46f7-bdb4-ca2a15a69d77",
+]);
 
 /**
- * Throws a descriptive error if the given org ID is in the protected set.
- * Use at the top of any function that performs destructive operations on
- * an org ID received from a query result or env var.
+ * Thrown by `assertNotProtected` when a caller attempts a destructive
+ * operation on a protected org. Distinct error class so callers that
+ * catch errors can identify and re-raise safety violations specifically.
  */
-export function assertNotProtected(orgId: string, context: string): void {
-  if (PROTECTED_ORG_IDS.has(orgId)) {
-    throw new Error(
+export class ProtectedOrgError extends Error {
+  constructor(
+    public readonly orgId: string,
+    public readonly context: string,
+  ) {
+    super(
       `SAFETY: ${context} attempted to touch protected org ${orgId}. ` +
         `This org is in the PROTECTED_ORG_IDS allowlist and must never ` +
         `be modified by E2E tooling. Check tests/e2e/lib/protected-orgs.ts.`,
     );
+    this.name = "ProtectedOrgError";
+  }
+}
+
+/**
+ * Throws a `ProtectedOrgError` if the given org ID is in the protected
+ * set. Use at the top of any function that performs destructive
+ * operations on an org ID received from a query result or env var.
+ */
+export function assertNotProtected(orgId: string, context: string): void {
+  if (PROTECTED_ORG_IDS.has(orgId)) {
+    throw new ProtectedOrgError(orgId, context);
   }
 }

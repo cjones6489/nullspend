@@ -88,6 +88,21 @@ async function fetchHtmlSnapshot(url: string): Promise<HtmlResponseSnapshot> {
 
   // Parse body for `<script nonce="..."` and `<style nonce="..."` tags.
   // Only try to parse if the response has a body (skip redirects).
+  //
+  // Known regex limitations (acceptable because Next.js doesn't emit
+  // these patterns and the cost of a real HTML parser would outweigh
+  // the benefit for a single E2E test):
+  //   - Matches `<script nonce="...">` inside HTML comments:
+  //       <!-- <script nonce="fake"> -->
+  //   - Matches `<script nonce="...">` inside literal string content of
+  //     a parent <script> tag (nested-script edge case).
+  //   - Matches inside CDATA, <textarea>, <title>, <pre> content.
+  //   - Does not handle multi-line attribute values or HTML5 unquoted
+  //     attributes (e.g., `<script nonce=abc>`).
+  //
+  // If a future content change triggers a false positive on the
+  // body-header consistency assertion, switch to a real HTML parser
+  // (parse5 or cheerio) rather than extending the regex.
   const bodyScriptNonces: string[] = [];
   const bodyStyleNonces: string[] = [];
   if (res.status >= 200 && res.status < 300) {
