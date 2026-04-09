@@ -40,15 +40,38 @@ export async function getCurrentUserId(): Promise<string | null> {
   // circuit breaker. Only the actual auth call goes inside the circuit.
   const supabase = await createServerSupabaseClient();
 
-  return supabaseCircuit.call(async () => {
-    const { data: { user }, error } = await supabase.auth.getUser();
-
-    if (error) {
-      throw new AuthenticationRequiredError(error.message);
-    }
-
-    return user?.id ?? null;
+  // We run `supabase.auth.getUser()` inside the circuit breaker to protect
+  // against actual Supabase outages (network errors, 5xx responses,
+  // timeouts). But `auth.getUser()` NEVER throws on "no session" — it
+  // returns `{ data: { user: null }, error: AuthError }` where the error
+  // indicates a client-side condition (missing cookie, expired JWT, etc.),
+  // NOT a Supabase service failure.
+  //
+  // Previously we threw `AuthenticationRequiredError` INSIDE the breaker
+  // callback. The breaker counted every unauthenticated request as a
+  // service failure and opened after 5 consecutive 401s. In production,
+  // any scan / crawler / legitimate unauth'd test hit opened the circuit
+  // and returned 503 with Retry-After:30 to ALL users on that Vercel
+  // instance — including authenticated ones.
+  //
+  // Fix: return the auth result from the circuit callback as a success
+  // (the Supabase SERVICE succeeded — it responded with "no session").
+  // Throw `AuthenticationRequiredError` OUTSIDE the breaker so the
+  // circuit only counts real service failures.
+  //
+  // Regression guard: `lib/auth/session.test.ts` includes a test that
+  // fires 10+ no-session calls and asserts the circuit stays closed.
+  //
+  // See: memory/project_finding_supabase_circuit_breaker_sensitivity.md
+  const result = await supabaseCircuit.call(async () => {
+    return await supabase.auth.getUser();
   });
+
+  if (result.error) {
+    throw new AuthenticationRequiredError(result.error.message);
+  }
+
+  return result.data.user?.id ?? null;
 }
 
 function tryDevFallback(warn?: boolean): string | undefined {
