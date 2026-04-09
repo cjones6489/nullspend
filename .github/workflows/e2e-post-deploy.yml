@@ -1,21 +1,55 @@
 name: E2E Post-Deploy
 
+# Runs after Vercel reports a successful deployment (Preview or Production)
+# OR manually via workflow_dispatch. Executes the full E2E framework against
+# the resolved target URL.
+#
+# Triggers:
+#   - deployment_status — any Vercel deploy that lands in state=success on
+#     environment=Preview or Production. Both are covered because pushing
+#     to main goes straight to Production in the current setup (Vercel
+#     never creates Preview deploys for direct main pushes).
+#   - workflow_dispatch — manual run against a custom URL. Used for:
+#     * First-time validation after secrets are configured
+#     * Smoke-testing the framework after e2e changes
+#     * Rerunning post-deploy tests on-demand after a flake
+#
+# Required repository secrets (set via `gh secret set <name>` interactively):
+#   - E2E_API_KEY        — dashboard API key for a dedicated E2E test org.
+#                          Create in the dashboard under Keys; mark as E2E.
+#   - E2E_DEV_ACTOR      — UUID of the E2E test user for session-bypass
+#                          (used by legacy scripts/e2e-smoke.ts only; will
+#                          be removed in Slice 4 after the port).
+#   - E2E_DATABASE_URL   — Supabase pooler connection string for test-scoped
+#                          SQL cleanup. Must use pooler host (not direct
+#                          IPv6 URL) — see memory/project_production_urls.md.
+#   - E2E_OPENAI_API_KEY — OpenAI API key for the proxy PONG test. Low-spend
+#                          budget recommended (<$1/month at current cadence).
+#                          If missing, proxy-reachable tests auto-skip.
+
 on:
   deployment_status:
   workflow_dispatch:
     inputs:
       preview_url:
-        description: "Vercel preview URL"
+        description: "Target URL (Vercel preview or production URL to run e2e against)"
         required: true
 
 jobs:
-  e2e-smoke:
+  e2e-post-deploy:
+    # Run on:
+    #  1. manual workflow_dispatch (any time)
+    #  2. successful Vercel deploys — both Preview and Production.
+    # The Slice 1 framework is designed to be safe to run against production
+    # (see tests/e2e/infra/dashboard-routes-sweep.e2e.test.ts comments about
+    # the Supabase auth circuit breaker handling).
     if: >-
       (github.event_name == 'workflow_dispatch') ||
       (github.event.deployment_status.state == 'success' &&
-       github.event.deployment_status.environment == 'Preview')
+       (github.event.deployment_status.environment == 'Preview' ||
+        github.event.deployment_status.environment == 'Production'))
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
@@ -29,26 +63,66 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:build && pnpm cost-engine:build
 
+      # Pre-flight: verify the required secrets are actually set. If any are
+      # missing, fail FAST with a clear message naming the missing secret
+      # and how to set it. This prevents the workflow from silently running
+      # with empty env vars and producing confusing downstream failures.
+      - name: Verify required secrets are present
+        env:
+          E2E_API_KEY: ${{ secrets.E2E_API_KEY }}
+          E2E_DEV_ACTOR: ${{ secrets.E2E_DEV_ACTOR }}
+          E2E_DATABASE_URL: ${{ secrets.E2E_DATABASE_URL }}
+          E2E_OPENAI_API_KEY: ${{ secrets.E2E_OPENAI_API_KEY }}
+        run: |
+          MISSING=()
+          [ -z "$E2E_API_KEY" ]      && MISSING+=("E2E_API_KEY (required — dashboard API key for test org)")
+          [ -z "$E2E_DEV_ACTOR" ]    && MISSING+=("E2E_DEV_ACTOR (required — test user UUID)")
+          [ -z "$E2E_DATABASE_URL" ] && MISSING+=("E2E_DATABASE_URL (required — Supabase pooler connection)")
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "ERROR: Required secrets are missing:"
+            printf '  - %s\n' "${MISSING[@]}"
+            echo ""
+            echo "Set them with:"
+            echo "  gh secret set E2E_API_KEY"
+            echo "  gh secret set E2E_DEV_ACTOR"
+            echo "  gh secret set E2E_DATABASE_URL"
+            echo "  gh secret set E2E_OPENAI_API_KEY  # optional, unlocks proxy PONG test"
+            echo ""
+            exit 1
+          fi
+
+          if [ -z "$E2E_OPENAI_API_KEY" ]; then
+            echo "NOTE: E2E_OPENAI_API_KEY is not set. The proxy-reachable"
+            echo "      test suite will auto-skip. Set it to unlock full coverage:"
+            echo "      gh secret set E2E_OPENAI_API_KEY"
+          fi
+          echo "All required secrets are present."
+
       # Read untrusted webhook inputs into env vars FIRST, never interpolate
       # `${{ github.event.* }}` directly into bash. See GitHub Actions
       # hardening guide: https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions#using-an-intermediate-environment-variable
-      - name: Resolve preview URL
+      - name: Resolve target URL
         id: url
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_URL: ${{ github.event.inputs.preview_url }}
           DEPLOYMENT_URL: ${{ github.event.deployment_status.target_url }}
+          ENVIRONMENT: ${{ github.event.deployment_status.environment }}
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             URL="$DISPATCH_URL"
+            ENV_LABEL="manual"
           else
             URL="$DEPLOYMENT_URL"
+            ENV_LABEL="$ENVIRONMENT"
           fi
           if [ -z "$URL" ]; then
-            echo "No preview URL found"; exit 1
+            echo "No target URL found"; exit 1
           fi
-          echo "Preview URL: $URL"
+          echo "Target: $URL ($ENV_LABEL)"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "env_label=$ENV_LABEL" >> "$GITHUB_OUTPUT"
 
       - name: Wait for deployment health
         env:
@@ -75,7 +149,7 @@ jobs:
           CI: "true"
         run: pnpm e2e:run tests/e2e/infra/
 
-      - name: Run e2e smoke tests (legacy scripts/e2e-smoke.ts — ports in Slice 4)
+      - name: Run e2e dashboard tests (legacy scripts/e2e-smoke.ts — ports in Slice 4)
         env:
           NULLSPEND_BASE_URL: ${{ steps.url.outputs.url }}
           NULLSPEND_API_KEY: ${{ secrets.E2E_API_KEY }}
@@ -87,9 +161,42 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-post-deploy-results
+          name: e2e-post-deploy-results-${{ steps.url.outputs.env_label || 'manual' }}-${{ github.run_id }}
           path: |
             test-results/
             playwright-report/
           retention-days: 14
           if-no-files-found: ignore
+
+      # Notify Slack on failure — only if post-deploy caught a real regression.
+      # Success runs are silent to avoid alert fatigue. Requires SLACK_QA_WEBHOOK_URL
+      # secret; auto-skips inside the step if not set (secrets.* is not
+      # available in `if:` expressions, so the gate is in the bash body).
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_QA_WEBHOOK_URL: ${{ secrets.SLACK_QA_WEBHOOK_URL }}
+          TARGET_URL: ${{ steps.url.outputs.url }}
+          ENV_LABEL: ${{ steps.url.outputs.env_label }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$SLACK_QA_WEBHOOK_URL" ]; then
+            echo "SLACK_QA_WEBHOOK_URL not set, skipping Slack notification"
+            exit 0
+          fi
+          PAYLOAD=$(cat <<JSON
+          {
+            "text": "E2E post-deploy failed on ${ENV_LABEL} (${TARGET_URL})",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*E2E post-deploy failed* — \`${ENV_LABEL}\` deploy\\n<${RUN_URL}|View run> · <${TARGET_URL}|Target>"
+                }
+              }
+            ]
+          }
+          JSON
+          )
+          curl -sS -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$SLACK_QA_WEBHOOK_URL" || true
