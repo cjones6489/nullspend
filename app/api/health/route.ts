@@ -1,7 +1,8 @@
 import { Redis } from "@upstash/redis";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
+import { organizations } from "@nullspend/db";
 
 import { REQUIRED_SCHEMA } from "./required-schema";
 
@@ -109,6 +110,34 @@ export async function GET(request: Request) {
         error: verbose
           ? (err instanceof Error ? err.message : "Schema check failed")
           : "check failed",
+      };
+    }
+  }
+
+  // 2b. Parameterized drizzle query — exercises the exact failure path
+  // that was breaking dashboard API routes on 2026-04-08 (P0-E). If the
+  // raw SELECT 1 in check #1 works but this parameterized query fails,
+  // we know the issue is postgres.js type introspection on parameters
+  // rather than a connection problem. extractErrorDebug captures the
+  // underlying postgres error code.
+  if (components.database.status === "ok") {
+    try {
+      const db = getDb();
+      // Intentionally parameterized query. eq() generates a placeholder
+      // so postgres.js has to resolve the parameter type.
+      await db
+        .select({ id: organizations.id })
+        .from(organizations)
+        .where(eq(organizations.id, "00000000-0000-0000-0000-000000000000"))
+        .limit(1);
+      components.parameterized_query = { status: "ok" };
+    } catch (err) {
+      components.parameterized_query = {
+        status: "error",
+        error: verbose
+          ? (err instanceof Error ? err.message : "Parameterized query failed")
+          : "check failed",
+        ...(verbose ? { debug: extractErrorDebug(err) } : {}),
       };
     }
   }
