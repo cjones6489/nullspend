@@ -91,6 +91,7 @@ export default function CustomerDetailPage() {
 
       <div className="flex items-center gap-3">
         {data.avatarUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
           <img src={data.avatarUrl} alt="" className="h-10 w-10 rounded-full" />
         ) : (
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground">

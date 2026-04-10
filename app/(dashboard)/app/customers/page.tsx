@@ -507,6 +507,7 @@ export default function CustomersPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {c.avatarUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
                           <img src={c.avatarUrl} alt="" className="h-6 w-6 rounded-full" />
                         ) : (
                           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
@@ -569,6 +570,7 @@ export default function CustomersPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {c.avatarUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={c.avatarUrl} alt="" className="h-8 w-8 rounded-full" />
                     ) : (
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">

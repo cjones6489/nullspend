@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet, apiPost } from "@/lib/api/client";
-import { sessionKeys } from "@/lib/queries/session";
 import type { OrgRole } from "@/lib/validations/orgs";
 
 interface OrgRecord {
