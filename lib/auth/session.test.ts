@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AuthenticationRequiredError,
   SupabaseEnvError,
+  UpstreamServiceError,
 } from "@/lib/auth/errors";
 import {
   _supabaseCircuitForTesting,
@@ -337,8 +338,8 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
       },
     } as never);
 
-    // First 5 calls propagate the error; the 6th should be CircuitOpenError.
-    let thrownRetryableCount = 0;
+    // First 5 calls propagate the error as UpstreamServiceError; the 6th should be CircuitOpenError.
+    let upstreamErrorCount = 0;
     let circuitOpenCount = 0;
     for (let i = 0; i < 6; i++) {
       try {
@@ -347,18 +348,16 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
       } catch (err) {
         if (err instanceof Error && err.name === "CircuitOpenError") {
           circuitOpenCount++;
-        } else if (
-          err &&
-          typeof err === "object" &&
-          (err as { name?: string }).name === "AuthRetryableFetchError"
-        ) {
-          thrownRetryableCount++;
+        } else if (err instanceof UpstreamServiceError) {
+          upstreamErrorCount++;
+          // Verify the raw Supabase error is preserved as cause
+          expect((err.cause as { name?: string })?.name).toBe("AuthRetryableFetchError");
         } else {
           throw err;
         }
       }
     }
-    expect(thrownRetryableCount).toBe(5);
+    expect(upstreamErrorCount).toBe(5);
     expect(circuitOpenCount).toBe(1);
     expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
   });
@@ -373,11 +372,9 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
       },
     } as never);
 
-    // 5 failures → breaker opens
+    // 5 failures → breaker opens. Errors are wrapped in UpstreamServiceError.
     for (let i = 0; i < 5; i++) {
-      await expect(getCurrentUserId()).rejects.toMatchObject({
-        name: "AuthRetryableFetchError",
-      });
+      await expect(getCurrentUserId()).rejects.toBeInstanceOf(UpstreamServiceError);
     }
     expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
   });
@@ -397,9 +394,12 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
     } as never);
 
     for (let i = 0; i < 5; i++) {
-      await expect(getCurrentUserId()).rejects.toMatchObject({
-        name: "AuthApiError",
-        status: 500,
+      const rejection = getCurrentUserId();
+      await expect(rejection).rejects.toBeInstanceOf(UpstreamServiceError);
+      // Verify the raw error is preserved as cause
+      await rejection.catch((err: UpstreamServiceError) => {
+        expect((err.cause as { name?: string })?.name).toBe("AuthApiError");
+        expect((err.cause as { status?: number })?.status).toBe(500);
       });
     }
     expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
@@ -425,15 +425,13 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
     }
     expect(_supabaseCircuitForTesting.getState()).toBe("CLOSED");
 
-    // 5 AuthRetryableFetchError — should open on the 5th
+    // 5 AuthRetryableFetchError — should open on the 5th (wrapped as UpstreamServiceError)
     for (let i = 0; i < 5; i++) {
       getUserMock.mockResolvedValueOnce({
         data: { user: null },
         error: AUTH_RETRYABLE_FETCH_NETWORK,
       });
-      await expect(getCurrentUserId()).rejects.toMatchObject({
-        name: "AuthRetryableFetchError",
-      });
+      await expect(getCurrentUserId()).rejects.toBeInstanceOf(UpstreamServiceError);
     }
     expect(_supabaseCircuitForTesting.getState()).toBe("OPEN");
   });
@@ -448,6 +446,7 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
     expect(isSupabaseServiceFailure(AUTH_RETRYABLE_FETCH_NETWORK)).toBe(true);
     expect(isSupabaseServiceFailure(AUTH_RETRYABLE_FETCH_502)).toBe(true);
     expect(isSupabaseServiceFailure(AUTH_API_500)).toBe(true);
+    expect(isSupabaseServiceFailure({ name: "AuthUnknownError", message: "unexpected body" })).toBe(true);
     expect(isSupabaseServiceFailure({ name: "Other", status: 503 })).toBe(true);
     expect(isSupabaseServiceFailure({ name: "Other", status: 500 })).toBe(true);
 

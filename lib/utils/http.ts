@@ -14,6 +14,7 @@ import {
   AuthenticationRequiredError,
   ForbiddenError,
   SupabaseEnvError,
+  UpstreamServiceError,
 } from "@/lib/auth/errors";
 import { getLogger } from "@/lib/observability";
 import { CircuitOpenError } from "@/lib/resilience/circuit-breaker";
@@ -156,6 +157,14 @@ export function handleRouteError(error: unknown) {
 
   if (error instanceof SpendCapExceededError) {
     return NextResponse.json(errorJson("spend_cap_exceeded", error.message), { status: 400 });
+  }
+
+  if (error instanceof UpstreamServiceError) {
+    getLogger("http").warn({ err: error }, "Upstream service error — returning 503");
+    return NextResponse.json(
+      errorJson("service_unavailable", "Service temporarily unavailable."),
+      { status: 503, headers: { "Retry-After": "30" } },
+    );
   }
 
   if (error instanceof CircuitOpenError) {

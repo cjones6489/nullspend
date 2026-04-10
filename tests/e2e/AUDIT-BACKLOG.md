@@ -10,28 +10,13 @@ Tracked here so a new session can pick up exactly where we left off.
 
 ## Critical — fix before relying on framework as launch gate
 
-### BUG-1i-REGRESSION — Raw Supabase errors propagate as unhandled 500s
-- **Severity:** Critical
-- **Effort:** ~30 min
-- **Status:** Open
-- **Files:** `lib/auth/session.ts`, `lib/auth/errors.ts`, `lib/utils/http.ts`
-- **What:** Slice 1i's circuit breaker fix throws raw `AuthApiError` / `AuthRetryableFetchError` from `getCurrentUserId()`. These flow through `resolveUserId()` → route handler → `handleRouteError()`, which has no case for them → falls into generic "Unhandled route error" 500 branch with `captureExceptionWithContext` (Sentry spam).
-- **Impact:** Every Supabase 5xx now gives users HTTP 500 "Internal server error" (no Retry-After), and creates a Sentry error capture for a transient upstream issue. Pre-Slice 1g, users got 401 (wrong but not as confusing). The correct response is 503 + Retry-After:30 (matching the `CircuitOpenError` behavior).
-- **Fix:** Introduce `UpstreamServiceError` class in `lib/auth/errors.ts`. Circuit callback throws `UpstreamServiceError` wrapping the raw auth-js error. `handleRouteError` maps `UpstreamServiceError` → 503 + Retry-After:30 + `warn`-level log (not error, no Sentry).
-- **Evidence:** `lib/utils/http.ts:141-183` (ladder misses auth-js error classes); `lib/auth/session.ts:112-128` (throws raw error); `lib/auth/session.ts:153-168` (`resolveUserId` catch block's guard misses `AuthApiError`/`AuthRetryableFetchError`)
-- **Regression tests to rewrite:** `lib/auth/session.test.ts` service-failure tests currently assert `rejects.toMatchObject({name: "AuthApiError"})` — must change to `rejects.toBeInstanceOf(UpstreamServiceError)` plus a new integration test walking the full route handler path to assert 503.
+_(empty — zero critical items)_
 
 ---
 
 ## High — fix soon after critical
 
-### BUG-1i-TEST-CONTRACT — Regression tests lock in wrong downstream contract
-- **Severity:** High
-- **Effort:** ~20 min (bundles with BUG-1i-REGRESSION fix)
-- **Status:** Open
-- **Files:** `lib/auth/session.test.ts`
-- **What:** The 4 Slice 1i service-failure tests assert `rejects.toMatchObject({name: "AuthApiError", status: 500})`. This codifies the regression as "correct" behavior. Any fix for BUG-1i-REGRESSION requires rewriting these tests.
-- **Fix:** Rewrite to assert `rejects.toBeInstanceOf(UpstreamServiceError)`. Add a new integration test that mocks `auth.getUser()` to return a 5xx → calls a real route handler → asserts HTTP 503 + Retry-After header.
+_(empty — zero high items)_
 
 ---
 
@@ -52,10 +37,10 @@ Tracked here so a new session can pick up exactly where we left off.
 ### BUG-1i-AUTHUNKNOWN — `AuthUnknownError` not classified as service failure
 - **Severity:** Low
 - **Effort:** ~5 min
-- **Status:** Open
+- **Status:** ✅ Fixed (Slice 1p)
 - **Files:** `lib/auth/session.ts` (`isSupabaseServiceFailure`)
-- **What:** `AuthUnknownError` is thrown when auth-js can't parse the response JSON (CDN interstitial, HTML error page). My classifier returns `false` → breaker doesn't count it. Only used in 1 place in `GoTrueClient.js:316` (initialization) and `fetch.js:21` (JSON parse failure).
-- **Fix:** Add `if (e.name === "AuthUnknownError") return true;` to `isSupabaseServiceFailure`. Add regression test.
+- **What:** `AuthUnknownError` is thrown when auth-js can't parse the response JSON (CDN interstitial, HTML error page). My classifier returns `false` → breaker doesn't count it.
+- **Fix:** Added `if (e.name === "AuthUnknownError") return true;` to `isSupabaseServiceFailure`. Regression test added.
 
 ### BUG-1k-WORKFLOW-GREP-FRAGILE — JSON parsing in bash uses grep not jq
 - **Severity:** Low
@@ -140,3 +125,6 @@ full list. Key highlights:
 - Drift-4 Sweep P1-19 comment → rewritten (Slice 1e)
 - Gap-7 Cost event DB verification → PONG + DB query (Slice 1l + 1o)
 - X-NullSpend-Tags format → JSON not key=value (Slice 1o)
+- BUG-1i-REGRESSION → UpstreamServiceError + handleRouteError 503 (Slice 1p)
+- BUG-1i-TEST-CONTRACT → tests assert UpstreamServiceError not raw AuthApiError (Slice 1p)
+- BUG-1i-AUTHUNKNOWN → AuthUnknownError classified as service failure (Slice 1p)

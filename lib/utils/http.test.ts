@@ -104,6 +104,24 @@ describe("handleRouteError", () => {
     expect(captureExceptionWithContext).not.toHaveBeenCalled();
   });
 
+  it("returns 503 with Retry-After for UpstreamServiceError (no Sentry)", async () => {
+    const { UpstreamServiceError } = await import("@/lib/auth/errors");
+    const cause = { name: "AuthApiError", message: "Internal server error", status: 500 };
+    const error = new UpstreamServiceError("Supabase auth service failure: Internal server error", cause);
+    const response = handleRouteError(error);
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error.code).toBe("service_unavailable");
+    expect(body.error.message).toBe("Service temporarily unavailable.");
+    expect(response.headers.get("Retry-After")).toBe("30");
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      { err: error },
+      "Upstream service error — returning 503",
+    );
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
+  });
+
   it("logs SupabaseEnvError as 500 but does NOT call Sentry", async () => {
     const { SupabaseEnvError } = await import("@/lib/auth/errors");
     const error = new SupabaseEnvError("NEXT_PUBLIC_SUPABASE_URL");

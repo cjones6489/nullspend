@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import {
   AuthenticationRequiredError,
   SupabaseEnvError,
+  UpstreamServiceError,
 } from "@/lib/auth/errors";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getDb } from "@/lib/db/client";
@@ -67,6 +68,8 @@ export function isSupabaseServiceFailure(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as { name?: unknown; status?: unknown };
   if (e.name === "AuthRetryableFetchError") return true;
+  // AuthUnknownError: auth-js can't parse response JSON (CDN interstitial, HTML error page)
+  if (e.name === "AuthUnknownError") return true;
   if (typeof e.status === "number" && e.status >= 500) return true;
   return false;
 }
@@ -113,9 +116,12 @@ export async function getCurrentUserId(): Promise<string | null> {
     const res = await supabase.auth.getUser();
     if (res.error && isSupabaseServiceFailure(res.error)) {
       // Promote service failures to thrown exceptions so the breaker
-      // counts them. The breaker catches this throw and rethrows it
-      // from .call(), so our outer code path sees the same error.
-      throw res.error;
+      // counts them. Wrap in UpstreamServiceError so handleRouteError
+      // maps to 503 + Retry-After instead of generic 500 + Sentry.
+      throw new UpstreamServiceError(
+        `Supabase auth service failure: ${res.error.message}`,
+        res.error,
+      );
     }
     return res;
   });
@@ -151,11 +157,13 @@ async function resolveUserId(options?: {
       return userId;
     }
   } catch (error) {
-    // Fall back to dev actor for missing Supabase config, auth failures, and circuit breaker open.
+    // Fall back to dev actor for missing Supabase config, auth failures,
+    // upstream service errors, and circuit breaker open.
     if (
       error instanceof SupabaseEnvError ||
       error instanceof AuthenticationRequiredError ||
-      error instanceof CircuitOpenError
+      error instanceof CircuitOpenError ||
+      error instanceof UpstreamServiceError
     ) {
       const fallback = tryDevFallback(options?.warnOnFallback);
       if (fallback) {
