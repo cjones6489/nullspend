@@ -57,6 +57,7 @@ import {
   budgetHealthColor,
   formatMicrodollars,
 } from "@/lib/utils/format";
+import { toExternalId } from "@/lib/ids/prefixed-id";
 import { cn } from "@/lib/utils";
 import { parseDeepLink } from "./deep-link";
 
@@ -736,7 +737,9 @@ function BudgetDialog({
       return;
     }
 
-    const entityId = isEdit
+    // The API expects prefixed IDs for user/api_key entity types
+    // (e.g., ns_usr_<uuid>, ns_key_<uuid>). Tags and customers pass through as-is.
+    const rawEntityId = isEdit
       ? editBudget.entityId
       : entityType === "user"
         ? userId
@@ -745,6 +748,10 @@ function BudgetDialog({
           : entityType === "customer"
             ? customerId.trim()
             : selectedKeyId;
+
+    const entityId = rawEntityId && (entityType === "user" || entityType === "api_key")
+      ? toExternalId(entityType === "user" ? "usr" : "key", rawEntityId)
+      : rawEntityId;
 
     if (!entityId) {
       toast.error(
