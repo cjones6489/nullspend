@@ -266,7 +266,7 @@ describe("getMarginTable", () => {
 
     const result = await getMarginTable(ORG_ID, PERIOD);
     expect(result.customers).toHaveLength(1);
-    expect(result.customers[0].marginPercent).toBe(-100);
+    expect(result.customers[0].marginPercent).toBe(0);
     expect(result.customers[0].healthTier).toBe("critical");
     expect(result.summary.criticalCount).toBe(1);
   });

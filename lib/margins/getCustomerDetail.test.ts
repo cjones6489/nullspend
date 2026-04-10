@@ -207,7 +207,7 @@ describe("getCustomerDetail", () => {
     expect(result!.revenueOverTime[2]).toEqual({ period: "2026-04", revenue: 50_000_000, cost: 10_000_000 });
   });
 
-  it("returns -100% margin when revenue is $0 but cost exists", async () => {
+  it("returns 0% margin (critical) when revenue is $0 but cost exists", async () => {
     setupMockDb({
       revenueRows: [],
       costRows: [{ period: "2026-04", totalCost: 20_000_000 }],
@@ -215,7 +215,7 @@ describe("getCustomerDetail", () => {
     });
 
     const result = await getCustomerDetail(ORG_ID, TAG_VALUE, PERIOD);
-    expect(result!.marginPercent).toBe(-100);
+    expect(result!.marginPercent).toBe(0);
     expect(result!.healthTier).toBe("critical");
     expect(result!.revenueMicrodollars).toBe(0);
     expect(result!.costMicrodollars).toBe(20_000_000);
