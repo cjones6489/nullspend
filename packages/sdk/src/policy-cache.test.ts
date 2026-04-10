@@ -415,4 +415,60 @@ describe("createPolicyCache", () => {
       expect(cache.getSessionLimit()).toBeNull();
     });
   });
+
+  // -------------------------------------------------------------------------
+  // onError callback (Codex finding #5)
+  // -------------------------------------------------------------------------
+
+  describe("onError callback (Codex finding #5)", () => {
+    it("calls onError when fetch fails and no stale cache exists", async () => {
+      const err = new Error("network down");
+      fetchPolicy.mockRejectedValue(err);
+      const onError = vi.fn();
+
+      const cache = createPolicyCache(fetchPolicy, 1000, onError);
+      const result = await cache.getPolicy();
+
+      expect(result).toBeNull();
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(err);
+    });
+
+    it("calls onError when fetch fails but returns stale cache", async () => {
+      fetchPolicy
+        .mockResolvedValueOnce(makePolicy({ session_limit_microdollars: 100 }))
+        .mockRejectedValueOnce(new Error("timeout"));
+      const onError = vi.fn();
+
+      const cache = createPolicyCache(fetchPolicy, 0, onError); // TTL=0 to force refetch
+      await cache.getPolicy(); // populate cache
+      const result = await cache.getPolicy(); // should fail + return stale
+
+      expect(result).not.toBeNull();
+      expect(result!.session_limit_microdollars).toBe(100);
+      expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call onError on successful fetch", async () => {
+      fetchPolicy.mockResolvedValue(makePolicy());
+      const onError = vi.fn();
+
+      const cache = createPolicyCache(fetchPolicy, 1000, onError);
+      await cache.getPolicy();
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("coerces non-Error rejections to Error", async () => {
+      fetchPolicy.mockRejectedValue("string error");
+      const onError = vi.fn();
+
+      const cache = createPolicyCache(fetchPolicy, 1000, onError);
+      await cache.getPolicy();
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
+      expect(onError.mock.calls[0][0].message).toBe("string error");
+    });
+  });
 });

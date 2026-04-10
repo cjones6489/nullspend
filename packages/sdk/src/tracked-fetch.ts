@@ -45,6 +45,7 @@ export function buildTrackedFetch(
   queueCost: (event: CostEventInput) => void,
   policyCache: PolicyCache | null,
   proxyUrl?: string,
+  fetchFn?: typeof globalThis.fetch,
 ): typeof globalThis.fetch {
   // Validate + normalize customer here so direct callers of createTrackedFetch
   // get the same fail-fast behavior as NullSpend.customer(). Throws on invalid
@@ -69,6 +70,7 @@ export function buildTrackedFetch(
     : queueCost;
 
   const metadata = { sessionId, traceId, tags, customer };
+  const doFetch = fetchFn ?? globalThis.fetch;
 
   return async function trackedFetch(
     input: RequestInfo | URL,
@@ -102,7 +104,7 @@ export function buildTrackedFetch(
     // client-side would double-count. The 429 interception was previously
     // bypassed by an early return — that was the bug fixed in §15c-1.
     if (isProxied(url, init, proxyUrl, input)) {
-      const response = await globalThis.fetch(input, init);
+      const response = await doFetch(input, init);
       if (response.status === 429 && enforcement) {
         const parsed = await parseDenialPayload(response);
         if (parsed) dispatchDenialCode(parsed, customer, onDenied, onCostError);
@@ -113,11 +115,11 @@ export function buildTrackedFetch(
     // Non-tracked routes pass through
     const method = init?.method ?? (input instanceof Request ? input.method : "GET");
     if (!isTrackedRoute(provider, url, method)) {
-      return globalThis.fetch(input, init);
+      return doFetch(input, init);
     }
 
     // Parse body for model + streaming detection
-    const bodyStr = extractBody(input, init);
+    const bodyStr = await extractBody(input, init);
     const model = (bodyStr && extractModelFromBody(bodyStr)) ?? "unknown";
     const streaming = bodyStr ? isStreamingRequest(bodyStr) : false;
 
@@ -201,13 +203,13 @@ export function buildTrackedFetch(
     }
 
     const startTime = performance.now();
-    const response = await globalThis.fetch(input, modifiedInit ?? init);
+    const response = await doFetch(input, modifiedInit ?? init);
 
-    // Proxy 429 interception: detect NullSpend denial codes from proxy
-    if (response.status === 429 && enforcement) {
-      const parsed = await parseDenialPayload(response);
-      if (parsed) dispatchDenialCode(parsed, customer, onDenied, onCostError);
-    }
+    // No 429 interception in direct mode. In direct mode there is no NullSpend
+    // proxy to send denial codes; the SDK handles enforcement locally (mandates,
+    // budgets, session limits above). Trusting X-NullSpend-Denied from an
+    // arbitrary LLM provider origin would be a trust-boundary violation.
+    // Proxy-mode 429 interception lives in the isProxied() branch above.
 
     // Don't track errors
     if (!response.ok) return response;
@@ -567,13 +569,21 @@ function addHeader(init: RequestInit | undefined, name: string, value: string): 
   return { ...init, headers: { [name]: value } };
 }
 
-function extractBody(input: RequestInfo | URL, init?: RequestInit): string | null {
-  if (init?.body && typeof init.body === "string") return init.body;
-  // Note: Request.body is a ReadableStream, not a string — provider SDKs
-  // always pass (url, init) where init.body is a JSON string, so this path
-  // is not needed. If someone passes a Request object, body extraction fails
-  // gracefully (model="unknown", streaming not detected, cost still tracked
-  // from the response).
+async function extractBody(input: RequestInfo | URL, init?: RequestInit): Promise<string | null> {
+  // init.body takes precedence (per WHATWG fetch spec: init replaces Request fields)
+  if (init?.body !== undefined) {
+    return typeof init.body === "string" ? init.body : null;
+  }
+  // Request body fallback: clone so the original body stream stays consumable
+  // for the actual fetch call. Provider SDKs typically pass (url, init), but
+  // some callers pass a pre-built Request object.
+  if (input instanceof Request) {
+    try {
+      return await input.clone().text();
+    } catch {
+      return null;
+    }
+  }
   return null;
 }
 

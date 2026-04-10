@@ -66,6 +66,7 @@ const DEFAULT_TTL_MS = 60_000;
 export function createPolicyCache(
   fetchPolicy: () => Promise<PolicyResponse>,
   ttlMs: number = DEFAULT_TTL_MS,
+  onError?: (error: Error) => void,
 ): PolicyCache {
   let cached: PolicyResponse | null = null;
   let cachedAt = 0;
@@ -84,8 +85,10 @@ export function createPolicyCache(
         cachedAt = Date.now();
         return policy;
       })
-      .catch(() => {
-        // Fetch failure falls open — return stale cache or null
+      .catch((err) => {
+        // Fetch failure falls open — return stale cache or null.
+        // Surface the error so operators know the policy endpoint is unreachable.
+        onError?.(err instanceof Error ? err : new Error(String(err)));
         return cached;
       })
       .finally(() => {

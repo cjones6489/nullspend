@@ -3329,14 +3329,166 @@ describe("buildTrackedFetch", () => {
     });
 
     // -----------------------------------------------------------------------
-    // Sub-describe: direct mode (defensive). The helper runs in both proxied
-    // and direct modes; these tests lock the helper's contract for the
-    // (currently functionally unused) direct-mode call site. Don't delete —
-    // they serve as a regression guard if anyone ever puts a proxy in front
-    // of a direct path.
+    // Sub-describe: direct mode — NO 429 interception. In direct mode there
+    // is no NullSpend proxy to send denial codes. Trusting X-NullSpend-Denied
+    // from an arbitrary LLM provider would be a trust-boundary violation
+    // (Codex finding #6). All 429 interception is now proxy-only.
     // -----------------------------------------------------------------------
 
-    describe("direct mode (defensive)", () => {
+    // -----------------------------------------------------------------------
+    // Finding #2: custom fetch passthrough
+    // -----------------------------------------------------------------------
+
+    describe("custom fetch passthrough (Codex finding #2)", () => {
+      it("uses fetchFn instead of globalThis.fetch for tracked requests", async () => {
+        const customFetch = vi.fn().mockResolvedValue(openaiJsonResponse());
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          undefined,
+          queueCost,
+          null,
+          undefined,
+          customFetch,
+        );
+
+        await trackedFetch(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        // Custom fetch should have been called, not globalThis.fetch
+        expect(customFetch).toHaveBeenCalledTimes(1);
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("uses fetchFn for non-tracked routes", async () => {
+        const customFetch = vi.fn().mockResolvedValue(new Response("ok"));
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          undefined,
+          queueCost,
+          null,
+          undefined,
+          customFetch,
+        );
+
+        await trackedFetch("https://api.openai.com/v1/models", { method: "GET" });
+
+        expect(customFetch).toHaveBeenCalledTimes(1);
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("uses fetchFn for proxied requests", async () => {
+        const customFetch = vi.fn().mockResolvedValue(openaiJsonResponse());
+        const PROXY = "https://proxy.example.com";
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          undefined,
+          queueCost,
+          null,
+          PROXY,
+          customFetch,
+        );
+
+        await trackedFetch(`${PROXY}/v1/chat/completions`, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        expect(customFetch).toHaveBeenCalledTimes(1);
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("falls back to globalThis.fetch when fetchFn is not provided", async () => {
+        mockFetch.mockResolvedValue(openaiJsonResponse());
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          undefined,
+          queueCost,
+          null,
+        );
+
+        await trackedFetch(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Finding #3: Request object body parsing
+    // -----------------------------------------------------------------------
+
+    describe("Request object body parsing (Codex finding #3)", () => {
+      it("extracts model from Request object body", async () => {
+        mockFetch.mockResolvedValue(openaiJsonResponse("gpt-4o-mini"));
+
+        const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+
+        const request = new Request(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody("gpt-4o-mini"),
+          headers: { "Content-Type": "application/json" },
+        });
+
+        await trackedFetch(request);
+
+        expect(queueCost).toHaveBeenCalledTimes(1);
+        const event: CostEventInput = queueCost.mock.calls[0][0];
+        // Model should be extracted from the request body, not "unknown"
+        expect(event.model).toBe("gpt-4o-mini");
+      });
+
+      it("detects streaming from Request object body", async () => {
+        mockFetch.mockResolvedValue(
+          mockFetchStreamResponse(openaiStreamChunks()),
+        );
+
+        const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+
+        const request = new Request(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody("gpt-4o", true),
+          headers: { "Content-Type": "application/json" },
+        });
+
+        const response = await trackedFetch(request);
+        await consumeStream(response);
+
+        expect(queueCost).toHaveBeenCalledTimes(1);
+        const event: CostEventInput = queueCost.mock.calls[0][0];
+        expect(event.model).toBe("gpt-4o");
+      });
+
+      it("prefers init.body over Request body when both provided", async () => {
+        mockFetch.mockResolvedValue(openaiJsonResponse("gpt-4o-mini"));
+
+        const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+
+        const request = new Request(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody("gpt-4o"),
+          headers: { "Content-Type": "application/json" },
+        });
+
+        // init.body should take precedence
+        await trackedFetch(request, {
+          body: makeOpenAIBody("gpt-4o-mini"),
+        });
+
+        expect(queueCost).toHaveBeenCalledTimes(1);
+        const event: CostEventInput = queueCost.mock.calls[0][0];
+        expect(event.model).toBe("gpt-4o-mini");
+      });
+    });
+
+    describe("direct mode (no interception — Codex finding #6)", () => {
       it("upstream provider 429 passes through without throwing", async () => {
         const policyCache = createMockPolicyCache();
 
@@ -3352,18 +3504,51 @@ describe("buildTrackedFetch", () => {
             message: "Rate limit exceeded",
             type: "rate_limit_error",
           },
-        }, 429, DENIED_HEADERS));
+        }, 429));
 
         const response = await trackedFetch(OPENAI_URL, {
           method: "POST",
           body: makeOpenAIBody(),
         });
 
-        // Upstream 429 without code: "budget_exceeded" should pass through
         expect(response.status).toBe(429);
       });
 
-      it("proxy 429 with non-JSON body passes through", async () => {
+      it("NullSpend-shaped 429 with X-NullSpend-Denied header does NOT throw in direct mode", async () => {
+        // Regression: a malicious origin could stamp X-NullSpend-Denied: 1 and
+        // budget_exceeded code. In direct mode the SDK must NOT trust it.
+        const policyCache = createMockPolicyCache();
+
+        const trackedFetch = buildTrackedFetch(
+          "openai",
+          { enforcement: true },
+          queueCost,
+          policyCache,
+          // NO proxyUrl — direct mode
+        );
+
+        mockFetch.mockResolvedValue(mockFetchJsonResponse({
+          error: {
+            code: "budget_exceeded",
+            message: "Budget exceeded",
+            details: {
+              entity_type: "api_key",
+              entity_id: "key-1",
+              budget_limit_microdollars: 5_000_000,
+              budget_spend_microdollars: 4_900_000,
+            },
+          },
+        }, 429, DENIED_HEADERS));
+
+        // Must pass through (not throw) — the SDK has no proxy to trust
+        const response = await trackedFetch(OPENAI_URL, {
+          method: "POST",
+          body: makeOpenAIBody(),
+        });
+        expect(response.status).toBe(429);
+      });
+
+      it("non-JSON 429 passes through", async () => {
         const policyCache = createMockPolicyCache();
 
         const trackedFetch = buildTrackedFetch(
@@ -3384,7 +3569,6 @@ describe("buildTrackedFetch", () => {
           body: makeOpenAIBody(),
         });
 
-        // Non-JSON 429 should pass through
         expect(response.status).toBe(429);
       });
     });

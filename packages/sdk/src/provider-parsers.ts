@@ -17,7 +17,13 @@ export function isTrackedRoute(
   try {
     const path = new URL(url).pathname;
     if (provider === "openai") {
-      return path.endsWith("/chat/completions");
+      return (
+        path.endsWith("/chat/completions") ||
+        path.endsWith("/completions") ||
+        path.endsWith("/embeddings")
+        // Note: /responses API uses input_tokens/output_tokens field names
+        // and a different SSE format — needs its own parser (future work).
+      );
     }
     if (provider === "anthropic") {
       return path.endsWith("/messages");
@@ -82,6 +88,11 @@ export function extractOpenAIUsageFromJSON(
   if (!obj.usage || typeof obj.usage !== "object") return null;
   const usage = obj.usage as Record<string, unknown>;
   if (typeof usage.prompt_tokens !== "number") return null;
+  // completion_tokens is optional: embeddings responses have only prompt_tokens
+  // and total_tokens. Default to 0 so the cost calculator works correctly.
+  if (usage.completion_tokens === undefined || usage.completion_tokens === null) {
+    usage.completion_tokens = 0;
+  }
   if (typeof usage.completion_tokens !== "number") return null;
   return usage as unknown as OpenAISSEUsage;
 }

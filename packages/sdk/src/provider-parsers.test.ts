@@ -34,10 +34,16 @@ describe("isTrackedRoute", () => {
     ).toBe(false);
   });
 
-  it("returns false for non-matching paths (embeddings)", () => {
+  it("returns true for OpenAI embeddings", () => {
     expect(
       isTrackedRoute("openai", "https://api.openai.com/v1/embeddings", "POST"),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("returns true for legacy OpenAI completions", () => {
+    expect(
+      isTrackedRoute("openai", "https://api.openai.com/v1/completions", "POST"),
+    ).toBe(true);
   });
 
   it("returns false for non-matching paths (models)", () => {
@@ -215,6 +221,27 @@ describe("extractOpenAIUsageFromJSON", () => {
         usage: { prompt_tokens: 10, completion_tokens: "20" },
       }),
     ).toBeNull();
+  });
+
+  it("defaults completion_tokens to 0 when missing (embeddings response)", () => {
+    const json = {
+      object: "list",
+      model: "text-embedding-3-small",
+      usage: { prompt_tokens: 5, total_tokens: 5 },
+    };
+    const result = extractOpenAIUsageFromJSON(json);
+    expect(result).not.toBeNull();
+    expect(result!.prompt_tokens).toBe(5);
+    expect(result!.completion_tokens).toBe(0);
+  });
+
+  it("defaults completion_tokens to 0 when null", () => {
+    const json = {
+      usage: { prompt_tokens: 10, completion_tokens: null },
+    };
+    const result = extractOpenAIUsageFromJSON(json);
+    expect(result).not.toBeNull();
+    expect(result!.completion_tokens).toBe(0);
   });
 });
 

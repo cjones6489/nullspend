@@ -217,9 +217,13 @@ export class NullSpend {
 
     let policyCache: PolicyCache | null = null;
     if (options?.enforcement) {
-      policyCache = createPolicyCache(async (): Promise<PolicyResponse> => {
-        return this.request<PolicyResponse>("GET", "/api/policy");
-      });
+      policyCache = createPolicyCache(
+        async (): Promise<PolicyResponse> => {
+          return this.request<PolicyResponse>("GET", "/api/policy");
+        },
+        undefined, // default TTL
+        options?.onCostError, // surface policy fetch failures
+      );
       this.policyCaches.add(policyCache);
     }
 
@@ -229,6 +233,7 @@ export class NullSpend {
       (event) => this.queueCost(event),
       policyCache,
       this.proxyUrl,
+      this._fetch,
     );
   }
 
