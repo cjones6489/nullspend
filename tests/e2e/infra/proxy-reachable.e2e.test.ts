@@ -25,6 +25,7 @@
 
 import { describe, it, expect, afterAll } from "vitest";
 import postgres from "postgres";
+import { E2E_POSTGRES_OPTIONS } from "../lib/db-config";
 import { getProxyUrl } from "../lib/env";
 
 const openaiKey = process.env.OPENAI_API_KEY;
@@ -53,14 +54,7 @@ const E2E_RUN_ID = `proxy-reachable-${Date.now()}-${Math.random().toString(36).s
 let sqlClient: ReturnType<typeof postgres> | null = null;
 function getSqlClient(): ReturnType<typeof postgres> {
   if (!sqlClient && databaseUrl) {
-    sqlClient = postgres(databaseUrl, {
-      // Matches lib/db/client.ts config for Supabase pooler compat
-      prepare: false,
-      fetch_types: false,
-      max: 2,
-      idle_timeout: 20,
-      connect_timeout: 10,
-    });
+    sqlClient = postgres(databaseUrl, E2E_POSTGRES_OPTIONS);
   }
   if (!sqlClient) {
     throw new Error("DATABASE_URL not set — cannot query cost_events");

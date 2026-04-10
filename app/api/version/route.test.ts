@@ -7,7 +7,6 @@
  * contract is tested explicitly:
  *
  *   - Returns the VERCEL_GIT_COMMIT_SHA env var verbatim
- *   - Falls back to NEXT_PUBLIC_* variant if plain isn't set
  *   - Returns null for commit_sha when no Vercel env is present
  *   - Returns env="local" when VERCEL_ENV is unset
  *   - Cache-Control: private, no-store on every response
@@ -62,22 +61,14 @@ describe("/api/version", () => {
     expect(body.commit_sha).toBe("abcdef1234567890abcdef1234567890abcdef12");
   });
 
-  it("prefers NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA over plain VERCEL_GIT_COMMIT_SHA", async () => {
-    // NEXT_PUBLIC_* is the canonical public form; plain is server-only.
-    // If both are set, the NEXT_PUBLIC_ variant wins so server and
-    // client report the same value.
-    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA = "public-sha";
-    process.env.VERCEL_GIT_COMMIT_SHA = "server-sha";
+  it("ignores NEXT_PUBLIC_ variant (build-time constant, not runtime)", async () => {
+    // NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA is inlined at build time by
+    // Next.js — it's always identical to the plain variant on Vercel.
+    // The route should only read the plain runtime env var.
+    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA = "build-time-sha";
     const res = await GET();
     const body = await res.json();
-    expect(body.commit_sha).toBe("public-sha");
-  });
-
-  it("falls back to plain VERCEL_GIT_COMMIT_SHA if NEXT_PUBLIC_ is missing", async () => {
-    process.env.VERCEL_GIT_COMMIT_SHA = "server-only-sha";
-    const res = await GET();
-    const body = await res.json();
-    expect(body.commit_sha).toBe("server-only-sha");
+    expect(body.commit_sha).toBeNull();
   });
 
   it("returns null commit_sha when running locally (no Vercel env)", async () => {
@@ -106,8 +97,8 @@ describe("/api/version", () => {
     expect(body.env).toBe("local");
   });
 
-  it("returns commit_ref from NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF", async () => {
-    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF = "main";
+  it("returns commit_ref from VERCEL_GIT_COMMIT_REF", async () => {
+    process.env.VERCEL_GIT_COMMIT_REF = "main";
     const res = await GET();
     const body = await res.json();
     expect(body.commit_ref).toBe("main");

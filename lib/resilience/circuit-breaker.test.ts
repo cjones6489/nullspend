@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CircuitBreaker, CircuitOpenError } from "./circuit-breaker";
+import { CircuitBreaker, CircuitOpenError, CircuitTimeoutError } from "./circuit-breaker";
 
 vi.mock("@/lib/observability", () => ({
   getLogger: () => ({
@@ -128,10 +128,10 @@ describe("CircuitBreaker", () => {
     expect(cb.getState()).toBe("CLOSED");
   });
 
-  it("timeout triggers failure (fn exceeds requestTimeoutMs)", async () => {
+  it("timeout triggers failure with CircuitTimeoutError (fn exceeds requestTimeoutMs)", async () => {
     await expect(
       cb.call(() => new Promise((resolve) => setTimeout(resolve, 2000))),
-    ).rejects.toThrow(/timed out/);
+    ).rejects.toBeInstanceOf(CircuitTimeoutError);
   });
 
   it("_resetForTesting() resets all state", async () => {

@@ -17,7 +17,7 @@ import {
   UpstreamServiceError,
 } from "@/lib/auth/errors";
 import { getLogger } from "@/lib/observability";
-import { CircuitOpenError } from "@/lib/resilience/circuit-breaker";
+import { CircuitOpenError, CircuitTimeoutError } from "@/lib/resilience/circuit-breaker";
 
 class InvalidJsonBodyError extends Error {
   constructor() {
@@ -169,6 +169,14 @@ export function handleRouteError(error: unknown) {
 
   if (error instanceof CircuitOpenError) {
     getLogger("http").warn({ err: error }, "Circuit breaker open — returning 503");
+    return NextResponse.json(
+      errorJson("service_unavailable", "Service temporarily unavailable."),
+      { status: 503, headers: { "Retry-After": "30" } },
+    );
+  }
+
+  if (error instanceof CircuitTimeoutError) {
+    getLogger("http").warn({ err: error }, "Circuit breaker timeout — returning 503");
     return NextResponse.json(
       errorJson("service_unavailable", "Service temporarily unavailable."),
       { status: 503, headers: { "Retry-After": "30" } },

@@ -72,21 +72,14 @@ interface VersionResponse {
 }
 
 export async function GET() {
-  // Vercel sets these at build time AND runtime. On a non-Vercel
-  // environment (local dev, self-hosted), they'll be undefined and
-  // we return null for each field.
-  //
-  // NEXT_PUBLIC_* variant is used so the value is also available to
-  // client-side code if needed in the future (source map uploads,
-  // Sentry release tagging, etc.).
-  const commitSha =
-    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ??
-    process.env.VERCEL_GIT_COMMIT_SHA ??
-    null;
-  const commitRef =
-    process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_REF ??
-    process.env.VERCEL_GIT_COMMIT_REF ??
-    null;
+  // Vercel sets these at both build time and runtime. Use the plain
+  // (non-NEXT_PUBLIC_) variant because this is a server-side route
+  // handler — the value is read at runtime, not inlined at build time.
+  // NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA is a build-time constant in
+  // Next.js, which means it's always identical to the plain variant
+  // on Vercel and adds no fallback value.
+  const commitSha = process.env.VERCEL_GIT_COMMIT_SHA ?? null;
+  const commitRef = process.env.VERCEL_GIT_COMMIT_REF ?? null;
 
   // VERCEL_ENV is set by Vercel: "production" | "preview" |
   // "development". "development" means `vercel dev` locally. Plain

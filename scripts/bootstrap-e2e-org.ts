@@ -202,19 +202,16 @@ async function main() {
   //
   // Advisory locks are transaction-scoped (pg_advisory_xact_lock)
   // so they release automatically on transaction commit or rollback.
-  // The key is a single-int64 derived from hashing the slug — any
-  // two processes bootstrapping the same slug will serialize on
-  // the same lock. Other operations against the DB are unaffected.
-  //
-  // Lock key: hashtext('e2e-bootstrap-org') — Postgres-native hash
-  // function. Using a stable value so different runs always resolve
-  // to the same lock.
+  // Two-argument form: (namespace, key) where namespace 42 is our
+  // dedicated E2E bootstrap namespace, and key is hashtext(slug).
+  // This uses the full int64 space (two int32 args) instead of
+  // cramming into the single-arg int64 via hashtext's int32 range.
   const txResult = await db.transaction(async (tx) => {
     // Acquire the advisory lock FIRST. If another process holds it,
     // this call blocks until they commit/rollback. The lock is
     // released automatically when this transaction ends.
     await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtext(${BOOTSTRAP_ORG_SLUG}))`,
+      sql`SELECT pg_advisory_xact_lock(42, hashtext(${BOOTSTRAP_ORG_SLUG}))`,
     );
 
     // Authoritative re-read of the existing org INSIDE the lock.

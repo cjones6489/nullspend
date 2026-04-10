@@ -14,6 +14,7 @@ import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 import {
   CircuitBreaker,
   CircuitOpenError,
+  CircuitTimeoutError,
 } from "@/lib/resilience/circuit-breaker";
 import { ORG_ROLES, type OrgRole } from "@/lib/validations/orgs";
 
@@ -53,6 +54,8 @@ export function getDevActor(): string | undefined {
  *     5xx, rate-limited. ALWAYS a service failure.
  *   - `AuthUnknownError` — auth-js can't parse the response JSON (CDN
  *     interstitial, HTML error page). Treated as a service failure.
+ *   - `AuthApiError` with status 429 — Supabase rate-limited us.
+ *     Repeated 429s suggest we should back off, same as 5xx.
  *   - Any error with numeric `status >= 500` — server-side failure.
  *   - Everything else (including `AuthSessionMissingError` with status
  *     400, `AuthApiError` with status 401/403, `AuthInvalidJwtError`,
@@ -72,6 +75,8 @@ export function isSupabaseServiceFailure(error: unknown): boolean {
   if (e.name === "AuthRetryableFetchError") return true;
   // AuthUnknownError: auth-js can't parse response JSON (CDN interstitial, HTML error page)
   if (e.name === "AuthUnknownError") return true;
+  // Supabase 429: rate-limited. Repeated 429s mean we should back off.
+  if (e.name === "AuthApiError" && e.status === 429) return true;
   if (typeof e.status === "number" && e.status >= 500) return true;
   return false;
 }
@@ -165,6 +170,7 @@ async function resolveUserId(options?: {
       error instanceof SupabaseEnvError ||
       error instanceof AuthenticationRequiredError ||
       error instanceof CircuitOpenError ||
+      error instanceof CircuitTimeoutError ||
       error instanceof UpstreamServiceError
     ) {
       const fallback = tryDevFallback(options?.warnOnFallback);

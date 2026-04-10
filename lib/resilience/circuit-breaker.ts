@@ -7,6 +7,13 @@ export class CircuitOpenError extends Error {
   }
 }
 
+export class CircuitTimeoutError extends Error {
+  constructor(name: string, timeoutMs: number) {
+    super(`Circuit breaker "${name}" timed out after ${timeoutMs}ms`);
+    this.name = "CircuitTimeoutError";
+  }
+}
+
 type CircuitState = "CLOSED" | "OPEN" | "HALF_OPEN";
 
 export interface CircuitBreakerOptions {
@@ -72,7 +79,7 @@ export class CircuitBreaker {
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
-          reject(new Error(`Circuit breaker "${this.name}" timed out after ${this.requestTimeoutMs}ms`));
+          reject(new CircuitTimeoutError(this.name, this.requestTimeoutMs));
         }
       }, this.requestTimeoutMs);
 

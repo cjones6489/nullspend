@@ -467,6 +467,7 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
     expect(isSupabaseServiceFailure(AUTH_RETRYABLE_FETCH_502)).toBe(true);
     expect(isSupabaseServiceFailure(AUTH_API_500)).toBe(true);
     expect(isSupabaseServiceFailure({ name: "AuthUnknownError", message: "unexpected body" })).toBe(true);
+    expect(isSupabaseServiceFailure({ name: "AuthApiError", status: 429, __isAuthError: true })).toBe(true);
     expect(isSupabaseServiceFailure({ name: "Other", status: 503 })).toBe(true);
     expect(isSupabaseServiceFailure({ name: "Other", status: 500 })).toBe(true);
 
@@ -474,6 +475,7 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
     expect(isSupabaseServiceFailure(AUTH_SESSION_MISSING)).toBe(false);
     expect(isSupabaseServiceFailure(AUTH_API_401)).toBe(false);
     expect(isSupabaseServiceFailure({ name: "Other", status: 400 })).toBe(false);
+    expect(isSupabaseServiceFailure({ name: "Other", status: 429 })).toBe(false); // 429 only for AuthApiError
     expect(isSupabaseServiceFailure({ name: "Other", status: 499 })).toBe(false);
 
     // Malformed / unclassifiable inputs default to "not a service failure"

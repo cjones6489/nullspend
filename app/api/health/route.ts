@@ -71,14 +71,14 @@ function verboseAllowed(request: Request): boolean {
   }
   const clientHeader = request.headers.get("x-ops-health-secret");
   if (!clientHeader) return false;
-  // Reject length mismatches before timingSafeEqual (which throws
-  // on unequal-length buffers).
-  if (clientHeader.length !== serverSecret.length) return false;
+  // Compare byte lengths (not string lengths) to avoid timing leaks
+  // with multi-byte characters. timingSafeEqual throws on unequal-
+  // length buffers, so we must check first.
+  const clientBuf = Buffer.from(clientHeader);
+  const serverBuf = Buffer.from(serverSecret);
+  if (clientBuf.length !== serverBuf.length) return false;
   try {
-    return timingSafeEqual(
-      Buffer.from(clientHeader),
-      Buffer.from(serverSecret),
-    );
+    return timingSafeEqual(clientBuf, serverBuf);
   } catch {
     return false;
   }

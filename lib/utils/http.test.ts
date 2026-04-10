@@ -104,6 +104,22 @@ describe("handleRouteError", () => {
     expect(captureExceptionWithContext).not.toHaveBeenCalled();
   });
 
+  it("returns 503 with Retry-After for CircuitTimeoutError (no Sentry)", async () => {
+    const { CircuitTimeoutError } = await import("@/lib/resilience/circuit-breaker");
+    const error = new CircuitTimeoutError("supabase-auth", 5000);
+    const response = handleRouteError(error);
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error.code).toBe("service_unavailable");
+    expect(response.headers.get("Retry-After")).toBe("30");
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      { err: error },
+      "Circuit breaker timeout — returning 503",
+    );
+    expect(captureExceptionWithContext).not.toHaveBeenCalled();
+  });
+
   it("returns 503 with Retry-After for UpstreamServiceError (no Sentry)", async () => {
     const { UpstreamServiceError } = await import("@/lib/auth/errors");
     const cause = { name: "AuthApiError", message: "Internal server error", status: 500 };
