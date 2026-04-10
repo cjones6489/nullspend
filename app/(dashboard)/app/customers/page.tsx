@@ -254,8 +254,8 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">Customers</h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
             {summary && !isDisconnected && !isEmpty
@@ -263,7 +263,7 @@ export default function CustomersPage() {
               : "Customer profitability by Stripe revenue vs AI cost."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={period} onValueChange={(v) => v && setPeriod(v)}>
             <SelectTrigger className="h-8 w-[140px] text-xs">
               <SelectValue />
@@ -455,7 +455,7 @@ export default function CustomersPage() {
           </div>
 
           {/* Table — desktop */}
-          <div className="hidden md:block overflow-hidden rounded-lg border border-border/50 bg-card">
+          <div className="hidden md:block overflow-x-auto rounded-lg border border-border/50 bg-card">
             <Table>
               <TableHeader>
                 <TableRow className="border-border/50 hover:bg-transparent">
