@@ -340,9 +340,13 @@ describe("buildTrackedFetch", () => {
       expect(queueCost).not.toHaveBeenCalled();
     });
 
-    it("passes through when x-nullspend-key header is present (Headers object)", async () => {
+    // Regression: header-only detection WITHOUT proxyUrl used to skip tracking.
+    // That was a bypass (Codex finding #1). Now the header fallback only works
+    // when proxyUrl is configured. These tests use a dummy proxyUrl to verify
+    // the header fallback still works in the correct context.
+    it("passes through when x-nullspend-key header is present + proxyUrl configured (Headers object)", async () => {
       mockFetch.mockResolvedValue(openaiJsonResponse());
-      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null, "https://proxy.example.com");
 
       const headers = new Headers({ "x-nullspend-key": "ns_live_sk_test" });
       await trackedFetch(OPENAI_URL, {
@@ -354,9 +358,9 @@ describe("buildTrackedFetch", () => {
       expect(queueCost).not.toHaveBeenCalled();
     });
 
-    it("passes through when x-nullspend-key header is present (plain object)", async () => {
+    it("passes through when x-nullspend-key header is present + proxyUrl configured (plain object)", async () => {
       mockFetch.mockResolvedValue(openaiJsonResponse());
-      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null, "https://proxy.example.com");
 
       await trackedFetch(OPENAI_URL, {
         method: "POST",
@@ -367,9 +371,9 @@ describe("buildTrackedFetch", () => {
       expect(queueCost).not.toHaveBeenCalled();
     });
 
-    it("passes through when x-nullspend-key header is present (array tuples)", async () => {
+    it("passes through when x-nullspend-key header is present + proxyUrl configured (array tuples)", async () => {
       mockFetch.mockResolvedValue(openaiJsonResponse());
-      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null, "https://proxy.example.com");
 
       await trackedFetch(OPENAI_URL, {
         method: "POST",
@@ -378,6 +382,24 @@ describe("buildTrackedFetch", () => {
       });
 
       expect(queueCost).not.toHaveBeenCalled();
+    });
+
+    // Regression: Codex finding #1 — x-nullspend-key header WITHOUT proxyUrl
+    // must NOT bypass tracking. A caller adding this header to a direct OpenAI
+    // request should still get tracked.
+    it("does NOT bypass tracking when x-nullspend-key header is present but NO proxyUrl configured", async () => {
+      mockFetch.mockResolvedValue(openaiJsonResponse());
+      const trackedFetch = buildTrackedFetch("openai", undefined, queueCost, null);
+
+      await trackedFetch(OPENAI_URL, {
+        method: "POST",
+        body: makeOpenAIBody(),
+        headers: { "x-nullspend-key": "ns_live_sk_test" },
+      });
+
+      // With no proxyUrl, the SDK should track the request even though
+      // the header is present — the header alone is not sufficient.
+      expect(queueCost).toHaveBeenCalled();
     });
 
     it("passes through when configurable proxyUrl matches the request URL", async () => {
@@ -2871,13 +2893,13 @@ describe("buildTrackedFetch", () => {
           },
         }, 429, DENIED_HEADERS));
 
-        // No proxyUrl configured — detection happens via header only
+        // proxyUrl configured — header fallback detects as proxied
         const trackedFetch = buildTrackedFetch(
           "openai",
           { enforcement: true, customer: "acme-corp" },
           queueCost,
           createMockPolicyCache(),
-          // proxyUrl: undefined
+          "https://proxy.example.com",
         );
 
         await expect(
@@ -2900,19 +2922,16 @@ describe("buildTrackedFetch", () => {
 
     describe("edge cases (audit follow-ups)", () => {
       // ── Risk 1: Request with x-nullspend-key in Request.headers ──
-      it("Request with x-nullspend-key in Request.headers (no init, no proxyUrl) is detected as proxied", async () => {
-        // Risk 1: previously the SDK looked only at init.headers for x-nullspend-key.
-        // If the user constructed a Request with the header in its own headers
-        // and called trackedFetch(request) without init, isProxied returned
-        // false → SDK took the direct path → ran cost tracking → silent
-        // double-count against the proxy's own write.
+      // Updated: header-only detection requires proxyUrl to be configured.
+      // Without proxyUrl, x-nullspend-key alone does NOT bypass tracking (Codex finding #1).
+      it("Request with x-nullspend-key in Request.headers + proxyUrl is detected as proxied", async () => {
         mockFetch.mockResolvedValue(openaiJsonResponse());
         const trackedFetch = buildTrackedFetch(
           "openai",
           {},
           queueCost,
           null,
-          // no proxyUrl
+          "https://proxy.example.com", // proxyUrl required for header fallback
         );
 
         const request = new Request(OPENAI_URL, {
@@ -2923,21 +2942,18 @@ describe("buildTrackedFetch", () => {
 
         await trackedFetch(request);
 
-        // Critical: queueCost not called → SDK correctly took the proxied path
-        // (which skips cost tracking) instead of the direct path.
+        // With proxyUrl configured, the header fallback detects the request as proxied
         expect(queueCost).not.toHaveBeenCalled();
       });
 
       it("Request with x-nullspend-key + customer header injection wraps but still detects as proxied", async () => {
-        // The customer header injection wraps the input in a new Request with
-        // the X-NullSpend-Customer header added. isProxied is then called with
-        // the WRAPPED input. Verify both behaviors fire correctly together.
         mockFetch.mockResolvedValue(openaiJsonResponse());
         const trackedFetch = buildTrackedFetch(
           "openai",
           { customer: "acme-corp" },
           queueCost,
           null,
+          "https://proxy.example.com", // proxyUrl required for header fallback
         );
 
         const request = new Request(OPENAI_URL, {

@@ -35,9 +35,9 @@ import { getModelPricing } from "@nullspend/cost-engine";
  *   SDK skips client-side cost tracking and lets the proxy handle accounting.
  *   If your proxy listens on a non-default port, include the port in this URL
  *   or the SDK will take the direct path and double-count. Header-based detection
- *   (`x-nullspend-key`) is the always-on fallback when `proxyUrl` is unset, AND
- *   it also covers the case where the user passes a `Request` object with
- *   `x-nullspend-key` in its own headers.
+ *   (`x-nullspend-key`) is a secondary fallback ONLY when `proxyUrl` is configured
+ *   but the origin check fails (e.g., port mismatch). Without a configured
+ *   `proxyUrl`, the header alone cannot trigger the proxy path.
  */
 export function buildTrackedFetch(
   provider: TrackedProvider,
@@ -490,8 +490,15 @@ function isProxied(
       // Invalid URL on request side — fall through to header check
     }
   }
-  // Header-based detection is the always-on fallback so callers can opt in
-  // by setting x-nullspend-key on the request explicitly.
+  // Header-based detection is ONLY used when proxyUrl is configured AND the
+  // URL origin check above failed (e.g., the proxy URL was set without a port
+  // but the request includes one). Without a configured proxyUrl, the presence
+  // of x-nullspend-key alone is NOT sufficient — a caller could add the header
+  // to a direct OpenAI request and bypass all SDK tracking. (Codex finding #1)
+  if (!proxyUrl) return false;
+
+  // With proxyUrl configured but origin mismatch (port difference, etc.),
+  // fall back to header check as a secondary signal.
   if (init?.headers) {
     const headers = init.headers;
     if (headers instanceof Headers) {
@@ -506,8 +513,6 @@ function isProxied(
   // and no init (or init without headers). Per WHATWG fetch, init.headers
   // REPLACES the Request's headers entirely when set, so we only fall back
   // to inspecting the Request's own headers when the caller didn't override.
-  // Without this, the SDK would silently take the direct path and
-  // double-count cost (audit Risk 1).
   if (input instanceof Request && !init?.headers && input.headers.has("x-nullspend-key")) {
     return true;
   }
