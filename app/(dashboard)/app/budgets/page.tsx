@@ -739,6 +739,9 @@ function BudgetDialog({
 
     // The API expects prefixed IDs for user/api_key entity types
     // (e.g., ns_usr_<uuid>, ns_key_<uuid>). Tags and customers pass through as-is.
+    // - userId: raw UUID from Supabase auth → needs ns_usr_ prefix
+    // - selectedKeyId: already prefixed from GET /api/keys → pass through
+    // - editBudget.entityId: raw UUID from GET /api/budgets → needs prefix
     const rawEntityId = isEdit
       ? editBudget.entityId
       : entityType === "user"
@@ -749,9 +752,14 @@ function BudgetDialog({
             ? customerId.trim()
             : selectedKeyId;
 
-    const entityId = rawEntityId && (entityType === "user" || entityType === "api_key")
-      ? toExternalId(entityType === "user" ? "usr" : "key", rawEntityId)
-      : rawEntityId;
+    // Only prefix if the value isn't already prefixed (keys API returns prefixed,
+    // userId and editBudget.entityId are raw UUIDs)
+    let entityId = rawEntityId;
+    if (rawEntityId && entityType === "user" && !rawEntityId.startsWith("ns_usr_")) {
+      entityId = toExternalId("usr", rawEntityId);
+    } else if (rawEntityId && entityType === "api_key" && !rawEntityId.startsWith("ns_key_")) {
+      entityId = toExternalId("key", rawEntityId);
+    }
 
     if (!entityId) {
       toast.error(
