@@ -80,6 +80,24 @@ export async function POST(request: Request, context: RouteContext) {
 
     const db = getDb();
 
+    // Prevent duplicate pending invitations (application-level check before insert)
+    const [existingInvite] = await db
+      .select({ id: orgInvitations.id })
+      .from(orgInvitations)
+      .where(and(
+        eq(orgInvitations.orgId, orgId),
+        eq(orgInvitations.email, input.email.toLowerCase()),
+        eq(orgInvitations.status, "pending"),
+        sql`${orgInvitations.expiresAt} > NOW()`,
+      ))
+      .limit(1);
+    if (existingInvite) {
+      return NextResponse.json(
+        { error: { code: "conflict", message: "A pending invitation already exists for this email.", details: null } },
+        { status: 409 },
+      );
+    }
+
     // Enforce seat limit for non-viewer roles
     if ((SEAT_COUNTED_ROLES as readonly string[]).includes(input.role)) {
       const tierInfo = await resolveOrgTier(orgId);

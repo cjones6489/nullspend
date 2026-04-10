@@ -169,15 +169,17 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
   /**
    * Helper: configure the DB mock chain for a successful POST.
    *
-   * POST does two selects in order:
-   *   1. member count           → .where()           → [{ value: 1 }]
-   *   2. pending invite count   → .where()           → [{ value: 0 }]
+   * POST does three selects in order:
+   *   1. duplicate check (limit) → .where().limit()   → [] (no existing invite)
+   *   2. member count            → .where()           → [{ value: 1 }]
+   *   3. pending invite count    → .where()           → [{ value: 0 }]
    * Then one insert → .returning() → [invitation]
    */
   function setupSuccessfulPost() {
     pushSelects(
-      { rows: [{ value: 1 }] },           // 1. member count
-      { rows: [{ value: 0 }] },           // 2. pending invite count
+      { rows: [], limitRows: [] },         // 1. duplicate check (no match)
+      { rows: [{ value: 1 }] },           // 2. member count
+      { rows: [{ value: 0 }] },           // 3. pending invite count
     );
     mockInsertReturning.mockResolvedValue([SAMPLE_INVITATION]);
   }
@@ -231,14 +233,33 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
     expect(body.error.code).toBe("validation_error");
   });
 
-  it("returns 409 for duplicate pending invitation (23505 unique constraint)", async () => {
+  it("returns 409 for duplicate pending invitation (application-level check)", async () => {
     vi.mocked(readJsonBody).mockResolvedValue({ email: "alice@example.com", role: "member" });
     pushSelects(
-      { rows: [{ value: 1 }] },
-      { rows: [{ value: 0 }] },
+      // Duplicate check finds existing invitation
+      { rows: [{ id: "existing-invite-id" }], limitRows: [{ id: "existing-invite-id" }] },
     );
 
-    // Insert throws a Postgres unique-constraint error
+    const req = new Request("http://localhost/api/orgs/" + ORG_ID + "/invitations", { method: "POST" });
+    const res = await POST(req, makeContext(ORG_ID));
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.message).toContain("pending invitation already exists");
+    // Insert should NOT have been called — caught before insert
+    expect(mockInsertReturning).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 for duplicate pending invitation (DB constraint fallback)", async () => {
+    vi.mocked(readJsonBody).mockResolvedValue({ email: "alice@example.com", role: "member" });
+    pushSelects(
+      { rows: [], limitRows: [] },         // duplicate check passes (race condition)
+      { rows: [{ value: 1 }] },           // member count
+      { rows: [{ value: 0 }] },           // pending invite count
+    );
+
+    // Insert throws a Postgres unique-constraint error (race: invite created between check and insert)
     const pgError = Object.assign(new Error("duplicate key"), { code: "23505" });
     mockInsertReturning.mockRejectedValueOnce(pgError);
 
@@ -255,6 +276,7 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
     vi.mocked(readJsonBody).mockResolvedValue({ email: "alice@example.com", role: "member" });
 
     pushSelects(
+      { rows: [], limitRows: [] },         // duplicate check (no match)
       { rows: [{ value: 3 }] },           // member count (at limit)
       { rows: [{ value: 0 }] },           // pending invite count
     );
@@ -276,8 +298,10 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
   it("viewer role invites bypass seat limit check", async () => {
     vi.mocked(readJsonBody).mockResolvedValue({ email: "viewer@example.com", role: "viewer" });
 
-    // For viewer: no count queries needed — straight to insert.
-
+    // For viewer: duplicate check then straight to insert (no count queries).
+    pushSelects(
+      { rows: [], limitRows: [] },         // duplicate check (no match)
+    );
     mockInsertReturning.mockResolvedValue([{ ...SAMPLE_INVITATION, email: "viewer@example.com", role: "viewer" }]);
 
     const req = new Request("http://localhost/api/orgs/" + ORG_ID + "/invitations", { method: "POST" });
