@@ -130,6 +130,25 @@ describe("resolveApprovalActor", () => {
     await expect(resolveApprovalActor()).resolves.toBe("env-dev-actor");
   });
 
+  it("uses NULLSPEND_DEV_ACTOR in dev mode when auth call times out (CircuitTimeoutError)", async () => {
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";
+    // getUser() hangs forever — the circuit breaker's 5s timeout fires
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockReturnValue(new Promise(() => {})),
+      },
+    } as never);
+
+    _supabaseCircuitForTesting._resetForTesting();
+    vi.useFakeTimers();
+    const promise = resolveApprovalActor();
+    await vi.advanceTimersByTimeAsync(5_001);
+    await expect(promise).resolves.toBe("env-dev-actor");
+    vi.useRealTimers();
+    _supabaseCircuitForTesting._resetForTesting();
+  });
+
   it("requires auth in production even when NULLSPEND_DEV_ACTOR is set", async () => {
     delete process.env.NULLSPEND_DEV_MODE;
     process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";

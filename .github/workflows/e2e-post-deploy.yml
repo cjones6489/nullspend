@@ -204,7 +204,7 @@ jobs:
               continue
             fi
 
-            DEPLOYED_SHA=$(echo "$RESPONSE" | jq -r '.commit_sha // empty')
+            DEPLOYED_SHA=$(echo "$RESPONSE" | jq -r '.commit_sha // empty' 2>/dev/null) || DEPLOYED_SHA=""
             if [ -z "$DEPLOYED_SHA" ] || [ "$DEPLOYED_SHA" = "null" ]; then
               echo "Attempt $attempt: /api/version returned null commit_sha."
               echo "Target is likely not a Vercel deployment. Skipping SHA verification."

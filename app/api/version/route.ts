@@ -73,11 +73,11 @@ interface VersionResponse {
 
 export async function GET() {
   // Vercel sets these at both build time and runtime. Use the plain
-  // (non-NEXT_PUBLIC_) variant because this is a server-side route
-  // handler — the value is read at runtime, not inlined at build time.
-  // NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA is a build-time constant in
-  // Next.js, which means it's always identical to the plain variant
-  // on Vercel and adds no fallback value.
+  // (non-NEXT_PUBLIC_) variant because on the server both variants
+  // are runtime process.env reads that always resolve to the same
+  // value. The NEXT_PUBLIC_ prefix only matters for client-side code
+  // (where it's inlined at build time). No fallback value is gained
+  // by checking both.
   const commitSha = process.env.VERCEL_GIT_COMMIT_SHA ?? null;
   const commitRef = process.env.VERCEL_GIT_COMMIT_REF ?? null;
 

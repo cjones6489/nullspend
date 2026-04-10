@@ -144,6 +144,28 @@ describe("verbose mode opt-in gate (Drift-3 / G-18)", () => {
     ).toBe(false);
   });
 
+  it("DENIES verbose on multi-byte character length mismatch (Buffer byte length, not String length)", () => {
+    // "café" is 5 JS chars but 6 UTF-8 bytes (é = 2 bytes).
+    // "cafes" is 5 JS chars and 5 UTF-8 bytes.
+    // String.length would say equal (both 5); Buffer.from().length differs (6 vs 5).
+    // The fix uses Buffer-based comparison to prevent timing leaks.
+    process.env.INTERNAL_HEALTH_SECRET = "café!";
+    expect(
+      verboseAllowed(
+        makeRequest({ "x-ops-health-secret": "cafes" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("ALLOWS verbose with multi-byte characters when they match exactly", () => {
+    process.env.INTERNAL_HEALTH_SECRET = "café!";
+    expect(
+      verboseAllowed(
+        makeRequest({ "x-ops-health-secret": "café!" }),
+      ),
+    ).toBe(true);
+  });
+
   it("uses timing-safe comparison (same length, different content)", () => {
     // Two strings of the same length but with different content.
     // This exercises timingSafeEqual directly — if we used ===, the
