@@ -798,4 +798,44 @@ describe("POST /api/budgets — proxy invalidation", () => {
     const valuesArg = (mockValues.mock.calls as any)[0][0];
     expect(valuesArg.resetInterval).toBe("yearly");
   });
+
+  it("POST with entityType=customer creates budget (org-scoped, no ownership check)", async () => {
+    const { readJsonBody } = await import("@/lib/utils/http");
+    const mockedReadJsonBody = vi.mocked(readJsonBody);
+    mockedReadJsonBody.mockResolvedValue({
+      entityType: "customer",
+      entityId: "acme-corp",
+      maxBudgetMicrodollars: 30_000_000,
+    });
+
+    const budgetRow = makeBudgetRow({
+      entityType: "customer",
+      entityId: "acme-corp",
+      maxBudgetMicrodollars: 30_000_000,
+    });
+    const mockReturning = vi.fn().mockResolvedValue([budgetRow]);
+    const mockOnConflict = vi.fn(() => ({ returning: mockReturning }));
+    const mockValues = vi.fn(() => ({ onConflictDoUpdate: mockOnConflict }));
+    const mockInsert = vi.fn(() => ({ values: mockValues }));
+    const mockWhere = vi.fn().mockResolvedValue([budgetRow]);
+    const mockFrom = vi.fn(() => ({ where: mockWhere }));
+    const mockSelect = vi.fn(() => ({ from: mockFrom }));
+    const mockTxDb = { select: mockSelect, insert: mockInsert };
+    mockedGetDb.mockReturnValue({
+      select: mockSelect,
+      insert: mockInsert,
+      transaction: vi.fn((cb: (tx: unknown) => Promise<unknown>) => cb(mockTxDb)),
+    } as unknown as ReturnType<typeof getDb>);
+
+    const request = new Request("http://localhost/api/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(201);
+    const json = await response.json();
+    expect(json.data.entityType).toBe("customer");
+    expect(json.data.entityId).toBe("acme-corp");
+  });
 });

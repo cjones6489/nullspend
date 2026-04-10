@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 
 import { resolveSessionContext } from "@/lib/auth/session";
 import { assertOrgMember } from "@/lib/auth/org-authorization";
@@ -33,9 +33,28 @@ export async function GET(request: Request, context: RouteContext) {
       .where(eq(orgMemberships.orgId, orgId))
       .orderBy(asc(orgMemberships.createdAt));
 
+    // Resolve emails from auth.users for display. Best-effort — if the
+    // query fails (e.g., auth schema not accessible), fall back to null.
+    const userIds = rows.map((r) => r.userId);
+    let emailMap = new Map<string, string>();
+    if (userIds.length > 0) {
+      try {
+        const inClause = sql.join(userIds.map((id) => sql`${id}`), sql`, `);
+        const emailRows = await db.execute(sql`
+          SELECT id::text, email FROM auth.users WHERE id IN (${inClause})
+        `) as unknown as Array<{ id: string; email: string }>;
+        for (const row of emailRows) {
+          emailMap.set(row.id, row.email);
+        }
+      } catch {
+        // auth.users not accessible — emails will be null
+      }
+    }
+
     const data = rows.map((row) =>
       memberRecordSchema.parse({
         userId: row.userId,
+        email: emailMap.get(row.userId) ?? null,
         role: row.role,
         createdAt: row.createdAt.toISOString(),
       }),

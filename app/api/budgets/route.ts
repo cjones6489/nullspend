@@ -164,9 +164,10 @@ async function verifyEntityOwnership(
     return;
   }
 
-  // Tags are org-scoped (budget already scoped by orgId from resolveSessionContext).
-  // No per-user ownership check needed — any org member can manage tag budgets.
-  if (entityType === "tag") {
+  // Tags and customers are org-scoped (budget already scoped by orgId from
+  // resolveSessionContext). No per-user ownership check needed — any org
+  // member can manage tag and customer budgets.
+  if (entityType === "tag" || entityType === "customer") {
     return;
   }
 

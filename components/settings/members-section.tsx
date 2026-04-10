@@ -148,7 +148,7 @@ function MemberRow({
   sessionUserId,
   sessionRole,
 }: {
-  member: { userId: string; role: string; createdAt: string };
+  member: { userId: string; email?: string | null; role: string; createdAt: string };
   orgId: string;
   sessionUserId: string;
   sessionRole: OrgRole;
@@ -187,7 +187,7 @@ function MemberRow({
   return (
     <TableRow className="border-border/30 transition-colors hover:bg-accent/40">
       <TableCell className="text-[13px] font-medium text-foreground">
-        {member.userId}
+        {member.email || member.userId}
         {isSelf && (
           <span className="ml-2 text-[10px] text-muted-foreground">(you)</span>
         )}

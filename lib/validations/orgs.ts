@@ -64,6 +64,7 @@ export const orgRecordSchema = z.object({
 
 export const memberRecordSchema = z.object({
   userId: z.string(),
+  email: z.string().nullable().optional(),
   role: z.enum(ORG_ROLES),
   createdAt: z.string(),
 });
