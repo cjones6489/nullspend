@@ -1,4 +1,3 @@
-import Stripe from "stripe";
 import { NextResponse } from "next/server";
 
 import { assertOrgRole } from "@/lib/auth/org-authorization";
@@ -75,13 +74,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
-    if (error instanceof Stripe.errors.StripeError) {
-      console.error("[checkout] Stripe error:", error.type, error.message, error.code);
-      return NextResponse.json(
-        { error: { code: "stripe_error", message: error.message, details: { type: error.type, stripeCode: error.code } } },
-        { status: 502 },
-      );
-    }
     return handleRouteError(error);
   }
 }
