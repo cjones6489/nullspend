@@ -110,6 +110,26 @@ describe("resolveApprovalActor", () => {
     );
   });
 
+  it("uses NULLSPEND_DEV_ACTOR in dev mode when upstream service fails (UpstreamServiceError)", async () => {
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: {
+            name: "AuthRetryableFetchError",
+            message: "Failed to fetch",
+            status: 0,
+            __isAuthError: true,
+          },
+        }),
+      },
+    } as never);
+
+    await expect(resolveApprovalActor()).resolves.toBe("env-dev-actor");
+  });
+
   it("requires auth in production even when NULLSPEND_DEV_ACTOR is set", async () => {
     delete process.env.NULLSPEND_DEV_MODE;
     process.env.NULLSPEND_DEV_ACTOR = "env-dev-actor";

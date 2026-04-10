@@ -51,6 +51,8 @@ export function getDevActor(): string | undefined {
  *
  *   - `AuthRetryableFetchError` — network down, fetch abort, Cloudflare
  *     5xx, rate-limited. ALWAYS a service failure.
+ *   - `AuthUnknownError` — auth-js can't parse the response JSON (CDN
+ *     interstitial, HTML error page). Treated as a service failure.
  *   - Any error with numeric `status >= 500` — server-side failure.
  *   - Everything else (including `AuthSessionMissingError` with status
  *     400, `AuthApiError` with status 401/403, `AuthInvalidJwtError`,

@@ -42,6 +42,14 @@ _(empty — zero high items)_
 - **What:** `AuthUnknownError` is thrown when auth-js can't parse the response JSON (CDN interstitial, HTML error page). My classifier returns `false` → breaker doesn't count it.
 - **Fix:** Added `if (e.name === "AuthUnknownError") return true;` to `isSupabaseServiceFailure`. Regression test added.
 
+### EC-1p-CB-TIMEOUT — Circuit breaker timeout produces generic Error, not UpstreamServiceError
+- **Severity:** Low (pre-existing, not a Slice 1p regression)
+- **Effort:** ~20 min
+- **Status:** Open
+- **Files:** `lib/resilience/circuit-breaker.ts`, `lib/auth/session.ts`
+- **What:** If `supabase.auth.getUser()` hangs past the 5s `requestTimeoutMs`, the breaker's `withTimeout` rejects with a plain `Error`, not `UpstreamServiceError`. This bypasses `resolveUserId()`'s catch guard and hits the generic 500 + Sentry branch. Blast radius: max 5 requests per outage event before the breaker opens.
+- **Fix:** Introduce `CircuitTimeoutError` in circuit-breaker.ts, add to `handleRouteError` → 503, or widen `resolveUserId()`'s guard.
+
 ### BUG-1k-WORKFLOW-GREP-FRAGILE — JSON parsing in bash uses grep not jq
 - **Severity:** Low
 - **Effort:** ~5 min
