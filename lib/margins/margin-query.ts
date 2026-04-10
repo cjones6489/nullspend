@@ -240,8 +240,8 @@ export async function getMarginTable(
     const marginMicrodollars = periodRevenue - periodCost;
     const marginPercent = periodRevenue > 0
       ? ((periodRevenue - periodCost) / periodRevenue) * 100
-      : periodCost > 0 ? -100 : 0;
-    const healthTier = computeHealthTier(marginPercent);
+      : 0; // No revenue → margin undefined, treat as 0% (not -100%)
+    const healthTier = periodRevenue === 0 && periodCost > 0 ? "critical" as HealthTier : computeHealthTier(marginPercent);
 
     // Sparkline data (with hasData flag for projection)
     const sparklineRaw = sparklinePeriods.map((p) => {
@@ -429,7 +429,7 @@ export async function getCustomerDetail(
   const periodCost = revenueOverTime.find((r) => r.period === requestedPeriodStr)?.cost ?? 0;
   const marginPercent = periodRevenue > 0
     ? Math.round(((periodRevenue - periodCost) / periodRevenue) * 10000) / 100
-    : periodCost > 0 ? -100 : 0;
+    : 0; // No revenue → margin undefined, treat as 0%
 
   const revenueRow = revenueRows.find((r) => formatPeriod(r.periodStart) === requestedPeriodStr);
 
@@ -438,7 +438,7 @@ export async function getCustomerDetail(
     customerName: revenueRow?.customerName ?? null,
     avatarUrl: revenueRow?.avatarUrl ?? null,
     tagValue: mapping.tagValue,
-    healthTier: computeHealthTier(marginPercent),
+    healthTier: periodRevenue === 0 && periodCost > 0 ? "critical" as HealthTier : computeHealthTier(marginPercent),
     marginPercent,
     revenueMicrodollars: periodRevenue,
     costMicrodollars: periodCost,

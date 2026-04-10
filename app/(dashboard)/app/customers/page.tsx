@@ -725,7 +725,7 @@ function CustomerMappingsSection() {
     createMapping.mutate(
       { stripeCustomerId: customer.stripeCustomerId, tagValue },
       {
-        onSuccess: () => toast.success(`Mapped ${customer.customerName ?? customer.stripeCustomerId} → ${tagValue}`),
+        onSuccess: () => toast.success(`Mapped ${customer.customerName ?? customer.customerEmail ?? customer.stripeCustomerId} → ${tagValue}`),
         onError: () => toast.error("Failed to create mapping"),
       },
     );
@@ -889,11 +889,11 @@ function UnmatchedCustomerRow({
     <div className="flex items-center justify-between rounded-md border border-border/30 bg-background px-3 py-2">
       <div className="flex items-center gap-2 text-[13px]">
         <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
-          {(customer.customerName ?? customer.stripeCustomerId).charAt(0).toUpperCase()}
+          {(customer.customerName ?? customer.customerEmail ?? customer.stripeCustomerId).charAt(0).toUpperCase()}
         </div>
         <div>
           <span className="font-medium text-foreground">
-            {customer.customerName ?? customer.stripeCustomerId}
+            {customer.customerName ?? customer.customerEmail ?? customer.stripeCustomerId}
           </span>
           <span className="ml-2 text-[11px] text-muted-foreground">
             ({formatMicrodollars(customer.totalRevenueMicrodollars)} revenue)
