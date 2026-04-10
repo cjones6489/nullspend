@@ -1,0 +1,8 @@
+# Security-sensitive paths require owner review
+.github/workflows/**    @cjones6489
+.github/actions/**      @cjones6489
+lib/auth/**             @cjones6489
+lib/validations/**      @cjones6489
+apps/proxy/src/**       @cjones6489
+proxy.ts                @cjones6489
+packages/db/src/**      @cjones6489
