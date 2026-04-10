@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 import { useSession } from "@/lib/queries/session";
 import { useOrgs, useCreateOrg, useSwitchOrg } from "@/lib/queries/orgs";
-import { fromExternalIdOfType } from "@/lib/ids/prefixed-id";
+import { fromExternalIdOfType, toExternalId } from "@/lib/ids/prefixed-id";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,8 +49,10 @@ export function OrgSwitcher() {
   const [newSlug, setNewSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
 
-  const currentOrg = orgsData?.data.find((o) => o.id === session?.orgId);
-  const otherOrgs = orgsData?.data.filter((o) => o.id !== session?.orgId) ?? [];
+  // Session returns raw UUID, orgs list returns prefixed ns_org_ IDs — normalize for comparison
+  const sessionOrgExternalId = session?.orgId ? toExternalId("org", session.orgId) : null;
+  const currentOrg = orgsData?.data.find((o) => o.id === sessionOrgExternalId);
+  const otherOrgs = orgsData?.data.filter((o) => o.id !== sessionOrgExternalId) ?? [];
 
   function handleSwitch(orgId: string) {
     // Strip prefix — the raw UUID from orgsData.id is already prefixed by orgRecordSchema
