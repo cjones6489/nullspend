@@ -183,7 +183,7 @@ export default function HomePage() {
           </p>
           {!keysLoading && (
             <p className="mt-1 font-mono text-[13px] tabular-nums text-muted-foreground">
-              {totalRequests.toLocaleString()} requests ·{" "}
+              {totalRequests.toLocaleString()} {totalRequests === 1 ? "request" : "requests"} ·{" "}
               {keys.length} keys ·{" "}
               {budgetsLoading ? "—" : `${budgets.length} budgets`} ·{" "}
               {budgetsLoading ? (
@@ -361,7 +361,11 @@ export default function HomePage() {
                         <div key={budget.id} className="space-y-1">
                           <div className="flex items-center justify-between">
                             <span className="max-w-[140px] truncate text-[13px] text-foreground">
-                              {budget.entityId}
+                              {budget.entityType === "user"
+                                ? "Your Account"
+                                : budget.entityType === "org"
+                                  ? "Organization"
+                                  : budget.entityId}
                             </span>
                             <span className="font-mono text-[13px] tabular-nums text-muted-foreground">
                               {displayPct.toFixed(0)}%
