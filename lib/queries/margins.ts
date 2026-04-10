@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiDelete, apiGet, apiPost } from "@/lib/api/client";
+import { apiDelete, apiGet, apiPost, retryOnServerError } from "@/lib/api/client";
 
 export const marginKeys = {
   all: ["margins"] as const,
@@ -28,6 +28,7 @@ export function useCustomerDetail(customer: string, period: string) {
         `/api/margins/${encodeURIComponent(customer)}?period=${period}`,
       ).then((r) => r.data),
     staleTime: 120_000,
+    retry: retryOnServerError,
   });
 }
 
