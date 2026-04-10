@@ -36,7 +36,7 @@ export async function GET(request: Request, context: RouteContext) {
     // Resolve emails from auth.users for display. Best-effort — if the
     // query fails (e.g., auth schema not accessible), fall back to null.
     const userIds = rows.map((r) => r.userId);
-    let emailMap = new Map<string, string>();
+    const emailMap = new Map<string, string>();
     if (userIds.length > 0) {
       try {
         const inClause = sql.join(userIds.map((id) => sql`${id}`), sql`, `);
