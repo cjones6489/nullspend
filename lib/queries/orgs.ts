@@ -47,9 +47,10 @@ export function useSwitchOrg() {
   return useMutation<{ userId: string; orgId: string; role: OrgRole }, Error, string>({
     mutationFn: (orgId) => apiPost("/api/auth/switch-org", { orgId }),
     onSuccess: () => {
-      // Invalidate session so all components pick up the new org
-      queryClient.invalidateQueries({ queryKey: sessionKeys.current });
-      queryClient.invalidateQueries({ queryKey: orgKeys.all });
+      // Invalidate ALL queries — every data hook must re-fetch for the new org context.
+      // Session/org keys alone aren't enough: budgets, keys, cost events, margins, etc.
+      // all serve stale data from the previous org until invalidated.
+      queryClient.invalidateQueries();
     },
   });
 }
