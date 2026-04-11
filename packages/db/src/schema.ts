@@ -504,3 +504,27 @@ export const reconciledRequests = pgTable("reconciled_requests", {
   primaryKey({ columns: [table.requestId, table.entityType, table.entityId] }),
   index("reconciled_requests_reconciled_at_idx").on(table.reconciledAt),
 ]);
+
+// ---------------------------------------------------------------------------
+// Margin alert dedup (MRG-5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tracks which margin threshold crossings have already been dispatched
+ * (webhook + Slack) so the same alert is not re-fired on every sync.
+ *
+ * Unique on (org_id, tag_value, period, to_tier) — one alert per customer
+ * per period per worsening tier transition.
+ */
+export const marginAlertsSent = pgTable("margin_alerts_sent", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orgId: uuid("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  tagValue: text("tag_value").notNull(),
+  period: text("period").notNull(),
+  fromTier: text("from_tier").notNull(),
+  toTier: text("to_tier").notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("margin_alerts_sent_dedup_idx").on(table.orgId, table.tagValue, table.period, table.toTier),
+  index("margin_alerts_sent_org_period_idx").on(table.orgId, table.period),
+]);

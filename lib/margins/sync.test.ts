@@ -19,6 +19,12 @@ vi.mock("./auto-match", () => ({
 }));
 vi.mock("./margin-query", () => ({
   getMarginTable: (...args: unknown[]) => mockGetMarginTable(...args),
+  computeHealthTier: (marginPercent: number) => {
+    if (marginPercent >= 50) return "healthy";
+    if (marginPercent >= 20) return "moderate";
+    if (marginPercent >= 0) return "at_risk";
+    return "critical";
+  },
 }));
 vi.mock("./webhook", () => ({
   detectWorseningCrossings: (...args: unknown[]) => mockDetectWorseningCrossings(...args),
@@ -29,6 +35,10 @@ vi.mock("@/lib/webhooks/dispatch", () => ({
 }));
 vi.mock("./periods", () => ({
   formatPeriod: (...args: unknown[]) => mockFormatPeriod(...args),
+}));
+vi.mock("./margin-slack-message", () => ({
+  buildMarginAlertMessage: vi.fn().mockReturnValue({ text: "test", blocks: [] }),
+  dispatchMarginSlackAlert: vi.fn().mockResolvedValue(undefined),
 }));
 const mockStripeInvoicesList = vi.fn();
 vi.mock("stripe", () => {
@@ -108,6 +118,78 @@ describe("syncOrgRevenue", () => {
     expect(result.invoicesFetched).toBe(0);
     expect(result.error).toBeUndefined();
     expect(result.customersProcessed).toBe(0);
+  });
+});
+
+describe("syncOrgRevenue — MRG-5 alert dedup", () => {
+  function mockDbWithAlertDedup(opts: {
+    connection: Record<string, unknown>;
+    alertInsertReturns: unknown[];
+  }) {
+    const { connection, alertInsertReturns } = opts;
+    const mockOnConflictDoNothing = vi.fn(() => ({
+      returning: vi.fn().mockResolvedValue(alertInsertReturns),
+    }));
+    const mockInsertValues = vi.fn(() => ({
+      onConflictDoNothing: mockOnConflictDoNothing,
+    }));
+    const mockInsert = vi.fn(() => ({ values: mockInsertValues }));
+
+    mockGetDb.mockReturnValue({
+      select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve([connection]) }) }) }),
+      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
+        const tx = {
+          delete: () => ({ where: () => Promise.resolve() }),
+          insert: () => ({ values: () => Promise.resolve() }),
+        };
+        return fn(tx);
+      }),
+      insert: mockInsert,
+    });
+
+    return { mockInsert, mockOnConflictDoNothing };
+  }
+
+  it("dispatches alert when dedup insert succeeds (new crossing)", async () => {
+    const { mockInsert } = mockDbWithAlertDedup({
+      connection: { id: "c1", orgId: ORG_ID, status: "active", encryptedKey: "enc" },
+      alertInsertReturns: [{ id: "alert-1" }], // Insert succeeded
+    });
+    mockDecryptStripeKey.mockReturnValue("sk_test_123");
+    mockGetMarginTable.mockResolvedValue({
+      customers: [{ tagValue: "acme", stripeCustomerId: "cus_1", customerName: "Acme", healthTier: "critical", revenueMicrodollars: 100, costMicrodollars: 200 }],
+    });
+    mockDetectWorseningCrossings.mockReturnValue([
+      { tagValue: "acme", previousMarginPercent: 25, currentMarginPercent: -5 },
+    ]);
+    mockBuildMarginThresholdPayload.mockReturnValue({ id: "evt_1", type: "margin.threshold_crossed" });
+
+    const result = await syncOrgRevenue(ORG_ID);
+
+    expect(result.error).toBeUndefined();
+    expect(mockInsert).toHaveBeenCalled(); // Dedup insert attempted
+    expect(mockDispatchWebhookEvent).toHaveBeenCalled(); // Alert dispatched
+  });
+
+  it("skips alert when dedup insert returns empty (already sent)", async () => {
+    const { mockInsert } = mockDbWithAlertDedup({
+      connection: { id: "c1", orgId: ORG_ID, status: "active", encryptedKey: "enc" },
+      alertInsertReturns: [], // Conflict — already sent
+    });
+    mockDecryptStripeKey.mockReturnValue("sk_test_123");
+    mockGetMarginTable.mockResolvedValue({
+      customers: [{ tagValue: "acme", stripeCustomerId: "cus_1", customerName: "Acme", healthTier: "critical", revenueMicrodollars: 100, costMicrodollars: 200 }],
+    });
+    mockDetectWorseningCrossings.mockReturnValue([
+      { tagValue: "acme", previousMarginPercent: 25, currentMarginPercent: -5 },
+    ]);
+
+    const result = await syncOrgRevenue(ORG_ID);
+
+    expect(result.error).toBeUndefined();
+    expect(mockInsert).toHaveBeenCalled(); // Dedup insert attempted
+    expect(mockDispatchWebhookEvent).not.toHaveBeenCalled(); // Alert NOT dispatched
   });
 });
 

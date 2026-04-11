@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { STRIPE_API_VERSION } from "@/lib/stripe/client";
-import { stripeConnections, customerRevenue } from "@nullspend/db";
+import { stripeConnections, customerRevenue, marginAlertsSent } from "@nullspend/db";
 import { decryptStripeKey } from "./encryption";
 import { runAutoMatch } from "./auto-match";
 import { getMarginTable } from "./margin-query";
@@ -213,13 +213,46 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       log.warn({ err, orgId }, "Margin threshold detection failed (non-fatal)");
     }
 
-    // Dispatch webhook events (independent of Slack, per-crossing isolation)
+    // MRG-5: Dispatch alerts with dedup — INSERT ... ON CONFLICT DO NOTHING
+    // ensures each (org, customer, period, tier) crossing fires at most once.
     if (crossings.length > 0 && marginData) {
       let webhooksSent = 0;
+      let slackSent = 0;
+      let deduplicated = 0;
+
       for (const crossing of crossings) {
+        const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
+        if (!customer) continue;
+
+        const fromTier = customer.healthTier === "critical" && crossing.previousMarginPercent === 0
+          ? "critical" : computeHealthTier(crossing.previousMarginPercent);
+        const toTier = customer.healthTier;
+
+        // Dedup: try to insert a sent record. If it already exists, skip.
         try {
-          const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
-          if (!customer) continue;
+          const [inserted] = await db
+            .insert(marginAlertsSent)
+            .values({
+              orgId,
+              tagValue: crossing.tagValue,
+              period: currentPeriod,
+              fromTier,
+              toTier,
+            })
+            .onConflictDoNothing()
+            .returning({ id: marginAlertsSent.id });
+
+          if (!inserted) {
+            deduplicated++;
+            continue; // Already sent this alert
+          }
+        } catch (err) {
+          // DB error on dedup check — dispatch anyway (fail-open)
+          log.warn({ err, orgId, tagValue: crossing.tagValue }, "Margin alert dedup check failed — dispatching anyway");
+        }
+
+        // Webhook dispatch
+        try {
           const event = buildMarginThresholdPayload({
             stripeCustomerId: customer.stripeCustomerId,
             customerName: customer.customerName,
@@ -235,26 +268,16 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
         } catch (err) {
           log.warn({ err, orgId, tagValue: crossing.tagValue }, "Margin webhook dispatch failed for crossing (non-fatal)");
         }
-      }
-      if (webhooksSent > 0) {
-        log.info({ orgId, sent: webhooksSent, total: crossings.length }, "Margin webhook events dispatched");
-      }
-    }
 
-    // Dispatch Slack alerts (independent of webhooks, per-crossing isolation)
-    if (crossings.length > 0 && marginData) {
-      let slackSent = 0;
-      for (const crossing of crossings) {
+        // Slack dispatch
         try {
-          const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
-          if (!customer) continue;
           const message = buildMarginAlertMessage({
             customerName: customer.customerName,
             tagValue: crossing.tagValue,
             previousMarginPercent: crossing.previousMarginPercent,
             currentMarginPercent: crossing.currentMarginPercent,
-            previousTier: computeHealthTier(crossing.previousMarginPercent),
-            currentTier: computeHealthTier(crossing.currentMarginPercent),
+            previousTier: fromTier as import("./margin-query").HealthTier,
+            currentTier: toTier,
             revenueMicrodollars: customer.revenueMicrodollars,
             costMicrodollars: customer.costMicrodollars,
             period: currentPeriod,
@@ -265,8 +288,11 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
           log.warn({ err, orgId, tagValue: crossing.tagValue }, "Margin Slack alert failed for crossing (non-fatal)");
         }
       }
-      if (slackSent > 0) {
-        log.info({ orgId, sent: slackSent, total: crossings.length }, "Margin Slack alerts dispatched");
+
+      if (webhooksSent > 0 || slackSent > 0) {
+        log.info({ orgId, webhooksSent, slackSent, deduplicated, total: crossings.length }, "Margin alerts dispatched");
+      } else if (deduplicated > 0) {
+        log.debug({ orgId, deduplicated, total: crossings.length }, "All margin crossings already alerted — skipped");
       }
     }
 
