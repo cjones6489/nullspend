@@ -98,6 +98,36 @@ describe("updateBudgetSpend", () => {
       updateBudgetSpend(REMOTE_CONN, "org-test", [{ entityType: "api_key", entityId: "key-1" }], 500_000),
     ).rejects.toThrow("connection failed");
   });
+
+  // Regression: Codex audit P0 #1 — cross-tenant budget corruption.
+  // The UPDATE WHERE clause MUST include org_id so two orgs with the same
+  // customer entity don't increment each other's budgets.
+  it("passes orgId as SQL parameter for tenant isolation", async () => {
+    await updateBudgetSpend(
+      REMOTE_CONN,
+      "org-alpha",
+      [{ entityType: "customer", entityId: "acme-corp" }],
+      100_000,
+    );
+
+    expect(mockTx).toHaveBeenCalledTimes(1);
+    const call = mockTx.mock.calls[0];
+    // Tagged template params: [1]=cost, [2]=entityType, [3]=entityId, [4]=orgId
+    expect(call[1]).toBe(100_000);
+    expect(call[2]).toBe("customer");
+    expect(call[3]).toBe("acme-corp");
+    expect(call[4]).toBe("org-alpha");
+  });
+
+  it("different orgIds produce different SQL parameters (cross-tenant isolation)", async () => {
+    await updateBudgetSpend(REMOTE_CONN, "org-alpha", [{ entityType: "customer", entityId: "acme-corp" }], 50_000);
+    await updateBudgetSpend(REMOTE_CONN, "org-beta", [{ entityType: "customer", entityId: "acme-corp" }], 75_000);
+
+    expect(mockTx).toHaveBeenCalledTimes(2);
+    // Same entity name, different orgIds — must produce different SQL params
+    expect(mockTx.mock.calls[0][4]).toBe("org-alpha");
+    expect(mockTx.mock.calls[1][4]).toBe("org-beta");
+  });
 });
 
 describe("resetBudgetPeriod", () => {
@@ -164,5 +194,19 @@ describe("resetBudgetPeriod", () => {
     // Second call: user:user-1
     expect(calls[1][2]).toBe("user");
     expect(calls[1][3]).toBe("user-1");
+  });
+
+  // Regression: Codex P0 #1 — orgId must appear in resetBudgetPeriod SQL
+  it("passes orgId as SQL parameter for tenant isolation", async () => {
+    await resetBudgetPeriod(REMOTE_CONN, "org-gamma", [
+      { entityType: "tag", entityId: "team=eng", newPeriodStart: 1_710_000_000_000 },
+    ]);
+
+    expect(mockTx).toHaveBeenCalledTimes(1);
+    const call = mockTx.mock.calls[0];
+    // Tagged template params: [1]=periodStart, [2]=entityType, [3]=entityId, [4]=orgId
+    expect(call[2]).toBe("tag");
+    expect(call[3]).toBe("team=eng");
+    expect(call[4]).toBe("org-gamma");
   });
 });

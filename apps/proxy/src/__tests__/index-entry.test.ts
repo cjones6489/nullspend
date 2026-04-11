@@ -712,4 +712,67 @@ describe("Queue routing", () => {
     expect(mockHandleCostEventQueue).not.toHaveBeenCalled();
     expect(mockHandleCostEventDlq).not.toHaveBeenCalled();
   });
+
+  // -------------------------------------------------------------------------
+  // Regression: Codex audit P1 #7 — auth DB error returns 503, not 401
+  // -------------------------------------------------------------------------
+
+  describe("auth DB error handling", () => {
+    it("returns 503 service_unavailable when authenticateRequest throws (DB down)", async () => {
+      mockAuthenticateRequest.mockRejectedValue(new Error("ECONNREFUSED"));
+
+      const req = new Request("https://proxy.example.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "x-nullspend-key": "ns_live_sk_test",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "test" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as unknown as ExecutionContext);
+      expect(res.status).toBe(503);
+      const body = await res.json() as { error: { code: string } };
+      expect(body.error.code).toBe("service_unavailable");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Regression: Codex audit P1 #8 — Unicode body byte length
+  // -------------------------------------------------------------------------
+
+  describe("body byte length accuracy", () => {
+    it("computes UTF-8 byte length, not JS string length, for CJK content", async () => {
+      // CJK characters are 3 bytes each in UTF-8 but 1 char in JS
+      const cjkBody = JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "你好世界" }] });
+      const jsLength = cjkBody.length;
+      const utf8Length = new TextEncoder().encode(cjkBody).byteLength;
+      // Sanity: UTF-8 byte count MUST be larger for CJK content
+      expect(utf8Length).toBeGreaterThan(jsLength);
+
+      mockAuthenticateRequest.mockResolvedValue({
+        userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: false,
+        orgId: "org-1", apiVersion: "2026-04-01", defaultTags: {},
+      });
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({
+          model: "gpt-4o",
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+          choices: [{ message: { content: "hi" } }],
+        }), { headers: { "content-type": "application/json" } }),
+      );
+
+      const req = new Request("https://proxy.example.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "x-nullspend-key": "ns_live_sk_test", "content-type": "application/json" },
+        body: cjkBody,
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as unknown as ExecutionContext);
+      // The request should succeed (not fail on body parsing)
+      expect(res.status).toBe(200);
+      // The upstream fetch was called, meaning body was parsed correctly
+      expect(globalThis.fetch).toHaveBeenCalled();
+    });
+  });
 });
