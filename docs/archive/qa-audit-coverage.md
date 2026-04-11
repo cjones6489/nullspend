@@ -12,7 +12,7 @@ Tracks which sections of the codebase have received deep adversarial review (Cod
 | `apps/proxy/src/lib/` | 2026-04-10 | 2026-04-10 | — | 1,406 | CRITICAL — **CLEAN** |
 | `apps/proxy/src/routes/` | 2026-04-10 | 2026-04-10 | — | (incl. above) | CRITICAL — **CLEAN** |
 | `apps/proxy/src/durable-objects/` | 2026-04-10 | 2026-04-10 | — | 83 (DO pool) | CRITICAL — **CLEAN** |
-| `lib/auth/` | — | 2026-04-10 | 2026-04-10 | ~50 | CRITICAL — **NEEDS CODEX** |
+| `lib/auth/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~129 | CRITICAL — **CLEAN** |
 | `lib/actions/` | — | 2026-04-10 | 2026-04-10 | ~80 | HIGH — **NEEDS CODEX** |
 | `lib/margins/` | — | — | 2026-04-10 | ~120 | HIGH — **NEEDS CODEX** |
 | `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH |
@@ -71,6 +71,15 @@ alarm-based retry, Codex-reviewed plan (10 findings addressed), 2 post-implement
 **Bugs found:** 8 (6 fixed in session)
 **Details:** See memory `project_session_summary_20260410.md` and `project_session_summary_20260410b.md`
 
+### 5. Dashboard Auth (`lib/auth/`) — Codex Challenge, 2026-04-10
+
+**Scope:** `session.ts`, `api-key.ts`, `with-api-key-auth.ts`, `dual-auth.ts`, `org-authorization.ts`, `api-key-rate-limit.ts`, `invitation.ts`, `invite-rate-limit.ts`, `supabase.ts`, `supabase-browser.ts`, `errors.ts`
+
+**Findings:** 6 total (1 P0, 2 P1, 2 P2, 1 P3) — 4 fixed, 2 known/accepted
+**Key fixes:** AUTH-1 (P0) dev fallback production guard, AUTH-2 unknown role privilege escalation, AUTH-3 API key org membership verification
+**Tests added:** 14 (50 → ~129 lib/auth/ tests including pre-existing)
+**Details:** [audit-findings.md](audit-findings.md#dashboard-auth-audit-codex-challenge-libauth-2026-04-10)
+
 ---
 
 ## NOT YET AUDITED (Codex Challenge)
@@ -81,7 +90,6 @@ These sections have unit tests but have NOT received a deep adversarial Codex re
 
 | Section | Why | Files | Est. findings |
 |---------|-----|-------|---------------|
-| `lib/auth/` | AuthN/AuthZ, session handling, API key validation, dev mode fallback | ~8 | Medium |
 | `lib/actions/` | HITL state machine, approval side-effects, budget increase execution | ~10 | Medium |
 | `lib/margins/` | Stripe API integration, AES-256-GCM encryption, revenue sync, auto-match | ~15 | High (newer code) |
 | `packages/cost-engine/src/` | Pricing accuracy for all 38 models, used by both proxy and SDK | ~6 | Low (well-tested, 700 tests) |

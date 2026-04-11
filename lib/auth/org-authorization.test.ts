@@ -171,6 +171,42 @@ describe("role hierarchy: viewer < member < admin < owner", () => {
   }
 });
 
+describe("AUTH-2: unknown role values fail closed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("rejects when DB role is an unknown string", async () => {
+    mockDbReturning([{ userId: "user-1", orgId: "org-1", role: "superadmin" }]);
+
+    await expect(assertOrgRole("user-1", "org-1", "viewer")).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects when DB role is empty string", async () => {
+    mockDbReturning([{ userId: "user-1", orgId: "org-1", role: "" }]);
+
+    await expect(assertOrgRole("user-1", "org-1", "viewer")).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects when DB role is 'Owner' (wrong case)", async () => {
+    mockDbReturning([{ userId: "user-1", orgId: "org-1", role: "Owner" }]);
+
+    await expect(assertOrgRole("user-1", "org-1", "viewer")).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects when DB role is '__proto__' (prototype pollution attempt)", async () => {
+    mockDbReturning([{ userId: "user-1", orgId: "org-1", role: "__proto__" }]);
+
+    await expect(assertOrgRole("user-1", "org-1", "viewer")).rejects.toThrow(ForbiddenError);
+  });
+
+  it("rejects when DB role is 'constructor'", async () => {
+    mockDbReturning([{ userId: "user-1", orgId: "org-1", role: "constructor" }]);
+
+    await expect(assertOrgRole("user-1", "org-1", "viewer")).rejects.toThrow(ForbiddenError);
+  });
+});
+
 describe("exact minimum role matches", () => {
   beforeEach(() => {
     vi.clearAllMocks();

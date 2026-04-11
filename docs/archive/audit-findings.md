@@ -6,11 +6,11 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 | Severity | Total | Done | Remaining |
 |----------|-------|------|-----------|
-| P0/HIGH  | 10    | 10   | 0         |
-| P1       | 5     | 5    | 0         |
-| P2/MED   | 5     | 5    | 0 (+2 known/intentional) |
-| P3/LOW   | 3     | 3    | 0         |
-| **Total** | **23** | **23** | **0** |
+| P0/HIGH  | 11    | 11   | 0         |
+| P1       | 8     | 8    | 0         |
+| P2/MED   | 7     | 7    | 0 (+2 known/intentional) |
+| P3/LOW   | 4     | 4    | 0         |
+| **Total** | **30** | **30** | **0** |
 
 ---
 
@@ -64,6 +64,21 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | CD-5 | MED | First outbox retry waits 30s for reservation alarm | **FIXED** (5f033ae) — reconcile() reschedules alarm to 1s |
 | CD-6 | MED | Pruning inside pending.length > 0 gate | Already fixed in prior commit (2ed4974) |
 | CD-7 | MED | Bigint precision above $9B | ACCEPTED — theoretical, no action needed |
+
+---
+
+## Dashboard Auth Audit (Codex challenge `lib/auth/`, 2026-04-10)
+
+| # | Sev | Finding | Status | Notes |
+|---|-----|---------|--------|-------|
+| AUTH-1 | P0 | Dev fallback (`NULLSPEND_DEV_MODE`) has no `NODE_ENV` guard — ships to production as full auth bypass | [DONE] | Added `NODE_ENV === "production"` guard in both `session.ts` and `api-key.ts`. 7 regression tests. |
+| AUTH-2 | P2 | Unknown role values (including `__proto__`, `constructor`) fail open in `assertOrgRole()` — privilege escalation | [DONE] | Changed to `Object.hasOwn(ROLE_LEVEL, member.role)` check. 5 regression tests. |
+| AUTH-3 | P1 | API key auth not bound to org membership — missed key revocation = permanent cross-tenant access | [DONE] | Added `assertOrgMember` verification in `dual-auth.ts` for every API key auth. Observability log on non-member detection. 2 regression tests. |
+| AUTH-4 | P1 | Membership cache is process-local (60s TTL), revocations don't propagate across instances | [DONE] | Added cache hit observability logging. Documented limitation. Acceptable for single-instance. |
+| AUTH-5 | P2 | API key rate limiting fails open on misconfiguration + Redis failure; dev fallback key skips throttling | [KNOWN] | Intentional fail-open. Per-IP rate limiting in proxy.ts is the DDoS safety net. |
+| AUTH-6 | P3 | Invite-accept rate limiting is process-local, null IP bypasses | [KNOWN] | Acceptable for current scale. |
+
+**Tests added:** 14 regression tests (129 → ~143 lib/auth/ tests)
 
 ---
 

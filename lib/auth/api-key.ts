@@ -4,6 +4,7 @@ import { eq, and, isNull } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { apiKeys } from "@nullspend/db";
+import { getLogger } from "@/lib/observability";
 import { getDevActor } from "@/lib/auth/session";
 
 export const API_KEY_HEADER = "x-nullspend-key";
@@ -43,6 +44,14 @@ function constantTimeCompare(a: string, b: string): boolean {
 }
 
 function canUseDevelopmentFallback(): boolean {
+  if (process.env.NODE_ENV === "production") {
+    if (process.env.NULLSPEND_DEV_MODE === "true") {
+      getLogger("auth").error(
+        "NULLSPEND_DEV_MODE is set in production — blocked by NODE_ENV guard. Remove this env var immediately.",
+      );
+    }
+    return false;
+  }
   return process.env.NULLSPEND_DEV_MODE === "true";
 }
 

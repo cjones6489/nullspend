@@ -52,7 +52,7 @@ export async function assertOrgRole(
 ): Promise<OrgMember> {
   const member = await assertOrgMember(userId, orgId);
 
-  if (ROLE_LEVEL[member.role] < ROLE_LEVEL[minRole]) {
+  if (!Object.hasOwn(ROLE_LEVEL, member.role) || ROLE_LEVEL[member.role] < ROLE_LEVEL[minRole]) {
     throw new ForbiddenError(
       `This action requires the ${minRole} role or higher.`,
     );

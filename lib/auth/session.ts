@@ -9,6 +9,7 @@ import {
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getDb } from "@/lib/db/client";
 import { organizations, orgMemberships } from "@nullspend/db";
+import { getLogger } from "@/lib/observability";
 import { setRequestUserId } from "@/lib/observability/request-context";
 import { addSentryBreadcrumb } from "@/lib/observability/sentry";
 import {
@@ -29,6 +30,14 @@ const supabaseCircuit = new CircuitBreaker({
 export const _supabaseCircuitForTesting = supabaseCircuit;
 
 function canUseDevelopmentFallback(): boolean {
+  if (process.env.NODE_ENV === "production") {
+    if (process.env.NULLSPEND_DEV_MODE === "true") {
+      getLogger("auth").error(
+        "NULLSPEND_DEV_MODE is set in production — blocked by NODE_ENV guard. Remove this env var immediately.",
+      );
+    }
+    return false;
+  }
   return process.env.NULLSPEND_DEV_MODE === "true";
 }
 
@@ -387,6 +396,10 @@ export async function resolveSessionContext(): Promise<SessionContext> {
     const cacheKey = `${userId}:${cookieOrg.orgId}`;
     const cached = membershipCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
+      getLogger("auth").debug(
+        { userId, orgId: cached.orgId, cacheAgeMs: MEMBERSHIP_CACHE_TTL_MS - (cached.expiresAt - Date.now()) },
+        "Serving org context from membership cache",
+      );
       return { userId, orgId: cached.orgId, role: cached.role };
     }
 

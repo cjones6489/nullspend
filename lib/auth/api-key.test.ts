@@ -24,8 +24,8 @@ describe("NULLSPEND_DEV_MODE fallback", () => {
     setEnv("NULLSPEND_DEV_ACTOR", originalDevActor);
   });
 
-  it("allows dev fallback when NULLSPEND_DEV_MODE=true", () => {
-    setEnv("NODE_ENV", "production");
+  it("allows dev fallback when NULLSPEND_DEV_MODE=true (non-production)", () => {
+    setEnv("NODE_ENV", "development");
     setEnv("NULLSPEND_DEV_MODE", "true");
     setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
 
@@ -54,5 +54,29 @@ describe("NULLSPEND_DEV_MODE fallback", () => {
     setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
 
     expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);
+  });
+
+  it("AUTH-1: blocks dev fallback in NODE_ENV=production even with NULLSPEND_DEV_MODE=true", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("NULLSPEND_DEV_MODE", "true");
+    setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
+
+    expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);
+  });
+
+  it("AUTH-1: allows dev fallback in NODE_ENV=development with NULLSPEND_DEV_MODE=true", () => {
+    setEnv("NODE_ENV", "development");
+    setEnv("NULLSPEND_DEV_MODE", "true");
+    setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
+
+    expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
+  });
+
+  it("AUTH-1: allows dev fallback in NODE_ENV=test with NULLSPEND_DEV_MODE=true", () => {
+    setEnv("NODE_ENV", "test");
+    setEnv("NULLSPEND_DEV_MODE", "true");
+    setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
+
+    expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
   });
 });

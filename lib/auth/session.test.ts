@@ -507,3 +507,94 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
     expect(isSupabaseServiceFailure({ status: "500" /* string */ })).toBe(false);
   });
 });
+
+describe("AUTH-1: dev fallback blocked in production NODE_ENV", () => {
+  const originalDevMode = process.env.NULLSPEND_DEV_MODE;
+  const originalDevActor = process.env.NULLSPEND_DEV_ACTOR;
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    process.env.NULLSPEND_DEV_MODE = originalDevMode;
+    process.env.NULLSPEND_DEV_ACTOR = originalDevActor;
+    process.env.NODE_ENV = originalNodeEnv;
+    vi.resetAllMocks();
+  });
+
+  it("blocks dev fallback even when NULLSPEND_DEV_MODE=true if NODE_ENV=production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "attacker-actor";
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: null,
+        }),
+      },
+    } as never);
+
+    // In production, even with NULLSPEND_DEV_MODE=true, no fallback should occur
+    await expect(resolveSessionUserId()).rejects.toBeInstanceOf(
+      AuthenticationRequiredError,
+    );
+  });
+
+  it("blocks dev fallback on SupabaseEnvError in production even with NULLSPEND_DEV_MODE=true", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "attacker-actor";
+    mockedCreateServerSupabaseClient.mockRejectedValue(
+      new SupabaseEnvError("NEXT_PUBLIC_SUPABASE_URL"),
+    );
+
+    await expect(resolveSessionUserId()).rejects.toBeInstanceOf(SupabaseEnvError);
+  });
+
+  it("blocks dev fallback on circuit breaker open in production even with NULLSPEND_DEV_MODE=true", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "attacker-actor";
+
+    // Trip the breaker with 5 service failures
+    _supabaseCircuitForTesting._resetForTesting();
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: {
+            name: "AuthRetryableFetchError",
+            message: "Failed to fetch",
+            status: 0,
+            __isAuthError: true,
+          },
+        }),
+      },
+    } as never);
+    for (let i = 0; i < 5; i++) {
+      try { await resolveSessionUserId(); } catch { /* expected */ }
+    }
+
+    // 6th call should throw CircuitOpenError, NOT fall back to dev actor
+    await expect(resolveSessionUserId()).rejects.toThrow();
+    // Verify the dev actor was NOT used
+    expect(mockedSetRequestUserId).not.toHaveBeenCalledWith("attacker-actor");
+
+    _supabaseCircuitForTesting._resetForTesting();
+  });
+
+  it("allows dev fallback when NODE_ENV is not production", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.NULLSPEND_DEV_MODE = "true";
+    process.env.NULLSPEND_DEV_ACTOR = "dev-actor-ok";
+    mockedCreateServerSupabaseClient.mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: null,
+        }),
+      },
+    } as never);
+
+    await expect(resolveSessionUserId()).resolves.toBe("dev-actor-ok");
+  });
+});
