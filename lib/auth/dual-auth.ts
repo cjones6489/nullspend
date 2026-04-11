@@ -24,7 +24,7 @@ export async function assertApiKeyOrSession(
 ): Promise<DualAuthResult | Response> {
   if (request.headers.has(API_KEY_HEADER)) {
     const result = await authenticateApiKey(request);
-    if (result instanceof Response) return result; // 429
+    if (result instanceof Response) return result; // 429 rate limit or 403 membership/config error
     if (!result.orgId) {
       return NextResponse.json(
         { error: { code: "configuration_error", message: "API key is not associated with an organization. Re-create the key or contact support.", details: null } },

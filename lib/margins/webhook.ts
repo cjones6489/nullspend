@@ -59,12 +59,10 @@ const TIER_SEVERITY: Record<HealthTier, number> = {
 
 /**
  * Detect threshold crossings that are worsening (not improving).
- */
-/**
- * MRG-2: Accept optional pre-computed healthTier to avoid the zero-revenue
- * critical→at_risk downgrade. When healthTier is provided, use it directly
- * instead of recomputing from marginPercent (which gives wrong result for
- * zero-revenue customers where marginPercent=0 but tier should be "critical").
+ *
+ * MRG-2: Accepts optional pre-computed healthTier to avoid the zero-revenue
+ * critical→at_risk downgrade. When healthTier is provided, uses it directly
+ * instead of recomputing from marginPercent.
  */
 export function detectWorseningCrossings(
   previous: { tagValue: string; marginPercent: number; healthTier?: HealthTier }[],
