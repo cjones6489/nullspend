@@ -235,8 +235,14 @@ describe("End-to-end budget enforcement", () => {
     const successes = statuses.filter((s) => s.status === 200);
     const denied = statuses.filter((s) => s.status === 429);
 
-    // At least some should be denied; budget can't cover all 5
+    console.log(`[ST-8] Tight budget (200µ¢): ${successes.length} succeeded, ${denied.length} denied`);
+
+    // All responses must be 200 or 429 — no 500s
     expect(successes.length + denied.length).toBe(5);
+    // ST-8: Budget of 200µ¢ with ~6µ¢/request should allow max ~3.
+    // Allow headroom for estimation variance, but at least 1 must be denied.
+    expect(denied.length).toBeGreaterThan(0);
+    expect(successes.length).toBeLessThanOrEqual(4);
   }, 60_000);
 
   it("ST-1: budget increase via Postgres UPDATE propagates to proxy enforcement (BDG-4)", async () => {

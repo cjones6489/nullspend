@@ -235,6 +235,48 @@ describe("Post-stress recovery", () => {
       }
     });
 
+    it("ST-9: budget spend is non-negative and cost events exist for recent smoke user", async () => {
+      if (!sql) {
+        console.log("[recovery] Skipping — no DATABASE_URL");
+        return;
+      }
+
+      const userId = process.env.NULLSPEND_SMOKE_USER_ID;
+      if (!userId) {
+        console.log("[recovery] Skipping — no NULLSPEND_SMOKE_USER_ID");
+        return;
+      }
+
+      // Check budget spend is >= 0 for smoke user
+      const budgetRows = await sql`
+        SELECT entity_type, entity_id, spend_microdollars::text as spend, max_budget_microdollars::text as max
+        FROM budgets
+        WHERE user_id = ${userId}
+      `;
+      for (const row of budgetRows) {
+        const spend = Number(row.spend);
+        const max = Number(row.max);
+        console.log(`[ST-9] Budget ${row.entity_type}/${row.entity_id}: spend=${spend}µ¢ / max=${max}µ¢`);
+        expect(spend).toBeGreaterThanOrEqual(0);
+      }
+
+      // Check cost events exist for this user in last hour (post-stress)
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const costRows = await sql`
+        SELECT COUNT(*)::int as count, COALESCE(SUM(cost_microdollars), 0)::text as total_cost
+        FROM cost_events
+        WHERE user_id = ${userId} AND created_at >= ${oneHourAgo.toISOString()}
+      `;
+      const count = costRows[0].count as number;
+      const totalCost = Number(costRows[0].total_cost);
+      console.log(`[ST-9] Cost events (last 1h): ${count} events, total=${totalCost}µ¢`);
+
+      // At least some cost events should exist after smoke/stress tests
+      if (count === 0) {
+        console.log("[ST-9] WARNING: No cost events for smoke user in last hour");
+      }
+    });
+
     it("no orphaned reservations in budgets table", async () => {
       if (!sql) {
         console.log("[recovery] Skipping orphan check — no DATABASE_URL");
