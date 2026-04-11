@@ -274,6 +274,67 @@ describe(`Budget race conditions [${INTENSITY}]`, () => {
     expect(deniedCount).toBeGreaterThan(0);
   }, 120_000);
 
+  // ── ST-2: Concurrent budget mutation + spend interleaving ──
+
+  it("budget increase mid-burst does not corrupt enforcement state", async () => {
+    // Start with a tight budget that blocks most requests
+    const tightBudget = EST_COST_PER_REQUEST * 2;
+    await setupBudget(tightBudget);
+
+    const concurrency = Math.min(RACE_CONCURRENCY[INTENSITY], 15);
+
+    // Fire concurrent requests AND a budget increase simultaneously
+    const requests = Array.from({ length: concurrency }, (_, i) =>
+      fetch(`${BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: smallRequest({ messages: [{ role: "user", content: `MutRace ${i}` }] }),
+      }),
+    );
+
+    // Simultaneously increase the budget mid-burst
+    const mutationPromise = (async () => {
+      await new Promise((r) => setTimeout(r, 200));
+      await sql`
+        UPDATE budgets SET max_budget_microdollars = 1000000, updated_at = NOW()
+        WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}
+      `;
+      await syncBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
+    })();
+
+    const [results] = await Promise.all([
+      Promise.all(requests),
+      mutationPromise,
+    ]);
+
+    const statuses: number[] = [];
+    for (const r of results) {
+      statuses.push(r.status);
+      await r.text();
+    }
+
+    const successes = statuses.filter((s) => s === 200).length;
+    const denied = statuses.filter((s) => s === 429).length;
+    const errors = statuses.filter((s) => s !== 200 && s !== 429).length;
+
+    console.log(
+      `[stress] ST-2 mutation race: ${successes} succeeded, ${denied} denied, ${errors} errors`,
+    );
+
+    // No 500s or other unexpected errors — mutation should not crash enforcement
+    expect(errors).toBe(0);
+
+    // After the increase, new requests should succeed
+    await new Promise((r) => setTimeout(r, 2_000));
+    const postIncrease = await fetch(`${BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: smallRequest({ messages: [{ role: "user", content: "Post-increase probe" }] }),
+    });
+    expect(postIncrease.status).toBe(200);
+    await postIncrease.json();
+  }, 120_000);
+
   // ── Post-reconciliation consistency ──
 
   it("budget spend in Postgres is consistent after concurrent burst", async () => {

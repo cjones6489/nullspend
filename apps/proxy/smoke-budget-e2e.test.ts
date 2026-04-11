@@ -239,6 +239,41 @@ describe("End-to-end budget enforcement", () => {
     expect(successes.length + denied.length).toBe(5);
   }, 60_000);
 
+  it("ST-1: budget increase via Postgres UPDATE propagates to proxy enforcement (BDG-4)", async () => {
+    // 1. Set a tight budget ($0 spend, max=10µ¢ — will block everything)
+    await setupBudget(10);
+
+    // 2. Verify the proxy denies a request
+    const denied = await fetch(`${BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: smallRequest(),
+    });
+    expect(denied.status).toBe(429);
+    await denied.text();
+
+    // 3. Increase the budget via direct SQL (simulates what approve-action does)
+    await sql`
+      UPDATE budgets
+      SET max_budget_microdollars = 1000000, spend_microdollars = 0, updated_at = NOW()
+      WHERE entity_type = 'user' AND entity_id = ${NULLSPEND_SMOKE_USER_ID!}
+    `;
+
+    // 4. Sync the new budget to the proxy DO (this is what BDG-4 fixed — ownerId must be orgId)
+    await syncBudget(orgId, "user", NULLSPEND_SMOKE_USER_ID!);
+    await new Promise((r) => setTimeout(r, 2_000));
+
+    // 5. Verify the proxy now allows requests with the increased budget
+    const allowed = await fetch(`${BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: smallRequest(),
+    });
+    expect(allowed.status).toBe(200);
+    const body = await allowed.json();
+    expect(body).toHaveProperty("usage");
+  }, 60_000);
+
   it("requests without configured budget are not affected by budget enforcement", async () => {
     // Clean up any existing budget so there's no budget to enforce
     await cleanupBudget();
