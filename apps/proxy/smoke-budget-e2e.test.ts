@@ -208,7 +208,8 @@ describe("End-to-end budget enforcement", () => {
 
     expect(body.error.code).toBe("budget_exceeded");
     expect(body.error.message).toContain("budget");
-    expect(body.error.details).toBeNull();
+    // Proxy returns enriched budget entity details (entity_type, limits, spend)
+    expect(body.error.details).toBeDefined();
   }, 30_000);
 
   it("concurrent requests against tight budget don't overspend", async () => {
