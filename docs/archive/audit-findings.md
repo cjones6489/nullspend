@@ -170,6 +170,28 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 ---
 
+## Stress Test Audit (Codex review of stress/smoke test suite, 2026-04-11)
+
+| # | Sev | Finding | Status | Notes |
+|---|-----|---------|--------|-------|
+| ST-1 | P0 | BDG-4 budget increase → proxy enforcement has no live E2E test | [TODO] | Must verify manually on deploy. Add smoke test. |
+| ST-2 | P0 | No race test for concurrent budget mutation + spend update | [TODO] | Need stress test interleaving spend with budget edits. |
+| ST-3 | P0 | ACT-4 idempotency scoping untested under concurrent callers | [TODO] | Need stress test with same key across different API keys/routes. |
+| ST-4 | P1 | Session-limit enforcement untested under concurrent load | [TODO] | Need same-session burst + mixed-session burst tests. |
+| ST-5 | P1 | API key membership invalidation untested under load | [TODO] | Need test revoking membership while requests are in flight (API-1). |
+| ST-6 | P1 | Webhook delivery under stress untested | [TODO] | No assertions on threshold crossings, retries, or ordering under load. |
+| ST-7 | P1 | Margin sync + proxy sync interaction untested | [TODO] | No scenario for margin recompute racing with proxy budget refresh. |
+| ST-8 | P1 | Overspend tests too weak — accept too many successes past budget | [TODO] | Tighten assertions to match actual budget capacity. |
+| ST-9 | P1 | Observability assertions missing — no metrics/queue backlog checks | [TODO] | Tests should assert DO sync age, denial reason distribution, webhook counters. |
+| ST-10 | P2 | Fixed eventual-consistency timing assumptions (500ms-15s sleeps) | [KNOWN] | Inherent to live infra tests. Can improve with polling. |
+| ST-11 | P2 | Rate limit recovery can time out silently, poisoning later phases | [KNOWN] | waitForRateLimitRecovery needs a hard fail on timeout. |
+| ST-12 | P2 | Some assertions pass on stale/unrelated data (24h window) | [KNOWN] | Recovery test should filter to this run's request IDs. |
+| ST-13 | P2 | Abort storm overcounts success (transport errors treated as clean) | [KNOWN] | Tighten success classification in streaming stress. |
+
+**Priority for deploy verification:** ST-1 (BDG-4 manual smoke), ST-3 (ACT-4), ST-5 (API-1).
+
+---
+
 ## Other Findings (from prior sessions)
 
 | # | Sev | Finding | Status | Source |
