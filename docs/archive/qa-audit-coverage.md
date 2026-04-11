@@ -1,0 +1,115 @@
+# QA Audit Coverage Map
+
+Tracks which sections of the codebase have received deep adversarial review (Codex challenge), security audit (CSO), or systematic QA. Updated after each audit pass.
+
+**Last updated:** 2026-04-10
+
+## Coverage Summary
+
+| Section | Codex Challenge | CSO Review | QA Pass | Test Count | Risk Level |
+|---------|:-:|:-:|:-:|---:|---|
+| `packages/sdk/src/` | 2026-04-10 | 2026-04-10 | — | 457 | HIGH (client-side cost tracking) |
+| `apps/proxy/src/lib/` | 2026-04-10 | 2026-04-10 | — | 1,377 | CRITICAL (money path) |
+| `apps/proxy/src/routes/` | partial | 2026-04-10 | — | (incl. above) | CRITICAL (request handling) |
+| `apps/proxy/src/durable-objects/` | partial | 2026-04-10 | — | (incl. above) | CRITICAL (budget state) |
+| `lib/auth/` | — | 2026-04-10 | 2026-04-10 | ~50 | CRITICAL (authN/authZ) |
+| `lib/actions/` | — | 2026-04-10 | 2026-04-10 | ~80 | HIGH (HITL state machine) |
+| `lib/margins/` | — | — | 2026-04-10 | ~120 | HIGH (Stripe data, encryption) |
+| `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH (budget increase side-effects) |
+| `lib/webhooks/` | — | 2026-04-10 | — | ~40 | MED (dispatch, signing) |
+| `lib/slack/` | — | — | 2026-04-10 | ~30 | LOW |
+| `app/api/` (routes) | — | 2026-04-10 | 2026-04-10 | ~300 | HIGH (API surface) |
+| `packages/cost-engine/` | — | — | — | 700 | HIGH (pricing accuracy) |
+| `packages/db/` | — | — | — | ~10 | MED (schema validation) |
+| `packages/claude-agent/` | — | — | — | 49 | MED (config transformer) |
+| `packages/mcp-server/` | — | — | — | ~30 | MED |
+| `packages/mcp-proxy/` | — | — | — | ~30 | MED |
+| `packages/docs-mcp-server/` | — | — | — | ~60 | LOW |
+| `proxy.ts` (Next.js) | — | 2026-04-10 | 2026-04-10 | — | MED (CSP, routing) |
+| Dashboard components | — | — | 2026-04-10 | ~200 | LOW (UI only) |
+
+## Audit Types
+
+- **Codex Challenge**: Adversarial audit by OpenAI Codex in read-only mode. Finds edge cases, race conditions, security holes, silent data corruption. The gold standard for finding bugs that normal reviews miss.
+- **CSO Review**: Comprehensive security audit covering secrets, dependencies, CI/CD, OWASP Top 10, STRIDE threat model. Scored A- on 2026-04-10.
+- **QA Pass**: Systematic functional testing (browse + test + fix loop). Finds UI bugs, integration issues, missing validation.
+
+## Completed Audits
+
+### 1. SDK (`packages/sdk/src/`) — Codex Challenge, 2026-04-10
+
+**Scope:** `client.ts`, `tracked-fetch.ts`, `provider-parsers.ts`, `policy-cache.ts`, `errors.ts`, `cost-calculator.ts`, `sse-parser.ts`, `customer-id.ts`
+
+**Findings:** 7 total (3 HIGH, 3 MED, 1 LOW) — all fixed
+**Commit:** c216e8f
+**Tests added:** 40 (417 → 457)
+**Details:** [audit-findings.md](audit-findings.md#sdk-audit-codex-challenge-packagessdk-2026-04-10)
+
+### 2. Proxy (`apps/proxy/src/lib/`) — Codex Challenge, 2026-04-10
+
+**Scope:** All 43 files in `lib/`, plus `routes/`, `durable-objects/`, queue handlers
+
+**Findings:** 14 total (3 P0, 5 P1, 4 P2, 2 P3) — 3 fixed, 5 TODO, 3 known/intentional, 3 future
+**Commits:** 70af634 (fixes), d0dd2b9 (regression tests)
+**Tests added:** 5 (1,372 → 1,377)
+**Details:** [audit-findings.md](audit-findings.md#proxy-audit-codex-challenge-appsproxysrclib-2026-04-10)
+
+### 3. CSO Comprehensive Security Audit — 2026-04-10
+
+**Scope:** Full codebase — secrets archaeology, dependency supply chain, CI/CD, OWASP, STRIDE
+**Grade:** A-
+**Critical/High findings:** 0
+**Details:** Conducted via `/cso` skill. SDK tracking bypass (finding SDK-1) was the one actionable item, fixed in b2588f9.
+
+### 4. QA Deep Pass — 2026-04-10
+
+**Scope:** All 16 dashboard pages, Stripe integration, budget creation, API keys, webhooks, margins
+**Bugs found:** 8 (6 fixed in session)
+**Details:** See memory `project_session_summary_20260410.md` and `project_session_summary_20260410b.md`
+
+---
+
+## NOT YET AUDITED (Codex Challenge)
+
+These sections have unit tests but have NOT received a deep adversarial Codex review. Ordered by risk.
+
+### Priority 1 — High risk, high value
+
+| Section | Why | Files | Est. findings |
+|---------|-----|-------|---------------|
+| `lib/auth/` | AuthN/AuthZ, session handling, API key validation, dev mode fallback | ~8 | Medium |
+| `lib/actions/` | HITL state machine, approval side-effects, budget increase execution | ~10 | Medium |
+| `lib/margins/` | Stripe API integration, AES-256-GCM encryption, revenue sync, auto-match | ~15 | High (newer code) |
+| `packages/cost-engine/src/` | Pricing accuracy for all 38 models, used by both proxy and SDK | ~6 | Low (well-tested, 700 tests) |
+
+### Priority 2 — Medium risk
+
+| Section | Why | Files | Est. findings |
+|---------|-----|-------|---------------|
+| `app/api/` routes | API surface, input validation, error handling | ~20 | Medium |
+| `lib/budgets/` | Budget increase execution, entity lookup, tier cap logic | ~5 | Low-Medium |
+| `lib/webhooks/` | Dispatch, signing, endpoint management | ~5 | Low |
+| `packages/mcp-proxy/` | MCP budget gate, cost tracking | ~4 | Medium |
+
+### Priority 3 — Lower risk
+
+| Section | Why | Files | Est. findings |
+|---------|-----|-------|---------------|
+| `packages/claude-agent/` | Config transformer only | ~2 | Low |
+| `packages/mcp-server/` | Tool registration, config | ~4 | Low |
+| `packages/docs-mcp-server/` | Search, static content | ~4 | Low |
+| `packages/db/` | Schema definitions | ~2 | Low |
+
+---
+
+## Running a Codex Challenge
+
+```
+/codex challenge <path>
+```
+
+After each audit:
+1. Record findings in `audit-findings.md` with IDs, severity, status
+2. Update this coverage map with the date and finding count
+3. Fix P0/P1 findings immediately with regression tests
+4. Log P2+ findings for future pickup
