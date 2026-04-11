@@ -6,11 +6,11 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 | Severity | Total | Done | Remaining |
 |----------|-------|------|-----------|
-| P0/HIGH  | 10    | 9    | 1         |
+| P0/HIGH  | 10    | 10   | 0         |
 | P1       | 5     | 5    | 0         |
 | P2/MED   | 5     | 5    | 0 (+2 known/intentional) |
 | P3/LOW   | 3     | 1    | 2         |
-| **Total** | **23** | **20** | **3 actionable** |
+| **Total** | **23** | **21** | **2 (P3 only)** |
 
 ---
 
@@ -35,7 +35,7 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | # | Sev | Finding | Status | Commit | Notes |
 |---|-----|---------|--------|--------|-------|
 | PXY-1 | P0 | Cross-tenant budget corruption: `UPDATE budgets` missing `org_id` in WHERE | [DONE] | 70af634 | 3 regression tests (d0dd2b9) |
-| PXY-2 | P0 | DO/Postgres split-brain permanent on PG failure | [TODO] | — | Architectural. Queue retry mitigates. Needs compensation log or reconciliation audit. |
+| PXY-2 | P0 | DO/Postgres split-brain permanent on PG failure | [DONE] | 7789228→2ed4974 | Transactional outbox in DO SQLite + idempotent PG writes via reconciled_requests dedup. 4 commits, 26 tests, Codex adversarial plan review. |
 | PXY-3 | P0 | Unknown models off-ledger: estimator reserves $1, calculator writes $0 | [DONE] | b1630d6 | Route handler substitutes estimate when calculator returns $0 with tokens. `_ns_unpriced` + `cost_event_unpriced` metric. |
 | PXY-4 | P1 | Streams charged as $0 when SSE parser drops usage | [DONE] | b1630d6 | Non-cancelled streams now use estimate. Cost event tagged `_ns_no_usage`. `stream_no_usage` metric. |
 | PXY-5 | P1 | Webhook queue-send failures silently dropped | [KNOWN] | — | Intentional fail-open. Needs direct fallback or dead-letter signal. |
