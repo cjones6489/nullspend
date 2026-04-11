@@ -9,8 +9,8 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | P0/HIGH  | 10    | 10   | 0         |
 | P1       | 5     | 5    | 0         |
 | P2/MED   | 5     | 5    | 0 (+2 known/intentional) |
-| P3/LOW   | 3     | 1    | 2         |
-| **Total** | **23** | **21** | **2 (P3 only)** |
+| P3/LOW   | 3     | 3    | 0         |
+| **Total** | **23** | **23** | **0** |
 
 ---
 
@@ -46,8 +46,8 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | PXY-10 | P2 | Budget enforcement fails open on auth/DO desync | [KNOWN] | — | Intentional fail-open. `budget_cache_stale` metric exists. |
 | PXY-11 | P2 | Duplicate threshold webhooks under concurrency (no dedup) | [KNOWN] | — | Documented in code. Needs KV or DO-based dedup (future). |
 | PXY-12 | P2 | Upstream error sanitization leaks provider error.message for non-401/403 | [DONE] | f988f47 | 5xx returns generic message. 4xx strips org IDs, API keys, emails, hex IDs. 10 tests. |
-| PXY-13 | P3 | Webhook API-version handling inconsistent across event types | [TODO] | — | cost events per-endpoint, velocity/denial use ctx, threshold uses endpoints[0]. |
-| PXY-14 | P3 | Anthropic beta header forwarded blindly (client-controlled) | [TODO] | — | Callers can opt into response shapes the parser doesn't handle. |
+| PXY-13 | P3 | Webhook API-version handling inconsistent across event types | [DONE] | 5de7aff | dispatchToEndpoints overrides api_version per endpoint. 2 tests. |
+| PXY-14 | P3 | Anthropic beta header forwarded blindly (client-controlled) | [DONE] | 5de7aff | anthropic_beta_used metric emitted for audit trail. |
 
 **Tests added:** 27 regression tests (1,372 → 1,390 proxy tests)
 
