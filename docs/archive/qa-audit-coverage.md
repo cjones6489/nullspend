@@ -45,13 +45,17 @@ Tracks which sections of the codebase have received deep adversarial review (Cod
 **Tests added:** 40 (417 → 457)
 **Details:** [audit-findings.md](audit-findings.md#sdk-audit-codex-challenge-packagessdk-2026-04-10)
 
-### 2. Proxy (`apps/proxy/src/lib/`) — Codex Challenge, 2026-04-10
+### 2. Proxy (`apps/proxy/src/lib/`) — Codex Challenge + PXY-2 Outbox, 2026-04-10
 
 **Scope:** All 43 files in `lib/`, plus `routes/`, `durable-objects/`, queue handlers
 
-**Findings:** 14 total (3 P0, 5 P1, 4 P2, 2 P3) — 3 fixed, 5 TODO, 3 known/intentional, 3 future
-**Commits:** 70af634 (fixes), d0dd2b9 (regression tests)
-**Tests added:** 5 (1,372 → 1,377)
+**Findings:** 14 initial + 7 post-deploy = 21 total. 18 fixed, 3 accepted.
+**Key fix:** PXY-2 DO/Postgres split-brain — transactional outbox pattern with idempotent PG writes,
+alarm-based retry, Codex-reviewed plan (10 findings addressed), 2 post-implementation audits.
+**Commits:** 70af634, d0dd2b9, b1630d6, f988f47, 7789228, 0272ca1, a5866f7, 2ed4974, 5f033ae
+**Tests added:** 1,372 → 1,404 unit + 83 DO = 1,487 total proxy tests
+**Stress verified:** 26/28 pass (2 pre-existing abort timing)
+**Smoke verified:** 31/33 pass (2 updated for PXY-3)
 **Details:** [audit-findings.md](audit-findings.md#proxy-audit-codex-challenge-appsproxysrclib-2026-04-10)
 
 ### 3. CSO Comprehensive Security Audit — 2026-04-10

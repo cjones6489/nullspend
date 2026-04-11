@@ -51,6 +51,20 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 **Tests added:** 27 regression tests (1,372 → 1,390 proxy tests)
 
+### PXY-2 Codex Post-Deploy Challenge (2026-04-10)
+
+7 findings on the deployed outbox code. 3 fixed, 4 accepted:
+
+| # | Sev | Finding | Status |
+|---|-----|---------|--------|
+| CD-1 | CRITICAL | Abandoned outbox entries permanently undercount PG spend | ACCEPTED — Decision 3 (max 5 retries + metric + alert). Infinite retry risks alarm backlog. |
+| CD-2 | HIGH | Dedup INSERT poisons retries when budget row is missing | **FIXED** (5f033ae) — dedup record deleted when UPDATE count=0 |
+| CD-3 | HIGH | getSql() leaks postgres.js clients | ACCEPTED — idle_timeout=20s handles cleanup per db.ts design |
+| CD-4 | MED-HIGH | No indexes on pg_sync_outbox SQLite table | **FIXED** (5f033ae) — retry + request_id indexes added |
+| CD-5 | MED | First outbox retry waits 30s for reservation alarm | **FIXED** (5f033ae) — reconcile() reschedules alarm to 1s |
+| CD-6 | MED | Pruning inside pending.length > 0 gate | Already fixed in prior commit (2ed4974) |
+| CD-7 | MED | Bigint precision above $9B | ACCEPTED — theoretical, no action needed |
+
 ---
 
 ## Other Findings (from prior sessions)
