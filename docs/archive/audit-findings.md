@@ -8,9 +8,9 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 |----------|-------|------|-----------|
 | P0/HIGH  | 10    | 9    | 1         |
 | P1       | 5     | 5    | 0         |
-| P2/MED   | 5     | 3    | 2 (+2 known/intentional) |
+| P2/MED   | 5     | 5    | 0 (+2 known/intentional) |
 | P3/LOW   | 3     | 1    | 2         |
-| **Total** | **23** | **18** | **5 actionable** |
+| **Total** | **23** | **20** | **3 actionable** |
 
 ---
 
@@ -42,14 +42,14 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | PXY-6 | P1 | PG outage during webhook delivery → permanent acked loss | [DONE] | b1630d6 | `getWebhookEndpointsWithSecrets` now throws on DB error. Queue consumer retries instead of acking. |
 | PXY-7 | P1 | Auth DB failure returned 401 instead of 503 | [DONE] | 70af634 | `auth_db_error` metric added. Index-level 503 test (d0dd2b9). |
 | PXY-8 | P1 | Budget estimates biased low for Unicode bodies (string.length vs UTF-8 bytes) | [DONE] | 70af634 | CJK byte length regression test (d0dd2b9). |
-| PXY-9 | P2 | Default tags from DB bypass validation (`__proto__` poisoning) | [TODO] | — | `default_tags` trusted as-is, merged without key/value checks. |
+| PXY-9 | P2 | Default tags from DB bypass validation (`__proto__` poisoning) | [DONE] | f988f47 | `isValidTagEntry` helper + `Object.create(null)` in mergeTags. 6 tests. |
 | PXY-10 | P2 | Budget enforcement fails open on auth/DO desync | [KNOWN] | — | Intentional fail-open. `budget_cache_stale` metric exists. |
 | PXY-11 | P2 | Duplicate threshold webhooks under concurrency (no dedup) | [KNOWN] | — | Documented in code. Needs KV or DO-based dedup (future). |
-| PXY-12 | P2 | Upstream error sanitization leaks provider error.message for non-401/403 | [TODO] | — | Forwards error.message verbatim. Should redact or generic-ize. |
+| PXY-12 | P2 | Upstream error sanitization leaks provider error.message for non-401/403 | [DONE] | f988f47 | 5xx returns generic message. 4xx strips org IDs, API keys, emails, hex IDs. 10 tests. |
 | PXY-13 | P3 | Webhook API-version handling inconsistent across event types | [TODO] | — | cost events per-endpoint, velocity/denial use ctx, threshold uses endpoints[0]. |
 | PXY-14 | P3 | Anthropic beta header forwarded blindly (client-controlled) | [TODO] | — | Callers can opt into response shapes the parser doesn't handle. |
 
-**Tests added:** 11 regression tests (1,372 → 1,378 proxy tests)
+**Tests added:** 27 regression tests (1,372 → 1,390 proxy tests)
 
 ---
 
