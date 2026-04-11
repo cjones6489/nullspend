@@ -132,6 +132,18 @@ describe("POST /api/stripe/checkout", () => {
     expect(body.error.message).toMatch(/already has an active subscription/);
   });
 
+  it("STRIPE-10: returns 400 when user has a past_due subscription", async () => {
+    mockedGetSubscription.mockResolvedValue({
+      status: "past_due",
+      stripeCustomerId: "cus_123",
+    } as never);
+
+    const res = await POST(makeRequest({ priceId: "price_pro" }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("subscription_exists");
+  });
+
   it("returns 400 for missing priceId", async () => {
     const res = await POST(makeRequest({}));
     expect(res.status).toBe(400);

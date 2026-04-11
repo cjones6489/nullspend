@@ -170,6 +170,32 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 ---
 
+## Stripe Integration Audit (Codex challenge, full Stripe surface, 2026-04-11)
+
+| # | Sev | Finding | Status | Notes |
+|---|-----|---------|--------|-------|
+| STRIPE-1 | P0 | Webhook dedup drops real Stripe retries | [DONE] | Three-state dedup: processing → processed. Transient clears entry. |
+| STRIPE-2 | P1 | Advisory lock unreliable with transaction pooler | [KNOWN] | Same as MRG-6. |
+| STRIPE-3 | P1 | Refunded/voided invoices leave stale revenue | [KNOWN] | Needs void/refund handling. |
+| STRIPE-4 | P1 | Sync timeout leaves mixed-state margins | [KNOWN] | Same as MRG-6. |
+| STRIPE-5 | P1 | Revenue bucketed by invoice.created | [KNOWN] | Same as MRG-9. |
+| STRIPE-6 | P1 | amount_paid includes tax/shipping | [KNOWN] | MVP acceptable. |
+| STRIPE-7 | P1 | Auto-match immediately affects margins | [KNOWN] | By design. |
+| STRIPE-8 | P1 | subscription/sync no role enforcement | [DONE] | Added assertOrgRole(admin). |
+| STRIPE-9 | P1 | Unknown price IDs default to free | [DONE] | Now throws. Fail closed. |
+| STRIPE-10 | P1 | past_due orgs can double-checkout | [DONE] | Blocks active + past_due. |
+| STRIPE-11 | P1 | Host-header injection in redirect URLs | [DONE] | Production guard on NEXT_PUBLIC_APP_URL. |
+| STRIPE-12 | P2 | Key validation incomplete | [KNOWN] | Acceptable. |
+| STRIPE-13 | P2 | No encryption key versioning | [KNOWN] | Same as MRG-7. |
+| STRIPE-14 | P2 | JS number bigint precision | [KNOWN] | Theoretical. |
+| STRIPE-15 | P2 | Disconnect misses margin_alerts_sent | [DONE] | Added cascade delete. |
+| STRIPE-16 | P2 | Webhook error classification brittle | [KNOWN] | Acceptable. |
+| STRIPE-17 | P2 | Billing audit metadata inconsistent | [KNOWN] | Future cleanup. |
+
+**Fixes:** 6 (STRIPE-1, 8, 9, 10, 11, 15). 3,542 tests green.
+
+---
+
 ## Stress Test Audit (Codex review of stress/smoke test suite, 2026-04-11)
 
 | # | Sev | Finding | Status | Notes |

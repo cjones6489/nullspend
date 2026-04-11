@@ -559,4 +559,46 @@ describe("POST /api/stripe/webhook", () => {
       expect(body.error.message).toBe("Permanent webhook processing failure.");
     });
   });
+
+  // ── STRIPE-1: Three-state dedup regression tests ──────────────────
+
+  describe("webhook dedup (STRIPE-1)", () => {
+    it("returns deduplicated:true for already-processed events", async () => {
+      // First call — unhandled event type succeeds with 200
+      mockConstructEvent.mockReturnValue(makeStripeEvent("unhandled.type", {}));
+      const res1 = await POST(makeRequest("{}"));
+      expect(res1.status).toBe(200);
+      const body1 = await res1.json();
+      expect(body1.received).toBe(true);
+      expect(body1.deduplicated).toBeUndefined();
+
+      // Second call — same event ID (evt_test_123) should be deduplicated
+      mockConstructEvent.mockReturnValue(makeStripeEvent("unhandled.type", {}));
+      const res2 = await POST(makeRequest("{}"));
+      expect(res2.status).toBe(200);
+      const body2 = await res2.json();
+      expect(body2.deduplicated).toBe(true);
+    });
+
+    it("successful handler also gets deduplicated on retry", async () => {
+      // checkout.session.completed that succeeds (metadata present but missing tier → early return)
+      mockConstructEvent.mockReturnValue(
+        makeStripeEvent("checkout.session.completed", {
+          metadata: { orgId: "org-test-1" },
+          customer: "cus_123",
+          subscription: null,
+        }),
+      );
+
+      const res1 = await POST(makeRequest("{}"));
+      expect(res1.status).toBe(200);
+      expect((await res1.json()).received).toBe(true);
+
+      // Retry — should be deduplicated
+      mockConstructEvent.mockReturnValue(makeStripeEvent("checkout.session.completed", {}));
+      const res2 = await POST(makeRequest("{}"));
+      expect(res2.status).toBe(200);
+      expect((await res2.json()).deduplicated).toBe(true);
+    });
+  });
 });

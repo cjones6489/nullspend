@@ -83,8 +83,8 @@ describe("DELETE /api/stripe/disconnect", () => {
         },
       };
       const result = await fn(tx);
-      // Verify 3 delete calls happened (revenue, mappings, connections)
-      expect(deleteCalls.length).toBe(3);
+      // STRIPE-15: Verify 4 delete calls (revenue, mappings, margin_alerts_sent, connections)
+      expect(deleteCalls.length).toBe(4);
       return result;
     });
 
