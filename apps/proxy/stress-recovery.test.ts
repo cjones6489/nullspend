@@ -194,16 +194,17 @@ describe("Post-stress recovery", () => {
       await res.text();
     });
 
-    it("invalid model still returns 400 with invalid_model code", async () => {
+    it("invalid model returns error from upstream (not 500/502)", async () => {
       const res = await fetch(`${BASE}/v1/chat/completions`, {
         method: "POST",
         headers: authHeaders(),
         body: smallRequest({ model: "nonexistent-stress-model" }),
       });
 
-      expect(res.status).toBe(400);
-      const body = await res.json();
-      expect(body.error.code).toBe("invalid_model");
+      // PXY-3: unknown models pass through to OpenAI. OpenAI returns 404 for
+      // nonexistent models. The proxy forwards the sanitized upstream error.
+      expect([400, 404]).toContain(res.status);
+      await res.text();
     });
   });
 
