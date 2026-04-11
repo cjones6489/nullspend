@@ -28,35 +28,36 @@ describe("updateBudgetSpend", () => {
   });
 
   it("early returns when actualCostMicrodollars is 0", async () => {
-    await updateBudgetSpend(REMOTE_CONN, [{ entityType: "api_key", entityId: "key-1" }], 0);
+    await updateBudgetSpend(REMOTE_CONN, "org-test", [{ entityType: "api_key", entityId: "key-1" }], 0);
     expect(mockBegin).not.toHaveBeenCalled();
   });
 
   it("early returns when actualCostMicrodollars is negative", async () => {
-    await updateBudgetSpend(REMOTE_CONN, [{ entityType: "api_key", entityId: "key-1" }], -100);
+    await updateBudgetSpend(REMOTE_CONN, "org-test", [{ entityType: "api_key", entityId: "key-1" }], -100);
     expect(mockBegin).not.toHaveBeenCalled();
   });
 
   it("early returns when entities array is empty", async () => {
-    await updateBudgetSpend(REMOTE_CONN, [], 500_000);
+    await updateBudgetSpend(REMOTE_CONN, "org-test", [], 500_000);
     expect(mockBegin).not.toHaveBeenCalled();
   });
 
   it("skips DB write when skipDbWrites is true", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    await updateBudgetSpend(REMOTE_CONN, [{ entityType: "api_key", entityId: "key-1" }], 500_000, true);
+    await updateBudgetSpend(REMOTE_CONN, "org-test", [{ entityType: "api_key", entityId: "key-1" }], 500_000, true);
     expect(mockBegin).not.toHaveBeenCalled();
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("[budget-spend]"), expect.anything());
   });
 
   it("writes to DB by default (skipDbWrites defaults to false)", async () => {
-    await updateBudgetSpend(REMOTE_CONN, [{ entityType: "user", entityId: "user-1" }], 100_000);
+    await updateBudgetSpend(REMOTE_CONN, "org-test", [{ entityType: "user", entityId: "user-1" }], 100_000);
     expect(mockBegin).toHaveBeenCalledOnce();
   });
 
   it("calls tx for each entity inside transaction", async () => {
     await updateBudgetSpend(
       REMOTE_CONN,
+      "org-test",
       [{ entityType: "api_key", entityId: "key-1" }, { entityType: "user", entityId: "user-1" }],
       500_000,
     );
@@ -68,6 +69,7 @@ describe("updateBudgetSpend", () => {
   it("sorts entities by (entityType, entityId) before transaction", async () => {
     await updateBudgetSpend(
       REMOTE_CONN,
+      "org-test",
       [
         { entityType: "user", entityId: "user-1" },
         { entityType: "api_key", entityId: "key-2" },
@@ -93,7 +95,7 @@ describe("updateBudgetSpend", () => {
     mockBegin.mockRejectedValueOnce(new Error("connection failed"));
 
     await expect(
-      updateBudgetSpend(REMOTE_CONN, [{ entityType: "api_key", entityId: "key-1" }], 500_000),
+      updateBudgetSpend(REMOTE_CONN, "org-test", [{ entityType: "api_key", entityId: "key-1" }], 500_000),
     ).rejects.toThrow("connection failed");
   });
 });
@@ -108,12 +110,12 @@ describe("resetBudgetPeriod", () => {
   });
 
   it("early returns on empty array", async () => {
-    await resetBudgetPeriod(REMOTE_CONN, []);
+    await resetBudgetPeriod(REMOTE_CONN, "org-test", []);
     expect(mockBegin).not.toHaveBeenCalled();
   });
 
   it("calls tx for each reset inside transaction", async () => {
-    await resetBudgetPeriod(REMOTE_CONN, [
+    await resetBudgetPeriod(REMOTE_CONN, "org-test", [
       { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
       { entityType: "api_key", entityId: "key-1", newPeriodStart: 1_710_000_000_000 },
     ]);
@@ -127,7 +129,7 @@ describe("resetBudgetPeriod", () => {
     mockBegin.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 
     await expect(
-      resetBudgetPeriod(REMOTE_CONN, [
+      resetBudgetPeriod(REMOTE_CONN, "org-test", [
         { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
       ]),
     ).resolves.toBeUndefined();
@@ -140,7 +142,7 @@ describe("resetBudgetPeriod", () => {
 
   it("skips when skipDbWrites is true", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    await resetBudgetPeriod(REMOTE_CONN, [
+    await resetBudgetPeriod(REMOTE_CONN, "org-test", [
       { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
     ], true);
 
@@ -149,7 +151,7 @@ describe("resetBudgetPeriod", () => {
   });
 
   it("sorts entities before transaction to prevent deadlocks", async () => {
-    await resetBudgetPeriod(REMOTE_CONN, [
+    await resetBudgetPeriod(REMOTE_CONN, "org-test", [
       { entityType: "user", entityId: "user-1", newPeriodStart: 1_710_000_000_000 },
       { entityType: "api_key", entityId: "key-1", newPeriodStart: 1_710_000_000_000 },
     ]);

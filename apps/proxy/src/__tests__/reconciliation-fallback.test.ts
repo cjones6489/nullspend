@@ -54,7 +54,7 @@ describe("reconcileBudgetQueued", () => {
     const mockQueue = {} as any;
 
     await reconcileBudgetQueued(
-      mockQueue, makeEnv(), "user-1", "res-123", 50_000,
+      mockQueue, makeEnv(), "user-1", "org-test", "res-123", 50_000,
       budgetEntities, "postgresql://test",
     );
 
@@ -65,6 +65,7 @@ describe("reconcileBudgetQueued", () => {
         reservationId: "res-123",
         actualCostMicrodollars: 50_000,
         ownerId: "user-1",
+        orgId: "org-test",
       }),
     );
   });
@@ -73,7 +74,7 @@ describe("reconcileBudgetQueued", () => {
     // When queue is undefined, reconcileBudgetQueued should call reconcileBudget directly
     // (which calls doBudgetReconcile for DO mode)
     await reconcileBudgetQueued(
-      undefined, makeEnv(), "user-1", "res-456", 25_000,
+      undefined, makeEnv(), "user-1", "org-test", "res-456", 25_000,
       budgetEntities, "postgresql://test",
     );
 
@@ -87,7 +88,7 @@ describe("reconcileBudgetQueued", () => {
     mockEnqueueReconciliation.mockRejectedValueOnce(new Error("queue unavailable"));
 
     await reconcileBudgetQueued(
-      mockQueue, makeEnv(), "user-1", "res-789", 30_000,
+      mockQueue, makeEnv(), "user-1", "org-test", "res-789", 30_000,
       budgetEntities, "postgresql://test",
     );
 
@@ -102,7 +103,7 @@ describe("reconcileBudgetQueued", () => {
     const mockQueue = {} as any;
 
     await reconcileBudgetQueued(
-      mockQueue, makeEnv(), "user-1", null, 0,
+      mockQueue, makeEnv(), "user-1", "org-test", null, 0,
       [], "postgresql://test",
     );
 

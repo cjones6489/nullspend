@@ -113,6 +113,7 @@ describe("handleReconciliationQueue", () => {
         { entityKey: "{budget}:user:u1", entityType: "user", entityId: "u1" },
       ],
       ownerId: "user-xyz",
+      orgId: "org-test",
       enqueuedAt: Date.now(),
     });
 
@@ -122,6 +123,7 @@ describe("handleReconciliationQueue", () => {
     expect(mockReconcileBudget).toHaveBeenCalledWith(
       env,
       "user-xyz",
+      "org-test",
       "res-args",
       75_000,
       expect.arrayContaining([

@@ -49,6 +49,7 @@ export async function doBudgetCheck(
 export async function doBudgetReconcile(
   env: Env,
   ownerId: string,
+  orgId: string,
   reservationId: string,
   actualCost: number,
   entities: Array<{ entityType: string; entityId: string }>,
@@ -91,7 +92,7 @@ export async function doBudgetReconcile(
 
       for (let attempt = 0; attempt <= PG_MAX_RETRIES; attempt++) {
         try {
-          await updateBudgetSpend(connectionString, entities, actualCost);
+          await updateBudgetSpend(connectionString, orgId, entities, actualCost);
           pgSuccess = true;
           retries = attempt;
           break;

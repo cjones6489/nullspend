@@ -29,6 +29,7 @@ export async function handleReconciliationQueue(
       await reconcileBudget(
         env,
         msg.ownerId,
+        msg.orgId ?? null,
         msg.reservationId,
         msg.actualCostMicrodollars,
         budgetEntities,

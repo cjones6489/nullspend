@@ -47,7 +47,7 @@ describe("hashApiKey", () => {
   });
 
   it("handles unicode input", async () => {
-    const rawKey = "ns_live_sk_unicödé_kéy_🔑";
+    const rawKey = "ns_live_sk_unic\u00f6d\u00e9_k\u00e9y_\uD83D\uDD11";
     const expected = createHash("sha256").update(rawKey).digest("hex");
     const result = await hashApiKey(rawKey);
     expect(result).toBe(expected);
@@ -64,7 +64,7 @@ describe("authenticateApiKey", () => {
     _resetCaches();
   });
 
-  it("returns identity on valid key (cache miss → DB hit)", async () => {
+  it("returns identity on valid key (cache miss \u2192 DB hit)", async () => {
     mockSql.mockResolvedValueOnce([validRow]);
 
     const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -73,7 +73,7 @@ describe("authenticateApiKey", () => {
     expect(mockSql).toHaveBeenCalledTimes(1);
   });
 
-  it("returns cached identity on second call (cache hit → no DB call)", async () => {
+  it("returns cached identity on second call (cache hit \u2192 no DB call)", async () => {
     mockSql.mockResolvedValueOnce([validRow]);
 
     const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
@@ -113,18 +113,12 @@ describe("authenticateApiKey", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null gracefully when DB query fails", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("throws when DB query fails (caller returns 503)", async () => {
     mockSql.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 
-    const result = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-
-    expect(result).toBeNull();
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[api-key-auth]"),
-      expect.stringContaining("ECONNREFUSED"),
-    );
-    errorSpy.mockRestore();
+    await expect(
+      authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING),
+    ).rejects.toThrow("ECONNREFUSED");
   });
 
   it("passes hashed key as parameterized value to SQL query", async () => {
@@ -172,21 +166,20 @@ describe("authenticateApiKey", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not negative-cache DB errors — next request retries", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("does not negative-cache DB errors \u2014 next request retries", async () => {
     mockSql
       .mockRejectedValueOnce(new Error("ECONNREFUSED"))  // first call: DB down
       .mockResolvedValueOnce([validRow]);                  // second call: DB recovered
 
-    // First call — DB error, returns null
-    const result1 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
-    expect(result1).toBeNull();
+    // First call — DB error, throws
+    await expect(
+      authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING),
+    ).rejects.toThrow("ECONNREFUSED");
 
     // Second call — retries DB (not negative-cached), succeeds
     const result2 = await authenticateApiKey(TEST_RAW_KEY, TEST_CONNECTION_STRING);
     expect(result2).toEqual({ userId: TEST_USER_ID, keyId: TEST_KEY_ID, hasWebhooks: false, hasBudgets: false, orgId: null, apiVersion: "2026-04-01", defaultTags: {}, requestLoggingEnabled: false, allowedModels: null, allowedProviders: null, orgUpgradeUrl: null });
     expect(mockSql).toHaveBeenCalledTimes(2); // Both calls hit DB
-    vi.restoreAllMocks();
   });
 
   it("negative cache allows more entries than positive cache (2048 vs 256)", async () => {
@@ -221,7 +214,7 @@ describe("authenticateApiKey cache expiry", () => {
 
   it("re-queries DB when positive cache entry expires", async () => {
     const now = Date.now();
-    // Positive TTL is 120s ±10s jitter, so 131s guarantees expiry
+    // Positive TTL is 120s \u00b110s jitter, so 131s guarantees expiry
     vi.spyOn(Date, "now")
       .mockReturnValueOnce(now)
       .mockReturnValueOnce(now + 131_000);

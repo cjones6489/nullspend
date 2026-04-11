@@ -52,7 +52,7 @@ export async function checkBudget(
     emitMetric("budget_check_skipped", { ownerId: ctx.ownerId });
     return { status: "skipped", reservationId: null, budgetEntities: [] };
   }
-  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.ownerId, estimateMicrodollars, ctx.sessionId, ctx.tags);
+  return checkBudgetDO(env, ctx.connectionString, ctx.auth.keyId, ctx.ownerId, ctx.auth.orgId, estimateMicrodollars, ctx.sessionId, ctx.tags);
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +62,7 @@ export async function checkBudget(
 export async function reconcileBudget(
   env: Env,
   ownerId: string | null,
+  orgId: string | null,
   reservationId: string | null,
   actualCost: number,
   budgetEntities: BudgetEntity[],
@@ -69,12 +70,12 @@ export async function reconcileBudget(
   options?: { throwOnError?: boolean },
 ): Promise<void> {
   try {
-    if (reservationId && ownerId) {
+    if (reservationId && ownerId && orgId) {
       const entities = budgetEntities.map((e) => ({
         entityType: e.entityType,
         entityId: e.entityId,
       }));
-      const status = await doBudgetReconcile(env, ownerId, reservationId, actualCost, entities, connectionString);
+      const status = await doBudgetReconcile(env, ownerId, orgId, reservationId, actualCost, entities, connectionString);
       if (options?.throwOnError && status !== "ok") {
         throw new Error(`Reconciliation failed with status: ${status}`);
       }
@@ -104,6 +105,7 @@ export async function reconcileBudgetQueued(
   queue: Queue | undefined,
   env: Env,
   ownerId: string | null,
+  orgId: string | null,
   reservationId: string | null,
   actualCost: number,
   budgetEntities: BudgetEntity[],
@@ -121,6 +123,7 @@ export async function reconcileBudgetQueued(
           entityId: e.entityId,
         })),
         ownerId,
+        orgId,
         enqueuedAt: Date.now(),
       });
       return;
@@ -129,7 +132,7 @@ export async function reconcileBudgetQueued(
     }
   }
   // Fallback: direct reconciliation (current behavior)
-  await reconcileBudget(env, ownerId, reservationId, actualCost, budgetEntities, connectionString);
+  await reconcileBudget(env, ownerId, orgId, reservationId, actualCost, budgetEntities, connectionString);
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +144,7 @@ async function checkBudgetDO(
   connectionString: string,
   keyId: string | null,
   ownerId: string | null,
+  orgId: string | null,
   estimateMicrodollars: number,
   sessionId: string | null = null,
   tags: Record<string, string>,
@@ -164,7 +168,7 @@ async function checkBudgetDO(
   // Write back period resets to Postgres (registered with waitUntil to survive Worker lifecycle)
   if (checkResult.periodResets?.length && connectionString) {
     waitUntil(
-      resetBudgetPeriod(connectionString, checkResult.periodResets).catch((err) => {
+      resetBudgetPeriod(connectionString, orgId!, checkResult.periodResets).catch((err) => {
         console.error("[budget-orchestrator] Period reset write-back failed:", err);
       }),
     );

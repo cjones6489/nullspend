@@ -78,7 +78,7 @@ function makeCtx(
   return {
     body,
     bodyText: JSON.stringify(body),
-    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+    auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: "org-test", apiVersion: "2026-04-01", defaultTags: {} },
     ownerId: "user-1",
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -342,7 +342,7 @@ describe("handleMcpBudgetCheck", () => {
 
     const ctx = makeCtx(
       { toolName: "t", serverName: "s", estimateMicrodollars: 0 },
-      { auth: { userId: "user-abc", keyId: "key-xyz", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} }, ownerId: "user-abc" },
+      { auth: { userId: "user-abc", keyId: "key-xyz", hasWebhooks: false, hasBudgets: true, orgId: "org-test", apiVersion: "2026-04-01", defaultTags: {} }, ownerId: "user-abc" },
     );
     await handleMcpBudgetCheck(request, env, ctx);
 
@@ -533,7 +533,7 @@ describe("handleMcpEvents", () => {
 
     const ctx = makeCtx(
       { events },
-      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false, hasBudgets: true, orgId: "org-test", apiVersion: "2026-04-01", defaultTags: {} } },
     );
     await handleMcpEvents(request, env, ctx);
 
@@ -694,7 +694,7 @@ describe("handleMcpEvents", () => {
 
     const ctx = makeCtx(
       { events },
-      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} } },
+      { auth: { userId: "user-1", keyId: "550e8400-e29b-41d4-a716-446655440000", hasWebhooks: false, hasBudgets: true, orgId: "org-test", apiVersion: "2026-04-01", defaultTags: {} } },
     );
     await handleMcpEvents(request, env, ctx);
     await new Promise((r) => setTimeout(r, 10));
@@ -702,6 +702,7 @@ describe("handleMcpEvents", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
+      "org-test",
       "rsv-123",
       10000,
       expect.any(Array),
@@ -735,6 +736,7 @@ describe("handleMcpEvents", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-1",
+      "org-test",
       "rsv-fail-test",
       10000,
       expect.any(Array),

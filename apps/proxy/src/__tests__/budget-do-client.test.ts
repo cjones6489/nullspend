@@ -219,6 +219,7 @@ describe("doBudgetReconcile", () => {
     await doBudgetReconcile(
       env,
       "user-1",
+      "org-test",
       "rsv-1",
       1_000,
       [{ entityType: "user", entityId: "user-1" }],
@@ -228,6 +229,7 @@ describe("doBudgetReconcile", () => {
     expect(stub.reconcile).toHaveBeenCalledWith("rsv-1", 1_000);
     expect(mockUpdateBudgetSpend).toHaveBeenCalledWith(
       "postgres://test",
+      "org-test",
       [{ entityType: "user", entityId: "user-1" }],
       1_000,
     );
@@ -238,7 +240,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     await doBudgetReconcile(
-      env, "user-1", "rsv-1", 0,
+      env, "user-1", "org-test", "rsv-1", 0,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -254,7 +256,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     await expect(
-      doBudgetReconcile(env, "user-1", "rsv-1", 1_000, [{ entityType: "user", entityId: "user-1" }], "postgres://test"),
+      doBudgetReconcile(env, "user-1", "org-test", "rsv-1", 1_000, [{ entityType: "user", entityId: "user-1" }], "postgres://test"),
     ).resolves.toBe("error");
   });
 
@@ -264,7 +266,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
     mockUpdateBudgetSpend.mockRejectedValue(new Error("PG error"));
 
-    const promise = doBudgetReconcile(env, "user-1", "rsv-1", 500, [{ entityType: "user", entityId: "user-1" }], "postgres://test");
+    const promise = doBudgetReconcile(env, "user-1", "org-test", "rsv-1", 500, [{ entityType: "user", entityId: "user-1" }], "postgres://test");
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(promise).resolves.toBe("pg_failed");
     vi.useRealTimers();
@@ -279,7 +281,7 @@ describe("doBudgetReconcile", () => {
       .mockResolvedValueOnce(undefined);
 
     const promise = doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -302,7 +304,7 @@ describe("doBudgetReconcile", () => {
     mockUpdateBudgetSpend.mockRejectedValue(new Error("PG persistent"));
 
     const promise = doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -342,7 +344,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     const result = await doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -367,7 +369,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     const result = await doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -384,7 +386,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     await doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -402,7 +404,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     await doBudgetReconcile(
-      env, "user-1", "rsv-1", 0,
+      env, "user-1", "org-test", "rsv-1", 0,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -418,7 +420,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     const result = await doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -437,7 +439,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     await doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -454,7 +456,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     await doBudgetReconcile(
-      env, "user-1", "rsv-1", 1_000,
+      env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
@@ -470,7 +472,7 @@ describe("doBudgetReconcile", () => {
     const env = makeEnv(stub);
 
     const result = await doBudgetReconcile(
-      env, "user-1", "rsv-1", 0,
+      env, "user-1", "org-test", "rsv-1", 0,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );

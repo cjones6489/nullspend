@@ -4,6 +4,7 @@ export interface ReconciliationMessage {
   actualCostMicrodollars: number;
   budgetEntities: Array<{ entityKey: string; entityType: string; entityId: string }>;
   ownerId: string | null;
+  orgId: string | null;
   enqueuedAt: number;
 }
 

@@ -105,7 +105,7 @@ async function parseRequestBody(
         error: errorResponse("bad_request", "Request body must be a JSON object", 400),
       };
     }
-    return { body: parsed, bodyText, bodyByteLength: bodyText.length };
+    return { body: parsed, bodyText, bodyByteLength: new TextEncoder().encode(bodyText).byteLength };
   } catch {
     return {
       error: errorResponse("bad_request", "Invalid JSON body", 400),
@@ -178,13 +178,21 @@ export default {
       // Policy endpoint — GET with API key auth, no body parsing
       if (url.pathname === "/v1/policy" && request.method === "GET") {
         const connectionString = env.HYPERDRIVE.connectionString;
-        const [rateLimitResult, auth] = await Promise.all([
-          applyRateLimit(request, env),
-          authenticateRequest(request, connectionString),
-        ]);
+        const rateLimitResult = await applyRateLimit(request, env);
         if (rateLimitResult) {
           rateLimitResult.headers.set("X-NullSpend-Trace-Id", traceId);
           return rateLimitResult;
+        }
+
+        let auth;
+        try {
+          auth = await authenticateRequest(request, connectionString);
+        } catch (err) {
+          console.error("[proxy] Auth DB error:", err instanceof Error ? err.message : "Unknown error");
+          emitMetric("request_error", { status: 503, reason: "auth_db_error" });
+          const resp = errorResponse("service_unavailable", "Authentication service temporarily unavailable", 503);
+          resp.headers.set("X-NullSpend-Trace-Id", traceId);
+          return resp;
         }
         if (!auth) {
           emitMetric("request_error", { status: 401, reason: "unauthorized" });
@@ -214,19 +222,27 @@ export default {
         return resp;
       }
 
-      // Rate limit + auth in parallel (neither reads request body)
+      // Rate limit first, then auth separately so DB errors produce 503, not 401
       const connectionString = env.HYPERDRIVE.connectionString;
       const preFlightStartMs = performance.now();
-      const [rateLimitResult, auth] = await Promise.all([
-        applyRateLimit(request, env),
-        authenticateRequest(request, connectionString),
-      ]);
-      const preFlightMs = Math.round(performance.now() - preFlightStartMs);
-
+      const rateLimitResult = await applyRateLimit(request, env);
       if (rateLimitResult) {
         rateLimitResult.headers.set("X-NullSpend-Trace-Id", traceId);
         return rateLimitResult;
       }
+
+      let auth;
+      try {
+        auth = await authenticateRequest(request, connectionString);
+      } catch (err) {
+        console.error("[proxy] Auth DB error:", err instanceof Error ? err.message : "Unknown error");
+        emitMetric("request_error", { status: 503, reason: "auth_db_error" });
+        const resp = errorResponse("service_unavailable", "Authentication service temporarily unavailable", 503);
+        resp.headers.set("X-NullSpend-Trace-Id", traceId);
+        return resp;
+      }
+      const preFlightMs = Math.round(performance.now() - preFlightStartMs);
+
       if (!auth) {
         emitMetric("request_error", { status: 401, reason: "unauthorized" });
         const resp = errorResponse("unauthorized", "Invalid or missing authentication header", 401);
@@ -309,4 +325,3 @@ export default {
     }
   },
 };
-

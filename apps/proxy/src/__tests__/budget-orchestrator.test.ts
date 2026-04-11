@@ -176,7 +176,7 @@ describe("checkBudget — DO-first mode", () => {
 
     await checkBudget(makeEnv(), makeCtx(), 5_000_000);
 
-    expect(mockResetBudgetPeriod).toHaveBeenCalledWith("postgres://test", resets);
+    expect(mockResetBudgetPeriod).toHaveBeenCalledWith("postgres://test", null, resets);
   });
 
   it("skips resetBudgetPeriod when no periodResets", async () => {
@@ -297,12 +297,12 @@ describe("reconcileBudget — durable-objects mode", () => {
 
   it("calls doBudgetReconcile with userId", async () => {
     await reconcileBudget(
-      makeEnv(), "user-1", "rsv-1", 1_000,
+      makeEnv(), "user-1", "org-test", "rsv-1", 1_000,
       [keyEntity], "postgres://test",
     );
 
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
-      expect.anything(), "user-1", "rsv-1", 1_000,
+      expect.anything(), "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "api_key", entityId: "key-1" }],
       "postgres://test",
     );
@@ -310,12 +310,12 @@ describe("reconcileBudget — durable-objects mode", () => {
 
   it("handles actualCost=0 (upstream error path)", async () => {
     await reconcileBudget(
-      makeEnv(), "user-1", "rsv-1", 0,
+      makeEnv(), "user-1", "org-test", "rsv-1", 0,
       [keyEntity], "postgres://test",
     );
 
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
-      expect.anything(), "user-1", "rsv-1", 0,
+      expect.anything(), "user-1", "org-test", "rsv-1", 0,
       expect.any(Array),
       "postgres://test",
     );
@@ -325,7 +325,7 @@ describe("reconcileBudget — durable-objects mode", () => {
     mockDoBudgetReconcile.mockRejectedValue(new Error("DO fail"));
 
     await expect(
-      reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test"),
+      reconcileBudget(makeEnv(), "user-1", "org-test", "rsv-1", 1_000, [keyEntity], "postgres://test"),
     ).resolves.toBeUndefined();
   });
 
@@ -334,7 +334,7 @@ describe("reconcileBudget — durable-objects mode", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(
-      reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
+      reconcileBudget(makeEnv(), "user-1", "org-test", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
     ).rejects.toThrow("Reconciliation failed with status: pg_failed");
   });
 
@@ -342,7 +342,7 @@ describe("reconcileBudget — durable-objects mode", () => {
     mockDoBudgetReconcile.mockResolvedValue("ok");
 
     await expect(
-      reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
+      reconcileBudget(makeEnv(), "user-1", "org-test", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
     ).resolves.toBeUndefined();
   });
 
@@ -351,7 +351,7 @@ describe("reconcileBudget — durable-objects mode", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(
-      reconcileBudget(makeEnv(), "user-1", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
+      reconcileBudget(makeEnv(), "user-1", "org-test", "rsv-1", 1_000, [keyEntity], "postgres://test", { throwOnError: true }),
     ).rejects.toThrow("DO exploded");
   });
 });

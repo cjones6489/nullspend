@@ -86,6 +86,7 @@ function makeBody(overrides?: Record<string, unknown>) {
     actualCostMicrodollars: 50_000,
     budgetEntities: ENTITIES,
     ownerId: "user-abc",
+    orgId: "org-test",
     enqueuedAt: Date.now(),
     ...overrides,
   };
@@ -114,6 +115,7 @@ describe("Queue retry fix — end-to-end chain", () => {
       const status = await doBudgetReconcile(
         env,
         "user-abc",
+        "org-test",
         "res-123",
         50_000,
         [{ entityType: "api_key", entityId: "key-1" }],
@@ -134,6 +136,7 @@ describe("Queue retry fix — end-to-end chain", () => {
         reconcileBudget(
           env,
           "user-abc",
+          "org-test",
           "res-123",
           50_000,
           [
@@ -177,6 +180,7 @@ describe("Queue retry fix — end-to-end chain", () => {
       const status = await doBudgetReconcile(
         env,
         "user-abc",
+        "org-test",
         "res-123",
         50_000,
         [{ entityType: "api_key", entityId: "key-1" }],
@@ -196,6 +200,7 @@ describe("Queue retry fix — end-to-end chain", () => {
         reconcileBudget(
           env,
           "user-abc",
+          "org-test",
           "res-123",
           50_000,
           [
@@ -238,6 +243,7 @@ describe("Queue retry fix — end-to-end chain", () => {
       const status = await doBudgetReconcile(
         env,
         "user-abc",
+        "org-test",
         "res-123",
         50_000,
         [{ entityType: "api_key", entityId: "key-1" }],
@@ -257,6 +263,7 @@ describe("Queue retry fix — end-to-end chain", () => {
         reconcileBudget(
           env,
           "user-abc",
+          "org-test",
           "res-123",
           50_000,
           [
@@ -303,6 +310,7 @@ describe("Queue retry fix — end-to-end chain", () => {
         reconcileBudget(
           env,
           "user-abc",
+          "org-test",
           "res-123",
           50_000,
           [
@@ -330,6 +338,7 @@ describe("Queue retry fix — end-to-end chain", () => {
         reconcileBudget(
           env,
           "user-abc",
+          "org-test",
           "res-123",
           50_000,
           [

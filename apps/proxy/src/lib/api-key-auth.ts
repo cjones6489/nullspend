@@ -157,9 +157,10 @@ async function lookupKeyInDb(
  * 3. Check negative cache (invalid keys, 30s TTL)
  * 4. Query the database
  * 5. On success: populate positive or negative cache
- *    On DB error: return null WITHOUT negative-caching (next request retries)
+ *    On DB error: throw (caller returns 503 — never negative-cached)
  *
- * Never throws — returns null for invalid/revoked keys or DB errors.
+ * THROWS on DB errors — caller must distinguish "not found" (null) from "DB down" (thrown).
+ * Returns null only for genuinely invalid/revoked keys.
  */
 export async function authenticateApiKey(
   rawKey: string,
@@ -187,19 +188,9 @@ export async function authenticateApiKey(
   }
 
   // DB lookup — throws on DB errors, returns null for "not found"
-  let identity: ApiKeyIdentity | null;
-  try {
-    identity = await lookupKeyInDb(keyHash, connectionString);
-  } catch (err) {
-    // DB error (Hyperdrive down, connection timeout, etc.)
-    // Return null (deny request) but do NOT negative-cache.
-    // Next request will retry the DB lookup instead of being locked out for 30s.
-    console.error(
-      "[api-key-auth] DB lookup failed (not negative-cached):",
-      err instanceof Error ? err.message : "Unknown error",
-    );
-    return null;
-  }
+  // Re-throw DB errors so the caller can return 503 instead of 401.
+  // Do NOT negative-cache — next request will retry the DB lookup.
+  const identity = await lookupKeyInDb(keyHash, connectionString);
 
   if (identity) {
     positiveCache.set(keyHash, {

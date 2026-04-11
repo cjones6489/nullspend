@@ -133,7 +133,7 @@ function makeCtx(
   return {
     body,
     bodyText: JSON.stringify(body),
-    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, hasBudgets: true, orgId: "org-test", apiVersion: "2026-04-01", defaultTags: {} },
     ownerId: "user-uuid-456",
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -216,6 +216,7 @@ describe("Streaming + Budget Integration", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-stream-1",
       42_000,
       expect.any(Array),
@@ -242,6 +243,7 @@ describe("Streaming + Budget Integration", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-stream-spend",
       75_000,
       expect.any(Array),
@@ -267,6 +269,7 @@ describe("Streaming + Budget Integration", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-no-usage",
       0,
       expect.any(Array),
@@ -309,6 +312,7 @@ describe("Streaming + Budget Integration", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-null-body",
       0,
       expect.any(Array),
@@ -337,7 +341,7 @@ describe("Streaming + Budget Integration", () => {
     // Should have reconciled with 0 on last-resort
     expect(mockDoBudgetReconcile).toHaveBeenCalled();
     const lastCall = mockDoBudgetReconcile.mock.calls[mockDoBudgetReconcile.mock.calls.length - 1];
-    expect(lastCall[3]).toBe(0);
+    expect(lastCall[4]).toBe(0);
   });
 
   it("streaming + budget denied returns 429", async () => {

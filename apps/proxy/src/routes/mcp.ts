@@ -485,7 +485,7 @@ export async function handleMcpEvents(
       if (budgetEntities.length > 0 && eventsWithReservations.length > 0) {
         for (const event of eventsWithReservations) {
           try {
-            await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
+            await reconcileBudgetQueued(getReconcileQueue(env), env, ctx.ownerId, ctx.auth.orgId, event.reservationId!, event.costMicrodollars, budgetEntities, ctx.connectionString);
           } catch (err) {
             reconcileFailures++;
             console.error("[mcp-events] Failed to reconcile reservation:", { reservationId: event.reservationId, error: err });

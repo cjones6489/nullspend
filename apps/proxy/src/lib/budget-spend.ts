@@ -12,6 +12,7 @@ import { getSql } from "./db.js";
  */
 export async function updateBudgetSpend(
   connectionString: string,
+  orgId: string,
   entities: { entityType: string; entityId: string }[],
   actualCostMicrodollars: number,
   skipDbWrites = false,
@@ -42,6 +43,7 @@ export async function updateBudgetSpend(
             updated_at = NOW()
         WHERE entity_type = ${entity.entityType}
           AND entity_id = ${entity.entityId}
+          AND org_id = ${orgId}
       `;
     }
   });
@@ -54,6 +56,7 @@ export async function updateBudgetSpend(
  */
 export async function resetBudgetPeriod(
   connectionString: string,
+  orgId: string,
   resets: Array<{ entityType: string; entityId: string; newPeriodStart: number }>,
   skipDbWrites = false,
 ): Promise<void> {
@@ -81,6 +84,7 @@ export async function resetBudgetPeriod(
               updated_at = NOW()
           WHERE entity_type = ${reset.entityType}
             AND entity_id = ${reset.entityId}
+            AND org_id = ${orgId}
         `;
       }
     });

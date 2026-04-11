@@ -157,7 +157,7 @@ function makeCtx(
   return {
     body,
     bodyText: JSON.stringify(body),
-    auth: { userId: "user-uuid-456", keyId: "key-uuid-001", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+    auth: { userId: "user-uuid-456", keyId: "key-uuid-001", hasWebhooks: false, hasBudgets: true, orgId: "org-test", apiVersion: "2026-04-01", defaultTags: {} },
     ownerId: "user-uuid-456",
     connectionString: "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
     sessionId: null,
@@ -456,6 +456,7 @@ describe("Stream Cancellation Cost Event", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-reconcile-1",
       500_000, // estimate
       expect.any(Array),
@@ -492,6 +493,7 @@ describe("Stream Cancellation Cost Event", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-fail-1",
       500_000, // estimate, NOT 0
       expect.any(Array),
@@ -526,6 +528,7 @@ describe("Stream Cancellation Cost Event", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-anth-fail-1",
       500_000, // estimate, NOT 0
       expect.any(Array),

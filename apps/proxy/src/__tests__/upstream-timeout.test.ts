@@ -108,7 +108,7 @@ function makeCtx(
   return {
     body,
     bodyText: JSON.stringify(body),
-    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, hasBudgets: true, orgId: null, apiVersion: "2026-04-01", defaultTags: {} },
+    auth: { userId: "user-uuid-456", keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", hasWebhooks: false, hasBudgets: true, orgId: "org-test", apiVersion: "2026-04-01", defaultTags: {} },
     ownerId: "user-uuid-456",
     connectionString: "postgresql://postgres:postgres@db.example.com:5432/postgres",
     sessionId: null,
@@ -180,6 +180,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-timeout",
       0,
       expect.any(Array),
@@ -208,6 +209,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-timeout",
       0,
       expect.any(Array),
@@ -253,6 +255,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-4xx",
       0,
       expect.any(Array),
@@ -282,6 +285,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-5xx",
       0,
       expect.any(Array),
@@ -320,6 +324,7 @@ describe("upstream timeout / error — reservation cleanup", () => {
     expect(mockDoBudgetReconcile).toHaveBeenCalledWith(
       expect.anything(),
       "user-uuid-456",
+      "org-test",
       "rsv-success",
       75_000,
       expect.any(Array),
