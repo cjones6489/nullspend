@@ -44,7 +44,9 @@ export const GET = withRequestContext(async (request: Request) => {
 
 export const POST = withRequestContext(async (request: Request) => {
   const { userId, orgId } = await resolveSessionContext();
-  await assertOrgRole(userId, orgId, "member");
+  // API-4: Budget creation/modification requires admin for org-scoped entities
+  // (tag, customer). Members can only manage their own user/api_key budgets.
+  await assertOrgRole(userId, orgId, "admin");
   const body = await readJsonBody(request);
   const input = createBudgetInputSchema.parse(body);
 

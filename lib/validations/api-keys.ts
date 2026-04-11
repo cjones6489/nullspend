@@ -75,7 +75,7 @@ const apiKeyCursorOutputSchema = z.object({
 
 export const listApiKeysQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.string().transform((s) => JSON.parse(s)).pipe(apiKeyCursorInputSchema).optional(),
+  cursor: z.string().transform((s, ctx) => { try { return JSON.parse(s); } catch { ctx.addIssue({ code: "custom", message: "Invalid cursor JSON" }); return z.NEVER; } }).pipe(apiKeyCursorInputSchema).optional(),
 });
 
 export const listApiKeysResponseSchema = z.object({

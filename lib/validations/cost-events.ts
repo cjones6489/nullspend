@@ -47,7 +47,7 @@ export const listCostEventsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z
     .string()
-    .transform((s) => JSON.parse(s))
+    .transform((s, ctx) => { try { return JSON.parse(s); } catch { ctx.addIssue({ code: "custom", message: "Invalid cursor JSON" }); return z.NEVER; } })
     .pipe(cursorInputSchema)
     .optional(),
   requestId: z.string().min(1).max(200).optional(),

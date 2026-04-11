@@ -20,6 +20,10 @@ vi.mock("@/lib/auth/api-key-rate-limit", () => ({
   checkKeyRateLimit: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/org-authorization", () => ({
+  assertOrgMember: vi.fn().mockResolvedValue({ userId: "user-123", orgId: "org-test-1", role: "member" }),
+}));
+
 vi.mock("@/lib/observability", () => ({
   getLogger: vi.fn(() => ({
     warn: vi.fn(),
@@ -206,6 +210,33 @@ describe("authenticateApiKey", () => {
     expect(result).toBeInstanceOf(Response);
     expect(mockedSetRequestUserId).not.toHaveBeenCalled();
     expect(mockedAddSentryBreadcrumb).not.toHaveBeenCalled();
+  });
+  it("API-1: returns 403 when key owner is not an org member", async () => {
+    const { assertOrgMember } = await import("@/lib/auth/org-authorization");
+    const mockedAssertOrgMember = vi.mocked(assertOrgMember);
+    const { ForbiddenError } = await import("@/lib/auth/errors");
+
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
+    mockedCheckKeyRateLimit.mockResolvedValue({ allowed: true, limit: 60, remaining: 55, reset: Date.now() + 60000 });
+    mockedAssertOrgMember.mockRejectedValue(new ForbiddenError("Not a member"));
+
+    const result = await authenticateApiKey(makeRequest());
+
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(403);
+    const body = await (result as Response).json();
+    expect(body.error.code).toBe("forbidden");
+  });
+
+  it("API-1: propagates DB errors from membership check (not masked as 403)", async () => {
+    const { assertOrgMember } = await import("@/lib/auth/org-authorization");
+    const mockedAssertOrgMember = vi.mocked(assertOrgMember);
+
+    mockedAssertApiKey.mockResolvedValue({ userId: "user-123", orgId: "org-test-1", keyId: "key-456", apiVersion: "2026-04-01", allowedModels: null, allowedProviders: null });
+    mockedCheckKeyRateLimit.mockResolvedValue({ allowed: true, limit: 60, remaining: 55, reset: Date.now() + 60000 });
+    mockedAssertOrgMember.mockRejectedValue(new Error("connection refused"));
+
+    await expect(authenticateApiKey(makeRequest())).rejects.toThrow("connection refused");
   });
 });
 

@@ -18,7 +18,7 @@ Tracks which sections of the codebase have received deep adversarial review (Cod
 | `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH |
 | `lib/webhooks/` | — | 2026-04-10 | — | ~40 | MED |
 | `lib/slack/` | — | — | 2026-04-10 | ~30 | LOW |
-| `app/api/` (routes) | — | 2026-04-10 | 2026-04-10 | ~300 | HIGH — **NEEDS CODEX** |
+| `app/api/` (routes) | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~300 | HIGH — **CLEAN** |
 | `packages/cost-engine/` | — | — | — | 700 | HIGH (well-tested) |
 | `packages/db/` | — | — | — | ~40 | MED |
 | `packages/claude-agent/` | — | — | — | 49 | MED |

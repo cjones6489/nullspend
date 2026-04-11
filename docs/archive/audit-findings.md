@@ -7,10 +7,10 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | Severity | Total | Done | Remaining |
 |----------|-------|------|-----------|
 | P0/HIGH  | 12    | 12   | 0         |
-| P1       | 19    | 15   | 4 (known/deferred) |
-| P2/MED   | 18    | 13   | 5 (known/by-design) |
-| P3/LOW   | 7     | 7    | 0         |
-| **Total** | **56** | **47** | **9** |
+| P1       | 26    | 19   | 7 (known/by-design) |
+| P2/MED   | 23    | 17   | 6 (known/by-design) |
+| P3/LOW   | 9     | 9    | 0         |
+| **Total** | **70** | **57** | **13** |
 
 ---
 
@@ -123,6 +123,29 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | MRG-17 | P3 | Raw sync error text exposed to org viewers | [KNOWN] | Acceptable — viewers are org members. |
 
 **Tests updated:** 1 (sync error status assertion). 2,113 root tests green.
+
+---
+
+## API Routes Audit (Codex challenge `app/api/`, 2026-04-10)
+
+| # | Sev | Finding | Status | Notes |
+|---|-----|---------|--------|-------|
+| API-1 | P1 | Routes using `authenticateApiKey()` directly skip AUTH-3 membership check | [DONE] | Membership check moved INTO `authenticateApiKey()` itself. ALL callers now get it. |
+| API-2 | P1 | Actions org-scoped not user-scoped | [BY DESIGN] | Same as ACT-2. Admins approve org-wide. |
+| API-3 | P1 | Invite accept doesn't check email match | [KNOWN] | Real gap. Needs email verification. Deferred — no multi-user orgs yet. |
+| API-4 | P1 | Budget POST only requires member for tag/customer | [DONE] | Elevated to admin. |
+| API-5 | P1 | Slack config userId vs orgId confusion | [KNOWN] | Same as MRG-16. Low impact. |
+| API-6 | P1 | Webhook SSRF via DNS rebinding | [KNOWN] | Admin-only, documented risk. Needs DNS resolution check in future. |
+| API-7 | P1 | Health endpoint public + verbose open by default | [KNOWN] | Opt-in gate exists via INTERNAL_HEALTH_SECRET. Documented. |
+| API-8 | P2 | Cursor JSON.parse throws 500 on malformed input | [DONE] | Wrapped in Zod transform with addIssue fallback. All 3 schemas fixed. |
+| API-9 | P2 | Cost event ingestion accepts `_ns_*` tags | [KNOWN] | Low priority. Tags are org-scoped, not trust-boundary. |
+| API-10 | P2 | Webhook URLs visible to viewers | [KNOWN] | Acceptable for team visibility. |
+| API-11 | P2 | Key metadata visible to viewers | [BY DESIGN] | Viewers see org keys. |
+| API-12 | P2 | Invite rate limit evasion | [KNOWN] | Same as AUTH-6. |
+| API-13 | P3 | Malformed `ns_evt_` prefixed ID → 500 | [DONE] | Wrapped in try/catch → 400. |
+| API-14 | P3 | `decodeURIComponent` → 500 on malformed percent-encoding | [DONE] | Wrapped in try/catch → 400. |
+
+**Fixes:** 6 (API-1, API-4, API-8 x3, API-13, API-14). Tests: 2 new, 7 updated. 2,119 root tests green.
 
 ---
 

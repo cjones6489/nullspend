@@ -171,7 +171,7 @@ export const listActionsQuerySchema = z.object({
     .pipe(z.array(actionStatusSchema).min(1))
     .optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.string().transform((s) => JSON.parse(s)).pipe(cursorInputSchema).optional(),
+  cursor: z.string().transform((s, ctx) => { try { return JSON.parse(s); } catch { ctx.addIssue({ code: "custom", message: "Invalid cursor JSON" }); return z.NEVER; } }).pipe(cursorInputSchema).optional(),
 });
 
 export const listActionsResponseSchema = z.object({

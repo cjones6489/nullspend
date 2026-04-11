@@ -24,7 +24,14 @@ export async function GET(
     // Accept raw UUID or ns_evt_ prefixed ID
     let id: string;
     if (params.id.startsWith("ns_evt_")) {
-      id = fromExternalIdOfType("evt", params.id);
+      try {
+        id = fromExternalIdOfType("evt", params.id);
+      } catch {
+        return NextResponse.json(
+          { error: { code: "validation_error", message: "Invalid cost event ID.", details: null } },
+          { status: 400 },
+        );
+      }
     } else if (UUID_RE.test(params.id)) {
       id = params.id;
     } else {

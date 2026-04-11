@@ -3,10 +3,8 @@ import { NextResponse } from "next/server";
 import { API_KEY_HEADER } from "@/lib/auth/api-key";
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { resolveSessionContext } from "@/lib/auth/session";
-import { ForbiddenError } from "@/lib/auth/errors";
-import { assertOrgMember, assertOrgRole } from "@/lib/auth/org-authorization";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import type { OrgRole } from "@/lib/validations/orgs";
-import { getLogger } from "@/lib/observability";
 
 export interface DualAuthResult {
   userId: string;
@@ -33,25 +31,8 @@ export async function assertApiKeyOrSession(
         { status: 403 },
       );
     }
-    // AUTH-3: Verify key owner is still a member of the org.
-    // Prevents cross-tenant access if key revocation is missed on member removal.
-    try {
-      await assertOrgMember(result.userId, result.orgId);
-    } catch (err) {
-      if (err instanceof ForbiddenError) {
-        getLogger("auth").warn(
-          { userId: result.userId, orgId: result.orgId, keyId: result.keyId },
-          "API key used by non-member — possible missed revocation",
-        );
-        return NextResponse.json(
-          { error: { code: "forbidden", message: "API key owner is no longer a member of the associated organization.", details: null } },
-          { status: 403 },
-        );
-      }
-      // DB errors, connection failures, etc. — let them propagate
-      // so handleRouteError maps to 503, not a misleading 403.
-      throw err;
-    }
+    // API-1: Membership check now lives in authenticateApiKey() itself,
+    // so ALL callers get it — not just dual-auth routes.
     return { userId: result.userId, orgId: result.orgId };
   }
   const ctx = await resolveSessionContext();

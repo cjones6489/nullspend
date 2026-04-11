@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { assertApiKeyWithIdentity, resolveDevFallbackApiKeyUserId } from "@/lib/auth/api-key";
 import { checkKeyRateLimit } from "@/lib/auth/api-key-rate-limit";
+import { ForbiddenError } from "@/lib/auth/errors";
+import { assertOrgMember } from "@/lib/auth/org-authorization";
 import { CURRENT_VERSION } from "@/lib/api-version";
 import { getLogger } from "@/lib/observability";
 import { setRequestUserId } from "@/lib/observability/request-context";
@@ -52,6 +54,23 @@ export async function authenticateApiKey(
         { status: 429, headers },
       );
     }
+    // API-1: Verify key owner is still an org member (defense-in-depth).
+    // Runs for ALL callers of authenticateApiKey, not just dual-auth routes.
+    if (orgId) {
+      try {
+        await assertOrgMember(userId, orgId);
+      } catch (err) {
+        if (err instanceof ForbiddenError) {
+          getLogger("auth").warn({ userId, orgId, keyId }, "API key used by non-member — possible missed revocation");
+          return NextResponse.json(
+            { error: { code: "forbidden", message: "API key owner is no longer a member of the associated organization.", details: null } },
+            { status: 403 },
+          );
+        }
+        throw err;
+      }
+    }
+
     setRequestUserId(userId);
     addSentryBreadcrumb("auth", "API key authenticated", { keyId, userId });
     return {

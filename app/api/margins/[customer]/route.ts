@@ -13,7 +13,15 @@ export const GET = withRequestContext(
     await assertOrgRole(userId, orgId, "viewer");
 
     const { customer } = await readRouteParams(ctx.params);
-    const tagValue = decodeURIComponent(customer);
+    let tagValue: string;
+    try {
+      tagValue = decodeURIComponent(customer);
+    } catch {
+      return NextResponse.json(
+        { error: { code: "validation_error", message: "Invalid customer tag value.", details: null } },
+        { status: 400 },
+      );
+    }
 
     const url = new URL(request.url);
     const period = url.searchParams.get("period") ?? formatPeriod(currentMonthStart());
