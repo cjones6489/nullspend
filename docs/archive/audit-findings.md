@@ -6,11 +6,11 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 | Severity | Total | Done | Remaining |
 |----------|-------|------|-----------|
-| P0/HIGH  | 10    | 8    | 2         |
-| P1       | 5     | 3    | 2         |
+| P0/HIGH  | 10    | 9    | 1         |
+| P1       | 5     | 5    | 0         |
 | P2/MED   | 5     | 3    | 2 (+2 known/intentional) |
 | P3/LOW   | 3     | 1    | 2         |
-| **Total** | **23** | **15** | **8 actionable** |
+| **Total** | **23** | **18** | **5 actionable** |
 
 ---
 
@@ -36,10 +36,10 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 |---|-----|---------|--------|--------|-------|
 | PXY-1 | P0 | Cross-tenant budget corruption: `UPDATE budgets` missing `org_id` in WHERE | [DONE] | 70af634 | 3 regression tests (d0dd2b9) |
 | PXY-2 | P0 | DO/Postgres split-brain permanent on PG failure | [TODO] | — | Architectural. Queue retry mitigates. Needs compensation log or reconciliation audit. |
-| PXY-3 | P0 | Unknown models off-ledger: estimator reserves $1, calculator writes $0 | [TODO] | — | Needs design decision: block unknown? use max fallback rate? alert? |
-| PXY-4 | P1 | Streams charged as $0 when SSE parser drops usage | [TODO] | — | Parser silently drops malformed JSON / oversized lines. Estimate fallback exists but reconciles 0. |
+| PXY-3 | P0 | Unknown models off-ledger: estimator reserves $1, calculator writes $0 | [DONE] | b1630d6 | Route handler substitutes estimate when calculator returns $0 with tokens. `_ns_unpriced` + `cost_event_unpriced` metric. |
+| PXY-4 | P1 | Streams charged as $0 when SSE parser drops usage | [DONE] | b1630d6 | Non-cancelled streams now use estimate. Cost event tagged `_ns_no_usage`. `stream_no_usage` metric. |
 | PXY-5 | P1 | Webhook queue-send failures silently dropped | [KNOWN] | — | Intentional fail-open. Needs direct fallback or dead-letter signal. |
-| PXY-6 | P1 | PG outage during webhook delivery → permanent acked loss | [TODO] | — | Secret lookup returns [], consumer acks "missing" endpoint. Fix: retry on empty endpoint list. |
+| PXY-6 | P1 | PG outage during webhook delivery → permanent acked loss | [DONE] | b1630d6 | `getWebhookEndpointsWithSecrets` now throws on DB error. Queue consumer retries instead of acking. |
 | PXY-7 | P1 | Auth DB failure returned 401 instead of 503 | [DONE] | 70af634 | `auth_db_error` metric added. Index-level 503 test (d0dd2b9). |
 | PXY-8 | P1 | Budget estimates biased low for Unicode bodies (string.length vs UTF-8 bytes) | [DONE] | 70af634 | CJK byte length regression test (d0dd2b9). |
 | PXY-9 | P2 | Default tags from DB bypass validation (`__proto__` poisoning) | [TODO] | — | `default_tags` trusted as-is, merged without key/value checks. |
@@ -49,7 +49,7 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | PXY-13 | P3 | Webhook API-version handling inconsistent across event types | [TODO] | — | cost events per-endpoint, velocity/denial use ctx, threshold uses endpoints[0]. |
 | PXY-14 | P3 | Anthropic beta header forwarded blindly (client-controlled) | [TODO] | — | Callers can opt into response shapes the parser doesn't handle. |
 
-**Tests added:** 5 regression tests (1,372 → 1,377 proxy tests)
+**Tests added:** 11 regression tests (1,372 → 1,378 proxy tests)
 
 ---
 
