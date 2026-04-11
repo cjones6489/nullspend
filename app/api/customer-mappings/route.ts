@@ -26,9 +26,10 @@ export const GET = withRequestContext(async (_request: Request) => {
   });
 });
 
+// MRG-3: Customer mapping changes affect reported margins. Require admin.
 export const POST = withRequestContext(async (request: Request) => {
   const { userId, orgId } = await resolveSessionContext();
-  await assertOrgRole(userId, orgId, "member");
+  await assertOrgRole(userId, orgId, "admin");
 
   const body = (await readJsonBody(request)) as {
     stripeCustomerId?: string;
@@ -92,9 +93,10 @@ export const POST = withRequestContext(async (request: Request) => {
   );
 });
 
+// MRG-3: Customer mapping changes affect reported margins. Require admin.
 export const DELETE = withRequestContext(async (request: Request) => {
   const { userId, orgId } = await resolveSessionContext();
-  await assertOrgRole(userId, orgId, "member");
+  await assertOrgRole(userId, orgId, "admin");
 
   const url = new URL(request.url);
   const mappingId = url.searchParams.get("id");

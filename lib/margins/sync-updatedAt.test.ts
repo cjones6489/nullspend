@@ -182,7 +182,8 @@ describe("syncOrgRevenue — updatedAt", () => {
 
     expect(result.error).toBe("rate limited");
     const errorUpdate = capturedSets[0] as Record<string, unknown>;
-    expect(errorUpdate.status).toBe("error");
+    // MRG-1: Transient errors keep status "active" so cron retries next cycle
+    expect(errorUpdate.status).toBe("active");
     expect(errorUpdate.updatedAt).toBeInstanceOf(Date);
   });
 });

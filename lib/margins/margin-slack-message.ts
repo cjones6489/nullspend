@@ -45,7 +45,8 @@ export function buildMarginAlertMessage(data: {
   period: string;
 }): SlackMessage {
   const dashboardUrl = getDashboardUrl();
-  const name = data.customerName ? escapeSlack(data.customerName) : data.tagValue;
+  // MRG-4: Escape both customer name AND tagValue to prevent mrkdwn injection
+  const name = data.customerName ? escapeSlack(data.customerName) : escapeSlack(data.tagValue);
   const revenue = (data.revenueMicrodollars / 1_000_000).toFixed(2);
   const cost = (data.costMicrodollars / 1_000_000).toFixed(2);
 

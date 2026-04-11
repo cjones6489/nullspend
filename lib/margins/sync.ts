@@ -190,9 +190,13 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
     try {
       currentPeriod = formatPeriod(new Date());
       marginData = await getMarginTable(orgId, currentPeriod);
+      // MRG-2: Pass pre-computed healthTier to avoid critical→at_risk downgrade.
+      // Zero-revenue customers with cost are "critical" in the table but
+      // computeHealthTier(0%) returns "at_risk" — using the table's tier is correct.
       const currentMargins = marginData.customers.map((c) => ({
         tagValue: c.tagValue,
         marginPercent: c.marginPercent,
+        healthTier: c.healthTier,
       }));
 
       const prevMonth = new Date();
@@ -201,6 +205,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
       const prevMargins = prevData.customers.map((c) => ({
         tagValue: c.tagValue,
         marginPercent: c.marginPercent,
+        healthTier: c.healthTier,
       }));
 
       crossings = detectWorseningCrossings(prevMargins, currentMargins);
@@ -287,12 +292,14 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
     const message = err instanceof Error ? err.message : "Unknown error";
     log.error({ err, orgId }, "Revenue sync failed");
 
-    // Check for Stripe auth errors
+    // Check for Stripe auth errors — only permanent auth failures change status.
+    // MRG-1: Transient errors (network, rate limit) keep status "active" so
+    // cron picks them up next cycle instead of bricking the org.
     const isAuthError = err instanceof Stripe.errors.StripeAuthenticationError;
     await db
       .update(stripeConnections)
       .set({
-        status: isAuthError ? "revoked" : "error",
+        status: isAuthError ? "revoked" : "active",
         lastError: message,
         updatedAt: new Date(),
       })

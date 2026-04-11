@@ -7,10 +7,10 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | Severity | Total | Done | Remaining |
 |----------|-------|------|-----------|
 | P0/HIGH  | 12    | 12   | 0         |
-| P1       | 11    | 11   | 0 (+1 by-design) |
-| P2/MED   | 10    | 10   | 0 (+2 known/intentional) |
-| P3/LOW   | 6     | 6    | 0         |
-| **Total** | **39** | **39** | **0** |
+| P1       | 19    | 15   | 4 (known/deferred) |
+| P2/MED   | 18    | 13   | 5 (known/by-design) |
+| P3/LOW   | 7     | 7    | 0         |
+| **Total** | **56** | **47** | **9** |
 
 ---
 
@@ -97,6 +97,32 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | ACT-9 | P3 | Slack mrkdwn injection via unsanitized payload fields | [KNOWN] | Cosmetic/social engineering only. Low priority. |
 
 **Tests added:** 5 regression tests. 2,113 root tests green.
+
+---
+
+## Margins Audit (Codex challenge `lib/margins/`, 2026-04-10)
+
+| # | Sev | Finding | Status | Notes |
+|---|-----|---------|--------|-------|
+| MRG-1 | P1 | Transient sync failures permanently brick cron — non-auth errors set `status=error`, cron only picks `active` | [DONE] | Non-auth errors now keep `status=active` with `lastError` set. Cron retries next cycle. |
+| MRG-2 | P1 | Critical customers downgraded to `at_risk` in alerts — zero-revenue special case not propagated to crossing detector | [DONE] | `detectWorseningCrossings` now accepts pre-computed `healthTier` from table. |
+| MRG-3 | P1 | Any org `member` can rewrite customer attribution via manual mapping | [DONE] | POST/DELETE customer-mappings now require `admin` role. |
+| MRG-4 | P2 | Slack `tagValue` not escaped when no customer name — mrkdwn injection | [DONE] | `escapeSlack()` applied to tagValue fallback. |
+| MRG-5 | P1 | Alert spam — same threshold crossing fires every sync (no dedup) | [KNOWN] | Needs KV/DB-based sent-state tracking. Deferred. |
+| MRG-6 | P1 | No sync lock — concurrent syncs leave mixed data snapshots | [KNOWN] | Needs Redis/DB advisory lock. Deferred. |
+| MRG-7 | P1 | Key rotation destructive — no ciphertext versioning | [KNOWN] | Needs key version prefix in ciphertext. Deferred. |
+| MRG-8 | P1 | Margin webhook silently drops HTTP error responses | [KNOWN] | Dispatch layer has retry. Low priority. |
+| MRG-9 | P2 | Revenue monthing uses `invoice.created` not payment date | [KNOWN] | Design choice — payment date would require `invoice.paid_at` which Stripe doesn't reliably expose. |
+| MRG-10 | P2 | Mixed-currency customers understated | [KNOWN] | `skippedCurrencies` banner exists. Multi-currency support deferred. |
+| MRG-11 | P2 | JS `number` on DB `bigint` — precision loss above safe integer | [KNOWN] | Theoretical — $9B+ in microdollars. No action needed. |
+| MRG-12 | P2 | Auto-match trusts unverified Stripe metadata | [KNOWN] | By design — auto-matches are `confidence: 0.9-1.0`, admin can override. |
+| MRG-13 | P2 | Stripe connect probe only checks `customers.list` | [KNOWN] | Acceptable — sync failure updates status with actionable error. |
+| MRG-14 | P2 | Mapping unique constraint collision → 500 instead of 409 | [KNOWN] | Low frequency. Future cleanup. |
+| MRG-15 | P2 | Period helpers silently normalize invalid months | [KNOWN] | Route regex validates YYYY-MM. Internal callers are trusted. |
+| MRG-16 | P1 | Slack alerts to wrong destination in multi-admin orgs | [KNOWN] | `limit(1)` without ordering. Low impact — same org's webhook either way. |
+| MRG-17 | P3 | Raw sync error text exposed to org viewers | [KNOWN] | Acceptable — viewers are org members. |
+
+**Tests updated:** 1 (sync error status assertion). 2,113 root tests green.
 
 ---
 

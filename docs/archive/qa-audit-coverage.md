@@ -14,7 +14,7 @@ Tracks which sections of the codebase have received deep adversarial review (Cod
 | `apps/proxy/src/durable-objects/` | 2026-04-10 | 2026-04-10 | — | 83 (DO pool) | CRITICAL — **CLEAN** |
 | `lib/auth/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~129 | CRITICAL — **CLEAN** |
 | `lib/actions/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~80 | HIGH — **CLEAN** |
-| `lib/margins/` | — | — | 2026-04-10 | ~120 | HIGH — **NEEDS CODEX** |
+| `lib/margins/` | 2026-04-10 | — | 2026-04-10 | ~143 | HIGH — **CLEAN** |
 | `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH |
 | `lib/webhooks/` | — | 2026-04-10 | — | ~40 | MED |
 | `lib/slack/` | — | — | 2026-04-10 | ~30 | LOW |
@@ -89,6 +89,14 @@ alarm-based retry, Codex-reviewed plan (10 findings addressed), 2 post-implement
 **Tests added:** 5 (2 idempotency isolation + 3 max TTL)
 **Details:** [audit-findings.md](audit-findings.md#hitl-actions-audit-codex-challenge-libactions-2026-04-10)
 
+### 7. Margins (`lib/margins/`) — Codex Challenge, 2026-04-10
+
+**Scope:** `encryption.ts`, `sync.ts`, `auto-match.ts`, `margin-query.ts`, `webhook.ts`, `margin-slack-message.ts`, `periods.ts`, plus Stripe/margins/customer-mappings route handlers
+
+**Findings:** 17 total (8 P1, 8 P2, 1 P3) — 4 fixed, 13 known/deferred
+**Key fixes:** MRG-1 transient sync failures no longer brick cron, MRG-2 critical tier correctly propagated to alerts, MRG-3 customer mapping elevated to admin role, MRG-4 Slack tagValue escaping
+**Details:** [audit-findings.md](audit-findings.md#margins-audit-codex-challenge-libmargins-2026-04-10)
+
 ---
 
 ## NOT YET AUDITED (Codex Challenge)
@@ -99,7 +107,6 @@ These sections have unit tests but have NOT received a deep adversarial Codex re
 
 | Section | Why | Files | Est. findings |
 |---------|-----|-------|---------------|
-| `lib/margins/` | Stripe API integration, AES-256-GCM encryption, revenue sync, auto-match | ~15 | High (newer code) |
 | `packages/cost-engine/src/` | Pricing accuracy for all 38 models, used by both proxy and SDK | ~6 | Low (well-tested, 700 tests) |
 
 ### Priority 2 — Medium risk

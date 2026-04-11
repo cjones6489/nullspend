@@ -60,25 +60,31 @@ const TIER_SEVERITY: Record<HealthTier, number> = {
 /**
  * Detect threshold crossings that are worsening (not improving).
  */
+/**
+ * MRG-2: Accept optional pre-computed healthTier to avoid the zero-revenue
+ * critical→at_risk downgrade. When healthTier is provided, use it directly
+ * instead of recomputing from marginPercent (which gives wrong result for
+ * zero-revenue customers where marginPercent=0 but tier should be "critical").
+ */
 export function detectWorseningCrossings(
-  previous: { tagValue: string; marginPercent: number }[],
-  current: { tagValue: string; marginPercent: number }[],
+  previous: { tagValue: string; marginPercent: number; healthTier?: HealthTier }[],
+  current: { tagValue: string; marginPercent: number; healthTier?: HealthTier }[],
 ): { tagValue: string; previousMarginPercent: number; currentMarginPercent: number }[] {
-  const prevMap = new Map(previous.map((p) => [p.tagValue, p.marginPercent]));
+  const prevMap = new Map(previous.map((p) => [p.tagValue, { marginPercent: p.marginPercent, tier: p.healthTier ?? computeHealthTier(p.marginPercent) }]));
   const crossings: { tagValue: string; previousMarginPercent: number; currentMarginPercent: number }[] = [];
 
   for (const c of current) {
     const prev = prevMap.get(c.tagValue);
     if (prev === undefined) continue;
 
-    const prevTier = computeHealthTier(prev);
-    const currTier = computeHealthTier(c.marginPercent);
+    const prevTier = prev.tier;
+    const currTier = c.healthTier ?? computeHealthTier(c.marginPercent);
 
     // Only fire on worsening
     if (TIER_SEVERITY[currTier] > TIER_SEVERITY[prevTier]) {
       crossings.push({
         tagValue: c.tagValue,
-        previousMarginPercent: prev,
+        previousMarginPercent: prev.marginPercent,
         currentMarginPercent: c.marginPercent,
       });
     }
