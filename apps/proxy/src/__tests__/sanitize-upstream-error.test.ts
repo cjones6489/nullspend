@@ -88,22 +88,22 @@ describe("sanitizeUpstreamError", () => {
   });
 
   describe("Anthropic error format", () => {
-    it("extracts safe fields from Anthropic-style error", async () => {
+    it("extracts safe fields from Anthropic-style error (4xx)", async () => {
       const response = makeResponse(
         {
           type: "error",
           error: {
-            type: "overloaded_error",
-            message: "Overloaded",
+            type: "invalid_request_error",
+            message: "Max tokens exceeded",
           },
         },
-        529,
+        400,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "anthropic"));
       expect(result).toEqual({
         error: {
-          type: "overloaded_error",
-          message: "Overloaded",
+          type: "invalid_request_error",
+          message: "Max tokens exceeded",
         },
       });
     });
@@ -113,7 +113,7 @@ describe("sanitizeUpstreamError", () => {
     it("falls back to upstream_error when type is a number", async () => {
       const response = makeResponse(
         { error: { type: 42, message: "Something went wrong" } },
-        500,
+        422,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
       expect(result.error.type).toBe("upstream_error");
@@ -123,7 +123,7 @@ describe("sanitizeUpstreamError", () => {
     it("falls back to upstream_error when type is an object", async () => {
       const response = makeResponse(
         { error: { type: { nested: true }, message: "Bad" } },
-        500,
+        422,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
       expect(result.error.type).toBe("upstream_error");
@@ -132,7 +132,7 @@ describe("sanitizeUpstreamError", () => {
     it("falls back to upstream_error when type is null", async () => {
       const response = makeResponse(
         { error: { type: null, message: "Error occurred" } },
-        500,
+        422,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
       expect(result.error.type).toBe("upstream_error");
@@ -142,8 +142,8 @@ describe("sanitizeUpstreamError", () => {
   describe("non-string message fallback", () => {
     it("falls back to default message when message is a number", async () => {
       const response = makeResponse(
-        { error: { type: "server_error", message: 500 } },
-        500,
+        { error: { type: "invalid_request_error", message: 400 } },
+        400,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
       expect(result.error.message).toBe("Upstream request failed");
@@ -151,8 +151,8 @@ describe("sanitizeUpstreamError", () => {
 
     it("falls back to default message when message is an array", async () => {
       const response = makeResponse(
-        { error: { type: "server_error", message: ["err1", "err2"] } },
-        500,
+        { error: { type: "invalid_request_error", message: ["err1", "err2"] } },
+        400,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
       expect(result.error.message).toBe("Upstream request failed");
@@ -160,8 +160,8 @@ describe("sanitizeUpstreamError", () => {
 
     it("falls back to default message when message is missing", async () => {
       const response = makeResponse(
-        { error: { type: "server_error" } },
-        500,
+        { error: { type: "invalid_request_error" } },
+        400,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
       expect(result.error.message).toBe("Upstream request failed");
@@ -219,15 +219,15 @@ describe("sanitizeUpstreamError", () => {
       const response = makeResponse(
         {
           error: {
-            type: "server_error",
+            type: "invalid_request_error",
             message: "Error",
-            code: "internal",
+            code: "bad_param",
             param: "model",
             request_id: "req_abc",
             api_key: "sk-123",
           },
         },
-        500,
+        400,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
       const keys = Object.keys(result.error);
@@ -367,36 +367,91 @@ describe("sanitizeUpstreamError", () => {
     });
   });
 
-  describe("500 with error body", () => {
-    it("extracts safe fields from 500 response", async () => {
+  // PXY-12: 5xx errors now return generic message — never forward internal details
+  describe("5xx responses (PXY-12)", () => {
+    it("returns generic message for 500 — never forwards body", async () => {
       const response = makeResponse(
         {
           error: {
             type: "server_error",
-            message: "The server had an error processing your request",
+            message: "Connection to database pool db-internal-7a3f failed: timeout after 5000ms",
           },
         },
         500,
       );
-      const result = JSON.parse(await sanitizeUpstreamError(response, "anthropic"));
-      expect(result.error.type).toBe("server_error");
-      expect(result.error.message).toBe("The server had an error processing your request");
+      const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
+      expect(result.error.type).toBe("upstream_error");
+      expect(result.error.message).toBe("Upstream returned 500");
     });
 
-    it("extracts safe fields from 500 with Anthropic format", async () => {
+    it("returns generic message for 502", async () => {
+      const response = makeResponse("Bad Gateway", 502);
+      const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
+      expect(result.error.message).toBe("Upstream returned 502");
+    });
+
+    it("returns generic message for 503", async () => {
       const response = makeResponse(
-        {
-          type: "error",
-          error: {
-            type: "api_error",
-            message: "Internal server error",
-          },
-        },
-        500,
+        { error: { type: "overloaded_error", message: "Overloaded — org-abc123 has too many concurrent requests" } },
+        503,
       );
       const result = JSON.parse(await sanitizeUpstreamError(response, "anthropic"));
-      expect(result.error.type).toBe("api_error");
-      expect(result.error.message).toBe("Internal server error");
+      // Must NOT contain the org ID
+      expect(result.error.message).toBe("Upstream returned 503");
+    });
+  });
+
+  // PXY-12: 4xx message sanitization
+  describe("4xx message sanitization (PXY-12)", () => {
+    it("strips OpenAI org IDs from error messages", async () => {
+      const response = makeResponse(
+        { error: { type: "rate_limit_error", message: "Rate limit reached for org-abcDEF12345 on requests per min" } },
+        429,
+      );
+      const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
+      expect(result.error.message).toContain("org-***");
+      expect(result.error.message).not.toContain("org-abcDEF12345");
+      expect(result.error.type).toBe("rate_limit_error");
+    });
+
+    it("strips API key fragments from error messages", async () => {
+      const response = makeResponse(
+        { error: { type: "invalid_request_error", message: "Incorrect API key provided: sk-proj-abc123def. You can find your key at platform.openai.com" } },
+        400,
+      );
+      const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
+      expect(result.error.message).toContain("sk-***");
+      expect(result.error.message).not.toContain("sk-proj-abc123def");
+    });
+
+    it("strips email addresses from error messages", async () => {
+      const response = makeResponse(
+        { error: { type: "permission_error", message: "Account owner user@company.com must accept terms" } },
+        400,
+      );
+      const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
+      expect(result.error.message).toContain("***@***");
+      expect(result.error.message).not.toContain("user@company.com");
+    });
+
+    it("strips long hex IDs from error messages", async () => {
+      const response = makeResponse(
+        { error: { type: "invalid_request_error", message: "Deployment 0123456789abcdef0123456789abcdef not found" } },
+        404,
+      );
+      const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
+      expect(result.error.message).toContain("***");
+      expect(result.error.message).not.toContain("0123456789abcdef0123456789abcdef");
+    });
+
+    it("preserves safe error messages unchanged", async () => {
+      const response = makeResponse(
+        { error: { type: "invalid_request_error", message: "This model does not support streaming", code: "unsupported_streaming" } },
+        400,
+      );
+      const result = JSON.parse(await sanitizeUpstreamError(response, "openai"));
+      expect(result.error.message).toBe("This model does not support streaming");
+      expect(result.error.code).toBe("unsupported_streaming");
     });
   });
 });

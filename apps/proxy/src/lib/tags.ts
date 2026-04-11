@@ -6,6 +6,29 @@ const KEY_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const RESERVED_PREFIX = "_ns_";
 
 /**
+ * Check if a key/value pair is a valid tag entry.
+ * Used by both parseTags (request tags) and mergeTags (DB default tags)
+ * to apply identical validation rules. Rejects:
+ * - Non-string keys or values
+ * - Empty keys, oversized keys/values
+ * - Keys not matching [a-zA-Z0-9_-]
+ * - Reserved _ns_ prefix
+ * - Null bytes in values
+ */
+function isValidTagEntry(key: string, value: unknown): value is string {
+  return (
+    typeof key === "string" &&
+    key.length >= 1 &&
+    key.length <= MAX_KEY_LENGTH &&
+    KEY_PATTERN.test(key) &&
+    !key.startsWith(RESERVED_PREFIX) &&
+    typeof value === "string" &&
+    value.length <= MAX_VALUE_LENGTH &&
+    !value.includes("\0")
+  );
+}
+
+/**
  * Parse and validate tags from the X-NullSpend-Tags header.
  * Returns `{}` on any failure — tags are supplementary metadata,
  * never a reason to reject a request.
@@ -37,18 +60,7 @@ export function parseTags(header: string | null): Record<string, string> {
       continue;
     }
 
-    if (
-      typeof key !== "string" ||
-      key.length < 1 ||
-      key.length > MAX_KEY_LENGTH ||
-      !KEY_PATTERN.test(key) ||
-      key.startsWith(RESERVED_PREFIX)
-    ) {
-      dropped++;
-      continue;
-    }
-
-    if (typeof value !== "string" || value.length > MAX_VALUE_LENGTH || value.includes("\0")) {
+    if (!isValidTagEntry(key, value)) {
       dropped++;
       continue;
     }
@@ -78,25 +90,40 @@ export function mergeTags(
   if (Object.keys(defaults).length === 0) return requestTags;
   if (Object.keys(requestTags).length === 0) {
     // Defaults alone — shallow copy to avoid mutating the cached identity object.
-    // Also cap at MAX_TAGS and filter reserved _ns_ prefix (defense-in-depth against malformed DB data).
-    const result: Record<string, string> = {};
+    // PXY-9: Validate each default tag with isValidTagEntry (same rules as
+    // request tags). DB-sourced defaults previously bypassed validation,
+    // allowing __proto__ poisoning, non-string values, and oversized keys.
+    const result = Object.create(null) as Record<string, string>;
     let count = 0;
+    let dropped = 0;
     for (const [k, v] of Object.entries(defaults)) {
       if (count >= MAX_TAGS) break;
-      if (k.startsWith(RESERVED_PREFIX)) continue;
+      if (!isValidTagEntry(k, v)) { dropped++; continue; }
       result[k] = v;
       count++;
+    }
+    if (dropped > 0) {
+      console.warn(`[tags] Dropped ${dropped} invalid default tag entries`);
     }
     return result;
   }
   // Merge: request tags win, then fill remaining slots from defaults up to MAX_TAGS.
-  // Filter _ns_ prefix from defaults (defense-in-depth against malformed DB data).
-  const merged: Record<string, string> = { ...requestTags };
+  // PXY-9: Use null-prototype object to prevent __proto__ setter pollution,
+  // and validate defaults with isValidTagEntry.
+  const merged = Object.create(null) as Record<string, string>;
+  // Copy validated request tags first (already validated by parseTags)
+  for (const [k, v] of Object.entries(requestTags)) {
+    merged[k] = v;
+  }
+  let dropped = 0;
   for (const [k, v] of Object.entries(defaults)) {
     if (Object.keys(merged).length >= MAX_TAGS) break;
     if (Object.hasOwn(merged, k)) continue;
-    if (k.startsWith(RESERVED_PREFIX)) continue;
+    if (!isValidTagEntry(k, v)) { dropped++; continue; }
     merged[k] = v;
+  }
+  if (dropped > 0) {
+    console.warn(`[tags] Dropped ${dropped} invalid default tag entries`);
   }
   return merged;
 }
