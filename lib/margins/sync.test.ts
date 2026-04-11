@@ -60,6 +60,7 @@ const ORG_ID = "org-123";
 function mockDbWithConnection(connection: Record<string, unknown> | null) {
   const selectResult = connection ? [connection] : [];
   mockGetDb.mockReturnValue({
+    execute: vi.fn().mockResolvedValue([{ acquired: true }]),
     select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve(selectResult) }) }) }),
     update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
     transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
@@ -119,6 +120,17 @@ describe("syncOrgRevenue", () => {
     expect(result.error).toBeUndefined();
     expect(result.customersProcessed).toBe(0);
   });
+
+  it("MRG-6: returns early when advisory lock is not acquired (sync already in progress)", async () => {
+    mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: false }]),
+    });
+
+    const result = await syncOrgRevenue(ORG_ID);
+
+    expect(result.error).toBe("Sync already in progress");
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
 });
 
 describe("syncOrgRevenue — MRG-5 alert dedup", () => {
@@ -136,6 +148,7 @@ describe("syncOrgRevenue — MRG-5 alert dedup", () => {
     const mockInsert = vi.fn(() => ({ values: mockInsertValues }));
 
     mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: true }]),
       select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve([connection]) }) }) }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
@@ -203,6 +216,7 @@ describe("syncOrgRevenue — MRG-5 alert dedup", () => {
     }));
 
     mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: true }]),
       select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve([connection]) }) }) }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
@@ -247,6 +261,7 @@ describe("syncOrgRevenue — MRG-5 alert dedup", () => {
 
     const connection = { id: "c1", orgId: ORG_ID, status: "active", encryptedKey: "enc" };
     mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: true }]),
       select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve([connection]) }) }) }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
       transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {

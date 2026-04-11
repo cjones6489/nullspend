@@ -21,6 +21,16 @@ vi.mock("./auto-match", () => ({
 }));
 vi.mock("./margin-query", () => ({
   getMarginTable: (...args: unknown[]) => mockGetMarginTable(...args),
+  computeHealthTier: (marginPercent: number) => {
+    if (marginPercent >= 50) return "healthy";
+    if (marginPercent >= 20) return "moderate";
+    if (marginPercent >= 0) return "at_risk";
+    return "critical";
+  },
+}));
+vi.mock("./margin-slack-message", () => ({
+  buildMarginAlertMessage: vi.fn().mockReturnValue({ text: "test", blocks: [] }),
+  dispatchMarginSlackAlert: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./webhook", () => ({
   detectWorseningCrossings: (...args: unknown[]) => mockDetectWorseningCrossings(...args),
@@ -85,6 +95,7 @@ describe("syncOrgRevenue — updatedAt", () => {
   it("sets updatedAt on successful sync", async () => {
     const capturedSets: unknown[] = [];
     mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: true }]),
       select: () => ({
         from: () => ({
           where: () => ({
@@ -123,6 +134,7 @@ describe("syncOrgRevenue — updatedAt", () => {
   it("sets updatedAt on decryption failure", async () => {
     const capturedSets: unknown[] = [];
     mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: true }]),
       select: () => ({
         from: () => ({
           where: () => ({
@@ -152,6 +164,7 @@ describe("syncOrgRevenue — updatedAt", () => {
   it("sets updatedAt on Stripe API error", async () => {
     const capturedSets: unknown[] = [];
     mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: true }]),
       select: () => ({
         from: () => ({
           where: () => ({
@@ -193,6 +206,7 @@ describe("syncOrgRevenue — updatedAt", () => {
 describe("syncOrgRevenue — invoice processing", () => {
   function mockDbForProcessing(capturedTx: { deletes: unknown[]; inserts: unknown[] }) {
     mockGetDb.mockReturnValue({
+      execute: vi.fn().mockResolvedValue([{ acquired: true }]),
       select: () => ({
         from: () => ({
           where: () => ({

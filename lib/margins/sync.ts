@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
+
 import Stripe from "stripe";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { STRIPE_API_VERSION } from "@/lib/stripe/client";
@@ -32,6 +34,15 @@ interface SyncResult {
  * Sync revenue data from Stripe for a single org.
  * Replace strategy: DELETE + re-INSERT per customer per period.
  */
+/**
+ * Derive a stable int64 lock ID from an orgId for pg_advisory_lock.
+ * Uses first 8 bytes of SHA-256 hash, read as a signed BigInt.
+ */
+function orgLockId(orgId: string): bigint {
+  const hash = createHash("sha256").update(`margin-sync:${orgId}`).digest();
+  return hash.readBigInt64BE(0);
+}
+
 export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
   const startTime = Date.now();
   const db = getDb();
@@ -46,6 +57,33 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
     durationMs: 0,
   };
 
+  // MRG-6: Advisory lock prevents concurrent syncs for the same org.
+  // pg_try_advisory_lock is non-blocking — if another sync is running,
+  // we return immediately instead of waiting or corrupting data.
+  const lockId = orgLockId(orgId);
+  const [{ acquired }] = await db.execute<{ acquired: boolean }>(
+    sql`SELECT pg_try_advisory_lock(${lockId}) AS acquired`,
+  );
+  if (!acquired) {
+    log.info({ orgId }, "Margin sync already in progress — skipping");
+    return { ...result, durationMs: Date.now() - startTime, error: "Sync already in progress" };
+  }
+
+  try {
+    return await syncOrgRevenueInner(db, orgId, result, startTime);
+  } finally {
+    await db.execute(sql`SELECT pg_advisory_unlock(${lockId})`).catch((err) => {
+      log.warn({ err, orgId }, "Advisory lock release failed — will auto-release on connection close");
+    });
+  }
+}
+
+async function syncOrgRevenueInner(
+  db: ReturnType<typeof getDb>,
+  orgId: string,
+  result: SyncResult,
+  startTime: number,
+): Promise<SyncResult> {
   // Load connection
   const [connection] = await db
     .select()

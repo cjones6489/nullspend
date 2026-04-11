@@ -19,6 +19,16 @@ vi.mock("./auto-match", () => ({
 }));
 vi.mock("./margin-query", () => ({
   getMarginTable: (...args: unknown[]) => mockGetMarginTable(...args),
+  computeHealthTier: (marginPercent: number) => {
+    if (marginPercent >= 50) return "healthy";
+    if (marginPercent >= 20) return "moderate";
+    if (marginPercent >= 0) return "at_risk";
+    return "critical";
+  },
+}));
+vi.mock("./margin-slack-message", () => ({
+  buildMarginAlertMessage: vi.fn().mockReturnValue({ text: "test", blocks: [] }),
+  dispatchMarginSlackAlert: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("./webhook", () => ({
   detectWorseningCrossings: (...args: unknown[]) => mockDetectWorseningCrossings(...args),
@@ -47,6 +57,7 @@ import { syncOrgRevenue, syncAllOrgs } from "./sync";
 function mockDbWithConnection(connection: Record<string, unknown> | null) {
   const selectResult = connection ? [connection] : [];
   mockGetDb.mockReturnValue({
+    execute: vi.fn().mockResolvedValue([{ acquired: true }]),
     select: () => ({ from: () => ({ where: () => {
       // First call: connection lookup (with .limit), second: syncAllOrgs connection list (no .limit)
       return {
