@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
 import { resolveSessionContext, setActiveOrgCookie, invalidateMembershipCache } from "@/lib/auth/session";
+import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { getDb } from "@/lib/db/client";
 import { orgInvitations, orgMemberships } from "@nullspend/db";
 import { readJsonBody } from "@/lib/utils/http";
@@ -54,6 +55,21 @@ export const POST = withRequestContext(async (request: Request) => {
       { error: { code: "conflict", message: `This invitation has already been ${invitation.status}.`, details: null } },
       { status: 409 },
     );
+  }
+
+  // API-3: Verify the authenticated user's email matches the invitation's email.
+  // Prevents a leaked/forwarded token from letting any logged-in account join.
+  if (invitation.email) {
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const userEmail = user?.email?.toLowerCase();
+    const inviteEmail = invitation.email.toLowerCase();
+    if (!userEmail || userEmail !== inviteEmail) {
+      return NextResponse.json(
+        { error: { code: "forbidden", message: "This invitation was sent to a different email address. Sign in with the invited email to accept.", details: null } },
+        { status: 403 },
+      );
+    }
   }
 
   if (invitation.expiresAt < new Date()) {

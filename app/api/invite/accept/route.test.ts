@@ -15,6 +15,17 @@ vi.mock("@/lib/auth/invitation", () => ({
   hashInviteToken: vi.fn().mockReturnValue("hashed-token-abc"),
 }));
 
+// API-3: Mock Supabase auth to return the invited user's email
+const mockGetUser = vi.fn().mockResolvedValue({
+  data: { user: { id: "user-1", email: "invitee@example.com" } },
+  error: null,
+});
+vi.mock("@/lib/auth/supabase", () => ({
+  createServerSupabaseClient: vi.fn().mockResolvedValue({
+    auth: { getUser: () => mockGetUser() },
+  }),
+}));
+
 vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(),
 }));
@@ -247,5 +258,56 @@ describe("POST /api/invite/accept", () => {
     const body = await res.json();
     expect(body.error.code).toBe("conflict");
     expect(body.error.message).toContain("already been revoked");
+  });
+
+  it("API-3: returns 403 when logged-in user email does not match invitation email", async () => {
+    await mockReadJsonBody({ token: "ns_inv_valid-token" });
+
+    // Invitation is for alice@acme.com, but logged-in user is bob@evil.com
+    const invitation = makePendingInvitation({ email: "alice@acme.com" });
+    setupDb({ invitation });
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: "user-1", email: "bob@evil.com" } },
+      error: null,
+    });
+
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(403);
+
+    const body = await res.json();
+    expect(body.error.code).toBe("forbidden");
+    expect(body.error.message).toContain("different email address");
+  });
+
+  it("API-3: email comparison is case-insensitive", async () => {
+    await mockReadJsonBody({ token: "ns_inv_valid-token" });
+
+    const invitation = makePendingInvitation({ email: "Alice@Acme.COM" });
+    const { mockTransaction } = setupDb({ invitation, existingMembership: null });
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: "user-1", email: "alice@acme.com" } },
+      error: null,
+    });
+
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200); // Should succeed — same email, different case
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("API-3: returns 403 when Supabase returns no user email", async () => {
+    await mockReadJsonBody({ token: "ns_inv_valid-token" });
+
+    const invitation = makePendingInvitation();
+    setupDb({ invitation });
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: "user-1", email: null } },
+      error: null,
+    });
+
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(403);
+
+    const body = await res.json();
+    expect(body.error.code).toBe("forbidden");
   });
 });
