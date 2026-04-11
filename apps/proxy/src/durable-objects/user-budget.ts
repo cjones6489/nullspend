@@ -1,4 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
+import {
+  writeOutboxEntry,
+  getRetryableEntries,
+  ackAllForRequest,
+  markRetryFailed,
+  deleteAbandonedEntries,
+} from "../lib/pg-sync-outbox.js";
+import { updateBudgetSpend } from "../lib/budget-spend.js";
+import { emitMetric } from "../lib/metrics.js";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -240,6 +249,28 @@ export class UserBudgetDO extends DurableObject {
       try { this.ctx.storage.sql.exec("ALTER TABLE reservations ADD COLUMN session_id TEXT"); } catch { /* already exists */ }
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (4)");
     }
+
+    // v5 migration: PXY-2 — self-describing reservations + PG sync outbox
+    if (version < 5) {
+      // Reservation enrichment — carries org context for outbox writes
+      try { this.ctx.storage.sql.exec("ALTER TABLE reservations ADD COLUMN org_id TEXT"); } catch { /* already exists */ }
+
+      // Transactional outbox for Postgres budget spend sync
+      this.ctx.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS pg_sync_outbox (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          request_id TEXT NOT NULL,
+          org_id TEXT NOT NULL,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT NOT NULL,
+          cost_microdollars INTEGER NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          next_attempt_at INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        )
+      `);
+      this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (5)");
+    }
   }
 
   // ── RPC Methods ────────────────────────────────────────────────────
@@ -255,6 +286,7 @@ export class UserBudgetDO extends DurableObject {
     reservationTtlMs: number = 30_000,
     sessionId: string | null = null,
     tagEntityIds: string[] = [],
+    orgId: string | null = null,
   ): Promise<CheckResult> {
     if (estimateMicrodollars < 0 || !Number.isFinite(estimateMicrodollars)) {
       return { status: "denied", hasBudgets: false };
@@ -553,16 +585,17 @@ export class UserBudgetDO extends DurableObject {
         entityKeys.push(key);
       }
 
-      // Store reservation for crash recovery (includes session_id for alarm reversal)
+      // Store reservation for crash recovery (includes session_id for alarm reversal, org_id for outbox)
       this.ctx.storage.sql.exec(
-        `INSERT INTO reservations (id, amount, entity_keys, created_at, expires_at, session_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO reservations (id, amount, entity_keys, created_at, expires_at, session_id, org_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         reservationId,
         estimateMicrodollars,
         JSON.stringify(entityKeys),
         now,
         now + reservationTtlMs,
         sessionId,
+        orgId,
       );
 
       // Phase 3.5: Increment session spend for entities with session limits
@@ -631,8 +664,8 @@ export class UserBudgetDO extends DurableObject {
     actualCostMicrodollars: number,
   ): Promise<ReconcileResult> {
     const row = this.ctx.storage.sql
-      .exec<{ amount: number; entity_keys: string; session_id: string | null }>(
-        "SELECT amount, entity_keys, session_id FROM reservations WHERE id = ?",
+      .exec<{ amount: number; entity_keys: string; session_id: string | null; org_id: string | null }>(
+        "SELECT amount, entity_keys, session_id, org_id FROM reservations WHERE id = ?",
         reservationId,
       )
       .toArray()[0];
@@ -708,17 +741,46 @@ export class UserBudgetDO extends DurableObject {
         }
       }
 
+      // PXY-2: Write outbox entries for PG sync (atomic with spend adjustment).
+      // Outbox presence = "reconciled, PG pending". No outbox = expired.
+      if (actualCostMicrodollars > 0 && row.org_id) {
+        for (const key of entityKeys) {
+          const [entityType, entityId] = parseEntityKey(key);
+          writeOutboxEntry(this.ctx.storage.sql as import("../lib/pg-sync-outbox.js").SqlStorage, {
+            requestId: reservationId,
+            orgId: row.org_id,
+            entityType,
+            entityId,
+            costMicrodollars: actualCostMicrodollars,
+          });
+        }
+      }
+
       this.ctx.storage.sql.exec(
         "DELETE FROM reservations WHERE id = ?",
         reservationId,
       );
     });
 
+    // Emit metric OUTSIDE transaction (fire-and-forget)
+    if (actualCostMicrodollars > 0 && row.org_id) {
+      emitMetric("pg_sync_outbox_written", { requestId: reservationId, entityCount: entityKeys.length });
+    }
+
     const result: ReconcileResult = { status: "reconciled", spends };
     if (budgetsMissing.length > 0) {
       result.budgetsMissing = budgetsMissing;
     }
     return result;
+  }
+
+  /**
+   * PXY-2: Acknowledge successful PG sync — delete all outbox entries for a requestId.
+   * Called by doBudgetReconcile after updateBudgetSpend succeeds.
+   * C5: All entities for the request are acked atomically.
+   */
+  async ackPgSync(requestId: string): Promise<void> {
+    ackAllForRequest(this.ctx.storage.sql as import("../lib/pg-sync-outbox.js").SqlStorage, requestId);
   }
 
   /**
@@ -822,6 +884,56 @@ export class UserBudgetDO extends DurableObject {
   async getVelocityState(): Promise<VelocityState[]> {
     return this.ctx.storage.sql.exec<VelocityState>(
       "SELECT * FROM velocity_state",
+    ).toArray();
+  }
+
+  /** Read-only outbox state (for PXY-2 observability and testing). */
+  async getOutboxEntries(): Promise<Array<{
+    id: number;
+    request_id: string;
+    org_id: string;
+    entity_type: string;
+    entity_id: string;
+    cost_microdollars: number;
+    attempts: number;
+    next_attempt_at: number;
+    created_at: number;
+  }>> {
+    return this.ctx.storage.sql.exec<{
+      id: number;
+      request_id: string;
+      org_id: string;
+      entity_type: string;
+      entity_id: string;
+      cost_microdollars: number;
+      attempts: number;
+      next_attempt_at: number;
+      created_at: number;
+    }>(
+      "SELECT id, request_id, org_id, entity_type, entity_id, cost_microdollars, attempts, next_attempt_at, created_at FROM pg_sync_outbox ORDER BY id ASC",
+    ).toArray();
+  }
+
+  /** Read-only reservation state (for PXY-2 observability and testing). */
+  async getReservations(): Promise<Array<{
+    id: string;
+    amount: number;
+    entity_keys: string;
+    created_at: number;
+    expires_at: number;
+    session_id: string | null;
+    org_id: string | null;
+  }>> {
+    return this.ctx.storage.sql.exec<{
+      id: string;
+      amount: number;
+      entity_keys: string;
+      created_at: number;
+      expires_at: number;
+      session_id: string | null;
+      org_id: string | null;
+    }>(
+      "SELECT id, amount, entity_keys, created_at, expires_at, session_id, org_id FROM reservations ORDER BY created_at ASC",
     ).toArray();
   }
 
@@ -974,7 +1086,74 @@ export class UserBudgetDO extends DurableObject {
       console.log(`[UserBudgetDO] alarm: cleaned up ${deleted.rowsWritten} stale session(s)`);
     }
 
-    // Reschedule: next reservation expiry OR 24h for session cleanup (if sessions exist)
+    // ── PXY-2: Process pending PG sync outbox entries ──
+    const MAX_OUTBOX_ATTEMPTS = 5;
+    const sqlStorage = this.ctx.storage.sql as import("../lib/pg-sync-outbox.js").SqlStorage;
+    const pending = getRetryableEntries(sqlStorage, now, MAX_OUTBOX_ATTEMPTS);
+
+    if (pending.length > 0) {
+      let connectionString: string | undefined;
+      try {
+        connectionString = this.env.HYPERDRIVE.connectionString;
+      } catch (err) {
+        // HYPERDRIVE unavailable — mark all entries as failed
+        console.error("[UserBudgetDO] alarm: HYPERDRIVE unavailable, marking outbox entries failed:", err);
+        for (const entry of pending) {
+          markRetryFailed(sqlStorage, entry.id, entry.attempts);
+        }
+      }
+
+      if (connectionString) {
+        // C5: Group by requestId — all entities for one request are written + acked together
+        const byRequest = new Map<string, typeof pending>();
+        for (const entry of pending) {
+          const group = byRequest.get(entry.requestId) ?? [];
+          group.push(entry);
+          byRequest.set(entry.requestId, group);
+        }
+
+        for (const [requestId, entries] of byRequest) {
+          try {
+            await updateBudgetSpend(
+              connectionString,
+              entries[0].orgId,
+              requestId,
+              entries.map((e) => ({ entityType: e.entityType, entityId: e.entityId })),
+              entries[0].costMicrodollars,
+            );
+            // All entities succeeded — ack all
+            ackAllForRequest(sqlStorage, requestId);
+            emitMetric("pg_sync_alarm_success", { requestId, entityCount: entries.length });
+          } catch (err) {
+            // Mark all entries in this group as failed with backoff
+            for (const entry of entries) {
+              markRetryFailed(sqlStorage, entry.id, entry.attempts);
+            }
+            console.error("[UserBudgetDO] outbox PG sync failed:", {
+              requestId, attempt: entries[0].attempts + 1,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        // Abandon entries that exceeded max attempts
+        const abandoned = deleteAbandonedEntries(sqlStorage, MAX_OUTBOX_ATTEMPTS);
+        if (abandoned > 0) {
+          emitMetric("pg_sync_abandoned", { count: abandoned });
+          console.error(`[UserBudgetDO] ALERT: ${abandoned} outbox entries abandoned after ${MAX_OUTBOX_ATTEMPTS} attempts`);
+        }
+      }
+
+      // C9: Prune old reconciled_requests (async, best-effort)
+      if (connectionString) {
+        try {
+          const pruneSql = (await import("../lib/db.js")).getSql(connectionString);
+          await pruneSql`DELETE FROM reconciled_requests WHERE reconciled_at < NOW() - INTERVAL '7 days'`;
+        } catch { /* best-effort pruning */ }
+      }
+    }
+
+    // Reschedule: next reservation expiry OR session cleanup OR outbox retry
     const next = this.ctx.storage.sql
       .exec<{ next_exp: number | null }>(
         "SELECT MIN(expires_at) as next_exp FROM reservations",
@@ -990,6 +1169,16 @@ export class UserBudgetDO extends DurableObject {
     if (hasSessionRows) {
       const sessionCleanup = now + SESSION_TTL_MS;
       nextAlarm = nextAlarm ? Math.min(nextAlarm, sessionCleanup) : sessionCleanup;
+    }
+
+    // C6: Schedule alarm for next outbox retry (uses persisted next_attempt_at)
+    const nextOutbox = this.ctx.storage.sql
+      .exec<{ next: number | null }>(
+        "SELECT MIN(next_attempt_at) as next FROM pg_sync_outbox WHERE attempts < ?",
+        MAX_OUTBOX_ATTEMPTS,
+      ).toArray()[0]?.next;
+    if (nextOutbox) {
+      nextAlarm = nextAlarm ? Math.min(nextAlarm, nextOutbox) : nextOutbox;
     }
 
     if (nextAlarm) {

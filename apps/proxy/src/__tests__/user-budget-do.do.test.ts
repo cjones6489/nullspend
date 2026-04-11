@@ -1108,3 +1108,98 @@ describe("Tag Budget Enforcement (DO)", () => {
     expect(types).toEqual(["customer", "tag", "user"]);
   });
 });
+
+// ── PXY-2: DO Outbox — org_id + pg_sync_outbox ───────────────────────
+
+describe("PXY-2: DO Outbox", () => {
+  it("T12: checkAndReserve stores org_id in reservation", async () => {
+    const stub = getStub("user-outbox-t12");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+
+    const result = await stub.checkAndReserve(null, 5_000_000, 30_000, null, [], "org-123");
+    expect(result.status).toBe("approved");
+
+    // Query reservations table to verify org_id column has the value
+    const reservations = await stub.getReservations();
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0].org_id).toBe("org-123");
+    expect(reservations[0].id).toBe(result.reservationId);
+  });
+
+  it("T13: reconcile writes outbox entries atomically with spend adjustment", async () => {
+    const stub = getStub("user-outbox-t13");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+
+    const check = await stub.checkAndReserve(null, 5_000_000, 30_000, null, [], "org-456");
+    expect(check.status).toBe("approved");
+
+    const reconcileResult = await stub.reconcile(check.reservationId!, 3_000_000);
+    expect(reconcileResult.status).toBe("reconciled");
+
+    // Query pg_sync_outbox table to verify entries exist with correct fields
+    const outbox = await stub.getOutboxEntries();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0].request_id).toBe(check.reservationId);
+    expect(outbox[0].org_id).toBe("org-456");
+    expect(outbox[0].entity_type).toBe("user");
+    expect(outbox[0].entity_id).toBe("u1");
+    expect(outbox[0].cost_microdollars).toBe(3_000_000);
+    expect(outbox[0].attempts).toBe(0);
+    expect(outbox[0].next_attempt_at).toBe(0);
+    expect(outbox[0].created_at).toBeGreaterThan(0);
+  });
+
+  it("T14: reconcile with org_id=null skips outbox write", async () => {
+    const stub = getStub("user-outbox-t14");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+
+    // checkAndReserve WITHOUT orgId (null — the default)
+    const check = await stub.checkAndReserve(null, 5_000_000);
+    expect(check.status).toBe("approved");
+
+    await stub.reconcile(check.reservationId!, 3_000_000);
+
+    // pg_sync_outbox should be empty
+    const outbox = await stub.getOutboxEntries();
+    expect(outbox).toHaveLength(0);
+  });
+
+  it("T15: ackPgSync deletes ALL outbox entries for requestId", async () => {
+    const stub = getStub("user-outbox-t15");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+    await stub.populateIfEmpty("api_key", "k1", 100_000_000, 0, "strict_block", null, 0);
+
+    // Multi-entity reservation to create multiple outbox entries
+    const check = await stub.checkAndReserve("k1", 5_000_000, 30_000, null, [], "org-789");
+    expect(check.status).toBe("approved");
+
+    await stub.reconcile(check.reservationId!, 2_000_000);
+
+    // Verify outbox has entries (one per entity: user + api_key)
+    const outboxBefore = await stub.getOutboxEntries();
+    expect(outboxBefore.length).toBeGreaterThanOrEqual(2);
+    expect(outboxBefore.every(e => e.request_id === check.reservationId)).toBe(true);
+
+    // ackPgSync should delete ALL entries for this requestId
+    await stub.ackPgSync(check.reservationId!);
+
+    const outboxAfter = await stub.getOutboxEntries();
+    expect(outboxAfter).toHaveLength(0);
+  });
+
+  it("T23: reconcile reads org_id from reservation for outbox", async () => {
+    const stub = getStub("user-outbox-t23");
+    await stub.populateIfEmpty("user", "u1", 100_000_000, 0, "strict_block", null, 0);
+
+    const check = await stub.checkAndReserve(null, 5_000_000, 30_000, null, [], "org-specific");
+    expect(check.status).toBe("approved");
+
+    await stub.reconcile(check.reservationId!, 4_000_000);
+
+    // Verify outbox orgId matches what was stored in the reservation
+    const outbox = await stub.getOutboxEntries();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0].org_id).toBe("org-specific");
+    expect(outbox[0].request_id).toBe(check.reservationId);
+  });
+});

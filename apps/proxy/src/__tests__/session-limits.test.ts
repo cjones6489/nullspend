@@ -308,7 +308,7 @@ describe("Session Limits", () => {
       await checkBudget(env, ctx, 500_000);
 
       expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-        env, "user-1", "key-1", 500_000, "sess-abc-123", [],
+        env, "user-1", "key-1", 500_000, "sess-abc-123", [], null,
       );
     });
 
@@ -320,7 +320,7 @@ describe("Session Limits", () => {
       await checkBudget(env, ctx, 500_000);
 
       expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-        env, "user-1", "key-1", 500_000, null, [],
+        env, "user-1", "key-1", 500_000, null, [], null,
       );
     });
 
@@ -545,7 +545,7 @@ describe("Session Limits", () => {
       expect(outcome.status).toBe("approved");
       // sessionId=null is passed to DO — DO skips session check
       expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-        env, "user-1", "key-1", 500_000, null, [],
+        env, "user-1", "key-1", 500_000, null, [], null,
       );
     });
   });

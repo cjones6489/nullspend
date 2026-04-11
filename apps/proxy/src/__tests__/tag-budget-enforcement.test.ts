@@ -444,7 +444,7 @@ describe("Tag Budget Enforcement", () => {
         // We verify the orchestrator produced the correct entities by checking doBudgetCheck was called with tags
         expect(mockDoBudgetCheck).toHaveBeenCalledWith(
           expect.anything(), "user-1", "key-1", expect.any(Number), null,
-          ["project=openclaw"],
+          ["project=openclaw"], null,
         );
       } finally {
         globalThis.fetch = originalFetch;

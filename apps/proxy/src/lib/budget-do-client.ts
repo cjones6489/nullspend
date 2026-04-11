@@ -18,10 +18,11 @@ export async function doBudgetCheck(
   estimateMicrodollars: number,
   sessionId: string | null,
   tagEntityIds: string[],
+  orgId: string | null = null,
 ): Promise<CheckResult> {
   const startMs = Date.now();
   const stub = env.USER_BUDGET.get(env.USER_BUDGET.idFromName(ownerId));
-  const result = await stub.checkAndReserve(keyId, estimateMicrodollars, 30_000, sessionId, tagEntityIds);
+  const result = await stub.checkAndReserve(keyId, estimateMicrodollars, 30_000, sessionId, tagEntityIds, orgId);
   emitMetric("do_budget_check", {
     status: result.status,
     hasBudgets: result.hasBudgets,
@@ -87,11 +88,18 @@ export async function doBudgetReconcile(
     }
 
     // C7: Single optimistic PG write. No retry loop — the DO outbox
-    // (commit 3) is the retry mechanism. If this fails, the outbox
-    // entry persists and the alarm handler retries.
+    // is the retry mechanism. If this fails, the outbox entry persists
+    // and the alarm handler retries with idempotent writes.
     if (actualCost > 0) {
       try {
         await updateBudgetSpend(connectionString, orgId, reservationId, entities, actualCost);
+        // PG succeeded — ack outbox entries so alarm doesn't retry
+        try {
+          await stub.ackPgSync(reservationId);
+        } catch (ackErr) {
+          // Ack failed — outbox persists, alarm will retry PG (idempotent).
+          console.warn("[budget-do-client] ackPgSync failed (alarm will retry):", ackErr);
+        }
       } catch (err) {
         status = "pg_failed";
         console.warn("[budget-do-client] Optimistic PG write failed (outbox will retry):", {

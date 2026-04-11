@@ -207,6 +207,7 @@ describe("Budget Edge Cases", () => {
       expect.any(Number),
       null,
       [],
+      "org-test",
     );
   });
 
@@ -251,6 +252,7 @@ describe("Budget Edge Cases", () => {
       0,
       null,
       [],
+      "org-test",
     );
   });
 

@@ -96,7 +96,7 @@ describe("checkBudget — DO-first mode", () => {
     expect(result.status).toBe("approved");
     expect(result.reservationId).toBe("rsv-do-1");
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-      expect.anything(), "user-1", "key-1", 5_000_000, null, [],
+      expect.anything(), "user-1", "key-1", 5_000_000, null, [], null,
     );
   });
 
@@ -242,7 +242,7 @@ describe("checkBudget — DO-first mode", () => {
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-      expect.anything(), "user-1", null, 5_000_000, null, [],
+      expect.anything(), "user-1", null, 5_000_000, null, [], null,
     );
   });
 
@@ -286,6 +286,24 @@ describe("checkBudget — DO-first mode", () => {
     expect(result.budgetEntities).toHaveLength(2);
     expect(result.budgetEntities[0].reserved).toBe(7_500_000);
     expect(result.budgetEntities[1].reserved).toBe(25_000_000);
+  });
+
+  it("T26: checkBudget passes ctx.auth.orgId through to doBudgetCheck", async () => {
+    mockDoBudgetCheck.mockResolvedValue({
+      status: "approved",
+      hasBudgets: true,
+      reservationId: "rsv-org",
+      checkedEntities: [checkedEntity],
+    });
+
+    const ctx = makeCtx({
+      auth: { userId: "user-1", keyId: "key-1", hasWebhooks: false, hasBudgets: true, orgId: "org-xyz", apiVersion: "2026-04-01", defaultTags: {} },
+    });
+    await checkBudget(makeEnv(), ctx, 5_000_000);
+
+    expect(mockDoBudgetCheck).toHaveBeenCalledWith(
+      expect.anything(), "user-1", "key-1", 5_000_000, null, [], "org-xyz",
+    );
   });
 });
 
@@ -377,7 +395,7 @@ describe("checkBudget — tag budget", () => {
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
       expect.anything(), "user-1", "key-1", 5_000_000, null,
-      ["project=openclaw", "env=prod"],
+      ["project=openclaw", "env=prod"], null,
     );
   });
 
@@ -393,7 +411,7 @@ describe("checkBudget — tag budget", () => {
     await checkBudget(makeEnv(), ctx, 5_000_000);
 
     expect(mockDoBudgetCheck).toHaveBeenCalledWith(
-      expect.anything(), "user-1", "key-1", 5_000_000, null, [],
+      expect.anything(), "user-1", "key-1", 5_000_000, null, [], null,
     );
   });
 

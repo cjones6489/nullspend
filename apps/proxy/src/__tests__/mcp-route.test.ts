@@ -353,6 +353,7 @@ describe("handleMcpBudgetCheck", () => {
       0,
       null,
       [],
+      "org-test",
     );
   });
 });

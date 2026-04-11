@@ -157,7 +157,7 @@ async function checkBudgetDO(
   const tagEntityIds = Object.entries(tags).map(([k, v]) => `${k}=${v}`);
 
   // Single DO RPC — no Postgres lookup, no cache
-  const checkResult = await doBudgetCheck(env, ownerId, keyId, estimateMicrodollars, sessionId, tagEntityIds);
+  const checkResult = await doBudgetCheck(env, ownerId, keyId, estimateMicrodollars, sessionId, tagEntityIds, orgId);
 
   if (!checkResult.hasBudgets) {
     // Auth cache said hasBudgets=true (we got here), but DO says false — stale cache

@@ -21,6 +21,7 @@ function makeStub(overrides: Record<string, unknown> = {}) {
   const stub: Record<string, unknown> = {
     checkAndReserve: vi.fn().mockResolvedValue({ status: "approved", reservationId: "rsv-1" }),
     reconcile: vi.fn().mockResolvedValue({ status: "reconciled" }),
+    ackPgSync: vi.fn().mockResolvedValue(undefined),
     populateIfEmpty: vi.fn().mockResolvedValue(true),
     removeBudget: vi.fn().mockResolvedValue(undefined),
     resetSpend: vi.fn().mockResolvedValue(undefined),
@@ -57,7 +58,7 @@ describe("doBudgetCheck", () => {
 
     const result = await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, []);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, null, []);
+    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, null, [], null);
     expect(result).toEqual({ status: "approved", reservationId: "rsv-1" });
   });
 
@@ -67,7 +68,7 @@ describe("doBudgetCheck", () => {
 
     await doBudgetCheck(env, "user-1", null, 5_000_000, null, []);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith(null, 5_000_000, 30_000, null, []);
+    expect(stub.checkAndReserve).toHaveBeenCalledWith(null, 5_000_000, 30_000, null, [], null);
   });
 
   it("returns denied result from DO", async () => {
@@ -152,7 +153,7 @@ describe("doBudgetCheck", () => {
     await doBudgetCheck(env, "user-1", "key-1", 5_000_000, null, ["project=openclaw", "env=prod"]);
 
     expect(stub.checkAndReserve).toHaveBeenCalledWith(
-      "key-1", 5_000_000, 30_000, null, ["project=openclaw", "env=prod"],
+      "key-1", 5_000_000, 30_000, null, ["project=openclaw", "env=prod"], null,
     );
   });
 
@@ -162,7 +163,7 @@ describe("doBudgetCheck", () => {
 
     await doBudgetCheck(env, "user-1", "key-1", 5_000_000, "sess-1", []);
 
-    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, "sess-1", []);
+    expect(stub.checkAndReserve).toHaveBeenCalledWith("key-1", 5_000_000, 30_000, "sess-1", [], null);
   });
 
   it("emits tagBudgetDenied=true when deniedEntity starts with tag:", async () => {
@@ -248,6 +249,7 @@ describe("doBudgetReconcile", () => {
 
     expect(stub.reconcile).toHaveBeenCalledWith("rsv-1", 0);
     expect(mockUpdateBudgetSpend).not.toHaveBeenCalled();
+    expect(stub.ackPgSync).not.toHaveBeenCalled();
   });
 
   it("returns 'error' on DO error", async () => {
@@ -444,6 +446,45 @@ describe("doBudgetReconcile", () => {
     );
 
     expect(result).toBe("ok");
+  });
+
+  // T21: calls ackPgSync after successful PG write
+  it("T21: calls ackPgSync after successful PG write", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetReconcile(
+      env, "user-1", "org-test", "rsv-ack-1", 1_000,
+      [{ entityType: "user", entityId: "user-1" }],
+      "postgres://test",
+    );
+
+    expect(stub.ackPgSync).toHaveBeenCalledWith("rsv-ack-1");
+    expect(stub.ackPgSync).toHaveBeenCalledTimes(1);
+  });
+
+  // T22: ackPgSync failure does not throw
+  it("T22: ackPgSync failure does not throw", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const stub = makeStub({
+      ackPgSync: vi.fn().mockRejectedValue(new Error("ack failed")),
+    });
+    const env = makeEnv(stub);
+
+    const result = await doBudgetReconcile(
+      env, "user-1", "org-test", "rsv-ack-2", 1_000,
+      [{ entityType: "user", entityId: "user-1" }],
+      "postgres://test",
+    );
+
+    // Should still return ok — ackPgSync failure is non-fatal
+    expect(result).toBe("ok");
+    expect(stub.ackPgSync).toHaveBeenCalledWith("rsv-ack-2");
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[budget-do-client] ackPgSync failed (alarm will retry):",
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
   });
 
   // T28: passes reservationId as requestId to updateBudgetSpend
