@@ -7,6 +7,7 @@ import {
   deleteAbandonedEntries,
 } from "../lib/pg-sync-outbox.js";
 import { updateBudgetSpend } from "../lib/budget-spend.js";
+import { getSql } from "../lib/db.js";
 import { emitMetric } from "../lib/metrics.js";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -173,6 +174,18 @@ export class UserBudgetDO extends DurableObject {
         "SELECT COUNT(*) as cnt FROM budgets",
       ).toArray()[0]?.cnt ?? 0;
       console.log(`[UserBudgetDO] initialized, ${count} budgets loaded`);
+
+      // PXY-2: Schedule alarm if pending outbox entries exist (cold rehydration)
+      const pendingOutbox = this.ctx.storage.sql.exec<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM pg_sync_outbox",
+      ).toArray()[0]?.cnt ?? 0;
+      if (pendingOutbox > 0) {
+        const currentAlarm = await this.ctx.storage.getAlarm();
+        if (!currentAlarm) {
+          await this.ctx.storage.setAlarm(Date.now() + 1_000);
+          console.log(`[UserBudgetDO] scheduled alarm for ${pendingOutbox} pending outbox entries`);
+        }
+      }
     });
   }
 
@@ -1091,8 +1104,10 @@ export class UserBudgetDO extends DurableObject {
     const sqlStorage = this.ctx.storage.sql as import("../lib/pg-sync-outbox.js").SqlStorage;
     const pending = getRetryableEntries(sqlStorage, now, MAX_OUTBOX_ATTEMPTS);
 
+    // Hoist connectionString so pruning can reuse it (avoids a second HYPERDRIVE access)
+    let connectionString: string | undefined;
+
     if (pending.length > 0) {
-      let connectionString: string | undefined;
       try {
         connectionString = this.env.HYPERDRIVE.connectionString;
       } catch (err) {
@@ -1136,21 +1151,27 @@ export class UserBudgetDO extends DurableObject {
           }
         }
 
-        // Abandon entries that exceeded max attempts
-        const abandoned = deleteAbandonedEntries(sqlStorage, MAX_OUTBOX_ATTEMPTS);
-        if (abandoned > 0) {
-          emitMetric("pg_sync_abandoned", { count: abandoned });
-          console.error(`[UserBudgetDO] ALERT: ${abandoned} outbox entries abandoned after ${MAX_OUTBOX_ATTEMPTS} attempts`);
-        }
       }
 
-      // C9: Prune old reconciled_requests (async, best-effort)
-      if (connectionString) {
-        try {
-          const pruneSql = (await import("../lib/db.js")).getSql(connectionString);
-          await pruneSql`DELETE FROM reconciled_requests WHERE reconciled_at < NOW() - INTERVAL '7 days'`;
-        } catch { /* best-effort pruning */ }
+      // Abandon entries that exceeded max attempts (runs regardless of
+      // connectionString — entries may have been marked failed by the
+      // HYPERDRIVE-unavailable path above and now need cleanup)
+      const abandoned = deleteAbandonedEntries(sqlStorage, MAX_OUTBOX_ATTEMPTS);
+      if (abandoned > 0) {
+        emitMetric("pg_sync_abandoned", { count: abandoned });
+        console.error(`[UserBudgetDO] ALERT: ${abandoned} outbox entries abandoned after ${MAX_OUTBOX_ATTEMPTS} attempts`);
       }
+    }
+
+    // C9: Prune old reconciled_requests (best-effort).
+    // Only attempt when we successfully obtained a connectionString above,
+    // to avoid opening a new HYPERDRIVE connection just for pruning.
+    if (connectionString) {
+      try {
+        const pruneSql = getSql(connectionString);
+        await pruneSql`DELETE FROM reconciled_requests WHERE reconciled_at < NOW() - INTERVAL '7 days'`;
+        await pruneSql.end({ timeout: 0 }).catch(() => {});
+      } catch { /* best-effort pruning — connection may have gone stale */ }
     }
 
     // Reschedule: next reservation expiry OR session cleanup OR outbox retry
