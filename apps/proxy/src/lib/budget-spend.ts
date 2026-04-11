@@ -1,18 +1,20 @@
 import { getSql } from "./db.js";
+import { emitMetric } from "./metrics.js";
 
 /**
- * Atomically increment `spend_microdollars` on each budget entity in Postgres.
- * Throws on failure so callers (reconcileReservation) can retry.
+ * Idempotent spend increment on each budget entity in Postgres.
+ *
+ * PXY-2: Uses a `reconciled_requests` dedup table to prevent double-counting
+ * on retry (queue retry, outbox alarm retry, manual recovery). Each
+ * (requestId, entityType, entityId) tuple is written exactly once.
  *
  * Entities are sorted by (entityType, entityId) before the transaction
  * to prevent deadlocks when concurrent reconciliations overlap.
- *
- * Ensures Postgres spend stays current so DO sync starts from an accurate
- * baseline.
  */
 export async function updateBudgetSpend(
   connectionString: string,
   orgId: string,
+  requestId: string,
   entities: { entityType: string; entityId: string }[],
   actualCostMicrodollars: number,
   skipDbWrites = false,
@@ -37,14 +39,46 @@ export async function updateBudgetSpend(
 
   await sql.begin(async (tx) => {
     for (const entity of sorted) {
-      await tx`
-        UPDATE budgets
-        SET spend_microdollars = spend_microdollars + ${actualCostMicrodollars},
-            updated_at = NOW()
-        WHERE entity_type = ${entity.entityType}
-          AND entity_id = ${entity.entityId}
-          AND org_id = ${orgId}
+      // 1. Idempotent dedup: INSERT only if this (requestId, entity) hasn't been reconciled
+      const inserted = await tx`
+        INSERT INTO reconciled_requests (request_id, entity_type, entity_id, org_id, cost_microdollars)
+        VALUES (${requestId}, ${entity.entityType}, ${entity.entityId}, ${orgId}, ${actualCostMicrodollars})
+        ON CONFLICT (request_id, entity_type, entity_id) DO NOTHING
       `;
+
+      // 2. Only increment spend if this is a new reconciliation (not a duplicate)
+      if (inserted.count > 0) {
+        const updated = await tx`
+          UPDATE budgets
+          SET spend_microdollars = spend_microdollars + ${actualCostMicrodollars},
+              updated_at = NOW()
+          WHERE entity_type = ${entity.entityType}
+            AND entity_id = ${entity.entityId}
+            AND org_id = ${orgId}
+        `;
+        // C2: Detect missing budget row (dedup succeeded but nothing to update)
+        if (updated.count === 0) {
+          console.error("[budget-spend] Budget row missing during reconciliation", {
+            requestId, entityType: entity.entityType, entityId: entity.entityId, orgId,
+          });
+          emitMetric("reconcile_budget_row_missing", {
+            entityType: entity.entityType, entityId: entity.entityId,
+          });
+        }
+      } else {
+        // C10: Dedup hit — check for cost mismatch (corruption signal)
+        const existing = await tx`
+          SELECT cost_microdollars FROM reconciled_requests
+          WHERE request_id = ${requestId} AND entity_type = ${entity.entityType} AND entity_id = ${entity.entityId}
+        `;
+        if (existing[0] && Number(existing[0].cost_microdollars) !== actualCostMicrodollars) {
+          console.error("[budget-spend] DEDUP COST MISMATCH", {
+            requestId, entityType: entity.entityType,
+            stored: existing[0].cost_microdollars, attempted: actualCostMicrodollars,
+          });
+          emitMetric("reconcile_dedup_cost_mismatch", { requestId });
+        }
+      }
     }
   });
 }

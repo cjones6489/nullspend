@@ -212,7 +212,7 @@ describe("doBudgetReconcile", () => {
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
   });
 
-  it("calls stub.reconcile + updateBudgetSpend", async () => {
+  it("calls stub.reconcile + updateBudgetSpend with reservationId as requestId", async () => {
     const stub = makeStub();
     const env = makeEnv(stub);
 
@@ -230,6 +230,7 @@ describe("doBudgetReconcile", () => {
     expect(mockUpdateBudgetSpend).toHaveBeenCalledWith(
       "postgres://test",
       "org-test",
+      "rsv-1",
       [{ entityType: "user", entityId: "user-1" }],
       1_000,
     );
@@ -260,84 +261,55 @@ describe("doBudgetReconcile", () => {
     ).resolves.toBe("error");
   });
 
-  it("returns 'pg_failed' on Postgres error (retries exhausted)", async () => {
-    vi.useFakeTimers();
+  // T27: Single PG attempt — no retry loop
+  it("single PG attempt — returns pg_failed on failure (no retry)", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const stub = makeStub();
     const env = makeEnv(stub);
     mockUpdateBudgetSpend.mockRejectedValue(new Error("PG error"));
 
-    const promise = doBudgetReconcile(env, "user-1", "org-test", "rsv-1", 500, [{ entityType: "user", entityId: "user-1" }], "postgres://test");
-    await vi.advanceTimersByTimeAsync(1_000);
-    await expect(promise).resolves.toBe("pg_failed");
-    vi.useRealTimers();
-  });
-
-  it("retries Postgres write and succeeds on second attempt", async () => {
-    vi.useFakeTimers();
-    const stub = makeStub();
-    const env = makeEnv(stub);
-    mockUpdateBudgetSpend
-      .mockRejectedValueOnce(new Error("PG transient"))
-      .mockResolvedValueOnce(undefined);
-
-    const promise = doBudgetReconcile(
-      env, "user-1", "org-test", "rsv-1", 1_000,
+    const result = await doBudgetReconcile(
+      env, "user-1", "org-test", "rsv-1", 500,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
-    await vi.advanceTimersByTimeAsync(1_000);
-    await promise;
 
-    expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(2);
-    expect(mockEmitMetric).toHaveBeenCalledWith("do_reconciliation", expect.objectContaining({
-      status: "ok",
-      retries: 1,
-    }));
-    vi.useRealTimers();
+    expect(result).toBe("pg_failed");
+    // Single attempt only — no retries
+    expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(1);
+    // Uses console.warn, not console.error
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[budget-do-client] Optimistic PG write failed (outbox will retry):",
+      expect.objectContaining({
+        reservationId: "rsv-1",
+        actualCost: 500,
+      }),
+    );
+    warnSpy.mockRestore();
   });
 
-  it("all retries exhausted → structured error + split-brain warning + metric", async () => {
-    vi.useFakeTimers();
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("PG failure emits do_reconciliation metric with pg_failed status (no retries field)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const stub = makeStub();
     const env = makeEnv(stub);
     mockUpdateBudgetSpend.mockRejectedValue(new Error("PG persistent"));
 
-    const promise = doBudgetReconcile(
+    await doBudgetReconcile(
       env, "user-1", "org-test", "rsv-1", 1_000,
       [{ entityType: "user", entityId: "user-1" }],
       "postgres://test",
     );
-    await vi.advanceTimersByTimeAsync(1_000);
-    await promise;
 
-    // 3 attempts total (0, 1, 2)
-    expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(3);
-
-    // Structured error logged
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[budget-do-client] Postgres write failed after retries",
-      expect.objectContaining({ reservationId: "rsv-1" }),
-    );
-
-    // Split-brain warning logged
-    expect(errorSpy).toHaveBeenCalledWith(
-      "[budget-do-client] DO/Postgres split-brain: reservation",
-      "rsv-1",
-    );
-
-    // Metric emitted with pg_failed status
-    expect(mockEmitMetric).toHaveBeenCalledWith("do_reconciliation", expect.objectContaining({
+    // Metric emitted with pg_failed status, no retries field
+    expect(mockEmitMetric).toHaveBeenCalledWith("do_reconciliation", {
       status: "pg_failed",
-      retries: 2,
-    }));
-
-    errorSpy.mockRestore();
-    vi.useRealTimers();
+      costMicrodollars: 1_000,
+      durationMs: expect.any(Number),
+    });
   });
 
-  it("skips Postgres write when DO returns not_found (already reconciled)", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  // T24: not_found skips PG write and returns "ok" immediately
+  it("T24: not_found skips PG write — returns ok immediately with metric", async () => {
     const stub = makeStub({
       reconcile: vi.fn().mockResolvedValue({ status: "not_found" }),
     });
@@ -351,15 +323,10 @@ describe("doBudgetReconcile", () => {
 
     expect(result).toBe("ok");
     expect(mockUpdateBudgetSpend).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalledWith(
-      "[budget-do-client] Reservation not found in DO (already reconciled?)",
-      expect.objectContaining({ reservationId: "rsv-1" }),
-    );
     expect(mockEmitMetric).toHaveBeenCalledWith("reconcile_not_found", expect.objectContaining({
       reservationId: "rsv-1",
       costMicrodollars: 1_000,
     }));
-    warnSpy.mockRestore();
   });
 
   it("DO stub.reconcile failure → error status returned, Postgres write skipped", async () => {
@@ -381,7 +348,7 @@ describe("doBudgetReconcile", () => {
     }));
   });
 
-  it("emits do_reconciliation metric on every call", async () => {
+  it("emits do_reconciliation metric on every call (no retries field)", async () => {
     const stub = makeStub();
     const env = makeEnv(stub);
 
@@ -391,12 +358,11 @@ describe("doBudgetReconcile", () => {
       "postgres://test",
     );
 
-    expect(mockEmitMetric).toHaveBeenCalledWith("do_reconciliation", expect.objectContaining({
+    expect(mockEmitMetric).toHaveBeenCalledWith("do_reconciliation", {
       status: "ok",
       costMicrodollars: 1_000,
       durationMs: expect.any(Number),
-      retries: 0,
-    }));
+    });
   });
 
   it("emits metric even when actualCost=0 (no Postgres write)", async () => {
@@ -478,6 +444,26 @@ describe("doBudgetReconcile", () => {
     );
 
     expect(result).toBe("ok");
+  });
+
+  // T28: passes reservationId as requestId to updateBudgetSpend
+  it("T28: passes reservationId as requestId to updateBudgetSpend", async () => {
+    const stub = makeStub();
+    const env = makeEnv(stub);
+
+    await doBudgetReconcile(
+      env, "user-1", "org-test", "rsv-unique-456", 2_000,
+      [{ entityType: "api_key", entityId: "key-1" }],
+      "postgres://test",
+    );
+
+    expect(mockUpdateBudgetSpend).toHaveBeenCalledWith(
+      "postgres://test",
+      "org-test",
+      "rsv-unique-456", // reservationId used as requestId
+      [{ entityType: "api_key", entityId: "key-1" }],
+      2_000,
+    );
   });
 });
 

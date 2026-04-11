@@ -100,6 +100,7 @@ describe("Queue retry fix — end-to-end chain", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -107,7 +108,7 @@ describe("Queue retry fix — end-to-end chain", () => {
   // 1. PG failure → retry triggered
   // -----------------------------------------------------------------------
   describe("PG failure → retry triggered", () => {
-    it("doBudgetReconcile returns 'pg_failed' when updateBudgetSpend fails on all retries", async () => {
+    it("doBudgetReconcile returns 'pg_failed' on single PG attempt failure", async () => {
       mockReconcileStub.mockResolvedValue({ status: "ok" });
       mockUpdateBudgetSpend.mockRejectedValue(new Error("PG connection refused"));
 
@@ -123,8 +124,8 @@ describe("Queue retry fix — end-to-end chain", () => {
       );
 
       expect(status).toBe("pg_failed");
-      // PG_MAX_RETRIES = 2 → attempts 0, 1, 2 = 3 total calls
-      expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(3);
+      // Single attempt only — no retry loop
+      expect(mockUpdateBudgetSpend).toHaveBeenCalledTimes(1);
     });
 
     it("reconcileBudget with throwOnError throws on pg_failed status", async () => {

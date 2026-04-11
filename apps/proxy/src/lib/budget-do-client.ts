@@ -3,8 +3,8 @@ import type { DOBudgetEntity } from "./budget-do-lookup.js";
 import { updateBudgetSpend } from "./budget-spend.js";
 import { emitMetric } from "./metrics.js";
 
-const PG_MAX_RETRIES = 2;
-const PG_RETRY_DELAYS = [200, 800];
+// PXY-2: PG retry loop removed. The DO outbox (commit 3) is the retry
+// mechanism. Worker-side PG write is a single optimistic attempt.
 
 /**
  * Check budget via the UserBudgetDO.
@@ -56,7 +56,6 @@ export async function doBudgetReconcile(
   connectionString: string,
 ): Promise<"ok" | "pg_failed" | "error"> {
   const startMs = Date.now();
-  let retries = 0;
   let status: "ok" | "pg_failed" | "error" = "ok";
 
   try {
@@ -64,12 +63,10 @@ export async function doBudgetReconcile(
     const reconcileResult = await stub.reconcile(reservationId, actualCost);
 
     if (reconcileResult.status === "not_found") {
-      // Reservation already reconciled (expired by alarm or duplicate call).
-      // Do NOT write to Postgres — the spend was already counted.
-      console.warn("[budget-do-client] Reservation not found in DO (already reconciled?)", {
-        reservationId,
-        costMicrodollars: actualCost,
-      });
+      // C1: not_found means expired OR already reconciled.
+      // If already reconciled: outbox entry exists in DO, alarm handles PG retry.
+      // If expired: no spend to write, nothing to do.
+      // Either way, the Worker should NOT attempt a PG write here.
       emitMetric("reconcile_not_found", { reservationId, costMicrodollars: actualCost });
       return "ok";
     }
@@ -87,33 +84,19 @@ export async function doBudgetReconcile(
       });
     }
 
+    // C7: Single optimistic PG write. No retry loop — the DO outbox
+    // (commit 3) is the retry mechanism. If this fails, the outbox
+    // entry persists and the alarm handler retries.
     if (actualCost > 0) {
-      let pgSuccess = false;
-
-      for (let attempt = 0; attempt <= PG_MAX_RETRIES; attempt++) {
-        try {
-          await updateBudgetSpend(connectionString, orgId, entities, actualCost);
-          pgSuccess = true;
-          retries = attempt;
-          break;
-        } catch (err) {
-          if (attempt < PG_MAX_RETRIES) {
-            await new Promise((r) => setTimeout(r, PG_RETRY_DELAYS[attempt]));
-          } else {
-            retries = attempt;
-            console.error("[budget-do-client] Postgres write failed after retries", {
-              reservationId,
-              actualCost,
-              entities: entities.map((e) => `${e.entityType}:${e.entityId}`),
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }
-      }
-
-      if (!pgSuccess) {
+      try {
+        await updateBudgetSpend(connectionString, orgId, reservationId, entities, actualCost);
+      } catch (err) {
         status = "pg_failed";
-        console.error("[budget-do-client] DO/Postgres split-brain: reservation", reservationId);
+        console.warn("[budget-do-client] Optimistic PG write failed (outbox will retry):", {
+          reservationId,
+          actualCost,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   } catch (err) {
@@ -124,7 +107,6 @@ export async function doBudgetReconcile(
       status,
       costMicrodollars: actualCost,
       durationMs: Date.now() - startMs,
-      retries,
     });
   }
 
