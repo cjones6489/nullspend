@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { slackConfigs } from "@nullspend/db";
@@ -111,10 +111,12 @@ export async function dispatchMarginSlackAlert(
   message: SlackMessage,
 ): Promise<void> {
   const db = getDb();
+  // MRG-16: Order by createdAt desc so multi-admin orgs get the most recent config
   const [config] = await db
     .select()
     .from(slackConfigs)
     .where(eq(slackConfigs.orgId, orgId))
+    .orderBy(desc(slackConfigs.createdAt))
     .limit(1);
 
   if (!config || !config.isActive || !config.webhookUrl) {

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/client";
 import { actions, slackConfigs } from "@nullspend/db";
@@ -103,6 +103,7 @@ export async function sendSlackNotification(
     .select()
     .from(slackConfigs)
     .where(eq(slackConfigs.orgId, orgId))
+    .orderBy(desc(slackConfigs.createdAt))
     .limit(1);
 
   if (!config || !config.isActive) {
@@ -192,6 +193,7 @@ export async function sendSlackTestNotification(
     .select()
     .from(slackConfigs)
     .where(eq(slackConfigs.orgId, orgId))
+    .orderBy(desc(slackConfigs.createdAt))
     .limit(1);
 
   if (!config) {

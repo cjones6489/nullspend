@@ -96,20 +96,22 @@ describe("buildMarginAlertMessage", () => {
 describe("dispatchMarginSlackAlert", () => {
   const message = { text: "test", blocks: [] };
 
-  it("sends to webhook when Slack config exists", async () => {
+  function mockSlackConfig(config: Record<string, unknown> | null) {
     mockGetDb.mockReturnValue({
       select: () => ({
         from: () => ({
           where: () => ({
-            limit: () => Promise.resolve([{
-              orgId: "org-1",
-              isActive: true,
-              webhookUrl: "https://hooks.slack.com/test",
-            }]),
+            orderBy: () => ({
+              limit: () => Promise.resolve(config ? [config] : []),
+            }),
           }),
         }),
       }),
     });
+  }
+
+  it("sends to webhook when Slack config exists", async () => {
+    mockSlackConfig({ orgId: "org-1", isActive: true, webhookUrl: "https://hooks.slack.com/test" });
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
 
     await dispatchMarginSlackAlert("org-1", message);
@@ -120,53 +122,21 @@ describe("dispatchMarginSlackAlert", () => {
   });
 
   it("skips silently when no Slack config", async () => {
-    mockGetDb.mockReturnValue({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([]),
-          }),
-        }),
-      }),
-    });
+    mockSlackConfig(null);
 
     await dispatchMarginSlackAlert("org-1", message);
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("skips silently when config is inactive", async () => {
-    mockGetDb.mockReturnValue({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([{
-              orgId: "org-1",
-              isActive: false,
-              webhookUrl: "https://hooks.slack.com/test",
-            }]),
-          }),
-        }),
-      }),
-    });
+    mockSlackConfig({ orgId: "org-1", isActive: false, webhookUrl: "https://hooks.slack.com/test" });
 
     await dispatchMarginSlackAlert("org-1", message);
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("logs warning on webhook failure but does not throw", async () => {
-    mockGetDb.mockReturnValue({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([{
-              orgId: "org-1",
-              isActive: true,
-              webhookUrl: "https://hooks.slack.com/test",
-            }]),
-          }),
-        }),
-      }),
-    });
+    mockSlackConfig({ orgId: "org-1", isActive: true, webhookUrl: "https://hooks.slack.com/test" });
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
       status: 500,
@@ -178,19 +148,7 @@ describe("dispatchMarginSlackAlert", () => {
   });
 
   it("rejects non-HTTPS webhook URLs (SSRF defense)", async () => {
-    mockGetDb.mockReturnValue({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Promise.resolve([{
-              orgId: "org-1",
-              isActive: true,
-              webhookUrl: "http://169.254.169.254/latest/meta-data/",
-            }]),
-          }),
-        }),
-      }),
-    });
+    mockSlackConfig({ orgId: "org-1", isActive: true, webhookUrl: "http://169.254.169.254/latest/meta-data/" });
 
     await dispatchMarginSlackAlert("org-1", message);
     expect(fetch).not.toHaveBeenCalled();

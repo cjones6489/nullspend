@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 import { approveAction } from "@/lib/actions/approve-action";
 import {
@@ -131,10 +131,12 @@ export async function POST(request: Request) {
 
   try {
     const db2 = getDb();
+    // MRG-16: Order by createdAt desc so multi-admin orgs use the most recent config
     const [ownerConfig] = await db2
       .select({ slackUserId: slackConfigs.slackUserId })
       .from(slackConfigs)
       .where(eq(slackConfigs.orgId, action.orgId))
+      .orderBy(desc(slackConfigs.createdAt))
       .limit(1);
 
     if (ownerConfig?.slackUserId && ownerConfig.slackUserId !== payload.user.id) {

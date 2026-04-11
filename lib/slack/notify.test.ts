@@ -63,6 +63,7 @@ function mockDbSelect(result: typeof activeConfig | undefined) {
     select: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(result ? [result] : []),
   };
   mockedGetDb.mockReturnValue(chain as never);
@@ -206,6 +207,7 @@ describe("sendSlackNotification — budget_increase via Web API", () => {
       select: vi.fn().mockReturnThis(),
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
       limit: vi.fn().mockResolvedValue([activeConfig]),
       update: vi.fn().mockReturnThis(),
       set: vi.fn().mockReturnThis(),
