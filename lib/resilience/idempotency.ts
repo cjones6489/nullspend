@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { getLogger } from "@/lib/observability";
 import { getResilienceRedis } from "./redis";
 
@@ -72,7 +74,12 @@ export async function withIdempotency(
     return handler();
   }
 
-  const redisKey = `${REDIS_PREFIX}${idempotencyKey}`;
+  // ACT-4: Scope key by caller identity + request path to prevent cross-tenant
+  // or cross-endpoint replay. Uses a hash of the API key (not the raw key).
+  const apiKey = request.headers.get("x-nullspend-key") ?? "";
+  const callerHash = apiKey ? createHash("sha256").update(apiKey).digest("hex").slice(0, 12) : "anon";
+  const routePath = new URL(request.url).pathname;
+  const redisKey = `${REDIS_PREFIX}${callerHash}:${routePath}:${idempotencyKey}`;
   const ttl = options?.ttlSeconds ?? DEFAULT_TTL_SECONDS;
 
   // Phase 1: Check for existing cached response (Redis GET)

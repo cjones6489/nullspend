@@ -6,11 +6,11 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 | Severity | Total | Done | Remaining |
 |----------|-------|------|-----------|
-| P0/HIGH  | 11    | 11   | 0         |
-| P1       | 8     | 8    | 0         |
-| P2/MED   | 7     | 7    | 0 (+2 known/intentional) |
-| P3/LOW   | 4     | 4    | 0         |
-| **Total** | **30** | **30** | **0** |
+| P0/HIGH  | 12    | 12   | 0         |
+| P1       | 11    | 11   | 0 (+1 by-design) |
+| P2/MED   | 10    | 10   | 0 (+2 known/intentional) |
+| P3/LOW   | 6     | 6    | 0         |
+| **Total** | **39** | **39** | **0** |
 
 ---
 
@@ -79,6 +79,24 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | AUTH-6 | P3 | Invite-accept rate limiting is process-local, null IP bypasses | [KNOWN] | Acceptable for current scale. |
 
 **Tests added:** 14 regression tests (129 → ~143 lib/auth/ tests)
+
+---
+
+## HITL Actions Audit (Codex challenge `lib/actions/`, 2026-04-10)
+
+| # | Sev | Finding | Status | Notes |
+|---|-----|---------|--------|-------|
+| ACT-1 | P1 | Slack callback auth fail-open: null `slackUserId` accepts any click, no workspace/membership verification | [KNOWN] | Slack signing secret is the primary boundary. `slackUserId` restriction is opt-in. Low risk given Slack workspace scoping. |
+| ACT-2 | P1 | Actions scoped by orgId only, not ownerUserId — any org member can see/act on any action | [BY DESIGN] | Intentional. Admins approve org-wide actions. Viewers see org-wide actions. |
+| ACT-3 | P2 | `POST /approve` swallows malformed JSON bodies via `.catch(() => undefined)` | [DONE] | Changed to Content-Length-based detection. Empty body still valid for non-budget approvals; malformed JSON now 400s. |
+| ACT-4 | P1 | Idempotency key globally scoped — no caller/route in Redis key. Cross-tenant key collision possible. | [DONE] | Key now includes SHA-256 hash of API key + request path. 2 regression tests. |
+| ACT-5 | P2 | Serialization exposes raw payload/metadata/result | [BY DESIGN] | Actions are org-scoped. Payload visibility is required for approval decisions. |
+| ACT-6 | P2 | `expiresInSeconds: 0` or `null` creates immortal pending actions | [DONE] | Now capped at MAX_EXPIRATION_SECONDS (7 days). 3 regression tests. |
+| ACT-7 | P2 | Budget increase can be approved for more than requested (only tier cap guards) | [KNOWN] | Admin discretion within tier cap. UI shows over-approval warning. |
+| ACT-8 | P3 | Expiration check uses app-level `new Date()` not SQL `NOW()` in UPDATE predicate | [ACCEPTED] | Inside `FOR UPDATE` lock, timing drift is microseconds. |
+| ACT-9 | P3 | Slack mrkdwn injection via unsanitized payload fields | [KNOWN] | Cosmetic/social engineering only. Low priority. |
+
+**Tests added:** 5 regression tests. 2,113 root tests green.
 
 ---
 

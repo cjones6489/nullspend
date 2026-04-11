@@ -23,7 +23,10 @@ export async function POST(
     await assertOrgRole(userId, orgId, "admin");
     const params = await readRouteParams(context.params);
     const { id } = actionIdParamsSchema.parse(params);
-    const body = await readJsonBody(request).catch(() => undefined);
+    // ACT-3: Only treat empty/no-body as undefined. Malformed JSON should 400.
+    const contentLength = request.headers.get("content-length");
+    const hasBody = contentLength !== null && contentLength !== "0";
+    const body = hasBody ? await readJsonBody(request) : undefined;
     const parsed = approveBodySchema.parse(body);
     const action = await approveAction(
       id,

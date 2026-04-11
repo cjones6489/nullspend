@@ -13,7 +13,7 @@ Tracks which sections of the codebase have received deep adversarial review (Cod
 | `apps/proxy/src/routes/` | 2026-04-10 | 2026-04-10 | — | (incl. above) | CRITICAL — **CLEAN** |
 | `apps/proxy/src/durable-objects/` | 2026-04-10 | 2026-04-10 | — | 83 (DO pool) | CRITICAL — **CLEAN** |
 | `lib/auth/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~129 | CRITICAL — **CLEAN** |
-| `lib/actions/` | — | 2026-04-10 | 2026-04-10 | ~80 | HIGH — **NEEDS CODEX** |
+| `lib/actions/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~80 | HIGH — **CLEAN** |
 | `lib/margins/` | — | — | 2026-04-10 | ~120 | HIGH — **NEEDS CODEX** |
 | `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH |
 | `lib/webhooks/` | — | 2026-04-10 | — | ~40 | MED |
@@ -80,6 +80,15 @@ alarm-based retry, Codex-reviewed plan (10 findings addressed), 2 post-implement
 **Tests added:** 14 (50 → ~129 lib/auth/ tests including pre-existing)
 **Details:** [audit-findings.md](audit-findings.md#dashboard-auth-audit-codex-challenge-libauth-2026-04-10)
 
+### 6. HITL Actions (`lib/actions/`) — Codex Challenge, 2026-04-10
+
+**Scope:** `resolve-action.ts`, `approve-action.ts`, `create-action.ts`, `mark-result.ts`, `expiration.ts`, `transitions.ts`, `errors.ts`, `serialize-action.ts`, `get-action.ts`, `list-actions.ts`, plus route handlers and `idempotency.ts`
+
+**Findings:** 9 total (1 P0→P1 triage, 3 P1, 3 P2, 2 P3) — 3 fixed, 4 known/accepted, 2 by-design
+**Key fixes:** ACT-4 idempotency key scoping (cross-tenant replay prevention), ACT-6 max TTL enforcement (no immortal actions), ACT-3 malformed body handling
+**Tests added:** 5 (2 idempotency isolation + 3 max TTL)
+**Details:** [audit-findings.md](audit-findings.md#hitl-actions-audit-codex-challenge-libactions-2026-04-10)
+
 ---
 
 ## NOT YET AUDITED (Codex Challenge)
@@ -90,7 +99,6 @@ These sections have unit tests but have NOT received a deep adversarial Codex re
 
 | Section | Why | Files | Est. findings |
 |---------|-----|-------|---------------|
-| `lib/actions/` | HITL state machine, approval side-effects, budget increase execution | ~10 | Medium |
 | `lib/margins/` | Stripe API integration, AES-256-GCM encryption, revenue sync, auto-match | ~15 | High (newer code) |
 | `packages/cost-engine/src/` | Pricing accuracy for all 38 models, used by both proxy and SDK | ~6 | Low (well-tested, 700 tests) |
 

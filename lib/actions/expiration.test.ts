@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   computeExpiresAt,
   DEFAULT_EXPIRATION_SECONDS,
+  MAX_EXPIRATION_SECONDS,
   isActionExpired,
 } from "./expiration";
 
@@ -45,12 +46,34 @@ describe("isActionExpired", () => {
 });
 
 describe("computeExpiresAt", () => {
-  it("returns null when expiresInSeconds is 0", () => {
-    expect(computeExpiresAt(0)).toBeNull();
+  it("ACT-6: caps expiresInSeconds=0 to MAX_EXPIRATION_SECONDS (no immortal actions)", () => {
+    const before = Date.now();
+    const result = computeExpiresAt(0);
+    const after = Date.now();
+
+    expect(result).toBeInstanceOf(Date);
+    expect(result!.getTime()).toBeGreaterThanOrEqual(before + MAX_EXPIRATION_SECONDS * 1000);
+    expect(result!.getTime()).toBeLessThanOrEqual(after + MAX_EXPIRATION_SECONDS * 1000);
   });
 
-  it("returns null when expiresInSeconds is null", () => {
-    expect(computeExpiresAt(null)).toBeNull();
+  it("ACT-6: caps expiresInSeconds=null to MAX_EXPIRATION_SECONDS (no immortal actions)", () => {
+    const before = Date.now();
+    const result = computeExpiresAt(null);
+    const after = Date.now();
+
+    expect(result).toBeInstanceOf(Date);
+    expect(result!.getTime()).toBeGreaterThanOrEqual(before + MAX_EXPIRATION_SECONDS * 1000);
+    expect(result!.getTime()).toBeLessThanOrEqual(after + MAX_EXPIRATION_SECONDS * 1000);
+  });
+
+  it("ACT-6: caps excessively large TTL to MAX_EXPIRATION_SECONDS", () => {
+    const before = Date.now();
+    const result = computeExpiresAt(999999999); // way over 7 days
+    const after = Date.now();
+
+    expect(result).toBeInstanceOf(Date);
+    expect(result!.getTime()).toBeGreaterThanOrEqual(before + MAX_EXPIRATION_SECONDS * 1000);
+    expect(result!.getTime()).toBeLessThanOrEqual(after + MAX_EXPIRATION_SECONDS * 1000);
   });
 
   it("uses default TTL when expiresInSeconds is undefined", () => {

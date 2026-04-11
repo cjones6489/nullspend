@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db/client";
 import { actions, type ActionRow } from "@nullspend/db";
 
 export const DEFAULT_EXPIRATION_SECONDS = 3600;
+export const MAX_EXPIRATION_SECONDS = 604800; // 7 days — prevent immortal actions
 
 export function isActionExpired(
   row: Pick<ActionRow, "status" | "expiresAt">,
@@ -26,10 +27,12 @@ export function computeExpiresAt(
   expiresInSeconds: number | null | undefined,
 ): Date | null {
   if (expiresInSeconds === 0 || expiresInSeconds === null) {
-    return null;
+    // ACT-6: Even "no expiration" requests get capped at MAX_EXPIRATION_SECONDS
+    // to prevent immortal pending actions that never self-expire.
+    return new Date(Date.now() + MAX_EXPIRATION_SECONDS * 1000);
   }
 
-  const ttl = expiresInSeconds ?? DEFAULT_EXPIRATION_SECONDS;
+  const ttl = Math.min(expiresInSeconds ?? DEFAULT_EXPIRATION_SECONDS, MAX_EXPIRATION_SECONDS);
   return new Date(Date.now() + ttl * 1000);
 }
 

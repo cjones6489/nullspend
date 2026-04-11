@@ -78,7 +78,7 @@ describe("withIdempotency", () => {
     // Should cache the response (sentinel SET + cache SET)
     expect(mockRedisSet).toHaveBeenCalledTimes(2);
     const cacheCall = mockRedisSet.mock.calls[1];
-    expect(cacheCall[0]).toBe("nullspend:idempotency:key-1");
+    expect(cacheCall[0]).toBe("nullspend:idempotency:anon:/api/actions:key-1");
     expect(cacheCall[1]).toMatchObject({
       status: 201,
       body: expect.stringContaining("action-123"),
@@ -196,7 +196,7 @@ describe("withIdempotency", () => {
 
     await expect(withIdempotency(request, handler)).rejects.toThrow("DB error");
 
-    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:key-err");
+    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:anon:/api/actions:key-err");
   });
 
   it("5xx response: sentinel cleaned up so retries can proceed", async () => {
@@ -208,7 +208,7 @@ describe("withIdempotency", () => {
     const response = await withIdempotency(request, handler);
 
     expect(response.status).toBe(500);
-    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:key-5xx");
+    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:anon:/api/actions:key-5xx");
   });
 
   it("429 rate limit response: NOT cached, sentinel cleaned up", async () => {
@@ -221,7 +221,7 @@ describe("withIdempotency", () => {
 
     expect(response.status).toBe(429);
     // Sentinel should be deleted (not cached)
-    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:key-429");
+    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:anon:/api/actions:key-429");
     // No cache SET should have happened (only sentinel SET)
     const cacheSets = mockRedisSet.mock.calls.filter(
       (call) => typeof call[1] === "object",
@@ -240,7 +240,7 @@ describe("withIdempotency", () => {
     expect(response.status).toBe(400);
     const setCalls = mockRedisSet.mock.calls;
     const cacheCall = setCalls.find(
-      (call) => call[0] === "nullspend:idempotency:key-4xx" && typeof call[1] === "object",
+      (call) => call[0] === "nullspend:idempotency:anon:/api/actions:key-4xx" && typeof call[1] === "object",
     );
     expect(cacheCall).toBeDefined();
     expect(cacheCall![1]).toMatchObject({ status: 400 });
@@ -286,7 +286,59 @@ describe("withIdempotency", () => {
     const body = await response.json();
     expect(body.id).toBe("action-123");
     // Sentinel should be cleaned up
-    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:key-write-err");
+    expect(mockRedisDel).toHaveBeenCalledWith("nullspend:idempotency:anon:/api/actions:key-write-err");
+  });
+
+  it("ACT-4: different API keys produce different Redis keys for same idempotency key", async () => {
+    const handler = makeHandler();
+    const req1 = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "shared-key", "x-nullspend-key": "ns_live_sk_aaaa" },
+      body: JSON.stringify({ test: true }),
+    });
+    const req2 = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "shared-key", "x-nullspend-key": "ns_live_sk_bbbb" },
+      body: JSON.stringify({ test: true }),
+    });
+
+    await withIdempotency(req1, handler);
+    await withIdempotency(req2, handler);
+
+    // Both should execute (different scoped keys)
+    expect(handler).toHaveBeenCalledTimes(2);
+    // Redis SET calls should use different keys
+    const sentinelKeys = mockRedisSet.mock.calls
+      .filter((call) => call[1] === "processing")
+      .map((call) => call[0]);
+    expect(sentinelKeys[0]).not.toBe(sentinelKeys[1]);
+    expect(sentinelKeys[0]).toContain("shared-key");
+    expect(sentinelKeys[1]).toContain("shared-key");
+  });
+
+  it("ACT-4: different routes produce different Redis keys for same idempotency key", async () => {
+    const handler = makeHandler();
+    const req1 = new Request("http://localhost/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "shared-key" },
+      body: JSON.stringify({ test: true }),
+    });
+    const req2 = new Request("http://localhost/api/cost-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": "shared-key" },
+      body: JSON.stringify({ test: true }),
+    });
+
+    await withIdempotency(req1, handler);
+    await withIdempotency(req2, handler);
+
+    expect(handler).toHaveBeenCalledTimes(2);
+    const sentinelKeys = mockRedisSet.mock.calls
+      .filter((call) => call[1] === "processing")
+      .map((call) => call[0]);
+    expect(sentinelKeys[0]).toContain("/api/actions");
+    expect(sentinelKeys[1]).toContain("/api/cost-events");
+    expect(sentinelKeys[0]).not.toBe(sentinelKeys[1]);
   });
 });
 
