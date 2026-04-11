@@ -213,8 +213,8 @@ describe("End-to-end budget enforcement", () => {
   }, 30_000);
 
   it("concurrent requests against tight budget don't overspend", async () => {
-    // Set budget to ~200 microdollars — enough for maybe 1-2 requests
-    await setupBudget(200);
+    // Set budget to ~15 microdollars — enough for ~2 gpt-4o-mini requests (~6µ¢ each)
+    await setupBudget(15);
 
     const requests = Array.from({ length: 5 }, (_, i) =>
       fetch(`${BASE}/v1/chat/completions`, {
@@ -246,8 +246,8 @@ describe("End-to-end budget enforcement", () => {
   }, 60_000);
 
   it("ST-1: budget increase via Postgres UPDATE propagates to proxy enforcement (BDG-4)", async () => {
-    // 1. Set a tight budget ($0 spend, max=10µ¢ — will block everything)
-    await setupBudget(10);
+    // 1. Set a $0 budget — guaranteed to block any request
+    await setupBudget(0);
 
     // 2. Verify the proxy denies a request
     const denied = await fetch(`${BASE}/v1/chat/completions`, {
