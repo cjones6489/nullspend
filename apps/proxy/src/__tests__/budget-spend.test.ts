@@ -213,18 +213,19 @@ describe("updateBudgetSpend", () => {
     expect(mockEmitMetric).toHaveBeenCalledWith("reconcile_dedup_cost_mismatch", { requestId: "req-mismatch" });
   });
 
-  it("T10: INSERT count=1 but UPDATE count=0 emits reconcile_budget_row_missing metric", async () => {
+  it("T10: INSERT count=1 but UPDATE count=0 — deletes dedup record for retry + emits metric", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const noRowsUpdated = Object.assign([] as unknown[], { count: 0 });
     mockTx
       .mockResolvedValueOnce(insertedResult) // INSERT count=1
-      .mockResolvedValueOnce(noRowsUpdated); // UPDATE count=0 (missing budget row)
+      .mockResolvedValueOnce(noRowsUpdated) // UPDATE count=0 (missing budget row)
+      .mockResolvedValueOnce([]); // DELETE dedup record (Codex #2 fix)
 
     await updateBudgetSpend(REMOTE_CONN, "org-test", "req-orphan", [{ entityType: "user", entityId: "u1" }], 100_000);
 
-    expect(mockTx).toHaveBeenCalledTimes(2); // INSERT + UPDATE
+    expect(mockTx).toHaveBeenCalledTimes(3); // INSERT + UPDATE + DELETE
     expect(console.error).toHaveBeenCalledWith(
-      "[budget-spend] Budget row missing during reconciliation",
+      "[budget-spend] Budget row missing — dedup record removed for retry",
       expect.objectContaining({ requestId: "req-orphan", entityType: "user", entityId: "u1", orgId: "org-test" }),
     );
     expect(mockEmitMetric).toHaveBeenCalledWith("reconcile_budget_row_missing", {

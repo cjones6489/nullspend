@@ -280,7 +280,9 @@ export class UserBudgetDO extends DurableObject {
           attempts INTEGER NOT NULL DEFAULT 0,
           next_attempt_at INTEGER NOT NULL DEFAULT 0,
           created_at INTEGER NOT NULL
-        )
+        );
+        CREATE INDEX IF NOT EXISTS pg_sync_outbox_retry_idx ON pg_sync_outbox(next_attempt_at, attempts);
+        CREATE INDEX IF NOT EXISTS pg_sync_outbox_request_id_idx ON pg_sync_outbox(request_id);
       `);
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO _schema_version(version) VALUES (5)");
     }
@@ -778,6 +780,16 @@ export class UserBudgetDO extends DurableObject {
     // Emit metric OUTSIDE transaction (fire-and-forget)
     if (actualCostMicrodollars > 0 && row.org_id) {
       emitMetric("pg_sync_outbox_written", { requestId: reservationId, entityCount: entityKeys.length });
+
+      // Codex #5: Ensure alarm fires soon for outbox entries (don't wait for
+      // reservation expiry ~30s). Outbox entries have next_attempt_at=0.
+      try {
+        const current = await this.ctx.storage.getAlarm();
+        const soonAlarm = Date.now() + 1_000;
+        if (!current || current > soonAlarm) {
+          await this.ctx.storage.setAlarm(soonAlarm);
+        }
+      } catch { /* best-effort — reservation alarm is the fallback */ }
     }
 
     const result: ReconcileResult = { status: "reconciled", spends };

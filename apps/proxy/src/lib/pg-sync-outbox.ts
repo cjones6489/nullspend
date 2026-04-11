@@ -53,7 +53,9 @@ export function createOutboxTable(sql: SqlStorage): void {
       attempts INTEGER NOT NULL DEFAULT 0,
       next_attempt_at INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
-    )
+    );
+    CREATE INDEX IF NOT EXISTS pg_sync_outbox_retry_idx ON pg_sync_outbox(next_attempt_at, attempts);
+    CREATE INDEX IF NOT EXISTS pg_sync_outbox_request_id_idx ON pg_sync_outbox(request_id);
   `);
 }
 

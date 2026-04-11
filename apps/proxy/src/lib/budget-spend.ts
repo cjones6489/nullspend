@@ -56,9 +56,15 @@ export async function updateBudgetSpend(
             AND entity_id = ${entity.entityId}
             AND org_id = ${orgId}
         `;
-        // C2: Detect missing budget row (dedup succeeded but nothing to update)
+        // C2: Detect missing budget row (dedup succeeded but nothing to update).
+        // Codex #2 fix: Delete the dedup record so the alarm can retry later
+        // when the budget row may exist (race between budget creation and first request).
         if (updated.count === 0) {
-          console.error("[budget-spend] Budget row missing during reconciliation", {
+          await tx`
+            DELETE FROM reconciled_requests
+            WHERE request_id = ${requestId} AND entity_type = ${entity.entityType} AND entity_id = ${entity.entityId}
+          `;
+          console.error("[budget-spend] Budget row missing — dedup record removed for retry", {
             requestId, entityType: entity.entityType, entityId: entity.entityId, orgId,
           });
           emitMetric("reconcile_budget_row_missing", {
