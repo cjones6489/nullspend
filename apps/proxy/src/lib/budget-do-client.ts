@@ -40,11 +40,13 @@ export async function doBudgetCheck(
  *
  * Returns the reconciliation status:
  * - `"ok"`: DO reconcile + Postgres write both succeeded (or actualCost=0, no PG write needed)
- * - `"pg_failed"`: DO reconcile succeeded but Postgres write failed after retries (split-brain)
+ * - `"pg_failed"`: DO reconcile succeeded but Postgres write failed (outbox will retry)
  * - `"error"`: DO reconcile itself failed
  *
- * Retries the Postgres write up to PG_MAX_RETRIES times with backoff
- * to prevent DO/Postgres split-brain on transient failures.
+ * PXY-2: Single optimistic PG write — no retry loop. The DO outbox
+ * (pg_sync_outbox table) is the retry mechanism. If the PG write fails,
+ * the outbox entry persists and the alarm handler retries with backoff.
+ * PG writes are idempotent via the reconciled_requests dedup table.
  */
 export async function doBudgetReconcile(
   env: Env,
