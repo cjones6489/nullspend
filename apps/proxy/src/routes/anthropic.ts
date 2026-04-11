@@ -86,6 +86,14 @@ export async function handleAnthropicMessages(
   // Budget DO RPC takes 15-33ms; upstream TTFB is >200ms, so the budget
   // result is always known before the provider sends any data back.
   const upstreamHeaders = buildAnthropicUpstreamHeaders(request);
+
+  // PXY-14: Track anthropic-beta usage for audit. Beta features can
+  // change SSE format and cost accounting behavior.
+  const betaHeader = request.headers.get("anthropic-beta");
+  if (betaHeader) {
+    emitMetric("anthropic_beta_used", { beta: betaHeader, model: requestModel });
+  }
+
   const budgetAbort = new AbortController();
   const startTime = performance.now();
   const upstreamFetchPromise = fetch(

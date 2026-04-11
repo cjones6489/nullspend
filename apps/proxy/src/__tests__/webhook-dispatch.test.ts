@@ -158,4 +158,35 @@ describe("dispatchToEndpoints", () => {
       dispatchToEndpoints(dispatcher, [makeEndpoint()], makeEvent()),
     ).resolves.not.toThrow();
   });
+
+  // PXY-13: Each endpoint should receive its own apiVersion in the event payload
+  it("overrides api_version per endpoint (PXY-13)", async () => {
+    const dispatcher = createWebhookDispatcher(makeQueue(), "user-1")!;
+
+    const ep1 = makeEndpoint({ id: "ep-1", apiVersion: "2026-04-01" });
+    const ep2 = makeEndpoint({ id: "ep-2", apiVersion: "2026-03-01" });
+    const event = makeEvent({ api_version: "2026-01-01" }); // original version
+
+    await dispatchToEndpoints(dispatcher, [ep1, ep2], event);
+
+    expect(mockQueueSend).toHaveBeenCalledTimes(2);
+
+    // Each endpoint should get its own apiVersion, not the event's original
+    const call1 = mockQueueSend.mock.calls[0][0];
+    const call2 = mockQueueSend.mock.calls[1][0];
+    expect(call1.event.api_version).toBe("2026-04-01");
+    expect(call2.event.api_version).toBe("2026-03-01");
+  });
+
+  it("preserves original api_version when endpoint has no apiVersion", async () => {
+    const dispatcher = createWebhookDispatcher(makeQueue(), "user-1")!;
+
+    const ep = makeEndpoint({ apiVersion: undefined as unknown as string });
+    const event = makeEvent({ api_version: "2026-01-01" });
+
+    await dispatchToEndpoints(dispatcher, [ep], event);
+
+    const call = mockQueueSend.mock.calls[0][0];
+    expect(call.event.api_version).toBe("2026-01-01");
+  });
 });

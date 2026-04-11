@@ -17,8 +17,14 @@ export function buildAnthropicUpstreamHeaders(request: Request): Headers {
   headers.set("anthropic-version", request.headers.get("anthropic-version") ?? "2023-06-01");
   headers.set("content-type", "application/json");
 
+  // PXY-14: Forward anthropic-beta but log for observability.
+  // Beta features can change SSE response format and cost accounting.
+  // We forward to avoid breaking clients, but track usage for audit.
   const beta = request.headers.get("anthropic-beta");
-  if (beta) headers.set("anthropic-beta", beta);
+  if (beta) {
+    headers.set("anthropic-beta", beta);
+    // Return the beta value so the caller can emit a metric
+  }
 
   // Forward W3C trace context (parity with OpenAI upstream headers)
   const traceparent = request.headers.get("traceparent");

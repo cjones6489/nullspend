@@ -51,13 +51,19 @@ export async function dispatchToEndpoints(
   event: AnyWebhookEvent,
 ): Promise<void> {
   await Promise.allSettled(
-    endpoints.map((endpoint) =>
-      dispatcher.dispatch(endpoint, event).catch((err) => {
+    endpoints.map((endpoint) => {
+      // PXY-13: Override api_version per endpoint. Previously, denial/threshold
+      // events used the auth identity or first endpoint's version for all
+      // endpoints. Each endpoint should receive its own configured version.
+      const versionedEvent = endpoint.apiVersion
+        ? { ...event, api_version: endpoint.apiVersion }
+        : event;
+      return dispatcher.dispatch(endpoint, versionedEvent).catch((err) => {
         console.error(
           `[webhook-dispatch] Failed to dispatch ${event.type} to ${endpoint.id}:`,
           err,
         );
-      }),
-    ),
+      });
+    }),
   );
 }
