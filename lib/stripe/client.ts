@@ -17,9 +17,14 @@ export function getStripe(): Stripe {
 }
 
 export function getOrigin(request: Request): string {
-  // Prefer explicit config over request headers to prevent host injection.
+  // STRIPE-11: NEXT_PUBLIC_APP_URL is required in production to prevent
+  // host-header injection in Stripe redirect URLs (checkout, portal).
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (appUrl) return appUrl.replace(/\/+$/, "");
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_APP_URL must be set in production — required for safe Stripe redirect URLs");
+  }
 
   const host =
     request.headers.get("x-forwarded-host") ??

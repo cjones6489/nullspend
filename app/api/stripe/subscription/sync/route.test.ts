@@ -4,6 +4,10 @@ vi.mock("@/lib/auth/session", () => ({
   resolveSessionContext: vi.fn(),
 }));
 
+vi.mock("@/lib/auth/org-authorization", () => ({
+  assertOrgRole: vi.fn(),
+}));
+
 vi.mock("@/lib/stripe/client", () => ({
   getStripe: vi.fn(),
 }));
@@ -138,7 +142,7 @@ describe("POST /api/stripe/subscription/sync", () => {
     expect(res.status).toBe(400);
   });
 
-  it("falls back to 'free' when tier cannot be resolved", async () => {
+  it("STRIPE-9: rejects unknown price ID instead of defaulting to free", async () => {
     mockedTierFromPriceId.mockReturnValue(null);
 
     mockSessionRetrieve.mockResolvedValue({
@@ -161,12 +165,8 @@ describe("POST /api/stripe/subscription/sync", () => {
     });
 
     const res = await POST(makeRequest({ sessionId: "cs_123" }));
-    expect(res.status).toBe(200);
-
-    // Should fall back to "free", not "pro"
-    expect(mockedUpsertSubscription).toHaveBeenCalledWith(
-      expect.objectContaining({ tier: "free" }),
-    );
+    // STRIPE-9: unknown price IDs now fail closed (500) instead of silently downgrading to free
+    expect(res.status).toBe(500);
   });
 
   it("returns 400 for missing sessionId", async () => {

@@ -26,7 +26,9 @@ export async function POST(request: Request) {
     const tier = tierFromPriceId(input.priceId)!;
 
     const existing = await getSubscriptionByOrgId(orgId);
-    if (existing && existing.status === "active") {
+    // STRIPE-10: Block checkout for active AND past_due subscriptions.
+    // past_due orgs should resolve billing via the portal, not create a second subscription.
+    if (existing && (existing.status === "active" || existing.status === "past_due")) {
       return NextResponse.json(
         {
           error: {

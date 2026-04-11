@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 
 import { resolveSessionContext } from "@/lib/auth/session";
+import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getStripe } from "@/lib/stripe/client";
 import { upsertSubscription } from "@/lib/stripe/subscription";
 import { tierFromPriceId } from "@/lib/stripe/tiers";
@@ -10,7 +11,9 @@ import { syncInputSchema } from "@/lib/validations/subscription";
 
 export async function POST(request: Request) {
   try {
+    // STRIPE-8: Require admin — subscription sync overwrites org billing state
     const { userId, orgId } = await resolveSessionContext();
+    await assertOrgRole(userId, orgId, "admin");
     const body = await readJsonBody(request);
     const { sessionId } = syncInputSchema.parse(body);
 
@@ -61,7 +64,11 @@ export async function POST(request: Request) {
       userId,
       stripeCustomerId,
       stripeSubscriptionId: subscription.id,
-      tier: tier ?? session.metadata?.tier ?? "free",
+      // STRIPE-9: Fail closed on unknown price IDs — never silently downgrade to free.
+      // Metadata tier is a fallback for custom pricing. If neither resolves, reject.
+      tier: tier ?? session.metadata?.tier ?? (() => {
+        throw new Error(`Unknown Stripe price ID: ${item?.price?.id ?? "none"}. Cannot determine tier.`);
+      })(),
       status: subscription.status,
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,

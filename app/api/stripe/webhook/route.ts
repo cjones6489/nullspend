@@ -10,9 +10,10 @@ import {
 import { tierFromPriceId } from "@/lib/stripe/tiers";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 
-// In-memory event deduplication (5-min TTL).
-// Prevents duplicate processing on Stripe webhook retries.
-const processedEvents = new Map<string, number>();
+// STRIPE-1: Three-state dedup per Stripe best practices.
+// "processing" = handler running. "processed" = handler succeeded or permanent failure.
+// Transient failures clear the entry so Stripe retries are accepted.
+const processedEvents = new Map<string, { state: "processing" | "processed"; ts: number }>();
 const DEDUP_TTL_MS = 5 * 60 * 1000;
 
 /** @internal Reset for testing only. */
@@ -22,8 +23,8 @@ export function _resetWebhookDedupForTesting() { processedEvents.clear(); }
 if (typeof setInterval !== "undefined") {
   setInterval(() => {
     const cutoff = Date.now() - DEDUP_TTL_MS;
-    for (const [id, ts] of processedEvents) {
-      if (ts < cutoff) processedEvents.delete(id);
+    for (const [id, entry] of processedEvents) {
+      if (entry.ts < cutoff) processedEvents.delete(id);
     }
   }, DEDUP_TTL_MS).unref?.();
 }
@@ -60,11 +61,22 @@ export async function POST(request: Request) {
     );
   }
 
-  // Deduplicate: skip if this event was already processed
-  if (processedEvents.has(event.id)) {
+  // STRIPE-1: Three-state dedup per Stripe best practices:
+  //   not seen → processing → processed
+  // On transient failure, clear "processing" so Stripe retries are accepted.
+  // On permanent failure, mark "processed" to prevent infinite retries.
+  const existing = processedEvents.get(event.id);
+  if (existing?.state === "processed") {
     return NextResponse.json({ received: true, deduplicated: true });
   }
-  processedEvents.set(event.id, Date.now());
+  if (existing?.state === "processing") {
+    // Concurrent duplicate — let Stripe retry later
+    return NextResponse.json(
+      { error: { code: "event_in_progress", message: "Event is being processed.", details: null } },
+      { status: 409 },
+    );
+  }
+  processedEvents.set(event.id, { state: "processing", ts: Date.now() });
 
   try {
     switch (event.type) {
@@ -103,14 +115,20 @@ export async function POST(request: Request) {
       Sentry.captureException(err);
     });
     if (isTransient) {
+      // STRIPE-1: Clear dedup so Stripe retries are accepted
+      processedEvents.delete(event.id);
       return NextResponse.json(
         { error: { code: "webhook_processing_error", message: "Webhook processing failed (transient).", details: null } },
         { status: 500 },
       );
     }
+    // Permanent failure — mark processed to prevent infinite retries
+    processedEvents.set(event.id, { state: "processed", ts: Date.now() });
     return NextResponse.json({ received: true, error: { code: "processing_failed", message: "Permanent webhook processing failure.", details: null } });
   }
 
+  // Mark as processed on success
+  processedEvents.set(event.id, { state: "processed", ts: Date.now() });
   return NextResponse.json({ received: true });
 }
 
