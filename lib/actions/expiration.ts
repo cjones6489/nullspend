@@ -25,7 +25,7 @@ export function isActionExpired(
  */
 export function computeExpiresAt(
   expiresInSeconds: number | null | undefined,
-): Date | null {
+): Date {
   if (expiresInSeconds === 0 || expiresInSeconds === null) {
     // ACT-6: Even "no expiration" requests get capped at MAX_EXPIRATION_SECONDS
     // to prevent immortal pending actions that never self-expire.

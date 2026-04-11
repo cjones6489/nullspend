@@ -1,9 +1,19 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiKeyError,
   resolveDevFallbackApiKeyUserId,
 } from "@/lib/auth/api-key";
+
+const mockErrorLog = vi.fn();
+vi.mock("@/lib/observability", () => ({
+  getLogger: () => ({
+    error: mockErrorLog,
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
 
 describe("NULLSPEND_DEV_MODE fallback", () => {
   const originalDevMode = process.env.NULLSPEND_DEV_MODE;
@@ -22,6 +32,7 @@ describe("NULLSPEND_DEV_MODE fallback", () => {
     setEnv("NULLSPEND_DEV_MODE", originalDevMode);
     setEnv("NODE_ENV", originalNodeEnv);
     setEnv("NULLSPEND_DEV_ACTOR", originalDevActor);
+    vi.clearAllMocks();
   });
 
   it("allows dev fallback when NULLSPEND_DEV_MODE=true (non-production)", () => {
@@ -78,5 +89,25 @@ describe("NULLSPEND_DEV_MODE fallback", () => {
     setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
 
     expect(resolveDevFallbackApiKeyUserId()).toBe("dev-user");
+  });
+
+  it("AUTH-1: emits error log when NULLSPEND_DEV_MODE=true in production", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("NULLSPEND_DEV_MODE", "true");
+    setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
+
+    expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);
+    expect(mockErrorLog).toHaveBeenCalledWith(
+      expect.stringContaining("NULLSPEND_DEV_MODE is set in production"),
+    );
+  });
+
+  it("AUTH-1: does NOT emit error log when NULLSPEND_DEV_MODE is not set in production", () => {
+    setEnv("NODE_ENV", "production");
+    setEnv("NULLSPEND_DEV_MODE", undefined);
+    setEnv("NULLSPEND_DEV_ACTOR", "dev-user");
+
+    expect(() => resolveDevFallbackApiKeyUserId()).toThrow(ApiKeyError);
+    expect(mockErrorLog).not.toHaveBeenCalled();
   });
 });

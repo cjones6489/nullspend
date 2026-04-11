@@ -142,4 +142,51 @@ describe("detectWorseningCrossings", () => {
     );
     expect(crossings).toHaveLength(1);
   });
+
+  it("MRG-2: uses pre-computed healthTier when provided (zero-revenue critical case)", () => {
+    // Zero-revenue customers have marginPercent=0 but healthTier="critical" in the table.
+    // Without healthTier, computeHealthTier(0) returns "at_risk" — the crossing from
+    // moderate→critical would be missed.
+    const crossings = detectWorseningCrossings(
+      [{ tagValue: "x", marginPercent: 25, healthTier: "moderate" }],
+      [{ tagValue: "x", marginPercent: 0, healthTier: "critical" }],
+    );
+    expect(crossings).toHaveLength(1);
+    expect(crossings[0].tagValue).toBe("x");
+    expect(crossings[0].previousMarginPercent).toBe(25);
+    expect(crossings[0].currentMarginPercent).toBe(0);
+  });
+
+  it("MRG-2: without healthTier, zero-revenue customer is classified as at_risk (not critical)", () => {
+    // This documents the limitation when healthTier is not provided.
+    // marginPercent=0 → computeHealthTier(0) → "at_risk", NOT "critical".
+    // The crossing from moderate→at_risk IS still detected (worsening).
+    const crossings = detectWorseningCrossings(
+      [{ tagValue: "x", marginPercent: 25 }],
+      [{ tagValue: "x", marginPercent: 0 }],
+    );
+    expect(crossings).toHaveLength(1); // moderate→at_risk is still a worsening
+  });
+
+  it("MRG-2: pre-computed healthTier does NOT fire on improvement", () => {
+    const crossings = detectWorseningCrossings(
+      [{ tagValue: "x", marginPercent: 0, healthTier: "critical" }],
+      [{ tagValue: "x", marginPercent: 25, healthTier: "moderate" }],
+    );
+    expect(crossings).toHaveLength(0);
+  });
+
+  it("MRG-2: mixed — some entries have healthTier, others use fallback", () => {
+    const crossings = detectWorseningCrossings(
+      [
+        { tagValue: "a", marginPercent: 55 },                           // no tier → computed as "healthy"
+        { tagValue: "b", marginPercent: 25, healthTier: "moderate" },   // explicit tier
+      ],
+      [
+        { tagValue: "a", marginPercent: 30 },                           // no tier → "moderate" (worsening)
+        { tagValue: "b", marginPercent: 0, healthTier: "critical" },    // explicit tier (worsening)
+      ],
+    );
+    expect(crossings).toHaveLength(2);
+  });
 });
