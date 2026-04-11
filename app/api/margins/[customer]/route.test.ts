@@ -124,4 +124,17 @@ describe("GET /api/margins/[customer]", () => {
     const res = await callGET("http://localhost/api/margins/acme?period=2026-01'%3BDROP--");
     expect(res.status).toBe(400);
   });
+
+  it("API-14: returns 400 for malformed percent-encoded customer (not 500)", async () => {
+    // %ZZ is not valid percent-encoding — decodeURIComponent throws URIError
+    mockReadRouteParams.mockResolvedValue({ customer: "%ZZ" });
+
+    const res = await GET(
+      new Request("http://localhost/api/margins/%ZZ"),
+      { params: Promise.resolve({ customer: "%ZZ" }) },
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error.code).toBe("validation_error");
+  });
 });

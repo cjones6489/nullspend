@@ -57,6 +57,19 @@ describe("buildMarginAlertMessage", () => {
     expect(customerBlock.fields[0].text).toContain("acme");
   });
 
+  it("MRG-4: escapes tagValue when used as fallback (mrkdwn injection defense)", () => {
+    const msg = buildMarginAlertMessage({
+      ...baseData,
+      customerName: null,
+      tagValue: "<script>alert(1)</script> & @here",
+    });
+    const customerBlock = msg.blocks[1] as unknown as { fields: { text: string }[] };
+    // tagValue must be escaped — no raw < > &
+    expect(customerBlock.fields[0].text).toContain("&lt;script&gt;");
+    expect(customerBlock.fields[0].text).toContain("&amp;");
+    expect(customerBlock.fields[0].text).not.toContain("<script>");
+  });
+
   it("escapes Slack mrkdwn special characters in customer name", () => {
     const msg = buildMarginAlertMessage({
       ...baseData,

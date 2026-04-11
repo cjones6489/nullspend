@@ -44,3 +44,19 @@ describe("listCostEventsQuerySchema — sessionId filter", () => {
     expect(result.sessionId).toBeUndefined();
   });
 });
+
+describe("listCostEventsQuerySchema — cursor validation (API-8)", () => {
+  it("rejects malformed cursor JSON with ZodError (not SyntaxError)", () => {
+    const result = listCostEventsQuerySchema.safeParse({ cursor: "not-json" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe("Invalid cursor JSON");
+    }
+  });
+
+  it("accepts valid cursor JSON", () => {
+    const cursor = JSON.stringify({ createdAt: "2026-04-01T00:00:00.000Z", id: "ns_evt_a0000000-0000-4000-a000-000000000001" });
+    const result = listCostEventsQuerySchema.safeParse({ cursor });
+    expect(result.success).toBe(true);
+  });
+});

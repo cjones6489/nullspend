@@ -138,10 +138,13 @@ describe("listActionsQuerySchema", () => {
     });
   });
 
-  it("rejects cursor with invalid JSON", () => {
-    expect(() =>
-      listActionsQuerySchema.parse({ cursor: "not-json" }),
-    ).toThrow();
+  it("rejects cursor with invalid JSON (ZodError, not SyntaxError)", () => {
+    // API-8: must throw ZodError (→ 400) not SyntaxError (→ 500)
+    const result = listActionsQuerySchema.safeParse({ cursor: "not-json" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0].message).toBe("Invalid cursor JSON");
+    }
   });
 
   it("rejects cursor with missing id field", () => {

@@ -162,6 +162,16 @@ describe("GET /api/cost-events/[id]", () => {
     expect(json.error.message).toBe("Invalid cost event ID.");
   });
 
+  it("API-13: returns 400 for malformed ns_evt_ prefixed ID (not 500)", async () => {
+    mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
+
+    const res = await GET(makeRequest(), makeContext("ns_evt_not-a-valid-uuid"));
+    expect(res.status).toBe(400);
+
+    const json = await res.json();
+    expect(json.error.code).toBe("validation_error");
+  });
+
   it("accepts ns_evt_ prefixed ID", async () => {
     mockedResolveSessionContext.mockResolvedValue({ userId: "user-1", orgId: "org-test-1", role: "owner" });
     const row = makeCostEventRow();
