@@ -64,18 +64,18 @@ export async function getWebhookEndpoints(
 /**
  * Get active webhook endpoints WITH signing secrets for dispatch.
  * Always queries DB — secrets are never cached.
- * Fail-open: returns [] on error.
+ *
+ * THROWS on DB error. This is intentional: the queue consumer's per-message
+ * catch block calls msg.retry() on error, so a transient PG outage retries
+ * instead of acking (which would permanently lose the webhook). Before this
+ * fix (PXY-6), DB errors returned [] and the consumer treated "empty" as
+ * "endpoint deleted" and acked — silently discarding messages.
  */
 export async function getWebhookEndpointsWithSecrets(
   connectionString: string,
   ownerId: string,
 ): Promise<WebhookEndpointWithSecret[]> {
-  try {
-    return await queryActiveEndpoints(connectionString, ownerId);
-  } catch (err) {
-    console.error("[webhook-cache] DB query error (secrets):", err);
-    return []; // Fail-open
-  }
+  return await queryActiveEndpoints(connectionString, ownerId);
 }
 
 /**

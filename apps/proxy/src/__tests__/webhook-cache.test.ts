@@ -186,11 +186,15 @@ describe("getWebhookEndpointsWithSecrets", () => {
     expect(result[0].secretRotatedAt).toBeNull();
   });
 
-  it("returns empty array on database error (fail-open)", async () => {
+  // PXY-6: getWebhookEndpointsWithSecrets now throws on DB error (was fail-open).
+  // The queue consumer's per-message catch retries instead of acking,
+  // preventing permanent webhook loss during PG outages.
+  it("throws on database error (PXY-6 — queue consumer retries)", async () => {
     mockSql.mockRejectedValueOnce(new Error("connection failed"));
 
-    const result = await getWebhookEndpointsWithSecrets("postgresql://test", "user-1");
-    expect(result).toEqual([]);
+    await expect(
+      getWebhookEndpointsWithSecrets("postgresql://test", "user-1"),
+    ).rejects.toThrow("connection failed");
   });
 });
 

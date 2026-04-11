@@ -308,41 +308,51 @@ function handleStreaming(
         const durationMs = Math.round(performance.now() - startTime);
 
         if (!result?.usage) {
-          // Stream cancelled by client — reconcile with pre-request estimate
-          // to prevent cost evasion. Slightly overcharges but prevents free-riding.
-          const reconcileCost = result?.cancelled ? estimate : 0;
-          if (result?.cancelled) {
-            emitMetric("stream_cancelled", { model: requestModel, estimate });
+          // PXY-4: Always use estimate when usage is missing — both cancelled
+          // and non-cancelled streams. Before this fix, non-cancelled streams
+          // with missing usage were charged $0 (silent cost leak).
+          const reconcileCost = estimate;
+          const isCancelled = result?.cancelled ?? false;
 
-            // Best-effort cost event — failure must NOT prevent budget reconciliation
-            try {
-              await logCostEventQueued(getCostEventQueue(env), connectionString, {
-                requestId,
-                provider: "openai",
-                model: result.model ?? requestModel,
-                inputTokens: 0,
-                outputTokens: 0,
-                cachedInputTokens: 0,
-                reasoningTokens: 0,
-                costMicrodollars: reconcileCost,
-                costBreakdown: null,
-                durationMs,
-                ...attribution,
-                ...enrichment,
-                tags: { ...enrichment.tags, _ns_estimated: "true", _ns_cancelled: "true" },
-                toolCallsRequested: result.toolCalls,
-                stopReason: null,
-                source: "proxy" as const,
-                eventType: "llm" as const,
-              });
-              emitMetric("cost_event_estimated", { model: requestModel, estimate: reconcileCost });
-            } catch (costErr) {
-              console.error("[openai-route] Failed to log cancelled stream cost event:", { requestId, error: costErr });
-            }
+          if (isCancelled) {
+            emitMetric("stream_cancelled", { model: requestModel, estimate });
+          } else {
+            emitMetric("stream_no_usage", { model: requestModel, estimate });
           }
+
+          // Best-effort cost event — failure must NOT prevent budget reconciliation
+          try {
+            await logCostEventQueued(getCostEventQueue(env), connectionString, {
+              requestId,
+              provider: "openai",
+              model: result?.model ?? requestModel,
+              inputTokens: 0,
+              outputTokens: 0,
+              cachedInputTokens: 0,
+              reasoningTokens: 0,
+              costMicrodollars: reconcileCost,
+              costBreakdown: null,
+              durationMs,
+              ...attribution,
+              ...enrichment,
+              tags: {
+                ...enrichment.tags,
+                _ns_estimated: "true",
+                ...(isCancelled ? { _ns_cancelled: "true" } : { _ns_no_usage: "true" }),
+              },
+              toolCallsRequested: result?.toolCalls ?? null,
+              stopReason: null,
+              source: "proxy" as const,
+              eventType: "llm" as const,
+            });
+            emitMetric("cost_event_estimated", { model: requestModel, estimate: reconcileCost });
+          } catch (costErr) {
+            console.error("[openai-route] Failed to log stream cost event:", { requestId, error: costErr });
+          }
+
           console.warn(
             "[openai-route] Streaming response completed without usage data.",
-            { requestId, model: requestModel, durationMs, cancelled: result?.cancelled ?? false },
+            { requestId, model: requestModel, durationMs, cancelled: isCancelled },
           );
           if (reservationId) {
             await reconcileBudgetQueued(
@@ -374,6 +384,16 @@ function handleStreaming(
           enrichment.toolDefinitionTokens,
         );
 
+        // PXY-3: Unknown model cost fallback — use estimate when calculator
+        // returns $0 with real tokens (model not in pricing catalog).
+        let loggedCost = costEvent.costMicrodollars;
+        let unpricedTags: Record<string, string> = {};
+        if (costEvent.costMicrodollars === 0 && (costEvent.inputTokens + costEvent.outputTokens) > 0) {
+          loggedCost = estimate;
+          unpricedTags = { _ns_unpriced: "true", _ns_estimated: "true" };
+          emitMetric("cost_event_unpriced", { model: requestModel, estimate });
+        }
+
         // Write AE data point at stream completion with full duration
         const streamTotalMs = Math.round(performance.now() - ctx.requestStartMs);
         const streamOverheadMs = Math.max(0, streamTotalMs - durationMs);
@@ -382,7 +402,9 @@ function handleStreaming(
 
         await logCostEventQueued(getCostEventQueue(env), connectionString, {
           ...costEvent,
+          costMicrodollars: loggedCost,
           ...enrichment,
+          tags: { ...enrichment.tags, ...unpricedTags },
           toolCallsRequested: result.toolCalls,
           stopReason: result.finishReason,
           source: "proxy" as const,
@@ -390,7 +412,7 @@ function handleStreaming(
 
         if (reservationId) {
           await reconcileBudgetQueued(
-            getReconcileQueue(env), env, ctx.ownerId, ctx.auth.orgId, reservationId, costEvent.costMicrodollars,
+            getReconcileQueue(env), env, ctx.ownerId, ctx.auth.orgId, reservationId, loggedCost,
             budgetEntities, connectionString,
           );
         }
@@ -490,9 +512,21 @@ async function handleNonStreaming(
         enrichment.toolDefinitionTokens,
       );
 
+      // PXY-3: Unknown model cost fallback
+      const estimate = enrichment.estimatedCostMicrodollars ?? 0;
+      let loggedCostNS = costEvent.costMicrodollars;
+      let unpricedTagsNS: Record<string, string> = {};
+      if (costEvent.costMicrodollars === 0 && (costEvent.inputTokens + costEvent.outputTokens) > 0) {
+        loggedCostNS = estimate;
+        unpricedTagsNS = { _ns_unpriced: "true", _ns_estimated: "true" };
+        emitMetric("cost_event_unpriced", { model: requestModel, estimate });
+      }
+
       waitUntil(logCostEventQueued(getCostEventQueue(env), connectionString, {
         ...costEvent,
+        costMicrodollars: loggedCostNS,
         ...enrichment,
+        tags: { ...enrichment.tags, ...unpricedTagsNS },
         toolCallsRequested,
         stopReason: finishReason,
         source: "proxy" as const,
@@ -501,7 +535,7 @@ async function handleNonStreaming(
       if (reservationId) {
         waitUntil(
           reconcileBudgetQueued(
-            getReconcileQueue(env), env, ctx.ownerId, ctx.auth.orgId, reservationId, costEvent.costMicrodollars,
+            getReconcileQueue(env), env, ctx.ownerId, ctx.auth.orgId, reservationId, loggedCostNS,
             budgetEntities, connectionString,
           ),
         );

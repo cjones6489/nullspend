@@ -307,7 +307,7 @@ describe("Stream Cancellation Cost Event", () => {
     expect(costEvent.eventType).toBe("llm");
   });
 
-  it("OpenAI non-cancelled no-usage stream does NOT write cost event", async () => {
+  it("PXY-4: OpenAI non-cancelled no-usage stream writes estimated cost event with _ns_no_usage tag", async () => {
     mockDoBudgetCheck.mockResolvedValue({
       status: "approved", hasBudgets: true, reservationId: "rsv-nocancel-1", checkedEntities: [checkedEntity],
     });
@@ -328,7 +328,13 @@ describe("Stream Cancellation Cost Event", () => {
     await res.text();
     await drainWaitUntil();
 
-    expect(mockLogCostEventQueued).not.toHaveBeenCalled();
+    expect(mockLogCostEventQueued).toHaveBeenCalledTimes(1);
+    const costArg = mockLogCostEventQueued.mock.calls[0][2];
+    expect(costArg.tags._ns_no_usage).toBe("true");
+    expect(costArg.tags._ns_estimated).toBe("true");
+    expect(costArg.tags._ns_cancelled).toBeUndefined();
+    expect(costArg.costMicrodollars).toBeGreaterThan(0);
+    expect(costArg.eventType).toBe("llm");
   });
 
   it("cancelled stream preserves user tags alongside system tags", async () => {

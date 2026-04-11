@@ -251,7 +251,7 @@ describe("Streaming + Budget Integration", () => {
     );
   });
 
-  it("streaming success without usage reconciles with actualCost=0", async () => {
+  it("PXY-4: streaming without usage reconciles with estimate (not $0)", async () => {
     mockDoBudgetCheck.mockResolvedValue({ status: "approved", hasBudgets: true, reservationId: "rsv-no-usage", checkedEntities: [checkedEntity] });
 
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -271,10 +271,13 @@ describe("Streaming + Budget Integration", () => {
       "user-uuid-456",
       "org-test",
       "rsv-no-usage",
-      0,
+      expect.any(Number),
       expect.any(Array),
       expect.any(String),
     );
+    // PXY-4: reconcile with estimate, not $0
+    const actualCost = mockDoBudgetReconcile.mock.calls[0][4];
+    expect(actualCost).toBeGreaterThan(0);
   });
 
   it("streaming without usage does NOT call updateBudgetSpend", async () => {

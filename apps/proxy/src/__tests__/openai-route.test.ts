@@ -690,7 +690,7 @@ describe("handleChatCompletions", () => {
       undefined,
       expect.anything(),
       expect.objectContaining({
-        tags: { project: "alpha", env: "prod" },
+        tags: expect.objectContaining({ project: "alpha", env: "prod" }),
       }),
     );
   });
@@ -805,7 +805,7 @@ describe("handleChatCompletions", () => {
       await res.text();
     });
 
-    it("logs $0 cost for unknown model on custom upstream", async () => {
+    it("PXY-3: logs estimated cost for unknown model on custom upstream (not $0)", async () => {
       mockLogCostEvent.mockClear();
 
       globalThis.fetch = vi.fn().mockResolvedValue(
@@ -831,10 +831,13 @@ describe("handleChatCompletions", () => {
         expect.anything(),
         expect.objectContaining({
           source: "proxy",
-          costMicrodollars: 0,
           model: "llama-3.1-70b-versatile",
+          tags: expect.objectContaining({ _ns_unpriced: "true", _ns_estimated: "true" }),
         }),
       );
+      // PXY-3: cost should be the estimate (> 0), not $0
+      const costArg = mockLogCostEvent.mock.calls[0][2] as { costMicrodollars: number };
+      expect(costArg.costMicrodollars).toBeGreaterThan(0);
     });
 
     it("defaults to OpenAI when no upstream header is set", async () => {

@@ -191,6 +191,22 @@ describe("handleWebhookQueue", () => {
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("not found"));
   });
 
+  // PXY-6 regression: DB error during dequeue must retry, not ack.
+  // Before this fix, getWebhookEndpointsWithSecrets caught DB errors
+  // and returned [], which the consumer treated as "endpoint deleted"
+  // and acked — permanently losing the webhook message.
+  it("DB error during endpoint lookup retries instead of acking (PXY-6)", async () => {
+    mockGetEndpointsWithSecrets.mockRejectedValue(new Error("ECONNREFUSED"));
+    const msg = makeMessage();
+
+    await handleWebhookQueue(makeBatch([msg]), makeEnv());
+
+    // Must retry (not ack) — message stays in queue for re-delivery
+    expect(msg.retry).toHaveBeenCalledOnce();
+    expect(msg.ack).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("batch cache — 2 messages for same ownerId result in 1 DB call", async () => {
     const msg1 = makeMessage({ endpointId: "ep-1" });
     const msg2 = makeMessage({ endpointId: "ep-1" });
