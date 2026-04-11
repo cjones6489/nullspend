@@ -224,8 +224,7 @@ export async function syncOrgRevenue(orgId: string): Promise<SyncResult> {
         const customer = marginData.customers.find((c) => c.tagValue === crossing.tagValue);
         if (!customer) continue;
 
-        const fromTier = customer.healthTier === "critical" && crossing.previousMarginPercent === 0
-          ? "critical" : computeHealthTier(crossing.previousMarginPercent);
+        const fromTier = computeHealthTier(crossing.previousMarginPercent);
         const toTier = customer.healthTier;
 
         // Dedup: try to insert a sent record. If it already exists, skip.

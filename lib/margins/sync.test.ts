@@ -191,6 +191,92 @@ describe("syncOrgRevenue — MRG-5 alert dedup", () => {
     expect(mockInsert).toHaveBeenCalled(); // Dedup insert attempted
     expect(mockDispatchWebhookEvent).not.toHaveBeenCalled(); // Alert NOT dispatched
   });
+
+  it("dispatches alert even when dedup DB insert throws (fail-open)", async () => {
+    const connection = { id: "c1", orgId: ORG_ID, status: "active", encryptedKey: "enc" };
+    const mockInsert = vi.fn(() => ({
+      values: vi.fn(() => ({
+        onConflictDoNothing: vi.fn(() => ({
+          returning: vi.fn().mockRejectedValue(new Error("DB connection lost")),
+        })),
+      })),
+    }));
+
+    mockGetDb.mockReturnValue({
+      select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve([connection]) }) }) }),
+      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
+        const tx = {
+          delete: () => ({ where: () => Promise.resolve() }),
+          insert: () => ({ values: () => Promise.resolve() }),
+        };
+        return fn(tx);
+      }),
+      insert: mockInsert,
+    });
+    mockDecryptStripeKey.mockReturnValue("sk_test_123");
+    mockGetMarginTable.mockResolvedValue({
+      customers: [{ tagValue: "acme", stripeCustomerId: "cus_1", customerName: "Acme", healthTier: "critical", revenueMicrodollars: 100, costMicrodollars: 200 }],
+    });
+    mockDetectWorseningCrossings.mockReturnValue([
+      { tagValue: "acme", previousMarginPercent: 25, currentMarginPercent: -5 },
+    ]);
+    mockBuildMarginThresholdPayload.mockReturnValue({ id: "evt_1", type: "margin.threshold_crossed" });
+
+    const result = await syncOrgRevenue(ORG_ID);
+
+    expect(result.error).toBeUndefined();
+    // Alert dispatched despite dedup DB error (fail-open)
+    expect(mockDispatchWebhookEvent).toHaveBeenCalled();
+  });
+
+  it("handles mixed crossings — one new, one already sent", async () => {
+    let insertCallCount = 0;
+    const mockInsert = vi.fn(() => ({
+      values: vi.fn(() => ({
+        onConflictDoNothing: vi.fn(() => ({
+          returning: vi.fn().mockImplementation(() => {
+            insertCallCount++;
+            // First crossing: new (insert succeeds)
+            // Second crossing: already sent (returns empty)
+            return Promise.resolve(insertCallCount === 1 ? [{ id: "alert-1" }] : []);
+          }),
+        })),
+      })),
+    }));
+
+    const connection = { id: "c1", orgId: ORG_ID, status: "active", encryptedKey: "enc" };
+    mockGetDb.mockReturnValue({
+      select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve([connection]) }) }) }),
+      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
+        const tx = {
+          delete: () => ({ where: () => Promise.resolve() }),
+          insert: () => ({ values: () => Promise.resolve() }),
+        };
+        return fn(tx);
+      }),
+      insert: mockInsert,
+    });
+    mockDecryptStripeKey.mockReturnValue("sk_test_123");
+    mockGetMarginTable.mockResolvedValue({
+      customers: [
+        { tagValue: "acme", stripeCustomerId: "cus_1", customerName: "Acme", healthTier: "critical", revenueMicrodollars: 100, costMicrodollars: 200 },
+        { tagValue: "beta", stripeCustomerId: "cus_2", customerName: "Beta", healthTier: "at_risk", revenueMicrodollars: 500, costMicrodollars: 450 },
+      ],
+    });
+    mockDetectWorseningCrossings.mockReturnValue([
+      { tagValue: "acme", previousMarginPercent: 25, currentMarginPercent: -5 },
+      { tagValue: "beta", previousMarginPercent: 55, currentMarginPercent: 10 },
+    ]);
+    mockBuildMarginThresholdPayload.mockReturnValue({ id: "evt_1", type: "margin.threshold_crossed" });
+
+    const result = await syncOrgRevenue(ORG_ID);
+
+    expect(result.error).toBeUndefined();
+    // Only 1 webhook dispatched (acme is new, beta is deduped)
+    expect(mockDispatchWebhookEvent).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("syncAllOrgs", () => {
