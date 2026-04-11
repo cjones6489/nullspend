@@ -54,7 +54,9 @@ export function detectThresholdCrossings(
     }
 
     // budget.exceeded when crossing 100%
-    if (previousPercent < 100 && newPercent >= 100) {
+    // BDG-12: Only fire if 100 is not already in custom thresholds (prevents double-fire)
+    const has100Threshold = thresholds.includes(100);
+    if (previousPercent < 100 && newPercent >= 100 && !has100Threshold) {
       events.push({
         id: `evt_${crypto.randomUUID()}`,
         type: "budget.exceeded",

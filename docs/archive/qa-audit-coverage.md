@@ -15,7 +15,7 @@ Tracks which sections of the codebase have received deep adversarial review (Cod
 | `lib/auth/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~129 | CRITICAL — **CLEAN** |
 | `lib/actions/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~80 | HIGH — **CLEAN** |
 | `lib/margins/` | 2026-04-10 | — | 2026-04-10 | ~143 | HIGH — **CLEAN** |
-| `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH |
+| `lib/budgets/` | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~30 | HIGH — **CLEAN** |
 | `lib/webhooks/` | — | 2026-04-10 | — | ~40 | MED |
 | `lib/slack/` | — | — | 2026-04-10 | ~30 | LOW |
 | `app/api/` (routes) | 2026-04-10 | 2026-04-10 | 2026-04-10 | ~300 | HIGH — **CLEAN** |

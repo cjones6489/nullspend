@@ -49,7 +49,13 @@ export const POST = withRequestContext(async (request: Request) => {
     if (result.inserted > 0) {
       const orgId = authResult.orgId;
       const afterInsert = async () => {
-        const endpoints = await fetchWebhookEndpoints(orgId);
+        // BDG-6: Wrap webhook endpoint lookup so its failure doesn't block spend updates
+        let endpoints: Awaited<ReturnType<typeof fetchWebhookEndpoints>> = [];
+        try {
+          endpoints = await fetchWebhookEndpoints(orgId);
+        } catch (err) {
+          log.error({ err }, "Webhook endpoint lookup failed — spend updates will proceed without webhooks");
+        }
 
         for (const row of result.rows) {
           // 1. Webhook dispatch per event — try/catch so one failure doesn't block budget updates

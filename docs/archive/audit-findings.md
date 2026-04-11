@@ -6,11 +6,11 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 
 | Severity | Total | Done | Remaining |
 |----------|-------|------|-----------|
-| P0/HIGH  | 12    | 12   | 0         |
-| P1       | 26    | 19   | 7 (known/by-design) |
-| P2/MED   | 23    | 17   | 6 (known/by-design) |
-| P3/LOW   | 9     | 9    | 0         |
-| **Total** | **70** | **57** | **13** |
+| P0/HIGH  | 15    | 12   | 3 (architecture/by-design) |
+| P1       | 30    | 21   | 9 (known/by-design) |
+| P2/MED   | 27    | 18   | 9 (known/by-design) |
+| P3/LOW   | 10    | 10   | 0         |
+| **Total** | **82** | **61** | **21** |
 
 ---
 
@@ -146,6 +146,27 @@ Consolidated findings from adversarial audits (Codex challenge, CSO reviews, QA 
 | API-14 | P3 | `decodeURIComponent` → 500 on malformed percent-encoding | [DONE] | Wrapped in try/catch → 400. |
 
 **Fixes:** 6 (API-1, API-4, API-8 x3, API-13, API-14). Tests: 2 new, 7 updated. 2,119 root tests green.
+
+---
+
+## Budgets Audit (Codex challenge `lib/budgets/`, 2026-04-10)
+
+| # | Sev | Finding | Status | Notes |
+|---|-----|---------|--------|-------|
+| BDG-1 | P0 | Proxy DO `populateIfEmpty` preserves spend on sync | [ARCHITECTURE] | Proxy DO is source of truth for spend during request handling. Dashboard path is secondary accounting. Needs design decision for SDK-only customers. |
+| BDG-2 | P0 | Cost event accounting is fire-and-forget (no waitUntil) | [BY DESIGN] | Next.js limitation. Proxy path (Cloudflare Workers) has waitUntil + outbox pattern. |
+| BDG-3 | P0 | Post-insert failures unrecoverable on retry | [BY DESIGN] | Same as BDG-2. Proxy has durable queue. Dashboard SDK path is best-effort. |
+| BDG-4 | P1 | Budget increase sync sends `budget.userId` not `orgId` as ownerId | [DONE] | Fixed to use `orgId`. Proxy expects ownerId = orgId for DO lookup. |
+| BDG-5 | P1 | Threshold detection uses pre-transaction snapshot | [KNOWN] | Acceptable for dashboard path. Proxy has DO locks. |
+| BDG-6 | P1 | Batch webhook lookup failure blocks all spend updates | [DONE] | Wrapped in try/catch. Spend updates proceed without webhooks on failure. |
+| BDG-7 | P1 | JS safe-integer overflow on budget/cost amounts | [DONE] | Added `.max(Number.MAX_SAFE_INTEGER)` to budget and cost-event Zod schemas. |
+| BDG-8 | P2 | Budget increase over-approval (no requestedAmount cap) | [KNOWN] | Same as ACT-7. Tier cap is the guard. Admin discretion. |
+| BDG-9 | P2 | Budget count enforcement race condition | [KNOWN] | `onConflictDoUpdate` prevents duplicate entities. Off-by-one acceptable. |
+| BDG-10 | P2 | Customer/tag budget misattribution | [KNOWN] | Same behavior as proxy. Caller-controlled input. |
+| BDG-11 | P2 | Tier cap is per-budget not aggregate | [BY DESIGN] | `spendCapMicrodollars` caps individual budget size. |
+| BDG-12 | P3 | Custom threshold 100 double-fires with budget.exceeded | [DONE] | Excluded 100 from budget.exceeded when already in custom thresholds. |
+
+**Fixes:** 4 (BDG-4, BDG-6, BDG-7, BDG-12). 2,126 root tests green.
 
 ---
 

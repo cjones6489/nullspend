@@ -15,7 +15,7 @@ export const costEventInputSchema = z.object({
   outputTokens: z.number().int().min(0),
   cachedInputTokens: z.number().int().min(0).optional(),
   reasoningTokens: z.number().int().min(0).optional(),
-  costMicrodollars: z.number().int().min(0),
+  costMicrodollars: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   durationMs: z.number().int().min(0).optional(),
   sessionId: z.string().max(200).optional(),
   traceId: z.string().regex(/^[0-9a-f]{32}$/).max(32).optional(),

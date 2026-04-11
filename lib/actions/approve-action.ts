@@ -88,16 +88,18 @@ async function invalidateAfterBudgetIncrease(actionId: string, orgId: string): P
 
   const { budgets } = await import("@nullspend/db");
   const [budget] = await db
-    .select({ userId: budgets.userId })
+    .select({ id: budgets.id })
     .from(budgets)
     .where(and(eq(budgets.orgId, orgId), eq(budgets.entityType, entityType as "user" | "api_key" | "tag"), eq(budgets.entityId, entityId)))
     .limit(1);
 
   if (!budget) return;
 
+  // BDG-4: ownerId must be orgId — the proxy uses it as the org lookup key.
+  // Previously sent budget.userId which caused sync to miss the correct DO.
   await invalidateProxyCache({
     action: "sync",
-    ownerId: budget.userId,
+    ownerId: orgId,
     entityType,
     entityId,
   });
