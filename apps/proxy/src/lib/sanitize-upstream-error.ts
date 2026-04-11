@@ -77,7 +77,7 @@ export async function sanitizeUpstreamError(
  * Preserves the message structure but redacts patterns that could
  * leak provider account info to NullSpend's clients.
  */
-function sanitizeMessage(message: string, status: number): string {
+function sanitizeMessage(message: string, _status: number): string {
   return message
     // OpenAI org IDs: org-xxxx
     .replace(/\borg-[a-zA-Z0-9]{10,}\b/g, "org-***")
