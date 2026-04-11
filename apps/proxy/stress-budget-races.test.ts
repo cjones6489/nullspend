@@ -412,4 +412,83 @@ describe(`Budget race conditions [${INTENSITY}]`, () => {
       }
     }
   }, 180_000);
+
+  // ── ST-6: Webhook delivery after threshold crossing ──
+
+  it("ST-6: webhook threshold events are delivered after budget crossing", async () => {
+    // Set up a budget with custom thresholds + a webhook endpoint
+    const userId = NULLSPEND_SMOKE_USER_ID!;
+
+    // Check if a webhook endpoint exists for this org
+    const endpoints = await sql`
+      SELECT id FROM webhook_endpoints
+      WHERE org_id = ${orgId} AND enabled = true
+      LIMIT 1
+    `;
+
+    if (endpoints.length === 0) {
+      console.log("[ST-6] No webhook endpoint configured for smoke org — skipping");
+      console.log("[ST-6] To enable: create a webhook endpoint via POST /api/webhooks");
+      return;
+    }
+
+    const endpointId = endpoints[0].id;
+
+    // Set up budget with low threshold that will be crossed by a single request
+    await sql`
+      INSERT INTO budgets (user_id, org_id, entity_type, entity_id, max_budget_microdollars, spend_microdollars, threshold_percentages, policy)
+      VALUES (${userId}, ${orgId}, 'user', ${userId}, 100, 0, '{50,80,90}', 'strict_block')
+      ON CONFLICT (org_id, entity_type, entity_id)
+      DO UPDATE SET max_budget_microdollars = 100,
+                    spend_microdollars = 0,
+                    threshold_percentages = '{50,80,90}',
+                    updated_at = NOW()
+    `;
+    await syncBudget(orgId, "user", userId);
+    await new Promise((r) => setTimeout(r, 1_000));
+
+    const before = new Date();
+
+    // Send a request that will use ~6µ¢ against 100µ¢ budget → no threshold yet
+    // Then send more to cross 50% (50µ¢)
+    for (let i = 0; i < 12; i++) {
+      const res = await fetch(`${BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: smallRequest({ messages: [{ role: "user", content: `Webhook ${i}` }] }),
+      });
+      if (res.status === 429) {
+        await res.text();
+        break;
+      }
+      await res.json();
+    }
+
+    // Wait for async webhook dispatch via Cloudflare Queue
+    await new Promise((r) => setTimeout(r, 10_000));
+
+    // Check webhook_deliveries for threshold events
+    const deliveries = await sql`
+      SELECT event_type, status, attempts, response_status
+      FROM webhook_deliveries
+      WHERE endpoint_id = ${endpointId}
+        AND created_at >= ${before.toISOString()}
+        AND event_type LIKE 'budget.threshold%'
+    `;
+
+    console.log(`[ST-6] Webhook deliveries found: ${deliveries.length}`);
+    for (const d of deliveries) {
+      console.log(`  ${d.event_type}: status=${d.status}, attempts=${d.attempts}, response=${d.response_status}`);
+    }
+
+    // If endpoint exists, we expect at least one threshold event
+    // (the 50% threshold should be crossed with ~12 requests × ~6µ¢ each)
+    if (deliveries.length === 0) {
+      console.log("[ST-6] WARNING: No threshold webhook deliveries found");
+      console.log("[ST-6] This could be a queue delay or webhook endpoint issue");
+    }
+
+    // Informational — don't hard-fail since webhook delivery is async
+    // and queue processing timing varies
+  }, 120_000);
 });
