@@ -509,21 +509,15 @@ describe("getCurrentUserId circuit breaker classification (Slice 1i)", () => {
 });
 
 describe("AUTH-1: dev fallback blocked in production NODE_ENV", () => {
-  const originalDevMode = process.env.NULLSPEND_DEV_MODE;
-  const originalDevActor = process.env.NULLSPEND_DEV_ACTOR;
-  const originalNodeEnv = process.env.NODE_ENV;
-
   afterEach(() => {
-    process.env.NULLSPEND_DEV_MODE = originalDevMode;
-    process.env.NULLSPEND_DEV_ACTOR = originalDevActor;
-    process.env.NODE_ENV = originalNodeEnv;
+    vi.unstubAllEnvs();
     vi.resetAllMocks();
   });
 
   it("blocks dev fallback even when NULLSPEND_DEV_MODE=true if NODE_ENV=production", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.NULLSPEND_DEV_MODE = "true";
-    process.env.NULLSPEND_DEV_ACTOR = "attacker-actor";
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NULLSPEND_DEV_MODE", "true");
+    vi.stubEnv("NULLSPEND_DEV_ACTOR", "attacker-actor");
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
@@ -540,9 +534,9 @@ describe("AUTH-1: dev fallback blocked in production NODE_ENV", () => {
   });
 
   it("blocks dev fallback on SupabaseEnvError in production even with NULLSPEND_DEV_MODE=true", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.NULLSPEND_DEV_MODE = "true";
-    process.env.NULLSPEND_DEV_ACTOR = "attacker-actor";
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NULLSPEND_DEV_MODE", "true");
+    vi.stubEnv("NULLSPEND_DEV_ACTOR", "attacker-actor");
     mockedCreateServerSupabaseClient.mockRejectedValue(
       new SupabaseEnvError("NEXT_PUBLIC_SUPABASE_URL"),
     );
@@ -551,9 +545,9 @@ describe("AUTH-1: dev fallback blocked in production NODE_ENV", () => {
   });
 
   it("blocks dev fallback on circuit breaker open in production even with NULLSPEND_DEV_MODE=true", async () => {
-    process.env.NODE_ENV = "production";
-    process.env.NULLSPEND_DEV_MODE = "true";
-    process.env.NULLSPEND_DEV_ACTOR = "attacker-actor";
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NULLSPEND_DEV_MODE", "true");
+    vi.stubEnv("NULLSPEND_DEV_ACTOR", "attacker-actor");
 
     // Trip the breaker with 5 service failures
     _supabaseCircuitForTesting._resetForTesting();
@@ -583,9 +577,9 @@ describe("AUTH-1: dev fallback blocked in production NODE_ENV", () => {
   });
 
   it("allows dev fallback when NODE_ENV is not production", async () => {
-    process.env.NODE_ENV = "development";
-    process.env.NULLSPEND_DEV_MODE = "true";
-    process.env.NULLSPEND_DEV_ACTOR = "dev-actor-ok";
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("NULLSPEND_DEV_MODE", "true");
+    vi.stubEnv("NULLSPEND_DEV_ACTOR", "dev-actor-ok");
     mockedCreateServerSupabaseClient.mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
