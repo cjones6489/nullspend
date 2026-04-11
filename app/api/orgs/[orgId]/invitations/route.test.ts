@@ -67,6 +67,17 @@ vi.mock("@/lib/db/client", () => ({
   })),
 }));
 
+/* ---- Supabase mock (ISSUE-014: self-invite prevention) ---- */
+const mockGetUser = vi.fn().mockResolvedValue({
+  data: { user: { id: "user-1", email: "admin@org.com" } },
+  error: null,
+});
+vi.mock("@/lib/auth/supabase", () => ({
+  createServerSupabaseClient: vi.fn().mockResolvedValue({
+    auth: { getUser: () => mockGetUser() },
+  }),
+}));
+
 /* ---- Invitation token helpers ---- */
 const mockGenerateInviteToken = vi.fn().mockReturnValue("tok_raw_abc123");
 const mockHashInviteToken = vi.fn().mockReturnValue("sha256_hashed");
@@ -314,5 +325,37 @@ describe("POST /api/orgs/[orgId]/invitations", () => {
     // The key assertion: seat limit helpers should NOT have been called
     expect(mockResolveOrgTier).not.toHaveBeenCalled();
     expect(mockAssertCountBelowLimit).not.toHaveBeenCalled();
+  });
+
+  it("ISSUE-014: returns 400 when inviting yourself", async () => {
+    vi.mocked(readJsonBody).mockResolvedValue({ email: "admin@org.com", role: "member" });
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: "user-1", email: "admin@org.com" } },
+      error: null,
+    });
+
+    const req = new Request("http://localhost/api/orgs/" + ORG_ID + "/invitations", { method: "POST" });
+    const res = await POST(req, makeContext(ORG_ID));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("validation_error");
+    expect(body.error.message).toContain("cannot invite yourself");
+    // Should not reach DB at all
+    expect(mockInsertReturning).not.toHaveBeenCalled();
+  });
+
+  it("ISSUE-014: self-invite check is case-insensitive", async () => {
+    vi.mocked(readJsonBody).mockResolvedValue({ email: "Admin@ORG.com", role: "member" });
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { id: "user-1", email: "admin@org.com" } },
+      error: null,
+    });
+
+    const req = new Request("http://localhost/api/orgs/" + ORG_ID + "/invitations", { method: "POST" });
+    const res = await POST(req, makeContext(ORG_ID));
+
+    expect(res.status).toBe(400);
+    expect(mockInsertReturning).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, sql, count } from "drizzle-orm";
 
 import { resolveSessionContext } from "@/lib/auth/session";
+import { createServerSupabaseClient } from "@/lib/auth/supabase";
 import { assertOrgRole } from "@/lib/auth/org-authorization";
 import { getDb } from "@/lib/db/client";
 import { orgInvitations, orgMemberships } from "@nullspend/db";
@@ -77,6 +78,16 @@ export async function POST(request: Request, context: RouteContext) {
 
     const body = await readJsonBody(request);
     const input = inviteMemberSchema.parse(body);
+
+    // ISSUE-014: Prevent self-invite
+    const supabase = await createServerSupabaseClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.email && user.email.toLowerCase() === input.email.toLowerCase()) {
+      return NextResponse.json(
+        { error: { code: "validation_error", message: "You cannot invite yourself.", details: null } },
+        { status: 400 },
+      );
+    }
 
     const db = getDb();
 
