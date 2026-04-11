@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getTableColumns } from "drizzle-orm";
-import { budgets, costEvents, actions, apiKeys, slackConfigs, webhookEndpoints } from "./schema";
+import { budgets, costEvents, actions, apiKeys, slackConfigs, webhookEndpoints, reconciledRequests } from "./schema";
 import type { BudgetRow, NewBudgetRow, CostEventRow, NewCostEventRow } from "./schema";
 
 describe("budgets table schema", () => {
@@ -310,5 +310,35 @@ describe("webhookEndpoints table schema", () => {
 
   it("secretRotatedAt is nullable", () => {
     expect(cols.secretRotatedAt.notNull).toBe(false);
+  });
+});
+
+// T32: PXY-2 — reconciled_requests schema structure
+describe("reconciledRequests table schema", () => {
+  const cols = getTableColumns(reconciledRequests);
+
+  it("has all expected columns", () => {
+    const names = Object.keys(cols);
+    expect(names).toContain("requestId");
+    expect(names).toContain("entityType");
+    expect(names).toContain("entityId");
+    expect(names).toContain("orgId");
+    expect(names).toContain("costMicrodollars");
+    expect(names).toContain("reconciledAt");
+  });
+
+  it("requestId is not nullable text", () => {
+    expect(cols.requestId.dataType).toBe("string");
+    expect(cols.requestId.notNull).toBe(true);
+  });
+
+  it("costMicrodollars is not nullable bigint", () => {
+    expect(cols.costMicrodollars.dataType).toBe("number");
+    expect(cols.costMicrodollars.notNull).toBe(true);
+  });
+
+  it("reconciledAt defaults to now", () => {
+    expect(cols.reconciledAt.hasDefault).toBe(true);
+    expect(cols.reconciledAt.notNull).toBe(true);
   });
 });

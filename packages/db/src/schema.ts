@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -481,3 +482,25 @@ export const customerSettings = pgTable("customer_settings", {
 
 export type CustomerSettingsRow = typeof customerSettings.$inferSelect;
 export type NewCustomerSettingsRow = typeof customerSettings.$inferInsert;
+
+/**
+ * PXY-2: Idempotent budget spend reconciliation.
+ *
+ * Dedup table that makes `updateBudgetSpend` safe to retry. Each row
+ * represents a successfully reconciled (request_id, entity) pair.
+ * ON CONFLICT DO NOTHING prevents double-counting on queue retries,
+ * outbox alarm retries, or manual recovery.
+ *
+ * Pruned after 7 days by the DO alarm handler.
+ */
+export const reconciledRequests = pgTable("reconciled_requests", {
+  requestId: text("request_id").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  orgId: uuid("org_id").notNull(),
+  costMicrodollars: bigint("cost_microdollars", { mode: "number" }).notNull(),
+  reconciledAt: timestamp("reconciled_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.requestId, table.entityType, table.entityId] }),
+  index("reconciled_requests_reconciled_at_idx").on(table.reconciledAt),
+]);

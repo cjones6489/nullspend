@@ -91,6 +91,7 @@ export const ORG_ID_CLEANUP_TABLE_NAMES: ReadonlySet<string> = new Set([
   "audit_events",
   "budgets",
   "cost_events",
+  "reconciled_requests",
   "sessions",
   "slack_configs",
   "subscriptions",
