@@ -188,7 +188,9 @@ describe("End-to-end cost verification", () => {
     expect(rows.length).toBe(0);
   }, 15_000);
 
-  it("invalid model (400) does NOT create a cost_events row", async () => {
+  // PXY-3: Unknown models pass through to provider. OpenAI returns 404 for
+  // unknown models. Error responses are NOT cost-tracked, so no cost event.
+  it("unknown model error does NOT create a cost_events row (PXY-3)", async () => {
     const before = new Date();
 
     const res = await fetch(`${BASE}/v1/chat/completions`, {
@@ -201,7 +203,9 @@ describe("End-to-end cost verification", () => {
       }),
     });
 
-    expect(res.status).toBe(400);
+    // Provider rejects the model — proxy forwards the error (4xx)
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
     await res.text();
 
     await new Promise((r) => setTimeout(r, 3_000));

@@ -104,7 +104,9 @@ describe("Anthropic proxy smoke tests", () => {
     expect(body).toHaveProperty("usage");
   }, 30_000);
 
-  it("unknown Anthropic model returns 400 invalid_model", async () => {
+  // PXY-3: Unknown models now pass through to the provider (estimated cost, not rejected).
+  // Anthropic returns 400 for unknown models. The proxy forwards the provider error.
+  it("unknown Anthropic model passes through to provider (PXY-3)", async () => {
     const res = await fetch(`${BASE}/v1/messages`, {
       method: "POST",
       headers: anthropicAuthHeaders(),
@@ -115,9 +117,9 @@ describe("Anthropic proxy smoke tests", () => {
       }),
     });
 
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error.code).toBe("invalid_model");
+    // Provider rejects the model — proxy forwards the error
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
   });
 
   it("invalid x-nullspend-key returns 401", async () => {
