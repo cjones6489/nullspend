@@ -8,25 +8,25 @@ Tracks which sections of the codebase have received deep adversarial review (Cod
 
 | Section | Codex Challenge | CSO Review | QA Pass | Test Count | Risk Level |
 |---------|:-:|:-:|:-:|---:|---|
-| `packages/sdk/src/` | 2026-04-10 | 2026-04-10 | — | 457 | HIGH (client-side cost tracking) |
-| `apps/proxy/src/lib/` | 2026-04-10 | 2026-04-10 | — | 1,377 | CRITICAL (money path) |
-| `apps/proxy/src/routes/` | partial | 2026-04-10 | — | (incl. above) | CRITICAL (request handling) |
-| `apps/proxy/src/durable-objects/` | partial | 2026-04-10 | — | (incl. above) | CRITICAL (budget state) |
-| `lib/auth/` | — | 2026-04-10 | 2026-04-10 | ~50 | CRITICAL (authN/authZ) |
-| `lib/actions/` | — | 2026-04-10 | 2026-04-10 | ~80 | HIGH (HITL state machine) |
-| `lib/margins/` | — | — | 2026-04-10 | ~120 | HIGH (Stripe data, encryption) |
-| `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH (budget increase side-effects) |
-| `lib/webhooks/` | — | 2026-04-10 | — | ~40 | MED (dispatch, signing) |
+| `packages/sdk/src/` | 2026-04-10 | 2026-04-10 | — | 457 | HIGH — **CLEAN** |
+| `apps/proxy/src/lib/` | 2026-04-10 | 2026-04-10 | — | 1,406 | CRITICAL — **CLEAN** |
+| `apps/proxy/src/routes/` | 2026-04-10 | 2026-04-10 | — | (incl. above) | CRITICAL — **CLEAN** |
+| `apps/proxy/src/durable-objects/` | 2026-04-10 | 2026-04-10 | — | 83 (DO pool) | CRITICAL — **CLEAN** |
+| `lib/auth/` | — | 2026-04-10 | 2026-04-10 | ~50 | CRITICAL — **NEEDS CODEX** |
+| `lib/actions/` | — | 2026-04-10 | 2026-04-10 | ~80 | HIGH — **NEEDS CODEX** |
+| `lib/margins/` | — | — | 2026-04-10 | ~120 | HIGH — **NEEDS CODEX** |
+| `lib/budgets/` | — | 2026-04-10 | 2026-04-10 | ~30 | HIGH |
+| `lib/webhooks/` | — | 2026-04-10 | — | ~40 | MED |
 | `lib/slack/` | — | — | 2026-04-10 | ~30 | LOW |
-| `app/api/` (routes) | — | 2026-04-10 | 2026-04-10 | ~300 | HIGH (API surface) |
-| `packages/cost-engine/` | — | — | — | 700 | HIGH (pricing accuracy) |
-| `packages/db/` | — | — | — | ~10 | MED (schema validation) |
-| `packages/claude-agent/` | — | — | — | 49 | MED (config transformer) |
+| `app/api/` (routes) | — | 2026-04-10 | 2026-04-10 | ~300 | HIGH — **NEEDS CODEX** |
+| `packages/cost-engine/` | — | — | — | 700 | HIGH (well-tested) |
+| `packages/db/` | — | — | — | ~40 | MED |
+| `packages/claude-agent/` | — | — | — | 49 | MED |
 | `packages/mcp-server/` | — | — | — | ~30 | MED |
 | `packages/mcp-proxy/` | — | — | — | ~30 | MED |
 | `packages/docs-mcp-server/` | — | — | — | ~60 | LOW |
-| `proxy.ts` (Next.js) | — | 2026-04-10 | 2026-04-10 | — | MED (CSP, routing) |
-| Dashboard components | — | — | 2026-04-10 | ~200 | LOW (UI only) |
+| `proxy.ts` (Next.js) | — | 2026-04-10 | 2026-04-10 | — | MED |
+| Dashboard components | — | — | 2026-04-10 | ~200 | LOW |
 
 ## Audit Types
 
