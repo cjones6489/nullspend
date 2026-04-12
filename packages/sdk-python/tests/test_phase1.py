@@ -32,6 +32,7 @@ from nullspend import (
     MutateActionResponse,
     RequestBudgetIncreaseOptions,
     BudgetIncreaseResult,
+    ProposeAndWaitOptions,
     validate_customer_id,
     CreateActionInput,
 )
@@ -1028,3 +1029,269 @@ class TestListCostEventsLimitZero:
         result = ns.list_cost_events(ListCostEventsOptions(limit=0))
         assert result.data == []
         ns.close()
+
+
+# ---- Coverage gap fills ----
+
+
+class TestWaitForDecisionTimeout:
+    @respx.mock
+    def test_sync_timeout_raises_poll_timeout_error(self):
+        """wait_for_decision raises PollTimeoutError when deadline passes."""
+        respx.get(f"{BASE}/api/actions/act_timeout").mock(
+            return_value=httpx.Response(200, json={"data": {
+                "id": "act_timeout", "agentId": "a", "actionType": "send_email",
+                "status": "pending", "payload": {}, "metadata": None,
+                "createdAt": "", "approvedAt": None, "rejectedAt": None,
+                "executedAt": None, "expiresAt": None, "expiredAt": None,
+                "approvedBy": None, "rejectedBy": None, "result": None,
+                "errorMessage": None, "environment": None, "sourceFramework": None,
+            }})
+        )
+        ns = NullSpend(api_key="key")
+        with pytest.raises(PollTimeoutError) as exc:
+            ns.wait_for_decision("act_timeout", poll_interval_s=0.01, timeout_s=0.05)
+        assert exc.value.action_id == "act_timeout"
+        assert exc.value.timeout_ms == 50
+        ns.close()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_async_timeout_raises_poll_timeout_error(self):
+        respx.get(f"{BASE}/api/actions/act_timeout").mock(
+            return_value=httpx.Response(200, json={"data": {
+                "id": "act_timeout", "agentId": "a", "actionType": "send_email",
+                "status": "pending", "payload": {}, "metadata": None,
+                "createdAt": "", "approvedAt": None, "rejectedAt": None,
+                "executedAt": None, "expiresAt": None, "expiredAt": None,
+                "approvedBy": None, "rejectedBy": None, "result": None,
+                "errorMessage": None, "environment": None, "sourceFramework": None,
+            }})
+        )
+        async with AsyncNullSpend(api_key="key") as ns:
+            with pytest.raises(PollTimeoutError) as exc:
+                await ns.wait_for_decision("act_timeout", poll_interval_s=0.01, timeout_s=0.05)
+            assert exc.value.action_id == "act_timeout"
+
+
+class TestProposeAndWaitExecutorFailure:
+    @respx.mock
+    def test_executor_raises_marks_failed_and_reraises(self):
+        """When executor raises, action is marked failed and original error propagates."""
+        respx.post(f"{BASE}/api/actions").mock(
+            return_value=httpx.Response(201, json={
+                "id": "act_fail", "status": "pending", "expiresAt": None,
+            })
+        )
+        respx.get(f"{BASE}/api/actions/act_fail").mock(
+            return_value=httpx.Response(200, json={"data": {
+                "id": "act_fail", "agentId": "a", "actionType": "send_email",
+                "status": "approved", "payload": {}, "metadata": None,
+                "createdAt": "", "approvedAt": "now", "rejectedAt": None,
+                "executedAt": None, "expiresAt": None, "expiredAt": None,
+                "approvedBy": None, "rejectedBy": None, "result": None,
+                "errorMessage": None, "environment": None, "sourceFramework": None,
+            }})
+        )
+        mark_route = respx.post(f"{BASE}/api/actions/act_fail/result")
+        mark_calls: list[dict] = []
+        def capture_mark(request):
+            mark_calls.append(json.loads(request.content))
+            return httpx.Response(200, json={"id": "act_fail", "status": "failed"})
+        mark_route.mock(side_effect=capture_mark)
+
+        ns = NullSpend(api_key="key")
+
+        def bad_executor(ctx):
+            raise ValueError("executor blew up")
+
+        with pytest.raises(ValueError, match="executor blew up"):
+            ns.propose_and_wait(ProposeAndWaitOptions(
+                agent_id="a", action_type="send_email", payload={},
+                execute=bad_executor, poll_interval_s=0.01, timeout_s=5.0,
+            ))
+
+        # Should have called mark_result twice: "executing" then "failed"
+        assert len(mark_calls) == 2
+        assert mark_calls[0]["status"] == "executing"
+        assert mark_calls[1]["status"] == "failed"
+        assert "executor blew up" in mark_calls[1]["errorMessage"]
+        ns.close()
+
+
+class TestProposeAndWaitNonDictResult:
+    @respx.mock
+    def test_non_dict_result_wrapped(self):
+        """Non-dict executor return is wrapped in {'value': result}."""
+        respx.post(f"{BASE}/api/actions").mock(
+            return_value=httpx.Response(201, json={
+                "id": "act_wrap", "status": "pending", "expiresAt": None,
+            })
+        )
+        respx.get(f"{BASE}/api/actions/act_wrap").mock(
+            return_value=httpx.Response(200, json={"data": {
+                "id": "act_wrap", "agentId": "a", "actionType": "send_email",
+                "status": "approved", "payload": {}, "metadata": None,
+                "createdAt": "", "approvedAt": "now", "rejectedAt": None,
+                "executedAt": None, "expiresAt": None, "expiredAt": None,
+                "approvedBy": None, "rejectedBy": None, "result": None,
+                "errorMessage": None, "environment": None, "sourceFramework": None,
+            }})
+        )
+        mark_calls: list[dict] = []
+        mark_route = respx.post(f"{BASE}/api/actions/act_wrap/result")
+        def capture(request):
+            mark_calls.append(json.loads(request.content))
+            return httpx.Response(200, json={"id": "act_wrap", "status": "executed"})
+        mark_route.mock(side_effect=capture)
+
+        ns = NullSpend(api_key="key")
+        result = ns.propose_and_wait(ProposeAndWaitOptions(
+            agent_id="a", action_type="send_email", payload={},
+            execute=lambda ctx: 42,  # non-dict return
+            poll_interval_s=0.01, timeout_s=5.0,
+        ))
+
+        assert result == 42
+        # The "executed" mark_result should have wrapped it
+        executed_call = mark_calls[1]  # [0]=executing, [1]=executed
+        assert executed_call["result"] == {"value": 42}
+        ns.close()
+
+
+class TestProposeAndWait409OnMarkExecuting:
+    @respx.mock
+    def test_409_on_mark_executing_is_tolerated(self):
+        """409 on mark_executing is swallowed if action is already executing."""
+        respx.post(f"{BASE}/api/actions").mock(
+            return_value=httpx.Response(201, json={
+                "id": "act_409", "status": "pending", "expiresAt": None,
+            })
+        )
+        call_count = {"get": 0}
+        def get_action_handler(request):
+            call_count["get"] += 1
+            # First call: approved (for wait_for_decision)
+            # Second call: executing (for 409 recovery check)
+            status = "approved" if call_count["get"] == 1 else "executing"
+            return httpx.Response(200, json={"data": {
+                "id": "act_409", "agentId": "a", "actionType": "send_email",
+                "status": status, "payload": {}, "metadata": None,
+                "createdAt": "", "approvedAt": "now", "rejectedAt": None,
+                "executedAt": None, "expiresAt": None, "expiredAt": None,
+                "approvedBy": None, "rejectedBy": None, "result": None,
+                "errorMessage": None, "environment": None, "sourceFramework": None,
+            }})
+        respx.get(f"{BASE}/api/actions/act_409").mock(side_effect=get_action_handler)
+
+        mark_count = {"n": 0}
+        def mark_handler(request):
+            mark_count["n"] += 1
+            if mark_count["n"] == 1:
+                # First mark_result (executing) → 409
+                return httpx.Response(409, json={"error": {"message": "Conflict"}})
+            return httpx.Response(200, json={"id": "act_409", "status": "executed"})
+        respx.post(f"{BASE}/api/actions/act_409/result").mock(side_effect=mark_handler)
+
+        ns = NullSpend(api_key="key")
+        result = ns.propose_and_wait(ProposeAndWaitOptions(
+            agent_id="a", action_type="send_email", payload={},
+            execute=lambda ctx: {"done": True},
+            poll_interval_s=0.01, timeout_s=5.0,
+        ))
+        assert result == {"done": True}
+        ns.close()
+
+
+class TestIdempotencyKeyStableAcrossRetries:
+    @respx.mock
+    def test_same_idempotency_key_on_retry(self):
+        """Idempotency key should be the same across retry attempts for one call."""
+        keys_seen = []
+        route = respx.post(f"{BASE}/api/cost-events")
+        def capture(request):
+            keys_seen.append(request.headers.get("idempotency-key"))
+            if len(keys_seen) < 3:
+                return httpx.Response(500, text="Internal")
+            return httpx.Response(201, json={"id": "evt_1"})
+        route.mock(side_effect=capture)
+
+        ns = NullSpend(api_key="key", retry_base_delay_s=0.001)
+        ns.report_cost(CostEventInput(
+            provider="openai", model="gpt-4o",
+            input_tokens=100, output_tokens=50, cost_microdollars=1500,
+        ))
+        assert len(keys_seen) == 3
+        # All retries use the same key
+        assert keys_seen[0] == keys_seen[1] == keys_seen[2]
+        assert keys_seen[0].startswith("ns_")
+        ns.close()
+
+
+class TestAsyncTransportErrorRetry:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_async_retries_on_transport_error(self):
+        route = respx.get(f"{BASE}/api/budgets/status")
+        route.side_effect = [
+            httpx.ConnectError("Connection refused"),
+            httpx.Response(200, json={"entities": []}),
+        ]
+        async with AsyncNullSpend(api_key="key") as ns:
+            status = await ns.check_budget()
+            assert len(status.entities) == 0
+            assert route.call_count == 2
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_async_raises_after_transport_retries_exhausted(self):
+        respx.get(f"{BASE}/api/budgets/status").mock(
+            side_effect=httpx.ConnectError("Connection refused"),
+        )
+        async with AsyncNullSpend(api_key="key") as ns:
+            with pytest.raises(NullSpendError, match="network error"):
+                await ns.check_budget()
+
+
+class TestAsyncListBudgets:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_budgets(self):
+        respx.get(f"{BASE}/api/budgets").mock(
+            return_value=httpx.Response(200, json={
+                "data": [{
+                    "id": "b1", "entityType": "org", "entityId": "org-1",
+                    "maxBudgetMicrodollars": 10_000_000, "spendMicrodollars": 0,
+                    "policy": "refillable", "resetInterval": "monthly",
+                    "currentPeriodStart": "2026-04-01", "thresholdPercentages": [80],
+                    "velocityLimitMicrodollars": None, "velocityWindowSeconds": None,
+                    "velocityCooldownSeconds": None, "sessionLimitMicrodollars": None,
+                    "createdAt": "2026-01-01", "updatedAt": "2026-04-01",
+                }]
+            })
+        )
+        async with AsyncNullSpend(api_key="key") as ns:
+            result = await ns.list_budgets()
+            assert len(result.data) == 1
+            assert result.data[0].max_budget_microdollars == 10_000_000
+
+
+class TestAsyncGetCostSummary:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_cost_summary(self):
+        respx.get(f"{BASE}/api/cost-events/summary?period=30d").mock(
+            return_value=httpx.Response(200, json={"data": {
+                "daily": [], "models": {}, "providers": {},
+                "totals": {"totalCostMicrodollars": 0},
+            }})
+        )
+        async with AsyncNullSpend(api_key="key") as ns:
+            result = await ns.get_cost_summary()
+            assert result.totals["totalCostMicrodollars"] == 0
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_period(self):
+        async with AsyncNullSpend(api_key="key") as ns:
+            with pytest.raises(NullSpendError, match="Invalid period"):
+                await ns.get_cost_summary("1y")
