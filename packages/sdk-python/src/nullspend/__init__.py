@@ -1,6 +1,13 @@
 from nullspend.client import NullSpend
 from nullspend.async_client import AsyncNullSpend
 from nullspend._cost_reporter import CostReporter
+from nullspend._cost_calculator import (
+    calculate_openai_cost_event,
+    calculate_anthropic_cost_event,
+    get_model_pricing,
+    is_known_model,
+    cost_component,
+)
 from nullspend.errors import (
     NullSpendError,
     PollTimeoutError,
@@ -77,6 +84,12 @@ __all__ = [
     "ProposeAndWaitOptions",
     "RequestBudgetIncreaseOptions",
     "validate_customer_id",
+    # Cost calculation
+    "calculate_openai_cost_event",
+    "calculate_anthropic_cost_event",
+    "get_model_pricing",
+    "is_known_model",
+    "cost_component",
 ]
 
 __version__ = "0.2.0"

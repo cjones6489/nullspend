@@ -35,6 +35,9 @@ Repository = "https://github.com/NullSpend/nullspend"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+nullspend = ["_pricing_data.json", "py.typed"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
