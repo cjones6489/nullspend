@@ -70,7 +70,20 @@ Endpoints can be configured with a payload mode that controls how `cost_event.cr
 
 Payload mode only affects `cost_event.created` events. All other event types always use full payloads regardless of the endpoint's mode setting.
 
-**Thin payload example:**
+### When to use thin mode
+
+**Use thin** when you process high volumes of cost events (100+/minute) and want to minimize webhook bandwidth. Thin payloads are ~200 bytes vs ~2KB for full payloads. Your handler receives a reference and fetches the full event on demand — useful when you only need to process a subset of events or want to batch-fetch.
+
+**Use full (default)** when you need all event data immediately and volume is manageable. Most integrations should start here. No extra API call needed to process the event.
+
+| Scenario | Recommended mode |
+|---|---|
+| Logging/analytics pipeline that processes every event | Full |
+| High-volume stream, filter then fetch | Thin |
+| Slack/PagerDuty alerting on specific conditions | Full |
+| Billing reconciliation (batch, periodic) | Thin |
+
+### Thin payload example
 
 ```json
 {
@@ -86,7 +99,18 @@ Payload mode only affects `cost_event.created` events. All other event types alw
 }
 ```
 
-Fetch the full event data using the `url` field with your API key. See [Webhooks Overview](overview.md) for more on payload modes.
+### Fetching the full event from a thin payload
+
+Use the `related_object.url` path with your API key:
+
+```bash
+curl "https://www.nullspend.dev/api/cost-events?requestId=req_xyz&provider=openai" \
+  -H "Authorization: Bearer ns_live_..."
+```
+
+The response contains the full cost event data — the same shape as a full-mode webhook payload's `data.object`.
+
+**Tip:** If you receive many thin events, batch your fetch calls rather than calling the API per-event. The cost events list endpoint supports filtering by `requestId`, so you can fetch multiple events efficiently.
 
 ## Failure Handling
 

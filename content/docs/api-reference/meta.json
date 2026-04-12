@@ -13,6 +13,8 @@
     "api-keys-api",
     "webhooks-api",
     "actions-api",
-    "margins-api"
+    "margins-api",
+    "tool-costs-api",
+    "audit-log-api"
   ]
 }
