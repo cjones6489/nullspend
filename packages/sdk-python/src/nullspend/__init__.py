@@ -19,6 +19,7 @@ from nullspend.errors import (
     VelocityExceededError,
     TagBudgetExceededError,
 )
+from nullspend._tracked_client import create_tracked_client
 from nullspend.types import (
     ActionRecord,
     ActionStatus,
@@ -34,6 +35,7 @@ from nullspend.types import (
     CostSummaryResponse,
     CreateActionInput,
     CreateActionResponse,
+    CustomerSession,
     ListBudgetsResponse,
     ListCostEventsOptions,
     ListCostEventsResponse,
@@ -84,6 +86,8 @@ __all__ = [
     "ProposeAndWaitOptions",
     "RequestBudgetIncreaseOptions",
     "validate_customer_id",
+    "CustomerSession",
+    "create_tracked_client",
     # Cost calculation
     "calculate_openai_cost_event",
     "calculate_anthropic_cost_event",

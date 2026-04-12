@@ -304,6 +304,14 @@ class RequestBudgetIncreaseOptions:
 
 
 @dataclass
+class CustomerSession:
+    """A customer-scoped session with pre-bound tracked clients."""
+    openai: Any  # httpx.Client
+    anthropic: Any  # httpx.Client
+    customer_id: str
+
+
+@dataclass
 class BudgetIncreaseResult:
     action_id: str
     requested_amount_microdollars: int

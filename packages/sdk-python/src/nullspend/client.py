@@ -26,6 +26,7 @@ from nullspend.types import (
     CostSummaryResponse,
     CreateActionInput,
     CreateActionResponse,
+    CustomerSession,
     ListBudgetsResponse,
     ListCostEventsOptions,
     ListCostEventsResponse,
@@ -217,6 +218,7 @@ class NullSpend:
         api_key: str | None = None,
         *,
         config: NullSpendConfig | None = None,
+        proxy_url: str | None = None,
         api_version: str = "2026-04-01",
         request_timeout_s: float = 30.0,
         max_retries: int = 2,
@@ -259,7 +261,26 @@ class NullSpend:
             self._max_retries = min(10, max(0, max_retries))
             self._retry_base_delay_s = max(0, retry_base_delay_s)
 
+        # Validate proxy_url at construction time (fail-fast)
+        resolved_proxy = proxy_url or os.environ.get("NULLSPEND_PROXY_URL")
+        if resolved_proxy:
+            from urllib.parse import urlparse as _urlparse
+            parsed = _urlparse(resolved_proxy.rstrip("/"))
+            if parsed.scheme not in ("http", "https"):
+                raise NullSpendError(
+                    f"proxy_url must use http or https (got {parsed.scheme!r}). "
+                    f"Example: https://proxy.nullspend.dev"
+                )
+            if not parsed.hostname:
+                raise NullSpendError(
+                    f"proxy_url must be a valid absolute URL, got: {resolved_proxy!r}"
+                )
+            self._proxy_url: str | None = resolved_proxy.rstrip("/")
+        else:
+            self._proxy_url = None
+
         self._client = httpx.Client(timeout=self._timeout_s)
+        self._policy_caches: list[Any] = []
 
         # Wire CostReporter if config provided
         if cost_reporting is not None:
@@ -352,6 +373,132 @@ class NullSpend:
         """Gracefully shut down the cost reporter, flushing all pending events."""
         if self._cost_reporter is not None:
             self._cost_reporter.shutdown()
+
+    # ---- Tracked Clients ----
+
+    def create_tracked_client(
+        self,
+        provider: str,
+        *,
+        customer: str | None = None,
+        session_id: str | None = None,
+        tags: dict[str, str] | None = None,
+        trace_id: str | None = None,
+        action_id: str | None = None,
+        enforcement: bool = False,
+        session_limit_microdollars: int | None = None,
+        on_cost_error: Any | None = None,
+        on_denied: Any | None = None,
+    ) -> httpx.Client:
+        """Create an httpx.Client with automatic cost tracking for a provider.
+
+        Use as http_client for OpenAI/Anthropic SDKs:
+            client = OpenAI(http_client=ns.create_tracked_client("openai"))
+        """
+        from nullspend._tracked_client import create_tracked_client as _create
+        from nullspend._policy_cache import PolicyCache
+
+        policy_cache = None
+        if enforcement:
+            policy_cache = PolicyCache(
+                fetch_fn=lambda: self._request("GET", "/api/policy"),
+                on_error=on_cost_error,
+            )
+            self._policy_caches.append(policy_cache)
+
+        queue_fn = self._cost_reporter.enqueue if self._cost_reporter else self._queue_cost_direct
+
+        return _create(
+            provider,
+            proxy_url=self._proxy_url,
+            api_key=self._api_key,
+            api_version=self._api_version,
+            customer=customer,
+            session_id=session_id,
+            tags=tags,
+            trace_id=trace_id,
+            action_id=action_id,
+            enforcement=enforcement,
+            session_limit_microdollars=session_limit_microdollars,
+            policy_cache=policy_cache,
+            queue_cost=queue_fn,
+            on_cost_error=on_cost_error,
+            on_denied=on_denied,
+            timeout=self._timeout_s,
+        )
+
+    def _queue_cost_direct(self, event: CostEventInput) -> None:
+        """Fallback: report cost immediately when no CostReporter is configured."""
+        try:
+            self.report_cost(event)
+        except Exception:
+            pass
+
+    @property
+    def openai(self) -> httpx.Client:
+        """Tracked httpx.Client for OpenAI. Simplest integration path.
+
+        Usage:
+            from openai import OpenAI
+            client = OpenAI(http_client=ns.openai)
+        """
+        if not hasattr(self, "_openai_client") or self._openai_client is None:
+            self._openai_client = self.create_tracked_client("openai")
+        return self._openai_client
+
+    @property
+    def anthropic(self) -> httpx.Client:
+        """Tracked httpx.Client for Anthropic. Simplest integration path.
+
+        Usage:
+            from anthropic import Anthropic
+            client = Anthropic(http_client=ns.anthropic)
+        """
+        if not hasattr(self, "_anthropic_client") or self._anthropic_client is None:
+            self._anthropic_client = self.create_tracked_client("anthropic")
+        return self._anthropic_client
+
+    def customer(
+        self,
+        customer_id: str,
+        *,
+        tags: dict[str, str] | None = None,
+        session_id: str | None = None,
+        session_limit_microdollars: int | None = None,
+        enforcement: bool = False,
+        on_cost_error: Any | None = None,
+        on_denied: Any | None = None,
+    ) -> CustomerSession:
+        """Create a customer-scoped session with tracked clients.
+
+        Usage:
+            session = ns.customer("acme-corp")
+            openai_client = OpenAI(http_client=session.openai)
+        """
+        from nullspend.types import validate_customer_id
+        validated_id = validate_customer_id(customer_id)
+
+        cache: dict[str, httpx.Client] = {}
+
+        def get_client(provider: str) -> httpx.Client:
+            if provider not in cache:
+                cache[provider] = self.create_tracked_client(
+                    provider,
+                    customer=validated_id,
+                    tags=tags,
+                    session_id=session_id,
+                    session_limit_microdollars=session_limit_microdollars,
+                    enforcement=enforcement,
+                    on_cost_error=on_cost_error,
+                    on_denied=on_denied,
+                )
+            return cache[provider]
+
+        return CustomerSession(
+            openai=get_client("openai"),
+            anthropic=get_client("anthropic"),
+            customer_id=validated_id,
+        )
 
     # ---- Budget Status ----
 
