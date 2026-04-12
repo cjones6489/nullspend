@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -268,6 +269,47 @@ class TestCostEvents:
         result = ns.list_cost_events(ListCostEventsOptions(limit=5))
         assert result.cursor is not None
         assert result.cursor["id"] == "evt_1"
+
+    @respx.mock
+    def test_list_cost_events_cursor_dict_round_trip(self, ns):
+        """Response cursor (dict) can be passed straight back without json.dumps."""
+        cursor_dict = {"createdAt": "2026-03-27T00:00:00Z", "id": "evt_1"}
+        cursor_json = json.dumps(cursor_dict)
+
+        respx.get(f"{BASE}/api/cost-events?limit=5").mock(
+            return_value=httpx.Response(200, json={
+                "data": [],
+                "cursor": cursor_dict,
+            })
+        )
+        respx.get(f"{BASE}/api/cost-events?limit=5&cursor={quote(cursor_json)}").mock(
+            return_value=httpx.Response(200, json={
+                "data": [],
+                "cursor": None,
+            })
+        )
+
+        page1 = ns.list_cost_events(ListCostEventsOptions(limit=5))
+        assert page1.cursor == cursor_dict
+
+        # Pass the dict cursor directly — SDK should json.dumps internally
+        page2 = ns.list_cost_events(ListCostEventsOptions(limit=5, cursor=page1.cursor))
+        assert page2.cursor is None
+
+    @respx.mock
+    def test_list_cost_events_cursor_string_pass_through(self, ns):
+        """String cursor is passed through unchanged (backward compat)."""
+        cursor_str = '{"createdAt":"2026-03-27T00:00:00Z","id":"evt_1"}'
+
+        respx.get(f"{BASE}/api/cost-events?limit=5&cursor={quote(cursor_str)}").mock(
+            return_value=httpx.Response(200, json={
+                "data": [],
+                "cursor": None,
+            })
+        )
+
+        result = ns.list_cost_events(ListCostEventsOptions(limit=5, cursor=cursor_str))
+        assert result.cursor is None
 
 
 class TestRetries:

@@ -120,17 +120,9 @@
 
 **Completed:** 2026-04-08 on `feat/sdk-followups-from-f1-f11` (commit `5c6c55d`). SDK type widened to `string | { createdAt: string; id: string }`. `client.ts listCostEvents()` stringifies internally if it's an object. F6 inline `JSON.stringify(page1.cursor) as unknown as string` workaround removed — pass the response cursor straight back. 4 new unit tests cover string cursor pass-through, object cursor stringification, response cursor round-trip, and absent cursor. **Note:** Python SDK has the same bug — see follow-up below.
 
-### Align `ListCostEventsOptions.cursor` Python SDK type with server schema
+### ~~Align `ListCostEventsOptions.cursor` Python SDK type with server schema~~
 
-**What:** `packages/sdk-python/src/nullspend/types.py:143-145` — Python SDK's `ListCostEventsOptions.cursor` is typed as `str | None` but the response returns it as `dict[str, str] | None`. The Python docs at `content/docs/sdks/python.md:256` show users having to do `json.dumps(result.cursor)` themselves — same bug as the TS SDK had.
-
-**Why:** Symmetry with the TS SDK fix. Worth doing as a separate PR because it touches Python test suite + types.py + client.py + docs.
-
-**Context:** Mirror the TS approach: widen the dataclass field type to `str | dict[str, str] | None` and json.dumps internally in `list_cost_events()`. Update `test_client.py` and `content/docs/sdks/python.md`.
-
-**Effort:** S (~30 min)
-**Priority:** P4
-**Depends on:** None
+**Completed:** 2026-04-12. Widened `cursor` type to `str | dict[str, str] | None`, client json.dumps internally for dict cursors. Docs updated to remove manual `json.dumps` workaround. 2 new tests (dict round-trip + string pass-through), 42/42 passing.
 
 ### ~~Customer attribution end-to-end smoke test (F12)~~
 
@@ -174,24 +166,9 @@
 
 **Completed:** 2026-04-08 — `STRESS_INTENSITY=heavy pnpm test:stress stress-sdk-features.test.ts` ran clean: 42 passed + 1 skipped (the §7.7 `it.skip` covered by §6.9), 142.76s wall, ~$0.05. Pre-flight `jsonb:repair` showed 0 broken rows. Plan §19 step 13 acceptance criterion is now met across light + medium + heavy intensities. No race windows surfaced at 50 concurrent / 60 race / 100 batch events.
 
-### Publish @nullspend/sdk 0.2.1 + @nullspend/cost-engine 0.1.0 to npm
+### ~~Publish @nullspend/sdk 0.2.1 + @nullspend/cost-engine 0.1.0 to npm~~
 
-**Status:** Ready to publish. Version bumped, built, 457 tests pass. Blocked on `npm login` (interactive auth required).
-
-**Publish order** (cost-engine is a dependency of the SDK):
-```bash
-npm login --registry https://registry.npmjs.org/
-cd packages/cost-engine && pnpm publish --access public --no-git-checks
-cd ../sdk && pnpm publish --access public --no-git-checks
-```
-
-**Release notes for 0.2.1 must document:**
-1. **Shutdown race fix** — silent data loss when racing flush + shutdown
-2. **Proxy 429 interception fix** — **BREAKING behavior change**: proxy denials with `enforcement: true` now throw typed errors (`BudgetExceededError`, `VelocityExceededError`, `SessionLimitExceededError`, `TagBudgetExceededError`) instead of returning raw 429 responses. Any caller catching 429 manually will see typed errors thrown.
-
-**Effort:** XS (just run the commands above)
-**Priority:** P3 (P0 if there are external consumers)
-**Depends on:** npm login
+**Completed:** 2026-04-12. Both published to npm registry with granular access token (bypass 2FA). `@nullspend/cost-engine@0.1.0` published first (SDK dependency), then `@nullspend/sdk@0.2.1`.
 
 ### ~~§6.8 fail-open session limit test burns OpenAI calls per run~~
 

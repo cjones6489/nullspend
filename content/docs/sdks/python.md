@@ -250,10 +250,9 @@ result = ns.list_cost_events(ListCostEventsOptions(limit=10))
 for event in result.data:
     print(f"{event.model}: {event.input_tokens} in / {event.output_tokens} out — ${event.cost_microdollars / 1_000_000:.4f}")
 
-# Paginate with cursor
+# Paginate with cursor — pass it straight back, no json.dumps needed
 if result.cursor:
-    import json
-    next_page = ns.list_cost_events(ListCostEventsOptions(limit=10, cursor=json.dumps(result.cursor)))
+    next_page = ns.list_cost_events(ListCostEventsOptions(limit=10, cursor=result.cursor))
 ```
 
 ## Retry Behavior

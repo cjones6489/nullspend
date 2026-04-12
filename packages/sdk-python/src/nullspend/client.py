@@ -307,7 +307,11 @@ class NullSpend:
             if options.limit is not None:
                 params["limit"] = str(options.limit)
             if options.cursor is not None:
-                params["cursor"] = options.cursor
+                params["cursor"] = (
+                    json.dumps(options.cursor)
+                    if isinstance(options.cursor, dict)
+                    else options.cursor
+                )
         qs = urlencode(params) if params else ""
         path = f"/api/cost-events?{qs}" if qs else "/api/cost-events"
         data = self._request("GET", path)

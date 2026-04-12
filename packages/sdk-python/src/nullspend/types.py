@@ -142,7 +142,7 @@ class CostEventRecord:
 @dataclass
 class ListCostEventsOptions:
     limit: int | None = None
-    cursor: str | None = None
+    cursor: str | dict[str, str] | None = None
 
 
 @dataclass
