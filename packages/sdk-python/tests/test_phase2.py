@@ -544,3 +544,119 @@ class TestLongContextMath:
         expected = input_cost + output_cost
         # Allow +-1 for rounding
         assert abs(result.cost_microdollars - expected) <= 1
+
+
+# ---- Audit gap fills ----
+
+
+class TestAsyncSSETee:
+    @pytest.mark.asyncio
+    async def test_async_passthrough_integrity(self):
+        """Async tee yields all bytes unchanged while accumulating usage."""
+        from nullspend._sse_parser import aiter_sse_with_accumulator
+
+        chunks = [
+            b'data: {"model": "gpt-4o"}\n\n',
+            b'data: {"usage": {"prompt_tokens": 200, "completion_tokens": 80}}\n\n',
+            b'data: [DONE]\n\n',
+        ]
+
+        async def async_chunks():
+            for c in chunks:
+                yield c
+
+        tee_iter, acc = await aiter_sse_with_accumulator(async_chunks(), "openai")
+        collected = [chunk async for chunk in tee_iter]
+        assert collected == chunks
+
+        result = acc.finalize()
+        assert result.model == "gpt-4o"
+        assert result.usage["prompt_tokens"] == 200
+        assert result.usage["completion_tokens"] == 80
+
+    @pytest.mark.asyncio
+    async def test_async_empty_stream(self):
+        from nullspend._sse_parser import aiter_sse_with_accumulator
+
+        async def empty():
+            return
+            yield  # make it an async generator
+
+        tee_iter, acc = await aiter_sse_with_accumulator(empty(), "openai")
+        collected = [chunk async for chunk in tee_iter]
+        assert collected == []
+        result = acc.finalize()
+        assert result.usage is None
+
+    @pytest.mark.asyncio
+    async def test_async_anthropic_tee(self):
+        from nullspend._sse_parser import aiter_sse_with_accumulator
+
+        chunks = [
+            b'event: message_start\n',
+            b'data: {"type": "message_start", "message": {"model": "claude-sonnet-4-5", "usage": {"input_tokens": 50, "output_tokens": 0}}}\n\n',
+            b'event: message_delta\n',
+            b'data: {"type": "message_delta", "usage": {"output_tokens": 25}}\n\n',
+        ]
+
+        async def async_chunks():
+            for c in chunks:
+                yield c
+
+        tee_iter, acc = await aiter_sse_with_accumulator(async_chunks(), "anthropic")
+        collected = [chunk async for chunk in tee_iter]
+        assert collected == chunks
+
+        result = acc.finalize()
+        assert result.model == "claude-sonnet-4-5"
+        assert result.usage["output_tokens"] == 25
+
+
+class TestGoogleModelPricing:
+    def test_gemini_pro_pricing_accessible(self):
+        pricing = get_model_pricing("google", "gemini-2.5-pro")
+        assert pricing is not None
+        assert pricing["inputPerMTok"] > 0
+        assert pricing["outputPerMTok"] > 0
+
+    def test_gemini_flash_pricing_accessible(self):
+        pricing = get_model_pricing("google", "gemini-2.5-flash")
+        assert pricing is not None
+        assert pricing["inputPerMTok"] > 0
+
+    def test_google_is_known_model(self):
+        assert is_known_model("google", "gemini-2.5-pro")
+        assert is_known_model("google", "gemini-2.5-flash")
+        assert not is_known_model("google", "gemini-1.0")
+
+
+class TestFinalizePartialWithData:
+    def test_partial_openai_stream_preserves_model(self):
+        """Cancelled stream mid-read should preserve whatever was parsed."""
+        acc = SSEAccumulator("openai")
+        acc.feed(b'data: {"model": "gpt-4o", "choices": [{"delta": {"content": "Hi"}}]}\n\n')
+        # Stream cancelled before usage arrives
+        result = acc.finalize_partial()
+        assert result.model == "gpt-4o"
+        assert result.usage is None  # No usage yet
+        assert acc.finalized
+
+    def test_partial_anthropic_stream_preserves_usage(self):
+        acc = SSEAccumulator("anthropic")
+        acc.feed(b'event: message_start\n')
+        acc.feed(b'data: {"type": "message_start", "message": {"model": "claude-sonnet-4-5", "usage": {"input_tokens": 100, "output_tokens": 0}}}\n\n')
+        # Stream cancelled before message_delta or message_stop
+        result = acc.finalize_partial()
+        assert result.model == "claude-sonnet-4-5"
+        assert result.usage["input_tokens"] == 100
+        assert result.usage["output_tokens"] == 0  # No delta received
+
+    def test_partial_with_buffer_residue(self):
+        """Buffer has incomplete line when stream is cancelled."""
+        acc = SSEAccumulator("openai")
+        acc.feed(b'data: {"model": "gpt-4o"}\n\n')
+        acc.feed(b'data: {"usage": {"prompt_tok')  # Incomplete line in buffer
+        result = acc.finalize_partial()
+        assert result.model == "gpt-4o"
+        # The incomplete line couldn't be parsed, so no usage
+        assert result.usage is None
