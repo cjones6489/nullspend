@@ -1,14 +1,29 @@
 from nullspend.client import NullSpend
-from nullspend.errors import NullSpendError, PollTimeoutError, TimeoutError, RejectedError
+from nullspend.async_client import AsyncNullSpend
+from nullspend._cost_reporter import CostReporter
+from nullspend.errors import (
+    NullSpendError,
+    PollTimeoutError,
+    TimeoutError,
+    RejectedError,
+    BudgetExceededError,
+    MandateViolationError,
+    SessionLimitExceededError,
+    VelocityExceededError,
+    TagBudgetExceededError,
+)
 from nullspend.types import (
     ActionRecord,
     ActionStatus,
     ActionType,
     BudgetEntity,
+    BudgetIncreaseResult,
     BudgetRecord,
     BudgetStatus,
+    CostBreakdown,
     CostEventInput,
     CostEventRecord,
+    CostReportingConfig,
     CostSummaryResponse,
     CreateActionInput,
     CreateActionResponse,
@@ -16,24 +31,40 @@ from nullspend.types import (
     ListCostEventsOptions,
     ListCostEventsResponse,
     MarkResultInput,
+    MutateActionResponse,
     NullSpendConfig,
     ProposeAndWaitOptions,
+    RequestBudgetIncreaseOptions,
+    validate_customer_id,
 )
 
 __all__ = [
+    # Clients
     "NullSpend",
+    "AsyncNullSpend",
+    "CostReporter",
+    # Errors
     "NullSpendError",
     "PollTimeoutError",
-    "TimeoutError",  # backward-compatible alias for PollTimeoutError
+    "TimeoutError",
     "RejectedError",
+    "BudgetExceededError",
+    "MandateViolationError",
+    "SessionLimitExceededError",
+    "VelocityExceededError",
+    "TagBudgetExceededError",
+    # Types
     "ActionRecord",
     "ActionStatus",
     "ActionType",
     "BudgetEntity",
+    "BudgetIncreaseResult",
     "BudgetRecord",
     "BudgetStatus",
+    "CostBreakdown",
     "CostEventInput",
     "CostEventRecord",
+    "CostReportingConfig",
     "CostSummaryResponse",
     "CreateActionInput",
     "CreateActionResponse",
@@ -41,8 +72,11 @@ __all__ = [
     "ListCostEventsOptions",
     "ListCostEventsResponse",
     "MarkResultInput",
+    "MutateActionResponse",
     "NullSpendConfig",
     "ProposeAndWaitOptions",
+    "RequestBudgetIncreaseOptions",
+    "validate_customer_id",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

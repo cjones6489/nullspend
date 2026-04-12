@@ -1,9 +1,14 @@
+"""Async NullSpend client using httpx.AsyncClient.
+
+Mirrors every method from the sync NullSpend client.
+Uses asyncio for polling and lifecycle management.
+"""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-import time
 import uuid
 from typing import Any
 from urllib.parse import urlencode
@@ -15,14 +20,23 @@ from nullspend._retry import (
     calculate_retry_delay_s,
     parse_retry_after_s,
 )
+from nullspend.client import (
+    _DEFAULT_BASE_URL,
+    _API_KEY_HEADER,
+    _SDK_VERSION,
+    _validate_path_segment,
+    _parse_action_record,
+    _parse_cost_event,
+    _parse_budget_entity,
+    _parse_budget_record,
+    _serialize_cost_event,
+)
 from nullspend.errors import NullSpendError, RejectedError, PollTimeoutError
 from nullspend.types import (
     ActionRecord,
     BudgetIncreaseResult,
     BudgetStatus,
-    CostBreakdown,
     CostEventInput,
-    CostReportingConfig,
     CostSummaryResponse,
     CreateActionInput,
     CreateActionResponse,
@@ -41,174 +55,21 @@ from nullspend.types import (
 
 logger = logging.getLogger("nullspend")
 
-_DEFAULT_BASE_URL = "https://nullspend.dev"
-_API_KEY_HEADER = "x-nullspend-key"
-_SDK_VERSION = "0.2.0"
-_SAFE_PATH_SEGMENT_RE = __import__("re").compile(r"^[a-zA-Z0-9_\-.:]+$")
 
-
-def _validate_path_segment(value: str, name: str) -> str:
-    if not value or not _SAFE_PATH_SEGMENT_RE.match(value):
-        raise NullSpendError(f"Invalid {name}: must be alphanumeric (got {value!r})")
-    return value
-
-
-def _safe_parse(parser_name: str, data: dict[str, Any], builder: Any) -> Any:
-    """Wrap a parser function to convert KeyError into NullSpendError."""
-    try:
-        return builder(data)
-    except KeyError as e:
-        raise NullSpendError(
-            f"Unexpected response format in {parser_name}: missing field {e}"
-        ) from e
-
-
-def _parse_action_record(data: dict[str, Any]) -> ActionRecord:
-    return _safe_parse("action", data, lambda d: ActionRecord(
-        id=d["id"],
-        agent_id=d.get("agentId", ""),
-        action_type=d.get("actionType", ""),
-        status=d.get("status", "pending"),
-        payload=d.get("payload", {}),
-        metadata=d.get("metadata"),
-        created_at=d.get("createdAt", ""),
-        approved_at=d.get("approvedAt"),
-        rejected_at=d.get("rejectedAt"),
-        executed_at=d.get("executedAt"),
-        expires_at=d.get("expiresAt"),
-        expired_at=d.get("expiredAt"),
-        approved_by=d.get("approvedBy"),
-        rejected_by=d.get("rejectedBy"),
-        result=d.get("result"),
-        error_message=d.get("errorMessage"),
-        environment=d.get("environment"),
-        source_framework=d.get("sourceFramework"),
-    ))
-
-
-def _parse_cost_event(data: dict[str, Any]) -> CostEventRecord:
-    return _safe_parse("cost_event", data, lambda d: CostEventRecord(
-        id=d["id"],
-        request_id=d.get("requestId", ""),
-        api_key_id=d.get("apiKeyId"),
-        provider=d["provider"],
-        model=d["model"],
-        input_tokens=d.get("inputTokens", 0),
-        output_tokens=d.get("outputTokens", 0),
-        cached_input_tokens=d.get("cachedInputTokens", 0),
-        reasoning_tokens=d.get("reasoningTokens", 0),
-        cost_microdollars=d.get("costMicrodollars", 0),
-        duration_ms=d.get("durationMs"),
-        session_id=d.get("sessionId"),
-        trace_id=d.get("traceId"),
-        source=d.get("source", ""),
-        tags=d.get("tags"),
-        key_name=d.get("keyName"),
-        created_at=d.get("createdAt", ""),
-        customer_id=d.get("customerId"),
-        cost_breakdown=d.get("costBreakdown"),
-        event_type=d.get("eventType"),
-        tool_name=d.get("toolName"),
-    ))
-
-
-def _parse_budget_entity(data: dict[str, Any]) -> BudgetEntity:
-    return _safe_parse("budget_entity", data, lambda d: BudgetEntity(
-        entity_type=d["entityType"],
-        entity_id=d["entityId"],
-        limit_microdollars=d["limitMicrodollars"],
-        spend_microdollars=d["spendMicrodollars"],
-        remaining_microdollars=d["remainingMicrodollars"],
-        policy=d["policy"],
-        reset_interval=d.get("resetInterval"),
-        current_period_start=d.get("currentPeriodStart"),
-    ))
-
-
-def _parse_budget_record(data: dict[str, Any]) -> BudgetRecord:
-    return _safe_parse("budget_record", data, lambda d: BudgetRecord(
-        id=d["id"],
-        entity_type=d["entityType"],
-        entity_id=d["entityId"],
-        max_budget_microdollars=d["maxBudgetMicrodollars"],
-        spend_microdollars=d["spendMicrodollars"],
-        policy=d["policy"],
-        reset_interval=d.get("resetInterval"),
-        current_period_start=d.get("currentPeriodStart"),
-        threshold_percentages=d.get("thresholdPercentages", []),
-        velocity_limit_microdollars=d.get("velocityLimitMicrodollars"),
-        velocity_window_seconds=d.get("velocityWindowSeconds"),
-        velocity_cooldown_seconds=d.get("velocityCooldownSeconds"),
-        session_limit_microdollars=d.get("sessionLimitMicrodollars"),
-        created_at=d.get("createdAt", ""),
-        updated_at=d.get("updatedAt", ""),
-    ))
-
-
-def _serialize_cost_event(event: CostEventInput) -> dict[str, Any]:
-    """Serialize a CostEventInput to a camelCase dict for the API."""
-    body: dict[str, Any] = {
-        "provider": event.provider,
-        "model": event.model,
-        "inputTokens": event.input_tokens,
-        "outputTokens": event.output_tokens,
-        "costMicrodollars": event.cost_microdollars,
-    }
-    if event.cached_input_tokens:
-        body["cachedInputTokens"] = event.cached_input_tokens
-    if event.reasoning_tokens:
-        body["reasoningTokens"] = event.reasoning_tokens
-    if event.cost_breakdown is not None:
-        body["costBreakdown"] = {
-            "input": event.cost_breakdown.input,
-            "output": event.cost_breakdown.output,
-            "cached": event.cost_breakdown.cached,
-        }
-        if event.cost_breakdown.reasoning is not None:
-            body["costBreakdown"]["reasoning"] = event.cost_breakdown.reasoning
-    if event.duration_ms is not None:
-        body["durationMs"] = event.duration_ms
-    if event.session_id is not None:
-        body["sessionId"] = event.session_id
-    if event.trace_id is not None:
-        body["traceId"] = event.trace_id
-    if event.event_type is not None:
-        body["eventType"] = event.event_type
-    if event.tool_name is not None:
-        body["toolName"] = event.tool_name
-    if event.tool_server is not None:
-        body["toolServer"] = event.tool_server
-    if event.tags is not None:
-        body["tags"] = event.tags
-    if event.customer is not None:
-        body["customer"] = event.customer
-    return body
-
-
-class NullSpend:
-    """Python client for the NullSpend API.
+class AsyncNullSpend:
+    """Async Python client for the NullSpend API.
 
     Usage::
 
-        from nullspend import NullSpend
+        import asyncio
+        from nullspend import AsyncNullSpend
 
-        # Reads NULLSPEND_API_KEY from environment
-        ns = NullSpend()
+        async def main():
+            async with AsyncNullSpend() as ns:
+                status = await ns.check_budget()
+                print(status)
 
-        # Or provide explicitly
-        ns = NullSpend(api_key="ns_live_sk_...")
-
-        # Report a cost event
-        ns.report_cost(CostEventInput(
-            provider="openai",
-            model="gpt-4o",
-            input_tokens=1200,
-            output_tokens=350,
-            cost_microdollars=5250,
-        ))
-
-        # Check budget status
-        status = ns.check_budget()
+        asyncio.run(main())
     """
 
     def __init__(
@@ -221,18 +82,15 @@ class NullSpend:
         request_timeout_s: float = 30.0,
         max_retries: int = 2,
         retry_base_delay_s: float = 0.5,
-        cost_reporting: CostReportingConfig | None = None,
     ):
         if config:
-            resolved_base = config.base_url
-            resolved_key = config.api_key
-            if not resolved_key:
+            if not config.api_key:
                 raise NullSpendError(
                     "API key is required in NullSpendConfig. "
                     "Get a key at https://nullspend.dev/app/keys"
                 )
-            self._base_url = resolved_base.rstrip("/")
-            self._api_key = resolved_key
+            self._base_url = config.base_url.rstrip("/")
+            self._api_key = config.api_key
             self._api_version = config.api_version
             self._timeout_s = config.request_timeout_s
             self._max_retries = config.max_retries
@@ -259,33 +117,20 @@ class NullSpend:
             self._max_retries = min(10, max(0, max_retries))
             self._retry_base_delay_s = max(0, retry_base_delay_s)
 
-        self._client = httpx.Client(timeout=self._timeout_s)
+        self._client = httpx.AsyncClient(timeout=self._timeout_s)
 
-        # Wire CostReporter if config provided
-        if cost_reporting is not None:
-            from nullspend._cost_reporter import CostReporter as _CostReporterImpl
-            self._cost_reporter: CostReporter | None = _CostReporterImpl(
-                cost_reporting,
-                lambda batch: self.report_cost_batch(batch),
-            )
-        else:
-            self._cost_reporter = None
+    async def close(self) -> None:
+        await self._client.aclose()
 
-    def close(self) -> None:
-        """Close the underlying HTTP client and flush any pending cost events."""
-        if self._cost_reporter is not None:
-            self._cost_reporter.shutdown()
-        self._client.close()
-
-    def __enter__(self) -> NullSpend:
+    async def __aenter__(self) -> AsyncNullSpend:
         return self
 
-    def __exit__(self, *args: Any) -> None:
-        self.close()
+    async def __aexit__(self, *args: Any) -> None:
+        await self.close()
 
     # ---- Actions ----
 
-    def create_action(self, input: CreateActionInput) -> CreateActionResponse:
+    async def create_action(self, input: CreateActionInput) -> CreateActionResponse:
         body = {
             "agentId": input.agent_id,
             "actionType": input.action_type,
@@ -296,26 +141,26 @@ class NullSpend:
         if input.expires_in_seconds is not None:
             body["expiresInSeconds"] = input.expires_in_seconds
 
-        data = self._request("POST", "/api/actions", body)
+        data = await self._request("POST", "/api/actions", body)
         return CreateActionResponse(
             id=data["id"],
             status=data["status"],
             expires_at=data.get("expiresAt"),
         )
 
-    def get_action(self, action_id: str) -> ActionRecord:
+    async def get_action(self, action_id: str) -> ActionRecord:
         _validate_path_segment(action_id, "action_id")
-        data = self._request("GET", f"/api/actions/{action_id}")
+        data = await self._request("GET", f"/api/actions/{action_id}")
         return _parse_action_record(data.get("data", data))
 
-    def mark_result(self, action_id: str, input: MarkResultInput) -> MutateActionResponse:
+    async def mark_result(self, action_id: str, input: MarkResultInput) -> MutateActionResponse:
         _validate_path_segment(action_id, "action_id")
         body: dict[str, Any] = {"status": input.status}
         if input.result is not None:
             body["result"] = input.result
         if input.error_message is not None:
             body["errorMessage"] = input.error_message
-        data = self._request("POST", f"/api/actions/{action_id}/result", body)
+        data = await self._request("POST", f"/api/actions/{action_id}/result", body)
         return MutateActionResponse(
             id=data.get("id", action_id),
             status=data.get("status", input.status),
@@ -327,49 +172,30 @@ class NullSpend:
 
     # ---- Cost Reporting ----
 
-    def report_cost(self, event: CostEventInput) -> dict[str, Any]:
-        return self._request("POST", "/api/cost-events", _serialize_cost_event(event))
+    async def report_cost(self, event: CostEventInput) -> dict[str, Any]:
+        return await self._request("POST", "/api/cost-events", _serialize_cost_event(event))
 
-    def report_cost_batch(self, events: list[CostEventInput]) -> dict[str, Any]:
+    async def report_cost_batch(self, events: list[CostEventInput]) -> dict[str, Any]:
         batch = [_serialize_cost_event(e) for e in events]
-        return self._request("POST", "/api/cost-events/batch", {"events": batch})
-
-    def queue_cost(self, event: CostEventInput) -> None:
-        """Enqueue a cost event for batched reporting. Requires cost_reporting config."""
-        if self._cost_reporter is None:
-            raise NullSpendError(
-                "Cost reporter not configured. Pass cost_reporting=CostReportingConfig() "
-                "to NullSpend() to enable batched cost reporting."
-            )
-        self._cost_reporter.enqueue(event)
-
-    def flush(self) -> None:
-        """Flush any pending batched cost events immediately."""
-        if self._cost_reporter is not None:
-            self._cost_reporter.flush()
-
-    def shutdown(self) -> None:
-        """Gracefully shut down the cost reporter, flushing all pending events."""
-        if self._cost_reporter is not None:
-            self._cost_reporter.shutdown()
+        return await self._request("POST", "/api/cost-events/batch", {"events": batch})
 
     # ---- Budget Status ----
 
-    def check_budget(self) -> BudgetStatus:
-        data = self._request("GET", "/api/budgets/status")
+    async def check_budget(self) -> BudgetStatus:
+        data = await self._request("GET", "/api/budgets/status")
         return BudgetStatus(
             entities=[_parse_budget_entity(e) for e in data.get("entities", [])],
         )
 
-    def list_budgets(self) -> ListBudgetsResponse:
-        data = self._request("GET", "/api/budgets")
+    async def list_budgets(self) -> ListBudgetsResponse:
+        data = await self._request("GET", "/api/budgets")
         return ListBudgetsResponse(
             data=[_parse_budget_record(b) for b in data.get("data", [])],
         )
 
     # ---- Cost Events (Read) ----
 
-    def list_cost_events(
+    async def list_cost_events(
         self, options: ListCostEventsOptions | None = None,
     ) -> ListCostEventsResponse:
         params: dict[str, str] = {}
@@ -384,18 +210,18 @@ class NullSpend:
                 )
         qs = urlencode(params) if params else ""
         path = f"/api/cost-events?{qs}" if qs else "/api/cost-events"
-        data = self._request("GET", path)
+        data = await self._request("GET", path)
         return ListCostEventsResponse(
             data=[_parse_cost_event(e) for e in data.get("data", [])],
             cursor=data.get("cursor"),
         )
 
-    def get_cost_summary(
+    async def get_cost_summary(
         self, period: str = "30d",
     ) -> CostSummaryResponse:
         if period not in ("7d", "30d", "90d"):
             raise NullSpendError(f"Invalid period: must be '7d', '30d', or '90d' (got {period!r})")
-        data = self._request("GET", f"/api/cost-events/summary?period={period}")
+        data = await self._request("GET", f"/api/cost-events/summary?period={period}")
         inner = data.get("data", data)
         return CostSummaryResponse(
             daily=inner.get("daily", []),
@@ -411,7 +237,7 @@ class NullSpend:
 
     # ---- Polling ----
 
-    def wait_for_decision(
+    async def wait_for_decision(
         self,
         action_id: str,
         *,
@@ -419,28 +245,32 @@ class NullSpend:
         timeout_s: float = 300.0,
         on_poll: Any | None = None,
     ) -> ActionRecord:
-        timeout_ms = int(timeout_s * 1000)
-        deadline = time.monotonic() + timeout_s
+        import time as _time
 
-        while time.monotonic() < deadline:
-            action = self.get_action(action_id)
+        timeout_ms = int(timeout_s * 1000)
+        deadline = _time.monotonic() + timeout_s
+
+        while _time.monotonic() < deadline:
+            action = await self.get_action(action_id)
             if on_poll:
-                on_poll(action)
+                result = on_poll(action)
+                if asyncio.iscoroutine(result):
+                    await result
 
             if action.status != "pending":
                 return action
 
-            remaining = deadline - time.monotonic()
+            remaining = deadline - _time.monotonic()
             if remaining <= 0:
                 break
-            time.sleep(min(poll_interval_s, remaining))
+            await asyncio.sleep(min(poll_interval_s, remaining))
 
         raise PollTimeoutError(action_id, timeout_ms)
 
     # ---- High-level Orchestrator ----
 
-    def propose_and_wait(self, options: ProposeAndWaitOptions) -> Any:
-        response = self.create_action(CreateActionInput(
+    async def propose_and_wait(self, options: ProposeAndWaitOptions) -> Any:
+        response = await self.create_action(CreateActionInput(
             agent_id=options.agent_id,
             action_type=options.action_type,
             payload=options.payload,
@@ -448,7 +278,7 @@ class NullSpend:
             expires_in_seconds=options.expires_in_seconds,
         ))
 
-        decision = self.wait_for_decision(
+        decision = await self.wait_for_decision(
             response.id,
             poll_interval_s=options.poll_interval_s,
             timeout_s=options.timeout_s,
@@ -460,21 +290,23 @@ class NullSpend:
 
         # Mark executing
         try:
-            self.mark_result(response.id, MarkResultInput(status="executing"))
+            await self.mark_result(response.id, MarkResultInput(status="executing"))
         except NullSpendError as e:
             if e.status_code == 409:
-                current = self.get_action(response.id)
+                current = await self.get_action(response.id)
                 if current.status != "executing":
                     raise
             else:
                 raise
 
-        # Execute
+        # Execute — properly await async executors
         try:
             result = options.execute({"action_id": response.id})
+            if asyncio.iscoroutine(result) or asyncio.isfuture(result):
+                result = await result
         except Exception as err:
             try:
-                self.mark_result(
+                await self.mark_result(
                     response.id,
                     MarkResultInput(status="failed", error_message=str(err)),
                 )
@@ -487,13 +319,13 @@ class NullSpend:
             result if isinstance(result, dict) else {"value": result}
         )
         try:
-            self.mark_result(
+            await self.mark_result(
                 response.id,
                 MarkResultInput(status="executed", result=serializable),
             )
         except NullSpendError as e:
             if e.status_code == 409:
-                current = self.get_action(response.id)
+                current = await self.get_action(response.id)
                 if current.status != "executed":
                     raise
             else:
@@ -503,19 +335,13 @@ class NullSpend:
 
     # ---- Budget Negotiation ----
 
-    def request_budget_increase(
+    async def request_budget_increase(
         self, options: RequestBudgetIncreaseOptions,
     ) -> BudgetIncreaseResult:
         """Request a budget increase via the HITL approval flow.
 
-        Creates a budget_increase action, waits for human approval, and returns
-        the result. On approval, the budget is increased server-side automatically.
-
-        The payload shape must match the server's budgetIncreasePayloadSchema:
-        entityType, entityId, requestedAmountMicrodollars, currentLimitMicrodollars,
-        currentSpendMicrodollars, reason.
+        The payload shape must match the server's budgetIncreasePayloadSchema.
         """
-        # Match server's budgetIncreasePayloadSchema exactly
         payload: dict[str, Any] = {
             "entityType": options.entity_type,
             "entityId": options.entity_id,
@@ -525,15 +351,13 @@ class NullSpend:
             "reason": options.reason,
         }
 
-        def _execute(ctx: dict[str, Any]) -> dict[str, Any]:
-            # On approval, the server-side budget increase has already run.
-            # Return the action ID and requested amount (matching TS SDK pattern).
+        async def _execute(ctx: dict[str, Any]) -> dict[str, Any]:
             return {
                 "actionId": ctx.get("action_id", "unknown"),
                 "requestedAmountMicrodollars": options.amount_microdollars,
             }
 
-        result = self.propose_and_wait(ProposeAndWaitOptions(
+        result = await self.propose_and_wait(ProposeAndWaitOptions(
             agent_id=options.agent_id,
             action_type="budget_increase",
             payload=payload,
@@ -551,7 +375,7 @@ class NullSpend:
 
     # ---- HTTP ----
 
-    def _request(
+    async def _request(
         self,
         method: str,
         path: str,
@@ -573,22 +397,19 @@ class NullSpend:
             headers["Idempotency-Key"] = f"ns_{uuid.uuid4()}"
 
         last_error: NullSpendError | None = None
-        # Retry-After from the previous response, used as the delay for the
-        # next attempt. Set to None to fall back to jitter backoff.
         _pending_retry_after: float | None = None
 
         for attempt in range(self._max_retries + 1):
             if attempt > 0:
                 if _pending_retry_after is not None:
-                    # Server told us exactly how long to wait
-                    time.sleep(_pending_retry_after)
+                    await asyncio.sleep(_pending_retry_after)
                     _pending_retry_after = None
                 else:
                     delay = calculate_retry_delay_s(attempt - 1, self._retry_base_delay_s)
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
 
             try:
-                response = self._client.request(
+                response = await self._client.request(
                     method,
                     url,
                     headers=headers,
@@ -615,7 +436,6 @@ class NullSpend:
                 response.status_code in RETRYABLE_STATUS_CODES
                 and attempt < self._max_retries
             ):
-                # Capture Retry-After for the NEXT iteration's sleep
                 _pending_retry_after = parse_retry_after_s(
                     response.headers.get("retry-after"),
                     max_s=self._retry_base_delay_s * (2 ** (attempt + 1)),
@@ -626,7 +446,7 @@ class NullSpend:
                 )
                 continue
 
-            # Non-retryable error — build actionable message
+            # Non-retryable error
             status = response.status_code
             detail = response.reason_phrase or f"HTTP {status}"
             code: str | None = None
@@ -639,7 +459,6 @@ class NullSpend:
             except Exception:
                 pass
 
-            # Append actionable guidance for common failures
             if status == 401:
                 detail = (
                     f"{detail}. Check your NULLSPEND_API_KEY environment "

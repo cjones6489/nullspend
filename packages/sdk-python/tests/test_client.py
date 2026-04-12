@@ -26,12 +26,14 @@ def ns():
 
 
 class TestConfig:
-    def test_requires_base_url(self):
-        with pytest.raises(NullSpendError, match="base_url is required"):
-            NullSpend(base_url="", api_key="key")
+    def test_base_url_defaults(self):
+        """base_url defaults to https://nullspend.dev when not provided."""
+        client = NullSpend(api_key="key")
+        assert client._base_url == "https://nullspend.dev"
+        client.close()
 
     def test_requires_api_key(self):
-        with pytest.raises(NullSpendError, match="api_key is required"):
+        with pytest.raises(NullSpendError, match="API key is required"):
             NullSpend(base_url="https://example.com", api_key="")
 
     def test_strips_trailing_slash(self):
@@ -163,7 +165,8 @@ class TestActions:
             result={"ok": True},
         ))
 
-        assert result["status"] == "executed"
+        assert result.status == "executed"
+        assert result.id == "act_1"
 
 
 class TestBudgets:
@@ -460,7 +463,9 @@ class TestErrorParsing:
 
         assert exc_info.value.status_code == 401
         assert exc_info.value.code == "authentication_required"
+        # Server message is preserved AND actionable guidance appended
         assert "Missing API key" in str(exc_info.value)
+        assert "NULLSPEND_API_KEY" in str(exc_info.value)
 
 
 class TestPathValidation:
