@@ -12,6 +12,7 @@
     "budgets-api",
     "api-keys-api",
     "webhooks-api",
-    "actions-api"
+    "actions-api",
+    "margins-api"
   ]
 }

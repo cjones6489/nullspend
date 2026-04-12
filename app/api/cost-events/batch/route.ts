@@ -17,6 +17,10 @@ import {
   dispatchToEndpoints,
   fetchWebhookEndpoints,
 } from "@/lib/webhooks/dispatch";
+import {
+  buildBudgetThresholdMessage,
+  dispatchBudgetThresholdSlackAlert,
+} from "@/lib/slack/budget-threshold-message";
 
 const log = getLogger("cost-events-batch");
 
@@ -122,14 +126,30 @@ export const POST = withRequestContext(async (request: Request) => {
                 }
 
                 // 4. Threshold detection per event — catches crossings at each increment
+                const thresholdEvents = detectThresholdCrossings(
+                  updatedEntities,
+                  row.requestId,
+                );
+                // 4a. Webhook dispatch for threshold events
                 if (endpoints.length > 0) {
-                  const thresholdEvents = detectThresholdCrossings(
-                    updatedEntities,
-                    row.requestId,
-                  );
                   for (const te of thresholdEvents) {
                     await dispatchToEndpoints(endpoints, te);
                   }
+                }
+                // 4b. Slack notification for threshold events
+                for (const te of thresholdEvents) {
+                  const obj = te.data.object as Record<string, unknown>;
+                  const msg = buildBudgetThresholdMessage({
+                    eventType: te.type,
+                    entityType: String(obj.budget_entity_type ?? ""),
+                    entityId: String(obj.budget_entity_id ?? ""),
+                    thresholdPercent: Number(obj.threshold_percent ?? 0),
+                    spendMicrodollars: Number(obj.budget_spend_microdollars ?? 0),
+                    limitMicrodollars: Number(obj.budget_limit_microdollars ?? 0),
+                  });
+                  dispatchBudgetThresholdSlackAlert(orgId, msg).catch((slackErr) => {
+                    log.error({ err: slackErr }, "Budget threshold Slack alert failed (batch)");
+                  });
                 }
               }
             } catch (budgetErr) {

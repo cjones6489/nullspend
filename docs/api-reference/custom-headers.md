@@ -25,21 +25,22 @@ Keys are hashed with SHA-256 before storage and validated with timing-safe compa
 
 ### `X-NullSpend-Customer`
 
-Identify the end customer this request serves. Used for per-customer profitability tracking in the [Customers](../features/margins.md) dashboard.
+Associate this request with a customer for per-customer cost tracking and budget enforcement.
 
 | Property | Value |
 |---|---|
-| Format | String |
-| Max length | 256 characters |
-| Pattern | `[a-zA-Z0-9._:-]+` |
-| If invalid | Request proceeds; `X-NullSpend-Warning: invalid_customer` set on response |
-| If omitted | Falls back to `tags["customer"]` if present |
+| Format | String, 1-256 characters |
+| Allowed characters | `[a-zA-Z0-9._:-]` |
+| If invalid | Request proceeds but customer ID is ignored. `X-NullSpend-Warning: invalid_customer` response header set. |
+| If omitted | Falls back to `tags["customer"]` if present. Otherwise no customer association. |
 
 ```bash
 X-NullSpend-Customer: acme-corp
 ```
 
-When set, the value is written to the `customer_id` column on cost events (indexed for fast queries). It is also auto-injected into tags as `customer=<value>` so tag-based budgets continue to work. If both the header and `tags["customer"]` are set, the header takes precedence.
+When a customer-level budget is configured and this header is present, the proxy tracks spend per customer. Once the customer budget limit is reached, the proxy returns `429` with `error.code: "customer_budget_exceeded"` and details including `customer_id`.
+
+The customer ID is stored in the `customer_id` column of cost events and can be used for per-customer cost attribution and margin analysis. It is also auto-injected into tags as `customer=<value>` so tag-based budgets continue to work. If both the header and `tags["customer"]` are set, the header takes precedence.
 
 ---
 
@@ -72,7 +73,7 @@ Groups requests into a session for session-level spend limits.
 | Property | Value |
 |---|---|
 | Format | String |
-| Max length | 256 characters (truncated if longer) |
+| Max length | 256 characters (`400` if longer) |
 | If omitted | Session limits are not enforced for this request |
 
 ```bash
@@ -80,6 +81,8 @@ X-NullSpend-Session: conv_abc123
 ```
 
 When a session limit is configured on the budget and this header is present, the proxy tracks cumulative spend per session ID. Once the limit is reached, the proxy returns `429` with `error.code: "session_limit_exceeded"` and details including `session_id`, `session_spend_microdollars`, and `session_limit_microdollars`.
+
+The proxy echoes `X-NullSpend-Session` in the response headers when present, so agent frameworks can confirm the session ID was captured.
 
 ---
 

@@ -1,6 +1,6 @@
 # Testing
 
-NullSpend has ~3,955+ tests across ~231 files organized into four tiers.
+NullSpend has ~3,965+ tests across ~233 files organized into four tiers.
 
 ## Quick Reference
 
@@ -289,13 +289,13 @@ full list.
 
 ## Proxy Smoke Tests (`apps/proxy/smoke*.test.ts`)
 
-30 files. Require a deployed worker and API keys. Organized by provider and concern:
+32 files. Require a deployed worker and API keys. Organized by provider and concern:
 
 | Pattern | Files |
 |---|---|
 | `smoke*.test.ts` (no prefix) | OpenAI tests |
 | `smoke-anthropic*.test.ts` | Anthropic tests |
-| `smoke-budget*.test.ts` | Budget enforcement E2E |
+| `smoke-budget*.test.ts` | Budget enforcement E2E, customer threshold webhook verification (ST-9) |
 | `smoke-session-limits.test.ts` | Session limit enforcement E2E |
 | `smoke-trace.test.ts` | W3C traceparent propagation E2E |
 | `smoke-metrics.test.ts` | AE metrics endpoint + latency headers E2E |
@@ -332,7 +332,7 @@ Intensity levels control concurrency (light: 10-15, medium: 25-40, heavy: 50-80)
 
 ## Dashboard Tests (root `pnpm test`)
 
-Co-located with source files. ~1,734 tests across 140 files.
+Co-located with source files. ~1,744 tests across 141 files.
 
 **Auth** (`lib/auth/`)
 - `session.test.ts` — `getCurrentUserId`, `getUser()` validation, dev mode fallback
@@ -359,13 +359,14 @@ Co-located with source files. ~1,734 tests across 140 files.
 - One test file per route: actions CRUD, keys CRUD, budgets, cost-events, cost-events/{id}, slack config/callback/test
 - `budgets/route.test.ts` — includes policy round-trip (store + return for all three values), policy omitted preserves DB default, invalid policy 400
 - `cost-events/[id]/route.test.ts` — Fetch-back endpoint: owned event, missing, other user's, auth, invalid ID, prefixed ID
-- `cost-events/batch/route.test.ts` — Batch ingestion: per-event budget accounting, tag isolation, proxy cache sync, dispatch failure isolation, threshold detection, observability logging, math invariants
+- `cost-events/batch/route.test.ts` — Batch ingestion: per-event budget accounting, tag isolation, proxy cache sync, dispatch failure isolation, threshold detection, threshold Slack alerts, observability logging, math invariants
 - `velocity-status/route.test.ts` — Live velocity state polling: auth, proxy fetch, graceful degradation
 
 **Other**
 - `lib/budgets/increase.test.ts` — `executeBudgetIncrease`: happy path, `BudgetEntityNotFoundError` on missing entity (SELECT + UPDATE paths), invalid payload, tier cap, partial approval, zero/negative amount, approvedAmount > requestedAmount
 - `components/actions/budget-increase-card.test.ts` — Payload parsing (valid/invalid/boundary), `mutateActionResponseSchema` budgetIncrease field (preserve/absent/partial/over-approval), display logic (spendColor thresholds, percent clamping, zero-limit safety), dollar→microdollar conversion, exceeds-requested detection, client-side $1M cap, status-aware labels, inbox amount extraction, `BudgetEntityNotFoundError` class + `handleRouteError` 404 mapping
 - `lib/slack/budget-message.test.ts` — Budget increase Slack templates: pending (details + buttons), truncation, decision (approved/rejected), completion, formatDollars
+- `lib/slack/budget-threshold-message.test.ts` — Budget threshold Slack alerts: warning/critical/exceeded message building, mrkdwn injection defense, zero-limit guard, `budget.exceeded` display, dispatch (config lookup, HTTPS validation, inactive skip, failure isolation)
 - `lib/queries/actions.test.ts`, `lib/utils/format.test.ts`, `lib/slack/*.test.ts`
 - `lib/webhooks/dispatch.test.ts` — Cost event webhook builders (proxy/dashboard shape parity), `dispatchToEndpoints` signing/filtering/expiry, `buildThinCostEventPayload`, `dispatchCostEventToEndpoints` (thin/full/mixed/undefined fallback/event filter/expiry), non-cost-event to thin endpoint
 - `components/actions/action-timeline.test.ts`

@@ -34,7 +34,7 @@ identically. No packages to install, no clients to wrap, no config files.
 Works the same for Anthropic:
 
 ```bash
-ANTHROPIC_BASE_URL=https://proxy.nullspend.dev/anthropic
+ANTHROPIC_BASE_URL=https://proxy.nullspend.dev/v1
 ```
 
 ## Setup (5 minutes)
@@ -81,7 +81,7 @@ client = OpenAI(
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic({
-  baseURL: "https://proxy.nullspend.dev/anthropic",
+  baseURL: "https://proxy.nullspend.dev/v1",
   defaultHeaders: {
     "X-NullSpend-Key": process.env.NULLSPEND_API_KEY,
   },
@@ -105,7 +105,7 @@ within seconds — daily spend charts, per-model breakdown, per-key attribution.
 ## What you get
 
 **Cost tracking** — Every request logged with provider, model, input/output/cached/reasoning
-tokens, cost in microdollars, and duration. 38-model pricing catalog covers all
+tokens, cost in microdollars, and duration. 45-model pricing catalog covers all
 OpenAI and Anthropic models including GPT-4.1, o3, o4-mini, Claude Sonnet 4, and
 Opus 4.
 
@@ -231,7 +231,7 @@ nullspend/
 ├── components/            # UI components (shadcn/ui + Tailwind)
 ├── lib/                   # Dashboard logic — auth, actions, queries
 ├── packages/
-│   ├── cost-engine/       # 38-model pricing catalog + cost calculation
+│   ├── cost-engine/       # 45-model pricing catalog + cost calculation
 │   ├── db/                # Drizzle ORM schema (source of truth)
 │   ├── sdk/               # @nullspend/sdk — TypeScript client
 │   ├── mcp-server/        # MCP server adapter (approval tools)
@@ -285,7 +285,7 @@ when changes span dashboard and proxy.
   cost-engine tests, 49 claude-agent tests. All mocked, runs in <20s.
 - **Tier 2 — Integration tests:** Currently empty — budget enforcement moved
   from Redis Lua to Durable Objects (tested in Tier 1).
-- **Tier 3 — Smoke tests:** 25 files hitting the deployed proxy with real
+- **Tier 3 — Smoke tests:** 32 files hitting the deployed proxy with real
   OpenAI/Anthropic API calls. Manual pre-deploy verification.
 - **Tier 4 — CI:** GitHub Actions runs typecheck + lint + all Tier 1 tests on
   every push/PR to main.

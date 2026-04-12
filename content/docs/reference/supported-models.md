@@ -1,9 +1,9 @@
 ---
 title: "Supported Models"
-description: "NullSpend has pricing data for 38 models across OpenAI, Anthropic, and Google. The proxy routes requests to OpenAI and Anthropic; Google models are supported for cost calculation only."
+description: "NullSpend supports 45 models across OpenAI and Anthropic with full proxy routing, cost tracking, and budget enforcement."
 ---
 
-NullSpend has pricing data for 38 models across OpenAI, Anthropic, and Google. The proxy routes requests to OpenAI and Anthropic. Google models are supported for cost calculation (via API ingest or the cost-engine package) but are not routable through the proxy.
+NullSpend supports 45 models across OpenAI (23) and Anthropic (22) with full proxy routing, cost tracking, and budget enforcement.
 
 ## Cost Formula
 
@@ -17,7 +17,7 @@ For the full calculation logic including cached tokens, cache writes, and long c
 
 ## OpenAI Models
 
-14 models. Rates in $/MTok.
+23 models. Rates in $/MTok.
 
 | Model | Input | Cached Input | Output |
 |---|---|---|---|
@@ -35,6 +35,15 @@ For the full calculation logic including cached tokens, cache writes, and long c
 | `gpt-5-nano` | 0.05 | 0.005 | 0.40 |
 | `gpt-5.1` | 1.25 | 0.125 | 10.00 |
 | `gpt-5.2` | 1.75 | 0.175 | 14.00 |
+| `gpt-5.3-chat-latest` | 1.75 | 0.175 | 14.00 |
+| `gpt-5.3-codex` | 1.75 | 0.175 | 14.00 |
+| `gpt-5.4` | 2.50 | 0.25 | 15.00 |
+| `gpt-5.4-mini` | 0.75 | 0.075 | 4.50 |
+| `gpt-5.4-nano` | 0.20 | 0.02 | 1.25 |
+| `gpt-5.4-pro` | 30.00 | 30.00 | 180.00 |
+| `o3-deep-research` | 5.00 | 5.00 | 20.00 |
+| `o4-mini-deep-research` | 1.00 | 1.00 | 4.00 |
+| `computer-use-preview` | 1.50 | 1.50 | 6.00 |
 
 OpenAI cost formula: `(prompt_tokens - cached_tokens) × input + cached_tokens × cached + completion_tokens × output`. Reasoning tokens are a subset of completion tokens — not double-counted.
 
@@ -97,15 +106,6 @@ Anthropic offers two cache write tiers:
 | Extended (1-hour) | 1 hour | Cache Write (1h) |
 
 If the response includes `ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`, each is priced at its respective rate. Otherwise, all cache creation tokens use the 5-minute rate.
-
-## Google Models (cost calculation only)
-
-2 models. Rates in $/MTok. These models are supported for cost calculation via API ingest and the cost-engine package, but the proxy does not route requests to Google.
-
-| Model | Input | Cached Input | Output |
-|---|---|---|---|
-| `gemini-2.5-pro` | 1.25 | 0.3125 | 10.00 |
-| `gemini-2.5-flash` | 0.15 | 0.0375 | 0.60 |
 
 ## Unknown Models
 

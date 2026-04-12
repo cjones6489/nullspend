@@ -368,11 +368,14 @@ export async function getDistinctTagKeys(orgId: string) {
   const db = getDb();
   const cutoff = makeCutoff(7);
 
-  // Filter to object-typed tags. After deploying the proxy fix
-  // (cost-logger.ts) and running `pnpm jsonb:repair`, all rows are
-  // object-typed and this filter is a no-op. The filter exists as a
-  // safety net during the brief deploy → repair window so jsonb_object_keys
-  // doesn't raise on legacy string-encoded rows.
+  // PERMANENT DEFENSIVE GUARD — do not remove.
+  // `jsonb_object_keys` throws on non-object JSONB values (e.g. strings).
+  // After the JSONB double-encoding fix (cost-logger.ts, 2026-04-07) and
+  // `pnpm jsonb:repair`, all existing rows are object-typed and this filter
+  // is a no-op. It is kept permanently so that if a future bug reintroduces
+  // string-typed tags, this query degrades gracefully (returns fewer keys)
+  // instead of raising a 500. The other tag readers (`->>`, `@>`) silently
+  // skip non-object rows, so only this function needs the guard.
   //
   // IMPORTANT: pass cutoff as ISO string with explicit ::timestamptz cast,
   // not as a raw JS Date. In fetch_types:false mode (required for Supabase

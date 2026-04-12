@@ -39,15 +39,17 @@ Budget enforcement uses a Cloudflare Durable Object with embedded SQLite. All ch
 |---|---|
 | `user` | All requests from a user account (across all their API keys) |
 | `api_key` | Requests from a specific API key |
-| `tag` | Requests carrying a specific tag key-value pair |
+| `tag` | Requests carrying a specific tag key-value pair (e.g., `env=production`) |
+| `customer` | Requests carrying a specific customer ID via `X-NullSpend-Customer` header |
 
-A single request can match multiple budgets (e.g., a user budget + an API key budget + a tag budget). All matching budgets must have sufficient remaining balance for the request to proceed.
+A single request can match multiple budgets (e.g., a user budget + an API key budget + a customer budget). All matching budgets must have sufficient remaining balance for the request to proceed.
 
 ## Configuration
 
 | Field | Type | Description |
 |---|---|---|
 | `maxBudgetMicrodollars` | integer (required) | Spending ceiling in microdollars. $50 = 50,000,000 |
+| `policy` | string | Enforcement policy: `"strict_block"` (default, denies requests), `"soft_block"` (logs but allows), or `"warn"` (tracks only). |
 | `resetInterval` | string or null | `"daily"`, `"weekly"`, `"monthly"`, or `null` (no reset — manual only) |
 | `thresholdPercentages` | integer[] | Webhook alert thresholds. Default: `[50, 80, 90, 95]`. Max 10 values, must be ascending, each 1–100. |
 | `velocityLimitMicrodollars` | integer or null | Max spend per velocity window. See [Velocity Limits](#velocity-limits). |

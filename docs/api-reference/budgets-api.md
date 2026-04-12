@@ -10,7 +10,7 @@ See [API Overview](overview.md) for authentication, pagination, errors, and ID f
 
 `GET /api/budgets`
 
-Retrieve all budgets owned by the authenticated user, including API key budgets for keys the user owns.
+Retrieve all budgets for the current organization, including API key and tag budgets.
 
 ### Authentication
 
@@ -94,10 +94,10 @@ Session (dashboard)
 | Name | In | Type | Required | Description |
 |---|---|---|---|---|
 | `entityType` | body | string | Yes | `"user"`, `"api_key"`, `"tag"`, or `"customer"`. |
-| `entityId` | body | string | Yes | Entity ID (`ns_usr_*` or `ns_key_*`). Must be owned by the session user. |
+| `entityId` | body | string | Yes | Entity ID. Format depends on entity type: `"user"`: `ns_usr_*` prefixed UUID, `"api_key"`: `ns_key_*` prefixed UUID, `"tag"`: `"key=value"` format (max 321 chars), `"customer"`: plain string (max 256 chars). |
 | `maxBudgetMicrodollars` | body | integer | Yes | Spending limit in microdollars. Must be positive. |
-| `policy` | body | string | No | `"strict_block"`, `"soft_block"`, or `"warn"`. Default: `"strict_block"`. |
-| `resetInterval` | body | string | No | `"daily"`, `"weekly"`, `"monthly"`, or `"yearly"`. Omit for no auto-reset. |
+| `policy` | body | string | No | Enforcement policy: `"strict_block"`, `"soft_block"`, or `"warn"`. Default `"strict_block"`. |
+| `resetInterval` | body | string | No | `"daily"`, `"weekly"`, or `"monthly"`. Omit for no auto-reset. |
 | `thresholdPercentages` | body | integer[] | No | Alert thresholds (1–100). Max 10 values, ascending, no duplicates. |
 | `velocityLimitMicrodollars` | body | integer \| null | No | Max spend per velocity window. `null` removes the limit. |
 | `velocityWindowSeconds` | body | integer | No | Velocity window duration. 10–3600. |
@@ -335,6 +335,8 @@ curl https://nullspend.dev/api/budgets/status \
 ```
 
 `remainingMicrodollars` is always >= 0 (clamped, never negative).
+
+> **Note:** The API response includes additional budget configuration fields (e.g., `policy`, `resetInterval`, `thresholdPercentages`, velocity and session limit settings) beyond what the SDK's `BudgetEntity` type surfaces.
 
 Headers: `NullSpend-Version: 2026-04-01`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
 

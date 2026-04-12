@@ -250,7 +250,7 @@ Each `BudgetRecord` contains:
 | `entityId` | `string` | Entity identifier |
 | `maxBudgetMicrodollars` | `number` | Budget ceiling |
 | `spendMicrodollars` | `number` | Current spend |
-| `policy` | `string` | `"strict_block"` or `"warn"` |
+| `policy` | `string` | `"strict_block"`, `"soft_block"`, or `"warn"` |
 | `resetInterval` | `string \| null` | `"daily"`, `"monthly"`, etc. |
 | `thresholdPercentages` | `number[]` | Webhook alert thresholds |
 | `velocityLimitMicrodollars` | `number \| null` | Per-window spend limit |
@@ -329,7 +329,7 @@ Wrap your LLM provider's `fetch` to automatically track costs and enforce polici
 
 ```typescript
 const ns = new NullSpend({
-  baseUrl: "https://app.nullspend.dev",
+  baseUrl: "https://nullspend.dev",
   apiKey: "ns_live_sk_...",
   costReporting: {},  // required for createTrackedFetch
 });

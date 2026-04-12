@@ -96,10 +96,9 @@ Session (dashboard)
 
 | Name | In | Type | Required | Description |
 |---|---|---|---|---|
-| `entityType` | body | string | Yes | `"user"` or `"api_key"`. |
-| `entityId` | body | string | Yes | Entity ID. For `"user"`: `ns_usr_*`, for `"api_key"`: `ns_key_*`. |
-
-> **Note:** Tag-level budgets are managed through the proxy-side budget system (Durable Objects), not through this API endpoint.
+| `entityType` | body | string | Yes | `"user"`, `"api_key"`, `"tag"`, or `"customer"`. |
+| `entityId` | body | string | Yes | Entity ID. Format depends on entity type: `"user"`: `ns_usr_*` prefixed UUID, `"api_key"`: `ns_key_*` prefixed UUID, `"tag"`: `"key=value"` format (max 321 chars), `"customer"`: plain string (max 256 chars). |
+| `policy` | body | string | No | Enforcement policy: `"strict_block"`, `"soft_block"`, or `"warn"`. Default `"strict_block"`. |
 | `maxBudgetMicrodollars` | body | integer | Yes | Spending limit in microdollars. Must be positive. |
 | `resetInterval` | body | string | No | `"daily"`, `"weekly"`, or `"monthly"`. Omit for no auto-reset. |
 | `thresholdPercentages` | body | integer[] | No | Alert thresholds (1–100). Max 10 values, ascending, no duplicates. |

@@ -7,7 +7,7 @@ Set spending ceilings to prevent cost overruns from runaway agents.
 
 ## How budgets work
 
-A budget is a spending ceiling attached to a user account or an individual API key. When the estimated cost of a request would push cumulative spend over the budget, the proxy blocks the request with a `429 Too Many Requests` response.
+A budget is a spending ceiling attached to a user account, an API key, a tag, or a customer. When the estimated cost of a request would push cumulative spend over the budget, the proxy blocks the request with a `429 Too Many Requests` response.
 
 Budget enforcement happens **before** the request is forwarded to the LLM provider. The proxy checks the current spend against the budget atomically using a Cloudflare Durable Object (single-threaded, no race conditions even under concurrent load).
 
@@ -16,7 +16,7 @@ Budget enforcement happens **before** the request is forwarded to the LLM provid
 1. Open the [NullSpend dashboard](https://nullspend.dev/app/budgets)
 2. Click **Set Budget**
 3. Configure:
-   - **Budget for** — your account or a specific API key
+   - **Budget for** — your account, a specific API key, a tag (e.g., `env=production`), or a customer
    - **Budget limit** — spending ceiling in dollars (e.g., $50.00)
    - **Reset interval** — none (manual reset), daily, weekly, or monthly
 4. Optionally configure advanced guardrails (expand each section):
@@ -47,6 +47,29 @@ When a request would exceed the budget:
 
 The blocked request is **never forwarded** to the LLM provider. You are not
 charged by OpenAI/Anthropic for blocked requests.
+
+## Enforcement policies
+
+Each budget has a `policy` that controls what happens when the limit is exceeded:
+
+| Policy | Behavior | Use case |
+|---|---|---|
+| `strict_block` (default) | Blocks the request with `429`. The request is never forwarded to the provider. | Production cost control. You want hard spending caps. |
+| `soft_block` | Logs the overage and allows the request through. Cost events are tagged with budget status `denied`. | Transitioning from tracking to enforcement. See the impact before turning on hard blocks. |
+| `warn` | Tracks spend but never blocks. Threshold webhooks and Slack alerts still fire. | Monitoring-only mode. Useful during initial rollout or for customer budgets where you want visibility without disruption. |
+
+Set the policy when creating a budget via the dashboard or API:
+
+```json
+{
+  "entityType": "customer",
+  "entityId": "acme-corp",
+  "maxBudgetMicrodollars": 50000000,
+  "policy": "warn"
+}
+```
+
+Session limits and velocity limits always enforce `strict_block` regardless of the budget policy.
 
 ## Velocity limits
 

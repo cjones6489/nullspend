@@ -236,7 +236,7 @@ One budget governs API calls and tool calls together. Track MCP tool execution c
 W3C traceparent support for correlating requests across services. Link cost events to traces, sessions, and approval actions. Trace a single user interaction from the first LLM call through tool execution to final cost — across providers and services.
 
 ### Cost Engine
-47 models across OpenAI (23), Anthropic (22), and Google (2):
+45 models across OpenAI (23) and Anthropic (22):
 
 - **OpenAI** — GPT-5.4, GPT-5.3, GPT-5, GPT-4.1, GPT-4o, o3, o4-mini, and more
 - **Anthropic** — Claude Opus 4.6, Sonnet 4.6, Haiku 4.5, plus all dated variants
@@ -254,7 +254,7 @@ Built-in abuse protection: 120 requests/min per IP, 600 requests/min per API key
 | [`apps/proxy`](apps/proxy/) | Cloudflare Workers proxy — budget authorization, mandates, cost tracking, velocity controls, session limits, webhooks, request logging, streaming |
 | [`@nullspend/sdk`](packages/sdk/) | TypeScript SDK — tracked fetch with client-side enforcement, cost reporting, HITL approval workflows, budget & spend queries |
 | [`nullspend`](packages/sdk-python/) | Python SDK — full feature parity with the TypeScript SDK |
-| [`@nullspend/cost-engine`](packages/cost-engine/) | Pricing catalog and cost calculation for 47 models across 3 providers |
+| [`@nullspend/cost-engine`](packages/cost-engine/) | Pricing catalog and cost calculation for 45 models across OpenAI and Anthropic |
 | [`@nullspend/claude-agent`](packages/claude-agent/) | Claude Agent SDK adapter — `withNullSpend()` and `withNullSpendAsync()` for budget-aware agents |
 | [`@nullspend/mcp-server`](packages/mcp-server/) | MCP server — approval tools, budget queries, spend summaries, and cost event listing for any MCP client |
 | [`@nullspend/mcp-proxy`](packages/mcp-proxy/) | MCP proxy — gate tool calls through approval before forwarding to upstream servers |

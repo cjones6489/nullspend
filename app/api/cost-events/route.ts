@@ -21,6 +21,10 @@ import {
   dispatchToEndpoints,
   fetchWebhookEndpoints,
 } from "@/lib/webhooks/dispatch";
+import {
+  buildBudgetThresholdMessage,
+  dispatchBudgetThresholdSlackAlert,
+} from "@/lib/slack/budget-threshold-message";
 
 const log = getLogger("cost-events");
 
@@ -136,26 +140,45 @@ export const POST = withRequestContext(async (request: Request) => {
         }
 
         // 3. Webhook dispatch — fetch endpoints once, used for both cost event and threshold
+        let endpoints: Awaited<ReturnType<typeof fetchWebhookEndpoints>> = [];
         try {
-          const endpoints = await fetchWebhookEndpoints(orgId);
+          endpoints = await fetchWebhookEndpoints(orgId);
           await dispatchCostEventToEndpoints(endpoints, costEventData);
+        } catch (webhookErr) {
+          log.error({ err: webhookErr }, "Webhook dispatch failed for cost event — threshold detection will proceed");
+        }
 
-          // 4. Threshold detection — runs independently from spend update
-          if (updatedEntities.length > 0 && endpoints.length > 0) {
-            try {
-              const thresholdEvents = detectThresholdCrossings(
-                updatedEntities,
-                costEventData.requestId,
-              );
+        // 4. Threshold detection — runs independently from webhook endpoint fetch
+        if (updatedEntities.length > 0) {
+          try {
+            const thresholdEvents = detectThresholdCrossings(
+              updatedEntities,
+              costEventData.requestId,
+            );
+            // 4a. Webhook dispatch for threshold events
+            if (endpoints.length > 0) {
               for (const te of thresholdEvents) {
                 await dispatchToEndpoints(endpoints, te);
               }
-            } catch (thresholdErr) {
-              log.error({ err: thresholdErr }, "Threshold detection/dispatch failed");
             }
+            // 4b. Slack notification for threshold events
+            for (const te of thresholdEvents) {
+              const obj = te.data.object as Record<string, unknown>;
+              const msg = buildBudgetThresholdMessage({
+                eventType: te.type,
+                entityType: String(obj.budget_entity_type ?? ""),
+                entityId: String(obj.budget_entity_id ?? ""),
+                thresholdPercent: Number(obj.threshold_percent ?? 0),
+                spendMicrodollars: Number(obj.budget_spend_microdollars ?? 0),
+                limitMicrodollars: Number(obj.budget_limit_microdollars ?? 0),
+              });
+              dispatchBudgetThresholdSlackAlert(orgId, msg).catch((slackErr) => {
+                log.error({ err: slackErr }, "Budget threshold Slack alert failed");
+              });
+            }
+          } catch (thresholdErr) {
+            log.error({ err: thresholdErr }, "Threshold detection/dispatch failed");
           }
-        } catch (webhookErr) {
-          log.error({ err: webhookErr }, "Webhook dispatch failed for cost event");
         }
       })().catch((err) => {
         log.error({ err }, "Post-insert processing failed for cost event");

@@ -65,6 +65,27 @@ The proxy echoes `X-NullSpend-Session` in the response headers when present, so 
 
 ---
 
+### `X-NullSpend-Customer`
+
+Associate this request with a customer for per-customer cost tracking and budget enforcement.
+
+| Property | Value |
+|---|---|
+| Format | String, 1-256 characters |
+| Allowed characters | `[a-zA-Z0-9._:-]` |
+| If invalid | Request proceeds but customer ID is ignored. `X-NullSpend-Warning: invalid_customer` response header set. |
+| If omitted | Falls back to `tags.customer` if present. Otherwise no customer association. |
+
+```bash
+X-NullSpend-Customer: acme-corp
+```
+
+When a customer-level budget is configured and this header is present, the proxy tracks spend per customer. Once the customer budget limit is reached, the proxy returns `429` with `error.code: "customer_budget_exceeded"` and details including `customer_id`.
+
+The customer ID is stored in the `customer_id` column of cost events and can be used for per-customer cost attribution and margin analysis.
+
+---
+
 ### `X-NullSpend-Trace-Id`
 
 Set a custom trace ID for request correlation. If omitted, the proxy auto-generates one. See [Tracing](../features/tracing.md) for the full resolution chain and usage examples.

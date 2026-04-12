@@ -6,33 +6,15 @@
 
 **Completed:** 2026-04-04 (migration 0052_cost_events_customer_tag_index.sql)
 
-### Per-customer cost threshold alerting
+### ~~Per-customer cost threshold alerting~~
 
-**What:** Webhook-based alerting when any customer's cost exceeds a configured threshold in a rolling window.
-
-**Why:** Attribution answers "what does each customer cost?" Alerting answers "when does it change?" Together they close the FinOps feedback loop. The target user (backend dev at a SaaS startup) will want to know immediately when a customer's usage spikes.
-
-**Context:** Leverage existing webhook infrastructure (dispatch, signing, threshold detection). Requires a new entity type for per-customer thresholds (e.g., "alert when any API key exceeds $50/day"). Could be polling-based (check on each cost event) or batch (periodic aggregation check). The webhook payload builders (`buildThresholdCrossingPayload`) and dispatch pipeline already exist. Main work is the threshold entity model and the trigger mechanism.
-
-Customer attribution is fully shipped as of Phase 0 finish 2026-04-08 — this work is unblocked and is the only P2 in TODOS. Natural next pickup after Phase 0.
-
-**Effort:** M
-**Priority:** P2
-**Depends on:** Attribution feature shipped ✅ (2026-04-08). Webhook infrastructure ✅ (already exists).
+**Completed:** 2026-04-11. Per-customer threshold alerting works end-to-end through the existing budget system (`entityType="customer"` budgets fire threshold webhooks on cost events). Gaps closed: (1) Slack notification for budget threshold events (`lib/slack/budget-threshold-message.ts` + wired into single/batch cost-event routes), (2) smoke test for customer threshold webhook dispatch in `smoke-budget-e2e.test.ts`.
 
 ## Design
 
-### Create DESIGN.md
+### ~~Create DESIGN.md~~
 
-**What:** Codify the implicit design system into a DESIGN.md via `/design-consultation`.
-
-**Why:** No single source of truth for design decisions. Each new page requires inferring patterns from existing code (typography scale, color tokens, spacing, component conventions). A DESIGN.md would make all future UI work faster and more consistent.
-
-**Context:** The codebase uses Tailwind + shadcn/ui + base-ui with a dark monospace aesthetic. Typography: text-xl / text-sm / text-[13px] / text-xs / text-[11px]. Colors: CSS variables (chart-1 through chart-5, foreground, muted-foreground, etc.). Spacing: space-y-6 / space-y-4 / gap-3. The system exists implicitly and is consistent, but undocumented.
-
-**Effort:** S
-**Priority:** P3
-**Depends on:** None
+**Completed:** 2026-04-09. DESIGN.md created via `/design-consultation` — covers aesthetic direction, typography (Geist Sans/Mono), color system (CSS variables), spacing scale, component patterns, and anti-patterns.
 
 ## Margins
 
@@ -184,53 +166,40 @@ Customer attribution is fully shipped as of Phase 0 finish 2026-04-08 — this w
 **Priority:** P5
 **Depends on:** None
 
-### Pre-existing flaky test: permission-enforcement timeout
+### ~~Pre-existing flaky test: permission-enforcement timeout~~
 
-**What:** `app/api/__tests__/permission-enforcement.test.ts > Permission enforcement — viewer cannot write > POST /api/budgets → 403 (requires member)` times out at 5000ms when run as part of `pnpm test`. Passes in isolation in 4.4s.
-
-**Why:** Single-test flakiness erodes trust in `pnpm test` — every run has a chance of red on this one test even when nothing is broken. Right now it's masked because it only happens under parallel load and the dashboard CI doesn't always trigger it.
-
-**Context:** The test is genuinely slow (~4.4s in isolation, close to the 5000ms default). Under parallel load it tips over. Fix: either increase the per-test timeout to 10000ms with a comment explaining why, OR profile the test to find why the 403 path is so slow (probably a sync DB call or auth setup that should be mocked). Not in either of the merged PRs — it was pre-existing and noticed by /ship's test triage.
-
-**Effort:** S (~30 min)
-**Priority:** P3
-**Depends on:** None
+**Completed:** 2026-04-11. Increased per-test timeout to 15s on the slow `POST /api/budgets → 403` test. Root cause: first dynamic import cold-loads the budgets route + transitive deps (~4.4s), tips over the 5s default under parallel load.
 
 ### ~~Heavy stress intensity validation~~
 
 **Completed:** 2026-04-08 — `STRESS_INTENSITY=heavy pnpm test:stress stress-sdk-features.test.ts` ran clean: 42 passed + 1 skipped (the §7.7 `it.skip` covered by §6.9), 142.76s wall, ~$0.05. Pre-flight `jsonb:repair` showed 0 broken rows. Plan §19 step 13 acceptance criterion is now met across light + medium + heavy intensities. No race windows surfaced at 50 concurrent / 60 race / 100 batch events.
 
-### Publish @nullspend/sdk 0.2.1 to npm
+### Publish @nullspend/sdk 0.2.1 + @nullspend/cost-engine 0.1.0 to npm
 
-**What:** Bump the SDK version, run `pnpm publish` from `packages/sdk`. The current `0.2.0` has the customer primitive fixes but NOT (a) the shutdown race fix from PR #6 NOR (b) the proxy 429 interception fix from §15c-1 (TODOS.md "Completed" section, 2026-04-07).
+**Status:** Ready to publish. Version bumped, built, 457 tests pass. Blocked on `npm login` (interactive auth required).
 
-**Why:** If anyone outside the workspace consumes `@nullspend/sdk` from npm, they're missing two real fixes:
+**Publish order** (cost-engine is a dependency of the SDK):
+```bash
+npm login --registry https://registry.npmjs.org/
+cd packages/cost-engine && pnpm publish --access public --no-git-checks
+cd ../sdk && pnpm publish --access public --no-git-checks
+```
+
+**Release notes for 0.2.1 must document:**
 1. **Shutdown race fix** — silent data loss when racing flush + shutdown
-2. **Proxy 429 interception fix** — typed errors (`BudgetExceededError`, etc.) now thrown for proxy denials with `enforcement: true`. Previously the proxied path bailed out before interception could run, returning raw 429s. **Behavior change**: any caller catching 429 manually will now see typed errors thrown unexpectedly. Must be called out in the release notes.
+2. **Proxy 429 interception fix** — **BREAKING behavior change**: proxy denials with `enforcement: true` now throw typed errors (`BudgetExceededError`, `VelocityExceededError`, `SessionLimitExceededError`, `TagBudgetExceededError`) instead of returning raw 429 responses. Any caller catching 429 manually will see typed errors thrown.
 
-Internal proxy/dashboard code uses the workspace dependency and is already on the fixed version.
-
-**Context:** Check `packages/sdk/package.json` for current version. Both fixes are on main. Verify with `pnpm test` from `packages/sdk` (389 tests should pass — was 381 before the 429 interception fix). Then bump version, build, publish. The release notes should explicitly document the typed-error behavior change so any external user catching 429 manually has a heads up.
-
-**Effort:** S (~15 min)
+**Effort:** XS (just run the commands above)
 **Priority:** P3 (P0 if there are external consumers)
-**Depends on:** None
+**Depends on:** npm login
 
 ### ~~§6.8 fail-open session limit test burns OpenAI calls per run~~
 
 **Completed:** 2026-04-08 on `feat/sdk-quick-close-followups` (commit `cd7d530`). Took option (a) — deleted the §6.8 stress test entirely and replaced the describe block with an inline comment documenting why. Heavy stress validation post-deletion confirmed no regression: 42 + 1 skipped (was 43 + 1 skipped). Coverage of the fail-open path remains intact via unit tests in `packages/sdk/src/tracked-fetch.test.ts` (mocked clock + fetch, deterministic). Live-stack coverage of client-side session limit enforcement is now a P5 nice-to-have — see the inline comment in the test file for how to restore it (mock upstream, or coordinate policy endpoint to return permissive policy for stress test org).
 
-### Cleanup: defensive jsonb_typeof guard in getDistinctTagKeys
+### ~~Cleanup: defensive jsonb_typeof guard in getDistinctTagKeys~~
 
-**What:** `lib/cost-events/aggregate-cost-events.ts:368-393` — the `AND jsonb_typeof(${costEvents.tags}) = 'object'` guard in `getDistinctTagKeys` was added during PR #6 as a safety net for the brief deploy → repair window. After `pnpm jsonb:repair` ran (already done — all 804 rows are now object-typed), this guard is technically dead code.
-
-**Why:** Either remove it (cleanest, code matches reality) or keep it permanently and document it as defensive (handles any future regression that reintroduces string-typed tags). Currently undocumented in a way that says which.
-
-**Context:** Two options: (a) remove the guard (and the comment explaining it) since the issue is resolved; (b) keep it but add a comment saying it's a permanent defensive measure. The other readers (`->>`, `@>`) silently miss string-typed rows which is fine; only `jsonb_object_keys` raises, which is why the guard was added there specifically.
-
-**Effort:** S (5 min)
-**Priority:** P4
-**Depends on:** None
+**Completed:** 2026-04-11. Took option (b) — kept the `jsonb_typeof` guard permanently and updated the comment to clearly state it is a permanent defensive measure, not temporary cleanup debt. The guard costs nothing at runtime (Postgres evaluates it as part of the existing WHERE clause) and prevents a 500 if a future bug reintroduces string-typed tags into the `tags` column.
 
 ### Address remaining 13 §15c quality follow-ups
 
@@ -256,17 +225,9 @@ Internal proxy/dashboard code uses the workspace dependency and is already on th
 **Priority:** P4
 **Depends on:** None
 
-### Decide: GitHub Issues vs TODOS.md for issue tracking
+### ~~Decide: GitHub Issues vs TODOS.md for issue tracking~~
 
-**What:** The repo has GitHub Issues enabled (`hasIssuesEnabled: true`) but zero issues filed. The team uses TODOS.md instead. Should we consolidate everything into TODOS.md, or start using GitHub Issues for some classes of work (bugs, regressions, infra)?
-
-**Why:** TODOS.md is great for product features and internal context. GitHub Issues are better for tracking bugs that need community visibility, attaching PR conversations, assigning to people, and integrating with project boards. Mixing both is fine but only if the boundary is clear. Right now there is no boundary because nobody has ever used Issues.
-
-**Context:** No urgency. Worth deciding before the team grows past one developer. Could split: TODOS.md for product features and internal design, GitHub Issues for bugs from external contributors and operational regressions.
-
-**Effort:** XS (decision only)
-**Priority:** P4
-**Depends on:** None
+**Completed:** 2026-04-11. Decision: stay with TODOS.md while solo. Revisit when external contributors exist or team grows. GitHub Issues adds overhead with no audience right now.
 
 ## Completed
 

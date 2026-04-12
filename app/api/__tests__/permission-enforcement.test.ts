@@ -64,12 +64,15 @@ function reject(minRole: string) {
 describe("Permission enforcement — viewer cannot write", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  // First dynamic import in the file cold-loads the budgets route and its
+  // transitive dependencies (~4.4s). Under parallel test load this exceeds
+  // the default 5s timeout. Increase to 15s for this test only.
   it("POST /api/budgets → 403 (requires member)", async () => {
     reject("member");
     const { POST } = await import("@/app/api/budgets/route");
     const res = await POST(new Request("http://localhost/api/budgets", { method: "POST" }));
     expect(res.status).toBe(403);
-  });
+  }, 15_000);
 
   it("POST /api/keys → 403 (requires member)", async () => {
     reject("member");

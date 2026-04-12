@@ -34,6 +34,7 @@ These errors are returned by the NullSpend proxy (`proxy.nullspend.dev`).
 | Code | HTTP | When | Fix |
 |---|---|---|---|
 | `budget_exceeded` | 429 | Estimated cost of this request exceeds the remaining budget | Increase the budget ceiling, wait for the period to reset, or remove the budget |
+| `customer_budget_exceeded` | 429 | Estimated cost exceeds the customer-level budget limit | Increase the customer budget or remove the limit. The response `details` includes `customer_id`, `budget_limit_microdollars`, and `budget_spend_microdollars` |
 | `velocity_exceeded` | 429 | Spend rate within the velocity window exceeds the configured limit | Wait for the cooldown period (check `Retry-After` header). The response `details` includes `limitMicrodollars`, `windowSeconds`, and `currentMicrodollars` |
 | `session_limit_exceeded` | 429 | Cumulative spend for this session ID exceeds the session limit | Start a new session (new `X-NullSpend-Session` value) or increase the session limit. The response `details` includes `session_id`, `session_spend_microdollars`, and `session_limit_microdollars` |
 | `tag_budget_exceeded` | 429 | Estimated cost exceeds a tag-level budget limit | Adjust the tag budget. The response `details` includes `tag_key`, `tag_value`, `budget_limit_microdollars`, and `budget_spend_microdollars` |

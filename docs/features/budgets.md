@@ -11,11 +11,11 @@ Request arrives
     │
     ├─ 1. Estimate cost (input tokens + max output tokens × 1.1 safety margin)
     │
-    ├─ 2. Session limit check ─── exceeds? ──► 429 session_limit_exceeded
+    ├─ 2. Period reset ────────── due? ───────► Reset spend to 0, start new period
     │
-    ├─ 3. Velocity check ──────── tripped? ───► 429 velocity_exceeded + Retry-After
+    ├─ 3. Session limit check ─── exceeds? ──► 429 session_limit_exceeded
     │
-    ├─ 4. Period reset ────────── due? ───────► Reset spend to 0, start new period
+    ├─ 4. Velocity check ──────── tripped? ───► 429 velocity_exceeded + Retry-After
     │
     ├─ 5. Budget check ────────── exceeds? ──► 429 budget_exceeded
     │
@@ -37,7 +37,7 @@ Budget enforcement uses a Cloudflare Durable Object with embedded SQLite. All ch
 | `user` | All requests from a user account (across all their API keys) | `ns_usr_<uuid>` |
 | `api_key` | Requests from a specific API key | `ns_key_<uuid>` |
 | `tag` | Requests carrying a specific tag key-value pair | `key=value` |
-| `customer` | Requests attributed to a specific customer | Customer identifier string |
+| `customer` | Requests carrying a specific customer ID via `X-NullSpend-Customer` header | Customer identifier string |
 
 A single request can match multiple budgets (e.g., a user budget + an API key budget + a customer budget). All matching budgets must have sufficient remaining balance for the request to proceed.
 
@@ -59,11 +59,15 @@ A single request can match multiple budgets (e.g., a user budget + an API key bu
 
 The proxy checks budgets in this exact order. A denial at any step stops the pipeline — later steps are not evaluated.
 
-### 1. Session Limit Check
+### 1. Period Reset
+
+If the budget has a `resetInterval` and the current period has elapsed, spend resets to 0 and a new period starts. A `budget.reset` webhook fires.
+
+### 2. Session Limit Check
 
 If the budget has a `sessionLimitMicrodollars` and the request includes an `X-NullSpend-Session` header, the proxy checks cumulative spend for that session. If `currentSessionSpend + estimatedCost > sessionLimit`, the request is denied.
 
-### 2. Velocity Check (Circuit Breaker)
+### 3. Velocity Check (Circuit Breaker)
 
 If the budget has a `velocityLimitMicrodollars`, the proxy checks spend within the sliding window. The velocity check uses a circuit breaker pattern:
 
@@ -72,10 +76,6 @@ If the budget has a `velocityLimitMicrodollars`, the proxy checks spend within t
 - **Recovery**: after cooldown, the breaker resets and a `velocity.recovered` webhook fires
 
 If `estimatedSpend + estimate > velocityLimit`, the breaker trips.
-
-### 3. Period Reset
-
-If the budget has a `resetInterval` and the current period has elapsed, spend resets to 0 and a new period starts. A `budget.reset` webhook fires.
 
 ### 4. Budget Exhaustion Check
 

@@ -30,7 +30,7 @@ API key
 | `durationMs` | body | integer | No | Request duration in milliseconds. |
 | `sessionId` | body | string | No | Session identifier. Max 200 chars. |
 | `traceId` | body | string | No | 128-bit hex trace ID (`^[0-9a-f]{32}$`). |
-| `eventType` | body | string | No | `"llm"`, `"tool"`, or `"custom"`. Default `"custom"`. |
+| `eventType` | body | string | No | `"llm"`, `"tool"`, or `"custom"`. Default `"custom"`. Stored but not returned in list/detail responses — used for internal filtering and analytics. |
 | `toolName` | body | string | No | Tool name for tool-use events. Max 200 chars. |
 | `toolServer` | body | string | No | Tool server name. Max 200 chars. |
 | `customer` | body | string | No | Customer identifier for per-customer profitability. Max 256 chars, min 1 char. |
@@ -95,8 +95,10 @@ curl -X POST https://nullspend.dev/api/cost-events \
 
 ```json
 {
-  "id": "ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "createdAt": "2026-03-20T14:30:00.000Z"
+  "data": {
+    "id": "ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "createdAt": "2026-03-20T14:30:00.000Z"
+  }
 }
 ```
 
@@ -241,7 +243,7 @@ curl -X POST https://nullspend.dev/api/cost-events/batch \
 
 `GET /api/cost-events`
 
-Retrieve cost events for the authenticated user with filtering and pagination.
+Retrieve cost events for the current organization with filtering and pagination.
 
 ### Authentication
 
@@ -259,7 +261,9 @@ Session (dashboard)
 | `provider` | query | string | No | Filter by provider. |
 | `source` | query | string | No | Filter by source: `"proxy"`, `"api"`, or `"mcp"`. |
 | `traceId` | query | string | No | Filter by trace ID (32 hex chars). |
+| `sessionId` | query | string | No | Filter by session ID. 1–200 chars. Returns events for a specific [session](../features/cost-tracking.md#session-replay). |
 | `tag.*` | query | string | No | JSONB containment filter. Example: `tag.environment=production`. |
+| `budgetStatus` | query | string | No | Filter by budget status: `"skipped"`, `"approved"`, or `"denied"`. |
 
 ### Request
 
@@ -291,7 +295,10 @@ curl https://nullspend.dev/api/cost-events?limit=10&provider=openai \
       "createdAt": "2026-03-20T14:30:00.000Z",
       "source": "proxy",
       "traceId": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
+      "sessionId": "research-task-47",
       "tags": { "environment": "production" },
+      "customerId": "acme-corp",
+      "budgetStatus": "approved",
       "keyName": "production-key"
     }
   ],
@@ -317,7 +324,7 @@ Headers: `NullSpend-Version: 2026-04-01`
 
 `GET /api/cost-events/:id`
 
-Retrieve a single cost event by ID. The event must belong to the authenticated user.
+Retrieve a single cost event by ID. The event must belong to the authenticated user's organization.
 
 ### Authentication
 
@@ -370,7 +377,7 @@ curl https://nullspend.dev/api/cost-events/ns_evt_a1b2c3d4-e5f6-7890-abcd-ef1234
 |---|---|---|
 | `validation_error` | 400 | Invalid ID format |
 | `authentication_required` | 401 | No valid session |
-| `not_found` | 404 | Event not found or not owned by user |
+| `not_found` | 404 | Event not found or not in user's organization |
 
 ---
 
@@ -487,9 +494,358 @@ Headers: `NullSpend-Version: 2026-04-01`
 
 ---
 
+## Get Session
+
+`GET /api/cost-events/sessions/:sessionId`
+
+Retrieve all cost events for a session, in chronological order, with aggregate summary stats. Use this to build session replay views.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `sessionId` | path | string | Yes | Session ID. 1–200 chars. |
+
+### Request
+
+```bash
+# Requires dashboard session cookie
+curl https://nullspend.dev/api/cost-events/sessions/research-task-47 \
+  -H "Cookie: session=..."
+```
+
+### Response
+
+**200 OK**:
+
+```json
+{
+  "sessionId": "research-task-47",
+  "summary": {
+    "eventCount": 12,
+    "totalCostMicrodollars": 43000,
+    "totalInputTokens": 15200,
+    "totalOutputTokens": 4800,
+    "totalDurationMs": 8340,
+    "startedAt": "2026-03-20T14:21:05.000Z",
+    "endedAt": "2026-03-20T14:23:39.000Z"
+  },
+  "events": [
+    {
+      "id": "ns_evt_...",
+      "requestId": "req-001",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "inputTokens": 1200,
+      "outputTokens": 350,
+      "costMicrodollars": 5250,
+      "durationMs": 680,
+      "createdAt": "2026-03-20T14:21:05.000Z",
+      "sessionId": "research-task-47",
+      "tags": {},
+      "keyName": "production-key"
+    }
+  ]
+}
+```
+
+Events are ordered chronologically (oldest first). Maximum 200 events per session. If a session has no events, `events` is an empty array and `summary.startedAt`/`endedAt` are null.
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `validation_error` | 400 | Invalid or empty session ID |
+| `authentication_required` | 401 | No valid session |
+
+---
+
+## Export Cost Events
+
+`GET /api/cost-events/export`
+
+Export cost events as a CSV file. Returns up to 10,000 rows sorted by `createdAt DESC`. Supports the same filters as the list endpoint.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `provider` | query | string | No | Filter by provider. |
+| `model` | query | string | No | Filter by model name. |
+| `apiKeyId` | query | string | No | Filter by API key (`ns_key_*`). |
+| `source` | query | string | No | Filter by source: `"proxy"`, `"api"`, or `"mcp"`. |
+| `sessionId` | query | string | No | Filter by session ID. |
+| `traceId` | query | string | No | Filter by trace ID (32 hex chars). |
+| `tag.*` | query | string | No | JSONB containment filter. Example: `tag.environment=production`. |
+
+### Request
+
+```bash
+# Requires dashboard session cookie
+curl "https://nullspend.dev/api/cost-events/export?provider=openai" \
+  -H "Cookie: session=..." \
+  -o cost-events.csv
+```
+
+### Response
+
+**200 OK** — CSV file download.
+
+Headers: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="nullspend-cost-events-2026-03-28.csv"`
+
+CSV columns: `id`, `request_id`, `provider`, `model`, `input_tokens`, `output_tokens`, `cached_input_tokens`, `reasoning_tokens`, `cost_microdollars`, `cost_usd`, `duration_ms`, `source`, `session_id`, `trace_id`, `key_name`, `created_at`.
+
+The `cost_usd` column is a convenience conversion (`cost_microdollars / 1,000,000`).
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
+
+---
+
+## Cost Attribution
+
+`GET /api/cost-events/attribution`
+
+Group cost events by API key or any tag value. Returns ranked groups with total cost, request count, and average cost per request. Supports JSON and CSV export.
+
+See [Cost Attribution](../features/cost-attribution.md) for the feature overview and common patterns.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `groupBy` | query | string | Yes | `"api_key"` for API key grouping, or any tag key name (e.g., `"customer_id"`). 1–100 chars. |
+| `period` | query | string | No | `"7d"`, `"30d"`, or `"90d"`. Default `"30d"`. |
+| `limit` | query | integer | No | Max groups returned. 1–500, default 100. |
+| `excludeEstimated` | query | string | No | `"true"` or `"false"`. Default `"false"`. Excludes cancelled stream estimates. |
+| `format` | query | string | No | `"json"` (default) or `"csv"`. CSV returns a downloadable file. |
+
+### Request
+
+```bash
+# Group by API key (requires dashboard session)
+curl "https://nullspend.dev/api/cost-events/attribution?groupBy=api_key&period=30d" \
+  -H "Cookie: session=..."
+
+# Group by customer_id tag
+curl "https://nullspend.dev/api/cost-events/attribution?groupBy=customer_id&period=30d" \
+  -H "Cookie: session=..."
+
+# CSV export
+curl "https://nullspend.dev/api/cost-events/attribution?groupBy=api_key&format=csv" \
+  -H "Cookie: session=..." \
+  -o attribution.csv
+```
+
+### Response
+
+**200 OK** (JSON):
+
+```json
+{
+  "data": {
+    "groups": [
+      {
+        "key": "production-key",
+        "keyId": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
+        "totalCostMicrodollars": 8500000,
+        "requestCount": 4200,
+        "avgCostMicrodollars": 2024
+      },
+      {
+        "key": "staging-key",
+        "keyId": "ns_key_aabbccdd-eeff-0011-2233-445566778899",
+        "totalCostMicrodollars": 1200000,
+        "requestCount": 800,
+        "avgCostMicrodollars": 1500
+      }
+    ],
+    "period": "30d",
+    "groupBy": "api_key",
+    "totalGroups": 2,
+    "hasMore": false,
+    "totals": {
+      "totalCostMicrodollars": 9700000,
+      "totalRequests": 5000
+    }
+  }
+}
+```
+
+When `groupBy` is a tag key, `keyId` is `null` for all groups:
+
+```json
+{
+  "data": {
+    "groups": [
+      {
+        "key": "acme-corp",
+        "keyId": null,
+        "totalCostMicrodollars": 6000000,
+        "requestCount": 3000,
+        "avgCostMicrodollars": 2000
+      }
+    ],
+    "period": "30d",
+    "groupBy": "customer_id",
+    "totalGroups": 1,
+    "hasMore": false,
+    "totals": {
+      "totalCostMicrodollars": 9700000,
+      "totalRequests": 5000
+    }
+  }
+}
+```
+
+`totals` contains org-wide aggregates for the period (not just the visible groups). `hasMore` is `true` when more groups exist beyond the limit.
+
+**200 OK** (CSV, when `format=csv`):
+
+```
+key,key_id,total_cost_microdollars,total_cost_usd,request_count,avg_cost_microdollars,avg_cost_usd
+production-key,ns_key_11223344-5566-7788-99aa-bbccddeeff00,8500000,8.500000,4200,2024,0.002024
+staging-key,ns_key_aabbccdd-eeff-0011-2233-445566778899,1200000,1.200000,800,1500,0.001500
+```
+
+Headers: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="nullspend-attribution-api_key-2026-03-28.csv"`
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `validation_error` | 400 | Missing groupBy, invalid period, limit out of range, invalid format |
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
+
+---
+
+## Attribution Detail
+
+`GET /api/cost-events/attribution/:key`
+
+Retrieve daily spend trend and model breakdown for a single attribution group.
+
+### Authentication
+
+Session (dashboard)
+
+### Parameters
+
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `key` | path | string | Yes | API key ID (`ns_key_*`) or tag value. Use `(no key)` for events without an API key. |
+| `groupBy` | query | string | Yes | Must match the groupBy used in the list endpoint. `"api_key"` or a tag key name. |
+| `period` | query | string | No | `"7d"`, `"30d"`, or `"90d"`. Default `"30d"`. |
+| `excludeEstimated` | query | string | No | `"true"` or `"false"`. Default `"false"`. |
+
+### Request
+
+```bash
+# API key detail (requires dashboard session)
+curl "https://nullspend.dev/api/cost-events/attribution/ns_key_11223344-5566-7788-99aa-bbccddeeff00?groupBy=api_key" \
+  -H "Cookie: session=..."
+
+# Tag value detail
+curl "https://nullspend.dev/api/cost-events/attribution/acme-corp?groupBy=customer_id" \
+  -H "Cookie: session=..."
+```
+
+### Response
+
+**200 OK**:
+
+```json
+{
+  "data": {
+    "key": "ns_key_11223344-5566-7788-99aa-bbccddeeff00",
+    "totalCostMicrodollars": 8500000,
+    "requestCount": 4200,
+    "avgCostMicrodollars": 2024,
+    "daily": [
+      { "date": "2026-03-27", "cost": 285000, "count": 140 },
+      { "date": "2026-03-26", "cost": 310000, "count": 155 }
+    ],
+    "models": [
+      { "model": "gpt-4o", "cost": 7200000, "count": 3600 },
+      { "model": "gpt-4o-mini", "cost": 1300000, "count": 600 }
+    ]
+  }
+}
+```
+
+`daily` is sorted by date ascending. `models` is sorted by cost descending.
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `invalid_key` | 400 | Key contains `/` or `..` (path traversal), or invalid `ns_key_*` format |
+| `validation_error` | 400 | Missing groupBy or invalid period |
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
+
+---
+
+## Tag Keys
+
+`GET /api/cost-events/tag-keys`
+
+Returns distinct non-internal tag key names from the last 7 days of cost events. Used to populate the Attribution page's groupBy dropdown.
+
+### Authentication
+
+Session (dashboard)
+
+### Request
+
+```bash
+# Requires dashboard session
+curl "https://nullspend.dev/api/cost-events/tag-keys" \
+  -H "Cookie: session=..."
+```
+
+### Response
+
+**200 OK**:
+
+```json
+{
+  "data": ["customer_id", "environment", "feature", "team"]
+}
+```
+
+Keys starting with `_ns_` (internal tags) are excluded. Maximum 50 keys returned. Sorted alphabetically.
+
+### Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `authentication_required` | 401 | No valid session |
+| `forbidden` | 403 | User lacks viewer role |
+
+---
+
 ## Related
 
-- [Cost Tracking](../features/cost-tracking.md) — feature overview
+- [Cost Attribution](../features/cost-attribution.md) — feature overview and common patterns
+- [Cost Tracking](../features/cost-tracking.md) — how costs are calculated
 - [Tags](../features/tags.md) — tagging and filtering
 - [Error Reference](errors.md) — full error catalog
 - [Custom Headers](custom-headers.md) — header reference

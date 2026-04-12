@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { authenticateApiKey } from "@/lib/auth/with-api-key-auth";
 import { updateBudgetSpendFromCostEvent } from "@/lib/budgets/update-spend";
+import { detectThresholdCrossings } from "@/lib/budgets/threshold-detection";
 import { insertCostEvent } from "@/lib/cost-events/ingest";
 import { listCostEvents } from "@/lib/cost-events/list-cost-events";
 import { invalidateProxyCache } from "@/lib/proxy-invalidate";
 import { withIdempotency } from "@/lib/resilience/idempotency";
-import { dispatchCostEventToEndpoints, fetchWebhookEndpoints } from "@/lib/webhooks/dispatch";
+import { dispatchCostEventToEndpoints, dispatchToEndpoints, fetchWebhookEndpoints } from "@/lib/webhooks/dispatch";
+import { dispatchBudgetThresholdSlackAlert } from "@/lib/slack/budget-threshold-message";
 import { GET, POST } from "./route";
 
 vi.mock("@/lib/auth/with-api-key-auth", () => ({
@@ -47,6 +49,7 @@ vi.mock("@/lib/webhooks/dispatch", () => ({
     { id: "ep-1", url: "https://example.com/hook", signingSecret: "sec", eventTypes: [] },
   ])),
   dispatchCostEventToEndpoints: vi.fn(() => Promise.resolve()),
+  dispatchToEndpoints: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/lib/budgets/update-spend", () => ({
@@ -55,6 +58,11 @@ vi.mock("@/lib/budgets/update-spend", () => ({
 
 vi.mock("@/lib/budgets/threshold-detection", () => ({
   detectThresholdCrossings: vi.fn(() => []),
+}));
+
+vi.mock("@/lib/slack/budget-threshold-message", () => ({
+  buildBudgetThresholdMessage: vi.fn(() => ({ text: "test", blocks: [] })),
+  dispatchBudgetThresholdSlackAlert: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/lib/proxy-invalidate", () => ({
@@ -81,7 +89,10 @@ const mockedAuthenticateApiKey = vi.mocked(authenticateApiKey);
 const mockedInsertCostEvent = vi.mocked(insertCostEvent);
 const mockedFetchWebhookEndpoints = vi.mocked(fetchWebhookEndpoints);
 const mockedDispatchCostEventToEndpoints = vi.mocked(dispatchCostEventToEndpoints);
+const mockedDispatchToEndpoints = vi.mocked(dispatchToEndpoints);
 const mockedUpdateBudgetSpend = vi.mocked(updateBudgetSpendFromCostEvent);
+const mockedDetectThresholdCrossings = vi.mocked(detectThresholdCrossings);
+const mockedDispatchBudgetThresholdSlackAlert = vi.mocked(dispatchBudgetThresholdSlackAlert);
 const mockedInvalidateProxyCache = vi.mocked(invalidateProxyCache);
 
 const VALID_EVENT = {
@@ -393,6 +404,243 @@ describe("POST /api/cost-events", () => {
     expect(mockedDispatchCostEventToEndpoints).toHaveBeenCalled();
     // Proxy cache should NOT be synced since no entities were updated
     expect(mockedInvalidateProxyCache).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/cost-events — threshold Slack alerts
+// ---------------------------------------------------------------------------
+
+describe("POST /api/cost-events — threshold Slack alerts", () => {
+  const AUTH = {
+    userId: "user-1",
+    orgId: "org-test-1",
+    keyId: "key-1",
+    apiVersion: "2026-04-01",
+  };
+
+  afterEach(() => vi.clearAllMocks());
+
+  it("dispatches Slack alert when threshold crossing is detected", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue(AUTH);
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-threshold",
+      createdAt: "2026-04-11T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedUpdateBudgetSpend.mockResolvedValue({
+      updatedEntities: [{
+        id: "b-1", entityType: "customer", entityId: "acme",
+        previousSpend: 4_000_000, newSpend: 5_500_000,
+        maxBudget: 10_000_000, thresholdPercentages: [50],
+      }],
+    });
+    mockedDetectThresholdCrossings.mockReturnValue([{
+      id: "evt_1",
+      type: "budget.threshold.warning",
+      api_version: "2026-04-01",
+      created_at: 0,
+      data: {
+        object: {
+          budget_entity_type: "customer",
+          budget_entity_id: "acme",
+          budget_limit_microdollars: 10_000_000,
+          budget_spend_microdollars: 5_500_000,
+          threshold_percent: 50,
+        },
+      },
+    }]);
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedDispatchBudgetThresholdSlackAlert).toHaveBeenCalledWith(
+      "org-test-1",
+      expect.objectContaining({ text: expect.any(String) }),
+    );
+  });
+
+  it("dispatches Slack for budget.exceeded events (no threshold_percent field)", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue(AUTH);
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-exceeded",
+      createdAt: "2026-04-11T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedUpdateBudgetSpend.mockResolvedValue({
+      updatedEntities: [{
+        id: "b-1", entityType: "customer", entityId: "acme",
+        previousSpend: 9_500_000, newSpend: 10_500_000,
+        maxBudget: 10_000_000, thresholdPercentages: [],
+      }],
+    });
+    mockedDetectThresholdCrossings.mockReturnValue([{
+      id: "evt_1",
+      type: "budget.exceeded",
+      api_version: "2026-04-01",
+      created_at: 0,
+      data: {
+        object: {
+          budget_entity_type: "customer",
+          budget_entity_id: "acme",
+          budget_limit_microdollars: 10_000_000,
+          budget_spend_microdollars: 10_500_000,
+          // NOTE: budget.exceeded events lack threshold_percent
+        },
+      },
+    }]);
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedDispatchBudgetThresholdSlackAlert).toHaveBeenCalledTimes(1);
+    // Webhook dispatch also fires
+    expect(mockedDispatchToEndpoints).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not dispatch Slack when no threshold crossings detected", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue(AUTH);
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-no-threshold",
+      createdAt: "2026-04-11T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedUpdateBudgetSpend.mockResolvedValue({
+      updatedEntities: [{
+        id: "b-1", entityType: "customer", entityId: "acme",
+        previousSpend: 1_000_000, newSpend: 1_500_000,
+        maxBudget: 10_000_000, thresholdPercentages: [50],
+      }],
+    });
+    mockedDetectThresholdCrossings.mockReturnValue([]); // no crossings
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockedDispatchBudgetThresholdSlackAlert).not.toHaveBeenCalled();
+  });
+
+  it("Slack dispatch failure does not break webhook dispatch", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue(AUTH);
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-slack-fail",
+      createdAt: "2026-04-11T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedUpdateBudgetSpend.mockResolvedValue({
+      updatedEntities: [{
+        id: "b-1", entityType: "customer", entityId: "acme",
+        previousSpend: 4_000_000, newSpend: 5_500_000,
+        maxBudget: 10_000_000, thresholdPercentages: [50],
+      }],
+    });
+    mockedDetectThresholdCrossings.mockReturnValue([{
+      id: "evt_1",
+      type: "budget.threshold.warning",
+      api_version: "2026-04-01",
+      created_at: 0,
+      data: {
+        object: {
+          budget_entity_type: "customer",
+          budget_entity_id: "acme",
+          budget_limit_microdollars: 10_000_000,
+          budget_spend_microdollars: 5_500_000,
+          threshold_percent: 50,
+        },
+      },
+    }]);
+    mockedDispatchBudgetThresholdSlackAlert.mockRejectedValue(new Error("Slack down"));
+
+    const res = await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Response should succeed despite Slack failure
+    expect(res.status).toBe(201);
+    // Webhook dispatch should still have fired
+    expect(mockedDispatchToEndpoints).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispatches Slack even when no webhook endpoints exist", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue(AUTH);
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-no-endpoints",
+      createdAt: "2026-04-11T00:00:00.000Z",
+      deduplicated: false,
+    });
+    mockedFetchWebhookEndpoints.mockResolvedValue([]); // no endpoints
+    mockedUpdateBudgetSpend.mockResolvedValue({
+      updatedEntities: [{
+        id: "b-1", entityType: "customer", entityId: "acme",
+        previousSpend: 4_000_000, newSpend: 5_500_000,
+        maxBudget: 10_000_000, thresholdPercentages: [50],
+      }],
+    });
+    mockedDetectThresholdCrossings.mockReturnValue([{
+      id: "evt_1",
+      type: "budget.threshold.warning",
+      api_version: "2026-04-01",
+      created_at: 0,
+      data: {
+        object: {
+          budget_entity_type: "customer",
+          budget_entity_id: "acme",
+          budget_limit_microdollars: 10_000_000,
+          budget_spend_microdollars: 5_500_000,
+          threshold_percent: 50,
+        },
+      },
+    }]);
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Slack fires even without webhook endpoints
+    expect(mockedDispatchBudgetThresholdSlackAlert).toHaveBeenCalledTimes(1);
+    // Webhook dispatch should NOT fire (no endpoints)
+    expect(mockedDispatchToEndpoints).not.toHaveBeenCalled();
+  });
+
+  it("Slack dispatch still fires when fetchWebhookEndpoints throws", async () => {
+    mockedAuthenticateApiKey.mockResolvedValue(AUTH);
+    mockedInsertCostEvent.mockResolvedValue({
+      id: "ce-endpoint-fail",
+      createdAt: "2026-04-11T00:00:00.000Z",
+      deduplicated: false,
+    });
+    // Endpoint fetch throws — previously this would skip threshold + Slack
+    mockedFetchWebhookEndpoints.mockRejectedValue(new Error("DB connection lost"));
+    mockedUpdateBudgetSpend.mockResolvedValue({
+      updatedEntities: [{
+        id: "b-1", entityType: "customer", entityId: "acme",
+        previousSpend: 4_000_000, newSpend: 5_500_000,
+        maxBudget: 10_000_000, thresholdPercentages: [50],
+      }],
+    });
+    mockedDetectThresholdCrossings.mockReturnValue([{
+      id: "evt_1",
+      type: "budget.threshold.warning",
+      api_version: "2026-04-01",
+      created_at: 0,
+      data: {
+        object: {
+          budget_entity_type: "customer",
+          budget_entity_id: "acme",
+          budget_limit_microdollars: 10_000_000,
+          budget_spend_microdollars: 5_500_000,
+          threshold_percent: 50,
+        },
+      },
+    }]);
+
+    await POST(makeRequest(VALID_EVENT));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Threshold detection + Slack dispatch should still run
+    // even though fetchWebhookEndpoints failed
+    expect(mockedDetectThresholdCrossings).toHaveBeenCalledTimes(1);
+    expect(mockedDispatchBudgetThresholdSlackAlert).toHaveBeenCalledTimes(1);
+    // Webhook dispatch should NOT have fired (endpoints not available)
+    expect(mockedDispatchToEndpoints).not.toHaveBeenCalled();
   });
 });
 

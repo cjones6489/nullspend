@@ -265,6 +265,7 @@ Session (dashboard)
 | `traceId` | query | string | No | Filter by trace ID (32 hex chars). |
 | `sessionId` | query | string | No | Filter by session ID. 1–200 chars. Returns events for a specific [session](../features/cost-tracking.md#session-replay). |
 | `tag.*` | query | string | No | JSONB containment filter. Example: `tag.environment=production`. |
+| `budgetStatus` | query | string | No | Filter by budget status: `"skipped"`, `"approved"`, or `"denied"`. |
 
 ### Request
 
@@ -298,6 +299,8 @@ curl https://nullspend.dev/api/cost-events?limit=10&provider=openai \
       "traceId": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
       "sessionId": "research-task-47",
       "tags": { "environment": "production" },
+      "customerId": "acme-corp",
+      "budgetStatus": "approved",
       "keyName": "production-key"
     }
   ],
