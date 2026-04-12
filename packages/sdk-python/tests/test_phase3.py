@@ -489,3 +489,327 @@ class TestParsePolicyResponse:
         assert policy.budget is None
         assert policy.allowed_models is None
         assert policy.restrictions_active is False
+
+
+# ---- TrackedTransport end-to-end ----
+
+
+class TestTrackedTransportE2E:
+    def _make_transport(self, handler, provider="openai", **kwargs):
+        """Helper to create a TrackedTransport with a mock inner transport."""
+        mock_transport = httpx.MockTransport(handler)
+        return TrackedTransport(
+            transport=mock_transport,
+            provider=provider,
+            **kwargs,
+        )
+
+    def test_header_injection(self):
+        """Customer, tags, traceId, actionId headers are injected."""
+        captured = {}
+        def handler(request):
+            captured.update(dict(request.headers))
+            return httpx.Response(200, json={"id": "msg_1", "usage": {"prompt_tokens": 10, "completion_tokens": 5}})
+
+        transport = self._make_transport(
+            handler,
+            customer="acme",
+            tags={"env": "prod"},
+            trace_id="trace-123",
+            action_id="act-456",
+        )
+        client = httpx.Client(transport=transport)
+        client.post("https://api.openai.com/v1/chat/completions",
+                     json={"model": "gpt-4o", "messages": []})
+
+        assert captured["x-nullspend-customer"] == "acme"
+        assert json.loads(captured["x-nullspend-tags"]) == {"env": "prod"}
+        assert captured["x-nullspend-traceid"] == "trace-123"
+        assert captured["x-nullspend-actionid"] == "act-456"
+        client.close()
+
+    def test_non_tracked_route_passes_through(self):
+        """Non-tracked routes (GET, /models) are passed through without modification."""
+        def handler(request):
+            return httpx.Response(200, json={"models": []})
+
+        transport = self._make_transport(handler, customer="acme")
+        client = httpx.Client(transport=transport)
+        resp = client.get("https://api.openai.com/v1/models")
+        assert resp.status_code == 200
+        # Customer header should still be injected (headers are added for ALL requests)
+        client.close()
+
+    def test_non_streaming_cost_extraction(self):
+        """Non-streaming response extracts usage and queues cost event."""
+        queued = []
+        def handler(request):
+            return httpx.Response(200, json={
+                "id": "chatcmpl-1",
+                "model": "gpt-4o",
+                "choices": [{"message": {"content": "Hello"}}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+            })
+
+        transport = self._make_transport(
+            handler,
+            queue_cost=lambda evt: queued.append(evt),
+        )
+        client = httpx.Client(transport=transport)
+        resp = client.post("https://api.openai.com/v1/chat/completions",
+                          json={"model": "gpt-4o", "messages": [{"role": "user", "content": "Hi"}]})
+        assert resp.status_code == 200
+
+        assert len(queued) == 1
+        assert queued[0].provider == "openai"
+        assert queued[0].model == "gpt-4o"
+        assert queued[0].input_tokens == 100
+        assert queued[0].output_tokens == 50
+        assert queued[0].cost_microdollars > 0
+        client.close()
+
+    def test_streaming_cost_extraction_via_tee(self):
+        """Streaming response wraps stream with TeeByteStream for cost extraction."""
+        queued = []
+
+        class SSEStream(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b'data: {"model": "gpt-4o", "choices": [{"delta": {"content": "Hi"}}]}\n\n'
+                yield b'data: {"usage": {"prompt_tokens": 50, "completion_tokens": 20}}\n\n'
+                yield b'data: [DONE]\n\n'
+
+        def handler(request):
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                stream=SSEStream(),
+            )
+
+        transport = self._make_transport(
+            handler,
+            queue_cost=lambda evt: queued.append(evt),
+        )
+        client = httpx.Client(transport=transport)
+        resp = client.post("https://api.openai.com/v1/chat/completions",
+                          json={"model": "gpt-4o", "messages": [], "stream": True})
+
+        # Consumer must iterate the stream to trigger cost extraction
+        chunks = list(resp.iter_bytes())
+        assert len(chunks) >= 1  # May be combined into fewer chunks
+        # Cost event should be queued after stream completes
+        assert len(queued) == 1
+        assert queued[0].input_tokens == 50
+        assert queued[0].output_tokens == 20
+        client.close()
+
+    def test_proxy_429_interception(self):
+        """Proxy 429 with X-NullSpend-Denied header raises BudgetExceededError."""
+        def handler(request):
+            return httpx.Response(429, headers={"x-nullspend-denied": "1"}, json={
+                "error": {
+                    "code": "budget_exceeded",
+                    "message": "Budget exceeded",
+                    "details": {"remaining_microdollars": 0},
+                },
+            })
+
+        transport = self._make_transport(
+            handler,
+            proxy_url="https://api.openai.com",
+            enforcement=True,
+        )
+        client = httpx.Client(transport=transport)
+        with pytest.raises(BudgetExceededError):
+            client.post("https://api.openai.com/v1/chat/completions",
+                       json={"model": "gpt-4o", "messages": []})
+        client.close()
+
+    def test_upstream_429_not_intercepted(self):
+        """Upstream 429 (no X-NullSpend-Denied) passes through as-is."""
+        def handler(request):
+            return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+        transport = self._make_transport(
+            handler,
+            proxy_url="https://api.openai.com",
+            enforcement=True,
+        )
+        client = httpx.Client(transport=transport)
+        resp = client.post("https://api.openai.com/v1/chat/completions",
+                          json={"model": "gpt-4o", "messages": []})
+        assert resp.status_code == 429  # Passed through, no exception
+        client.close()
+
+    def test_stream_injection_adds_include_usage(self):
+        """OpenAI streaming requests get stream_options.include_usage injected."""
+        captured_body = {}
+        def handler(request):
+            captured_body["body"] = json.loads(request.content)
+            return httpx.Response(200, json={"id": "x", "usage": {"prompt_tokens": 1, "completion_tokens": 1}})
+
+        transport = self._make_transport(handler)
+        client = httpx.Client(transport=transport)
+        client.post("https://api.openai.com/v1/chat/completions",
+                    json={"model": "gpt-4o", "messages": [], "stream": True})
+
+        assert captured_body["body"]["stream_options"]["include_usage"] is True
+        client.close()
+
+    def test_session_spend_accumulation(self):
+        """Session spend accumulates across multiple requests."""
+        queued = []
+        call_count = [0]
+        def handler(request):
+            call_count[0] += 1
+            return httpx.Response(200, json={
+                "model": "gpt-4o",
+                "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+            })
+
+        transport = self._make_transport(
+            handler,
+            session_id="sess-1",
+            queue_cost=lambda evt: queued.append(evt),
+        )
+        client = httpx.Client(transport=transport)
+
+        for _ in range(3):
+            client.post("https://api.openai.com/v1/chat/completions",
+                       json={"model": "gpt-4o", "messages": []})
+
+        assert len(queued) == 3
+        assert transport._session_spend > 0
+        # Each request costs the same, so spend should be 3x a single event
+        assert transport._session_spend == queued[0].cost_microdollars * 3
+        client.close()
+
+    def test_enforcement_mandate_block(self):
+        """Mandate violation blocks the request before it reaches the transport."""
+        from nullspend._policy_cache import PolicyCache
+
+        pc = PolicyCache(fetch_fn=lambda: {
+            "allowed_models": ["gpt-4o-mini"],
+        }, ttl_s=60.0)
+        pc.get_policy()
+
+        def handler(request):
+            pytest.fail("Transport should not be called when mandate blocks")
+
+        transport = self._make_transport(
+            handler,
+            enforcement=True,
+            policy_cache=pc,
+        )
+        client = httpx.Client(transport=transport)
+        with pytest.raises(MandateViolationError):
+            client.post("https://api.openai.com/v1/chat/completions",
+                       json={"model": "gpt-5", "messages": []})
+        client.close()
+
+    def test_enforcement_budget_block(self):
+        """Budget exceeded blocks the request before it reaches the transport."""
+        from nullspend._policy_cache import PolicyCache
+
+        pc = PolicyCache(fetch_fn=lambda: {
+            "budget": {
+                "remaining_microdollars": 1,  # Almost nothing left
+                "max_microdollars": 100,
+                "spend_microdollars": 99,
+                "period_end": None,
+                "entity_type": "org",
+                "entity_id": "org-1",
+            },
+        }, ttl_s=60.0)
+        pc.get_policy()
+
+        def handler(request):
+            pytest.fail("Transport should not be called when budget blocks")
+
+        transport = self._make_transport(
+            handler,
+            enforcement=True,
+            policy_cache=pc,
+        )
+        client = httpx.Client(transport=transport)
+        with pytest.raises(BudgetExceededError):
+            client.post("https://api.openai.com/v1/chat/completions",
+                       json={"model": "gpt-4o", "messages": []})
+        client.close()
+
+    def test_error_response_not_tracked(self):
+        """Non-2xx responses are not cost-tracked."""
+        queued = []
+        def handler(request):
+            return httpx.Response(400, json={"error": {"message": "bad request"}})
+
+        transport = self._make_transport(
+            handler,
+            queue_cost=lambda evt: queued.append(evt),
+        )
+        client = httpx.Client(transport=transport)
+        resp = client.post("https://api.openai.com/v1/chat/completions",
+                          json={"model": "gpt-4o", "messages": []})
+        assert resp.status_code == 400
+        assert len(queued) == 0  # No cost event for errors
+        client.close()
+
+    def test_anthropic_non_streaming_extraction(self):
+        """Anthropic non-streaming response extracts usage correctly."""
+        queued = []
+        def handler(request):
+            return httpx.Response(200, json={
+                "id": "msg_1",
+                "model": "claude-sonnet-4-5",
+                "usage": {"input_tokens": 200, "output_tokens": 100},
+            })
+
+        transport = self._make_transport(
+            handler,
+            provider="anthropic",
+            queue_cost=lambda evt: queued.append(evt),
+        )
+        client = httpx.Client(transport=transport)
+        client.post("https://api.anthropic.com/v1/messages",
+                    json={"model": "claude-sonnet-4-5", "messages": []})
+
+        assert len(queued) == 1
+        assert queued[0].provider == "anthropic"
+        assert queued[0].input_tokens == 200
+        client.close()
+
+
+# ---- NullSpend.close() cleanup ----
+
+
+class TestCloseCleanup:
+    def test_close_closes_tracked_clients(self):
+        ns = NullSpend(api_key="test")
+        openai_client = ns.openai
+        anthropic_client = ns.anthropic
+        ns.close()
+        # After close, the tracked clients should be closed
+        # httpx.Client raises RuntimeError if used after close
+        with pytest.raises(RuntimeError):
+            openai_client.get("https://example.com")
+
+
+# ---- _queue_cost_direct observability ----
+
+
+class TestQueueCostDirectLogging:
+    @respx.mock
+    def test_logs_first_error(self, caplog):
+        import logging
+        respx.post(f"{BASE}/api/cost-events").mock(
+            return_value=httpx.Response(500, json={"error": {"message": "Internal"}})
+        )
+        ns = NullSpend(api_key="key")
+        NullSpend._direct_cost_error_logged = False  # Reset class-level flag
+        with caplog.at_level(logging.WARNING, logger="nullspend"):
+            ns._queue_cost_direct(CostEventInput(
+                provider="openai", model="gpt-4o",
+                input_tokens=100, output_tokens=50, cost_microdollars=1500,
+            ))
+        assert any("Failed to report cost event" in r.message for r in caplog.records)
+        ns.close()
+        NullSpend._direct_cost_error_logged = False  # Clean up

@@ -463,7 +463,6 @@ class TrackedTransport(httpx.BaseTransport):
         url = str(request.url)
         method = request.method
         body = request.content
-        headers = dict(request.headers)
 
         # Phase 1: Header injection
         if self._customer:
@@ -480,7 +479,9 @@ class TrackedTransport(httpx.BaseTransport):
             return self._transport.handle_request(request)
 
         model = _extract_model_from_body(body)
-        is_proxied = _is_proxied(url, self._proxy_url, headers)
+        # Use post-injection headers for proxy detection (header fallback needs
+        # to see injected x-nullspend-key if present)
+        is_proxied = _is_proxied(url, self._proxy_url, dict(request.headers))
 
         # Phase 2: Proxy mode — skip client-side tracking, intercept 429
         if is_proxied:
@@ -594,7 +595,9 @@ class TrackedTransport(httpx.BaseTransport):
         }
 
         if _is_streaming_response(response) and response.stream:
-            # Wrap stream with TeeByteStream for cost extraction
+            # Wrap stream with TeeByteStream for cost extraction.
+            # Construct a new Response with the tee stream (documented httpx pattern)
+            # instead of mutating response.stream.
             accumulator = SSEAccumulator(self._provider)
 
             def on_stream_complete(acc: SSEAccumulator) -> None:
@@ -609,7 +612,11 @@ class TrackedTransport(httpx.BaseTransport):
                     )
 
             tee = TeeByteStream(response.stream, accumulator, on_stream_complete)
-            response.stream = tee
+            response = httpx.Response(
+                status_code=response.status_code,
+                headers=response.headers,
+                stream=tee,
+            )
         else:
             # Non-streaming: read response and extract usage
             try:

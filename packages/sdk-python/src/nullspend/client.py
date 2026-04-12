@@ -293,9 +293,17 @@ class NullSpend:
             self._cost_reporter = None
 
     def close(self) -> None:
-        """Close the underlying HTTP client and flush any pending cost events."""
+        """Close the underlying HTTP client, tracked clients, and flush pending cost events."""
         if self._cost_reporter is not None:
             self._cost_reporter.shutdown()
+        # Close cached tracked clients
+        for attr in ("_openai_client", "_anthropic_client"):
+            client = getattr(self, attr, None)
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
         self._client.close()
 
     def __enter__(self) -> NullSpend:
@@ -427,12 +435,20 @@ class NullSpend:
             timeout=self._timeout_s,
         )
 
+    _direct_cost_error_logged = False
+
     def _queue_cost_direct(self, event: CostEventInput) -> None:
         """Fallback: report cost immediately when no CostReporter is configured."""
         try:
             self.report_cost(event)
-        except Exception:
-            pass
+        except Exception as err:
+            if not NullSpend._direct_cost_error_logged:
+                NullSpend._direct_cost_error_logged = True
+                logger.warning(
+                    "nullspend: Failed to report cost event (%s). "
+                    "Subsequent errors will be silent.",
+                    err,
+                )
 
     @property
     def openai(self) -> httpx.Client:
