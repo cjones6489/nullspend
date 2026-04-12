@@ -1,9 +1,9 @@
 ---
 title: "Webhook Event Types"
-description: "NullSpend emits 15 event types. Each event is delivered as an HTTP POST with a JSON body."
+description: "NullSpend emits 18 event types. Each event is delivered as an HTTP POST with a JSON body."
 ---
 
-NullSpend emits 15 event types. Each event is delivered as an HTTP POST with a JSON body.
+NullSpend emits 18 event types. Each event is delivered as an HTTP POST with a JSON body.
 
 ## Event Envelope
 
@@ -42,7 +42,7 @@ Used for `cost_event.created` on endpoints with `payloadMode: "thin"`. All other
 | Field | Type | Description |
 |---|---|---|
 | `id` | string | Unique event ID (`evt_` + UUID). Use for deduplication. |
-| `type` | string | One of the 15 event types below. |
+| `type` | string | One of the 18 event types below. |
 | `api_version` | string | API version (`"2026-04-01"`). |
 | `created_at` | integer | Unix timestamp in seconds. |
 | `data.object` | object | Event-specific payload (full mode). |
@@ -217,6 +217,44 @@ Fires when a request is blocked because the budget ceiling was hit.
       "model": "gpt-4o",
       "provider": "openai",
       "blocked_at": "2026-03-21T12:00:00.000Z"
+    }
+  }
+}
+```
+
+### `budget.increased`
+
+Fires when a budget limit is increased via a HITL budget increase approval.
+
+**`data.object` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `budget_entity_type` | string | Entity type |
+| `budget_entity_id` | string | Entity identifier |
+| `previous_limit_microdollars` | integer | Budget limit before the increase |
+| `new_limit_microdollars` | integer | Budget limit after the increase |
+| `increased_by_microdollars` | integer | Amount of the increase |
+| `approved_by` | string | User who approved the increase |
+| `action_id` | string | HITL action ID that triggered the increase |
+
+**Example:**
+
+```json
+{
+  "id": "evt_d4e5f6a7-b8c9-0123-defa-234567890124",
+  "type": "budget.increased",
+  "api_version": "2026-04-01",
+  "created_at": 1711036800,
+  "data": {
+    "object": {
+      "budget_entity_type": "user",
+      "budget_entity_id": "user_12345",
+      "previous_limit_microdollars": 50000000,
+      "new_limit_microdollars": 100000000,
+      "increased_by_microdollars": 50000000,
+      "approved_by": "admin_user",
+      "action_id": "ns_act_550e8400-e29b-41d4-a716-446655440000"
     }
   }
 }
@@ -457,6 +495,102 @@ Fires when a tag-level budget is exceeded.
   }
 }
 ```
+
+### `customer_budget.exceeded`
+
+Fires when a customer-scoped budget is exceeded. Similar to `budget.exceeded` but specific to per-customer budgets identified by the `X-NullSpend-Customer` header.
+
+**`data.object` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `budget_entity_type` | string | `"customer"` |
+| `budget_entity_id` | string | Customer identifier |
+| `customer_id` | string | Customer identifier (same as `budget_entity_id`) |
+| `budget_limit_microdollars` | integer | Customer budget ceiling |
+| `budget_spend_microdollars` | integer | Current customer spend |
+| `estimated_request_cost_microdollars` | integer | Estimated cost of the blocked request |
+| `model` | string | Requested model |
+| `provider` | string | Provider name |
+| `blocked_at` | string | ISO 8601 timestamp when blocked |
+
+**Example:**
+
+```json
+{
+  "id": "evt_e1f2a3b4-c5d6-7890-efab-901234567891",
+  "type": "customer_budget.exceeded",
+  "api_version": "2026-04-01",
+  "created_at": 1711036800,
+  "data": {
+    "object": {
+      "budget_entity_type": "customer",
+      "budget_entity_id": "acme-corp",
+      "customer_id": "acme-corp",
+      "budget_limit_microdollars": 25000000,
+      "budget_spend_microdollars": 24800000,
+      "estimated_request_cost_microdollars": 500000,
+      "model": "gpt-4o",
+      "provider": "openai",
+      "blocked_at": "2026-03-21T12:00:00.000Z"
+    }
+  }
+}
+```
+
+---
+
+## Margin Events
+
+### `margin.threshold_crossed`
+
+Fires when a customer's margin health tier worsens (e.g., healthy to moderate, moderate to at_risk). Only fires on worsening transitions, not improvements. Requires an active Stripe connection.
+
+**`data.object` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `customer.stripeId` | string | Stripe customer ID |
+| `customer.name` | string or null | Customer name from Stripe |
+| `customer.tagValue` | string | NullSpend tag value mapped to this customer |
+| `margin.previous` | number | Previous margin as a decimal (e.g., 0.35 = 35%) |
+| `margin.current` | number | Current margin as a decimal |
+| `margin.previousTier` | string | Previous health tier: `"healthy"`, `"moderate"`, `"at_risk"`, or `"critical"` |
+| `margin.currentTier` | string | Current health tier |
+| `revenue_microdollars` | integer | Current period revenue |
+| `cost_microdollars` | integer | Current period cost |
+| `period` | string | Billing period (e.g., `"2026-04"`) |
+
+**Example:**
+
+```json
+{
+  "id": "evt_f2a3b4c5-d6e7-8901-fabc-012345678902",
+  "type": "margin.threshold_crossed",
+  "api_version": "2026-04-01",
+  "created_at": 1711036800,
+  "data": {
+    "object": {
+      "customer": {
+        "stripeId": "cus_abc123",
+        "name": "Acme Corp",
+        "tagValue": "acme-corp"
+      },
+      "margin": {
+        "previous": 0.35,
+        "current": 0.18,
+        "previousTier": "healthy",
+        "currentTier": "moderate"
+      },
+      "revenue_microdollars": 50000000,
+      "cost_microdollars": 41000000,
+      "period": "2026-04"
+    }
+  }
+}
+```
+
+Health tier thresholds: **healthy** (≥ 25%), **moderate** (10–25%), **at_risk** (0–10%), **critical** (< 0%).
 
 ---
 

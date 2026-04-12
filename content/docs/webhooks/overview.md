@@ -17,7 +17,7 @@ Webhooks send real-time HTTP POST notifications to your server when events happe
 
 ## Event Types
 
-NullSpend emits 15 event types:
+NullSpend emits 18 event types:
 
 | Event | Fires When |
 |---|---|
@@ -25,12 +25,15 @@ NullSpend emits 15 event types:
 | `budget.threshold.warning` | Spend crosses a threshold < 90% |
 | `budget.threshold.critical` | Spend crosses a threshold ≥ 90% |
 | `budget.exceeded` | Budget ceiling is hit |
+| `budget.increased` | Budget limit increased via HITL approval |
 | `budget.reset` | Budget period resets (daily/weekly/monthly) |
 | `request.blocked` | A request is blocked (budget, rate limit, or policy) |
 | `velocity.exceeded` | Velocity limit tripped — circuit breaker open |
 | `velocity.recovered` | Velocity cooldown expired — circuit breaker closed |
 | `session.limit_exceeded` | Session spend cap exceeded |
 | `tag_budget.exceeded` | Tag-level budget exceeded |
+| `customer_budget.exceeded` | Customer-scoped budget exceeded |
+| `margin.threshold_crossed` | Customer margin worsened to a lower health tier |
 | `action.created` | HITL approval action created |
 | `action.approved` | HITL action approved |
 | `action.rejected` | HITL action rejected |
@@ -135,7 +138,7 @@ For expanded best practices with code examples, see [Best Practices](best-practi
 
 ## Related
 
-- [Event Types](event-types.md) — full catalog of all 15 events with JSON examples
+- [Event Types](event-types.md) — full catalog of all 18 events with JSON examples
 - [Delivery](delivery.md) — transport, retries, failure handling, and endpoint caching
 - [Webhook Security](security.md) — HMAC verification with code examples
 - [Webhooks API](../api-reference/webhooks-api.md) — create, update, test, and manage endpoints programmatically

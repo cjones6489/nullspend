@@ -154,5 +154,5 @@ For expanded best practices with code examples, see [Best Practices](best-practi
 - [Webhooks Overview](overview.md) — setup, event types, and quick start
 - [Webhook Security](security.md) — HMAC signature verification with code examples
 - [Best Practices](best-practices.md) — expanded patterns with code examples
-- [Event Types](event-types.md) — full catalog of all 15 events with JSON examples
+- [Event Types](event-types.md) — full catalog of all 18 events with JSON examples
 - [Webhooks API](../api-reference/webhooks-api.md) — manage endpoints programmatically

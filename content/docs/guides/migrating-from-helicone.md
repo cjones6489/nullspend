@@ -106,7 +106,7 @@ Cap spend per conversation with the `X-NullSpend-Session` header. When a session
 
 ### Webhooks
 
-15 event types with HMAC-SHA256 signed payloads: cost events, budget exceeded, threshold crossings, velocity alerts, budget resets, blocked requests, and more. Supports both full and thin (Stripe v2 pattern) payload modes. See [Webhooks](../webhooks/overview.md). Helicone had no webhook support.
+18 event types with HMAC-SHA256 signed payloads: cost events, budget exceeded, threshold crossings, velocity alerts, budget resets, blocked requests, and more. Supports both full and thin (Stripe v2 pattern) payload modes. See [Webhooks](../webhooks/overview.md). Helicone had no webhook support.
 
 ### W3C traceparent propagation
 

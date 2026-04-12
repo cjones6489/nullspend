@@ -15,6 +15,7 @@
     "actions-api",
     "margins-api",
     "tool-costs-api",
-    "audit-log-api"
+    "audit-log-api",
+    "customer-mappings-api"
   ]
 }

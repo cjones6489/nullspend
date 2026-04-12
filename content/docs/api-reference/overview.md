@@ -93,6 +93,10 @@ Session-authenticated endpoints require a browser session cookie from the NullSp
 | `POST /api/stripe/portal` | Billing portal | Session (owner) |
 | `GET /api/stripe/subscription` | Get subscription | Session (viewer) |
 | `POST /api/stripe/subscription/sync` | Sync subscription | Session |
+| `GET /api/customer-mappings` | List customer mappings | Session (viewer) |
+| `POST /api/customer-mappings` | Create customer mapping | Session (admin) |
+| `DELETE /api/customer-mappings?id=` | Delete customer mapping | Session (admin) |
+| `GET /api/policy` | Get enforcement policy | API key |
 | `GET /api/health` | Health check | Public |
 
 ---

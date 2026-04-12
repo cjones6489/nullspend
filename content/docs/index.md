@@ -40,7 +40,7 @@ Add an `X-NullSpend-Key` header and every request is tracked, budgeted, and visi
 | **[Session limits](features/budgets.md#session-limits)** | Per-conversation spend caps tied to a session ID |
 | **[Tags](features/tags.md)** | Attribute costs to teams, environments, features, or anything else via `X-NullSpend-Tags` |
 | **[Tracing](features/tracing.md)** | W3C `traceparent` propagation and custom trace IDs for request correlation |
-| **[Webhooks](webhooks/overview.md)** | 15 event types with HMAC-SHA256 signing — cost events, budget exceeded, velocity alerts, threshold crossings |
+| **[Webhooks](webhooks/overview.md)** | 18 event types with HMAC-SHA256 signing — cost events, budget exceeded, velocity alerts, threshold crossings, margin alerts |
 | **[HITL approvals](features/human-in-the-loop.md)** | Human-in-the-loop approval workflow for high-cost or sensitive operations |
 | **[Organizations](features/organizations.md)** | Team collaboration with roles (owner, admin, member, viewer), per-org billing, and invitation management |
 | **[Request logging](features/cost-tracking.md#request--response-body-logging)** | Opt-in capture of full request/response bodies (including streaming) for debugging and audit (Pro/Enterprise) |

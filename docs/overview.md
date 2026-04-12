@@ -36,7 +36,7 @@ Add an `X-NullSpend-Key` header and every request is tracked, budgeted, and visi
 | **[Session limits](features/budgets.md#session-limits)** | Per-conversation spend caps tied to a session ID |
 | **[Tags](features/tags.md)** | Attribute costs to teams, environments, features, or anything else via `X-NullSpend-Tags` |
 | **[Tracing](features/tracing.md)** | W3C `traceparent` propagation and custom trace IDs for request correlation |
-| **[Webhooks](webhooks/overview.md)** | 16 event types with HMAC-SHA256 signing — cost events, budget exceeded, velocity alerts, threshold crossings, margin alerts |
+| **[Webhooks](webhooks/overview.md)** | 18 event types with HMAC-SHA256 signing — cost events, budget exceeded, velocity alerts, threshold crossings, margin alerts |
 | **[HITL approvals](features/human-in-the-loop.md)** | Human-in-the-loop approval workflow for high-cost or sensitive operations |
 | **[Margins](features/margins.md)** | Connect Stripe to see per-customer profitability — auto-match, health tiers, trajectory projection, Slack alerts, CSV export |
 | **Multi-provider** | OpenAI and Anthropic in a single dashboard with provider breakdown |
